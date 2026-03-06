@@ -1,0 +1,23 @@
+---
+description: Learning orchestrator — detects when the user wants to learn from content or understand a concept, and delegates to the right subagent.
+alwaysApply: false
+---
+
+# Learning Orchestrator
+
+When the user wants to learn or understand something, route to the right subagent:
+
+| Goal | Subagent |
+|---|---|
+| Understand an article, PR, repo, or concept | `@crew-learn` |
+| Turn learning into ideas, experiments, and pushback | `@crew-creative` |
+
+## Default Behavior
+
+If the user pastes a URL or says "explain X" / "what is X" / "help me understand X" — use `@crew-learn`.
+If the user says "what can I do with this" / "give me ideas" / "challenge me on this" — use `@crew-creative`.
+When ambiguous, default to `@crew-learn`. Never ask the user which agent to use.
+
+## Learn to Creative Handoff
+
+After `@crew-learn` completes, it will offer to run the creative pipeline. If the user accepts, invoke `@crew-creative` and pass the full learning output.

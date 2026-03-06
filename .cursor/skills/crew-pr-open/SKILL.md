@@ -1,5 +1,5 @@
 ---
-name: ae-pr-open
+name: crew-pr-open
 description: "Push the current branch and open a PR with a generated description. Use when the user says 'open a PR', 'create PR', 'push and open PR', or 'ready to push'."
 ---
 
@@ -56,5 +56,5 @@ Show the PR URL and a one-line summary.
 ## Rules
 
 - **Derive, don't invent.** The summary comes from SPEC.md and commits, not from re-reading the code.
-- **Always ask before creating.** Show the title + description and wait for "looks good" — same pattern as ae-commit.
+- **Always ask before creating.** Show the title + description and wait for "looks good" — same pattern as crew-commit.
 - **Always draft.** PRs are opened as drafts. Mark ready manually.

@@ -2,7 +2,7 @@
 
 ## Pipeline & Task State
 
-Defined in the orchestrator rule (`ae-orchestrator.mdc`). Key points:
+Defined in the orchestrator rule (`crew-orchestrator.mdc`). Key points:
 
 - Spec-driven: every non-trivial task starts with a SPEC.md before implementation
 - Task files live at `~/.agent/tasks/<repo>/<branch>/`

@@ -1,5 +1,5 @@
 ---
-name: ae-pr-resolver
+name: crew-pr-resolver
 description: "Fetch and action all unresolved PR review comments. Use when the user says 'handle PR comments', 'what's still open on PR #X', 'handle remaining comments', 're-review after fixes', or provides a PR URL/number with open comments."
 ---
 
@@ -55,15 +55,15 @@ Before reading code:
 - Skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot, etc.) unless the concern looks legitimate at a glance
 - Group remaining threads by file path for efficient batch reading
 
-### Step 3: EVALUATE — Run ae-pr-comments-eval per thread
+### Step 3: EVALUATE — Run crew-pr-comments-eval per thread
 
-For each unresolved thread, evaluate it using the **ae-pr-comments-eval** skill (read `~/.cursor/skills/ae-pr-comments-eval/SKILL.md`):
+For each unresolved thread, evaluate it using the **crew-pr-comments-eval** skill (read `~/.cursor/skills/crew-pr-comments-eval/SKILL.md`):
 
 1. Read the comment body and `path` to understand the file and area
 2. Read all comments in the thread (first is the suggestion, later are follow-ups)
 3. Read the current state of `path` around `line` in the local working tree
 4. Read related test files — tests that explicitly validate the flagged behavior are strong evidence it's intentional
-5. Apply the ae-pr-comments-eval decision framework to classify as **Apply**, **Adapt**, **Reject**, or **Defer**
+5. Apply the crew-pr-comments-eval decision framework to classify as **Apply**, **Adapt**, **Reject**, or **Defer**
 
 ### Step 4: ACT — Execute decisions
 
@@ -75,7 +75,7 @@ For each unresolved thread, evaluate it using the **ae-pr-comments-eval** skill 
 
 For each thread, two operations are needed (both IDs come from the Step 1 query):
 
-1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in ae-pr-comments-eval). Use the `databaseId` from the first comment in the thread:
+1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in crew-pr-comments-eval). Use the `databaseId` from the first comment in the thread:
    ```bash
    gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments/DATABASE_ID/replies -f body="🤖 **Verdict** — rationale"
    ```

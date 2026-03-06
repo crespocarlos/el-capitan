@@ -1,5 +1,5 @@
 ---
-name: ae-pr-comments-eval
+name: crew-pr-comments-eval
 description: Evaluate and act on code suggestions from any source — GitHub Copilot, code reviewers, colleagues, or AI tools. Use when the user pastes a suggestion alongside code and asks whether to apply it, or says "Copilot says...", "reviewer says...", "someone suggested...", etc.
 ---
 
@@ -55,7 +55,7 @@ Correct and worth doing, but out of scope for the current change — note it and
 
 ### GitHub comment format
 
-When posting replies on GitHub (via ae-pr-resolver or directly), always prefix with a robot indicator so agent comments are distinguishable from human ones:
+When posting replies on GitHub (via crew-pr-resolver or directly), always prefix with a robot indicator so agent comments are distinguishable from human ones:
 
 ```
 🤖 **Reject** — [rationale]

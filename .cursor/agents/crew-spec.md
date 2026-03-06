@@ -1,5 +1,5 @@
 ---
-name: ae-spec
+name: crew-spec
 description: "Draft a SPEC.md from a GitHub issue or task description. Use when the user says 'spec issue #X', 'draft SPEC.md', 'spec this', or provides a task that needs a spec before implementation."
 ---
 

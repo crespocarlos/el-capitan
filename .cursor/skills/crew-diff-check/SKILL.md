@@ -1,5 +1,5 @@
 ---
-name: ae-diff-check
+name: crew-diff-check
 description: "Review the current git diff for issues before committing. Use when the user says 'review the diff', 'check my changes', 'ready to commit?', or 'is this good to push'."
 ---
 

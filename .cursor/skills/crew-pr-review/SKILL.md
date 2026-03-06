@@ -1,5 +1,5 @@
 ---
-name: ae-pr-review
+name: crew-pr-review
 description: "Deep-review a Pull Request. Use when the user says 'review PR #X', 'review this PR', 'look at this PR', or provides a PR URL to review."
 ---
 

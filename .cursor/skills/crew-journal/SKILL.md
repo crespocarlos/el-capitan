@@ -1,5 +1,5 @@
 ---
-name: ae-journal
+name: crew-journal
 description: "Log an agentic engineering session to the journal. Use when the user says 'journal', 'log this', 'end of session', or asks to record what happened. Triggerable any time."
 ---
 
@@ -38,11 +38,11 @@ Replace placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date.
    > "These items look ready for CLAUDE.md: [list]. Want me to add them now?"
 
 2. Always offer the creative handoff:
-   > "Want @ae-creative to connect this session to past patterns and generate ideas?"
+   > "Want @crew-creative to connect this session to past patterns and generate ideas?"
 
 ## Notes
 
 - Keep entries concise — 2-3 sentences per answer max
 - Triggerable any time: after implementation, after PR review, after learning, after support investigation, or just at end of day
 - Never modify existing journal entries — only append
-- Engineering entries use `**Type:** engineering`; learning entries (written by @ae-creative) use `**Type:** learning`
+- Engineering entries use `**Type:** engineering`; learning entries (written by @crew-creative) use `**Type:** learning`

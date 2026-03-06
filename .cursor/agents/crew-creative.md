@@ -1,6 +1,6 @@
 ---
-name: ae-creative
-description: "Creative thinking pipeline. Takes what you've learned and turns it into action — connects to past sessions, generates concrete ideas for your work, and pushes back on assumptions. Use when the user says 'what can I do with this', 'give me ideas', 'challenge me', or after @ae-learn completes."
+name: crew-creative
+description: "Creative thinking pipeline. Takes what you've learned and turns it into action — connects to past sessions, generates concrete ideas for your work, and pushes back on assumptions. Use when the user says 'what can I do with this', 'give me ideas', 'challenge me', or after @crew-learn completes."
 ---
 
 # Creative Pipeline

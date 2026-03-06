@@ -1,6 +1,6 @@
 # Journal
 
-Append-only session log. Written by ae-journal (engineering sessions) and @ae-creative (learning sessions). Agents read this for cross-session context.
+Append-only session log. Written by crew-journal (engineering sessions) and @crew-creative (learning sessions). Agents read this for cross-session context.
 
 ---
 

@@ -1,4 +1,4 @@
-# ae-implement
+# crew-implement
 
 Drive implementation of an approved SPEC.md through its tasks until all acceptance criteria pass.
 
@@ -26,7 +26,7 @@ Read `$TASK_DIR/SPEC.md` and `$TASK_DIR/PROGRESS.md`.
 ### Step 2 — Gate check
 
 If the SPEC.md status is `DRAFTING`, stop:
-> "The spec hasn't been approved yet. Run ae-spec and get approval before implementing."
+> "The spec hasn't been approved yet. Run crew-spec and get approval before implementing."
 
 If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you're resuming — skip to the first unchecked task.
 
@@ -82,7 +82,7 @@ Update PROGRESS.md:
 ```
 
 Tell the user:
-> "All tasks done and quality gates pass. Ready for ae-diff-check."
+> "All tasks done and quality gates pass. Ready for crew-diff-check."
 
 ## Rules
 
