@@ -55,7 +55,7 @@ flowchart TD
 | **ae-spec** | agent | Fetches a GitHub issue, explores the codebase, drafts a SPEC.md with acceptance criteria |
 | **ae-diff-check** | skill | Scans `git diff` for type safety issues, missing tests, pattern violations |
 | **ae-commit** | skill | Reads diff + SPEC.md, proposes a conventional commit message, waits for approval |
-| **ae-pr-open** | skill | Pushes branch, generates PR description from SPEC.md + commits, opens the PR |
+| **ae-pr-open** | skill | Pushes branch, generates PR description from SPEC.md + commits, opens a draft PR |
 | **ae-pr-review** | skill | Deep-reviews someone else's PR — reads full files, traces impact, verifies tests |
 | **ae-pr-resolver** | agent | Fetches all unresolved PR threads on your PR, processes each one (apply/adapt/reject/defer) |
 | **ae-pr-comments-eval** | skill | Evaluates a single code suggestion from any source (reviewer, Copilot, colleague) |
@@ -63,11 +63,12 @@ flowchart TD
 | **ae-learn** | agent | Fetches a URL, PR, repo, or concept and teaches you what matters |
 | **ae-creative** | agent | Connects learning to past sessions, generates ideas, pushes back on assumptions |
 
-### PR crew — three members, three directions
+### PR crew — four members, four jobs
 
+- **ae-pr-open** — push and open a draft PR with a generated description. Asks about LLM assistance; if yes, appends 🤖 to the description.
 - **ae-pr-review** — you review someone else's code (outbound review)
-- **ae-pr-resolver** — someone reviewed your code, handle their feedback (inbound batch)
-- **ae-pr-comments-eval** — evaluate a single suggestion from any source (inline)
+- **ae-pr-resolver** — someone reviewed your code, handle their feedback (inbound batch). Replies are prefixed with 🤖 to distinguish agent comments from human ones.
+- **ae-pr-comments-eval** — evaluate a single suggestion from any source (inline). Defines the evaluation framework and GitHub comment format used by ae-pr-resolver.
 
 ## Pipeline
 
@@ -144,7 +145,10 @@ New machine = clone + install. All agents, skills, rules, templates, and journal
 │       ├── ae-diff-check/SKILL.md
 │       ├── ae-journal/SKILL.md
 │       ├── ae-pr-comments-eval/SKILL.md
-│       ├── ae-pr-open/SKILL.md
+│       ├── ae-pr-open/
+│       │   ├── SKILL.md
+│       │   └── references/
+│       │       └── pr-template.md      ← default PR description format
 │       └── ae-pr-review/
 │           ├── SKILL.md
 │           └── references/
@@ -159,7 +163,9 @@ New machine = clone + install. All agents, skills, rules, templates, and journal
 
 **Skills vs agents.** Skills are stateless instructions the main agent follows inline — good for single-purpose tasks (commit, diff check, journal). Agents are autonomous subagents launched as separate processes — good for multi-step tasks that fetch data and make decisions (spec, learn, PR resolution).
 
-**Skills with references.** Complex skills like ae-pr-review use a `references/` directory for command patterns and review frameworks. This keeps the main SKILL.md workflow-focused while providing concrete commands the agent reads when needed. Inspired by the [artifact analysis patterns](https://github.com/carloscrespo/el-capitan/blob/main/.cursor/skills/ae-pr-review/references/review-patterns.md) approach.
+**Skills with references.** Complex skills like ae-pr-review and ae-pr-open use a `references/` directory for command patterns, templates, and review frameworks. This keeps the main SKILL.md workflow-focused while providing concrete detail the agent reads when needed.
+
+**Agent comments are labeled.** When ae-pr-resolver posts replies on GitHub, they're prefixed with 🤖 so reviewers can tell agent responses from human ones. When ae-pr-open creates a PR with LLM assistance, 🤖 is appended to the description.
 
 **Symlinks, not copies.** `install.sh` creates per-file symlinks from `~/.cursor/` into the repo. This means core crew members are always in sync with the repo, while add-ons (regular files) live alongside without being tracked.
 
