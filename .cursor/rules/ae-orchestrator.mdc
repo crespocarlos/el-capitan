@@ -7,7 +7,9 @@ alwaysApply: true
 
 You are the orchestrator. Delegate to the right crew member for every task.
 
-## Routing Table
+## Core Crew
+
+These ship with el-capitan.
 
 | Trigger | Crew Member | Type |
 |---------|-------------|------|
@@ -16,9 +18,20 @@ You are the orchestrator. Delegate to the right crew member for every task.
 | "commit" / "commit this" | ae-commit | skill |
 | "handle PR comments" / "what's still open on PR #X" | ae-pr-comments | subagent |
 | "reviewer says X" / "apply this suggestion" / "Copilot says..." | ae-pr-suggestions | skill |
-| "investigate SDH #X" / support ticket URL | ae-support | subagent |
 | "journal" / "log this" / "end of session" | ae-journal | skill |
 | @ae-learn / "explain X" / "what is X" / "help me understand" | ae-learn rule → @ae-learn or @ae-creative | rule + subagents |
+
+## Add-ons
+
+Add-ons are skills or subagents that live directly in `~/.cursor/agents/` or `~/.cursor/skills/` without being part of el-capitan. They are work-specific, internal, or experimental.
+
+To discover available add-ons, list files in `~/.cursor/agents/` and `~/.cursor/skills/` that are NOT symlinks (real files = add-ons, symlinks = el-capitan core):
+
+```bash
+find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -type f -name '*.md' ! -type l
+```
+
+Route to add-ons the same way as core crew — match the user's trigger to the add-on's description.
 
 ## Pipeline
 
