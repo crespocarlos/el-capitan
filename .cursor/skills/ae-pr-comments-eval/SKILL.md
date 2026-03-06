@@ -8,9 +8,10 @@ description: Evaluate and act on code suggestions from any source — GitHub Cop
 ## Workflow
 
 1. **Read the target code** — always read the file and surrounding context before deciding.
-2. **Classify** — see decision framework below.
-3. **Act** — apply, adapt, or reject with a clear one-sentence rationale.
-4. **Clean up** — fix lints, remove dead code, update related call sites.
+2. **Read the tests** — if the target code has tests, read them before evaluating. Tests that explicitly validate the flagged behavior (with comments explaining the design, probability model, or intent) are strong evidence the behavior is intentional, not a bug.
+3. **Classify** — see decision framework below.
+4. **Act** — apply, adapt, or reject with a clear one-sentence rationale.
+5. **Clean up** — fix lints, remove dead code, update related call sites.
 
 ## Decision Framework
 
@@ -29,7 +30,7 @@ Correct diagnosis, needs a different remedy:
 
 ### Reject
 - **Premature optimization** — actual data is small/bounded; theoretical complexity concern has no measurable impact
-- **Wrong mental model** — suggestion misunderstands a contract, invariant, or design intent; explain the actual behavior
+- **Wrong mental model** — suggestion misunderstands a contract, invariant, or design intent; explain the actual behavior. Common pattern: reviewer flags behavior as a bug when the test suite explicitly validates it as intentional
 - **Defeats the purpose** — suggested change undermines the intent of the code it modifies
 - **Duplicate** — already addressed earlier in the same session
 - **Out of scope** — correct but requires a framework-level refactor unrelated to the current change
@@ -51,3 +52,15 @@ Correct and worth doing, but out of scope for the current change — note it and
 - One sentence explaining why
 - If applying: make the edit, then explain what changed and why — no pre-edit narration
 - If rejecting: explain the specific reason so the user can push back if they disagree
+
+### GitHub comment format
+
+When posting replies on GitHub (via ae-pr-resolver or directly), always prefix with a robot indicator so agent comments are distinguishable from human ones:
+
+```
+🤖 **Reject** — [rationale]
+```
+
+```
+🤖 **Apply** — [what changed and why]
+```
