@@ -25,6 +25,8 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
    - What tests exist and how to run them
    - The relevant build/test config paths (e.g. tsconfig, jest config, Cargo.toml, pyproject.toml — whatever the repo uses)
 
+   **Research conventions before drafting.** If the task involves adopting an existing pattern (e.g. converting code to use a shared utility, following a template convention), find and read at least 2 canonical examples of that pattern before writing any tasks. Use SemanticSearch scoped to the relevant package for targeted pattern questions before falling back to explore subagents for broader structural understanding.
+
 4. **Draft `$TASK_DIR/SPEC.md`** using `~/.agent/_SPEC_TEMPLATE.md` as the base:
    - **Context**: problem statement, scope (in/out), repo touchpoints (files that will change)
    - **Goal**: one sentence
@@ -40,6 +42,8 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
    - "The existing pattern uses Y — should I follow it or is this a chance to improve?"
    - "This touches module Z which has no tests — should I add some?"
 
+6. **Wait for explicit approval.** After the user answers the questions, incorporate their answers into the SPEC.md, present a summary of what changed, and wait for the user to explicitly approve ("approved", "looks good", "go"). Never mark PROGRESS.md as IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval — approving the updated spec is.
+
 ## Quality Bar
 
 - **Requirements AC** must be inferred from the ticket, not invented. If the ticket says "convert X to use Y", the AC is "X uses Y", not "type-check passes".
@@ -50,4 +54,4 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
 
 ## Output
 
-Save to `$TASK_DIR/SPEC.md`. Report back with a summary and your questions.
+Save to `$TASK_DIR/SPEC.md`. Report back with a summary and your questions. **Stop here** — do not proceed to implementation.

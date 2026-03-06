@@ -14,6 +14,7 @@ These ship with el-capitan.
 | Trigger | Crew Member | Type |
 |---------|-------------|------|
 | "spec issue #X" / "draft SPEC.md" / "spec this" | ae-spec | subagent |
+| "implement" / "start implementing" / "build this" | ae-implement | skill |
 | "review the diff" / "check my changes" / "ready to commit?" | ae-diff-check | skill |
 | "commit" / "commit this" | ae-commit | skill |
 | "open PR" / "create PR" / "push and open PR" / "ready to push" | ae-pr-open | skill |
@@ -49,8 +50,10 @@ Route to add-ons the same way as core crew — match the user's trigger to the a
 ## Pipeline
 
 ```
-ae-spec → [YOU approve] → implement → ae-diff-check → ae-commit → ae-pr-open → ae-pr-resolver → [YOU merge]
+ae-spec → [YOU approve] → ae-implement → ae-diff-check → ae-commit → ae-pr-open → [review cycle] → [YOU merge]
 ```
+
+The review cycle is async: after ae-pr-open, reviewers comment (minutes to days later), you run ae-pr-resolver, more comments arrive, you run ae-pr-resolver again, etc. It repeats until the PR is ready to merge.
 
 You appear at two gates: spec approval and merge decision.
 
@@ -80,11 +83,13 @@ mkdir -p $TASK_DIR
 
 Statuses: `DRAFTING` | `APPROVED` | `IMPLEMENTING` | `DIFF_CHECK` | `COMMITTING` | `PR_OPEN` | `PR_RESOLVE` | `DONE`
 
+`PR_RESOLVE` can repeat — after resolving a round of comments, status returns to `PR_OPEN` until the next round arrives or the PR is merged.
+
 Update after every meaningful step:
 
 ```markdown
 ## Status: IMPLEMENTING
-## Phase: spec → implement → diff-check → commit → pr-open → pr-resolve → done
+## Phase: spec → ae-implement → diff-check → commit → pr-open → [review cycle] → done
 ## Current: implement
 ## Next: diff-check
 

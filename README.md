@@ -17,12 +17,18 @@ flowchart TD
     subgraph engineering ["Engineering Lane"]
         spec["ae-spec\ndraft SPEC.md"]
         approve(["🧑 YOU: approve spec"])
-        implement["implement"]
+        implement["ae-implement\nralph or inline"]
         diffcheck["ae-diff-check\nreview local diff"]
         commit["ae-commit\nsemantic commit"]
         propen["ae-pr-open\npush + open PR"]
-        resolver["ae-pr-resolver\nhandle all open threads"]
         merge(["🧑 YOU: merge"])
+    end
+
+    subgraph reviewCycle ["Review Cycle (async)"]
+        waiting(["waiting for reviews"])
+        resolver["ae-pr-resolver\nhandle open threads"]
+        waiting -->|"comments arrive"| resolver
+        resolver -->|"resolved round"| waiting
     end
 
     subgraph review ["Review Lane"]
@@ -34,7 +40,7 @@ flowchart TD
     journalmd[("JOURNAL.md")]
 
     creative -->|"idea → task"| spec
-    spec --> approve --> implement --> diffcheck --> commit --> propen --> resolver --> merge
+    spec --> approve --> implement --> diffcheck --> commit --> propen --> reviewCycle --> merge
 
     prreview -.->|"standalone"| prreview
     eval -.->|"standalone"| eval
@@ -53,6 +59,7 @@ flowchart TD
 | Name | Type | What it does |
 |------|------|-------------|
 | **ae-spec** | agent | Fetches a GitHub issue, explores the codebase, drafts a SPEC.md with acceptance criteria |
+| **ae-implement** | skill | Drives implementation through SPEC.md tasks — uses a ralph tool if available, otherwise works inline |
 | **ae-diff-check** | skill | Scans `git diff` for type safety issues, missing tests, pattern violations |
 | **ae-commit** | skill | Reads diff + SPEC.md, proposes a conventional commit message, waits for approval |
 | **ae-pr-open** | skill | Pushes branch, generates PR description from SPEC.md + commits, opens a draft PR |
@@ -73,8 +80,10 @@ flowchart TD
 ## Pipeline
 
 ```
-ae-spec → [approve] → implement → ae-diff-check → ae-commit → ae-pr-open → ae-pr-resolver → [merge]
+ae-spec → [approve] → ae-implement → ae-diff-check → ae-commit → ae-pr-open → [review cycle] → [merge]
 ```
+
+The review cycle is async: after ae-pr-open, reviewers comment (minutes to days later), you run ae-pr-resolver, more comments arrive, you run it again. It repeats until the PR is ready to merge.
 
 When a gate fails:
 - **Spec rejected** — revise and re-present
@@ -143,6 +152,7 @@ New machine = clone + install. All agents, skills, rules, templates, and journal
 │   └── skills/
 │       ├── ae-commit/SKILL.md
 │       ├── ae-diff-check/SKILL.md
+│       ├── ae-implement/SKILL.md
 │       ├── ae-journal/SKILL.md
 │       ├── ae-pr-comments-eval/SKILL.md
 │       ├── ae-pr-open/
@@ -168,6 +178,8 @@ New machine = clone + install. All agents, skills, rules, templates, and journal
 **Agent comments are labeled.** When ae-pr-resolver posts replies on GitHub, they're prefixed with 🤖 so reviewers can tell agent responses from human ones. When ae-pr-open creates a PR with LLM assistance, 🤖 is appended to the description.
 
 **Symlinks, not copies.** `install.sh` creates per-file symlinks from `~/.cursor/` into the repo. This means core crew members are always in sync with the repo, while add-ons (regular files) live alongside without being tracked.
+
+**Ralph-agnostic implementation.** ae-implement follows the "ralph" pattern — loop over spec tasks until done — but doesn't depend on any specific tool. If `ralph`, `ralph.sh`, or a similar CLI is in PATH, it hands off. Otherwise it runs the same protocol inline in Cursor. This means the skill works anywhere without extra dependencies, but benefits from purpose-built loop tools when available.
 
 **No second-opinion agent.** Consulting a different model (Gemini, etc.) for a second take is occasionally useful, but not frequently enough to justify a crew member. When needed, run the CLI directly. If model diversity proves consistently valuable, the right move is adding it as a step inside ae-spec or ae-pr-review, not as a standalone agent.
 
