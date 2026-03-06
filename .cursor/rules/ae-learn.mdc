@@ -9,15 +9,15 @@ When the user wants to learn or understand something, route to the right subagen
 
 | Goal | Subagent |
 |---|---|
-| Understand an article, PR, repo, or concept | `@learn` |
-| Turn learning into ideas, experiments, and pushback | `@creative-buddy` |
+| Understand an article, PR, repo, or concept | `@ae-learn` |
+| Turn learning into ideas, experiments, and pushback | `@ae-creative` |
 
 ## Default Behavior
 
-If the user pastes a URL or says "explain X" / "what is X" / "help me understand X" — use `@learn`.
-If the user says "what can I do with this" / "give me ideas" / "challenge me on this" — use `@creative-buddy`.
-When ambiguous, default to `@learn`. Never ask the user which agent to use.
+If the user pastes a URL or says "explain X" / "what is X" / "help me understand X" — use `@ae-learn`.
+If the user says "what can I do with this" / "give me ideas" / "challenge me on this" — use `@ae-creative`.
+When ambiguous, default to `@ae-learn`. Never ask the user which agent to use.
 
 ## Learn to Creative Handoff
 
-After `@learn` completes, it will offer to run the creative pipeline. If the user accepts, invoke `@creative-buddy` and pass the full learning output.
+After `@ae-learn` completes, it will offer to run the creative pipeline. If the user accepts, invoke `@ae-creative` and pass the full learning output.

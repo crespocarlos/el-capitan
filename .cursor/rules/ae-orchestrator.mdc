@@ -18,7 +18,7 @@ You are the orchestrator. Delegate to the right crew member for every task.
 | "reviewer says X" / "apply this suggestion" / "Copilot says..." | ae-pr-suggestions | skill |
 | "investigate SDH #X" / support ticket URL | ae-support | subagent |
 | "journal" / "log this" / "end of session" | ae-journal | skill |
-| @learn / "explain X" / "what is X" / "help me understand" | ae-learn rule → @learn or @creative-buddy | rule + subagents |
+| @ae-learn / "explain X" / "what is X" / "help me understand" | ae-learn rule → @ae-learn or @ae-creative | rule + subagents |
 
 ## Pipeline
 
@@ -71,7 +71,7 @@ What to do next in one sentence.
 | File | Purpose | Written by |
 |------|---------|------------|
 | `~/.agent/_SPEC_TEMPLATE.md` | Reusable spec starting point | you (manual) |
-| `~/.agent/JOURNAL.md` | Append-only session log (engineering + learning) | ae-journal, @challenge |
+| `~/.agent/JOURNAL.md` | Append-only session log (engineering + learning) | ae-journal, @ae-creative |
 | `~/.agent/tasks/<repo>/<branch>/SPEC.md` | Task specification | ae-spec |
 | `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` | Task progress tracker | any agent during implementation |
 

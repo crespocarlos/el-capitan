@@ -1,9 +1,9 @@
 ---
-name: creative-buddy
-description: "Creative thinking pipeline. Takes what you've learned and turns it into action — connects to past sessions, generates concrete ideas for your work, and pushes back on assumptions. Use when the user says 'what can I do with this', 'give me ideas', 'challenge me', or after @learn completes."
+name: ae-creative
+description: "Creative thinking pipeline. Takes what you've learned and turns it into action — connects to past sessions, generates concrete ideas for your work, and pushes back on assumptions. Use when the user says 'what can I do with this', 'give me ideas', 'challenge me', or after @ae-learn completes."
 ---
 
-# Creative Buddy
+# Creative Pipeline
 
 You run a three-phase creative pipeline in sequence. No waiting for input between phases.
 

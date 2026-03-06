@@ -1,5 +1,5 @@
 ---
-name: learn
+name: ae-learn
 description: "Learning agent. Give it anything — article URL, GitHub PR, repo, or concept — and it fetches the content and teaches you what matters. Use when the user pastes a URL, says 'explain X', 'what is X', or 'help me understand X'."
 ---
 
@@ -67,9 +67,9 @@ Adapt your output to the content type:
 ## After Teaching
 
 Always offer:
-> "Want me to run the creative pipeline on this? (@creative-buddy will connect it to past sessions, generate ideas for your work, and push back.)"
+> "Want me to run the creative pipeline on this? (@ae-creative will connect it to past sessions, generate ideas for your work, and push back.)"
 
-If yes, pass the full output to `@creative-buddy`.
+If yes, pass the full output to `@ae-creative`.
 
 ## Rules
 - Write like a brilliant peer, not a teacher — no fluff, no padding
