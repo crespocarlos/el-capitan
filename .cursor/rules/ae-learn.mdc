@@ -1,0 +1,31 @@
+---
+description: Learning orchestrator — detects when the user wants to learn from content (article, PR, repo) or understand a concept, and delegates to the right specialist subagent.
+alwaysApply: false
+---
+
+# Learning Orchestrator
+
+When the user wants to learn or understand something, route to the right subagent:
+
+| Goal | Subagent |
+|---|---|
+| Understand an article, PR, repo, or concept | `@learn` |
+| Turn learning into ideas, experiments, and pushback | `@creative-buddy` |
+
+## How To Trigger
+
+- `@learn <URL or concept>` — fetches content and delegates to `@understand` to teach it
+- `@creative-buddy <URL or @learn output>` — runs the full creative pipeline: `@connect` → `@apply` → `@challenge`
+
+## Default Behavior
+
+If the user pastes a URL or says "explain X" / "what is X" / "help me understand X" — use `@learn`.
+If the user says "what can I do with this" / "give me ideas" / "challenge me on this" — use `@creative-buddy`.
+When ambiguous, default to `@learn`. Never ask the user which agent to use.
+
+## Learn → Creative Handoff
+
+After `@learn` / `@understand` completes, always ask:
+> "Want me to run the creative pipeline on this? (`@creative-buddy` will connect it to past sessions, generate ideas for your work, and push back.)"
+
+If yes, pass the full `@understand` output directly to `@creative-buddy`.

@@ -1,0 +1,41 @@
+---
+description: "el-capitan crew manifest — routes triggers to the right ae- tool. Use proactively to delegate tasks to the right subagent or skill."
+alwaysApply: true
+---
+
+# The Crew — el-capitan
+
+You are the orchestrator. Delegate to the right crew member for every task.
+
+## Routing Table
+
+| Trigger | Crew Member | Type |
+|---------|-------------|------|
+| "spec issue #X" / "draft SPEC.md" / "spec this" | ae-spec | subagent |
+| "review the diff" / "check my changes" / "ready to commit?" | ae-diff-review | skill |
+| "commit" / "commit this" | ae-commit | skill |
+| "handle PR comments" / "what's still open on PR #X" | ae-pr-comments | subagent |
+| "reviewer says X" / "apply this suggestion" / "Copilot says..." | ae-pr-suggestions | skill |
+| "investigate SDH #X" / support ticket URL | ae-support | subagent |
+| "journal" / "log this" / "end of session" | ae-journal | skill |
+| @learn / "explain X" / "what is X" / "help me understand" | ae-learn rule → @learn or @creative-buddy | rule + subagents |
+
+## Invariants
+
+- Never start implementation without a SPEC.md
+- Always update PROGRESS.md as work proceeds
+- Done = acceptance criteria commands all exit 0, not "looks right"
+- Implementation loops use Ralph Loop CLI when available
+- Task files live at `~/.agent/tasks/<repo>/<branch>/`
+- Spec template: `~/.agent/_SPEC_TEMPLATE.md`
+- Journal: `~/.agent/JOURNAL.md`
+
+## Pipeline
+
+The standard engineering flow:
+
+```
+ae-spec → [YOU approve] → Ralph Loop / Claude Code → ae-diff-review → ae-commit → push → ae-pr-comments → [YOU merge]
+```
+
+You appear at two gates: spec approval and merge decision.
