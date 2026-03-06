@@ -31,4 +31,5 @@ Defined in the orchestrator rule (`crew-orchestrator.mdc`). Key points:
 
 ## Conventions Learned the Hard Way
 
-(This section grows over time from journal entries. Add items here when patterns recur.)
+- **Explicit handoffs.** Every skill step that hands off to another step must explicitly name the next step and say "proceed immediately." Vague instructions like "monitor output" cause agents to hang waiting for a signal that never comes.
+- **Routing table is authoritative.** If a user trigger matches the orchestrator routing table, delegate to that crew member. Do not override with your own judgment about what seems more appropriate.
