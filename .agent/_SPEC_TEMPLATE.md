@@ -1,5 +1,6 @@
 # Spec: [title]
 
+## Type: [feature | bugfix | refactor | chore | docs]
 ## Status: DRAFTING
 ## Phase: spec → crew-implement → diff-check → commit → pr-open → [review cycle] → done
 ## Current: spec

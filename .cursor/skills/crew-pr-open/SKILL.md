@@ -14,6 +14,24 @@ BRANCH=$(git branch --show-current)
 BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main")
 ```
 
+Detect fork workflow:
+
+```bash
+UPSTREAM_REPO=$(gh repo view --json parent --jq '.parent.owner.login + "/" + .parent.name' 2>/dev/null)
+```
+
+If `UPSTREAM_REPO` is non-empty, `origin` is a fork. The PR should target the upstream repo. Set:
+
+```bash
+TARGET_REPO="$UPSTREAM_REPO"
+```
+
+If empty (not a fork), the PR targets the current repo:
+
+```bash
+TARGET_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
+```
+
 Read these sources (in order of priority):
 
 1. **SPEC.md** — `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$BRANCH/SPEC.md` for goal, context, acceptance criteria
@@ -36,13 +54,13 @@ Before creating, ask: **"Did you use LLM assistance for this PR?"** If yes, appe
 
 ```
 ---
-🤖
+🤖 Co-authored with AI assistance.
 ```
 
 After approval:
 
 ```bash
-gh pr create --draft --title "TITLE" --body "BODY" --base BASE
+gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO"
 ```
 
 PRs are always opened as drafts. Mark ready for review manually when appropriate.
