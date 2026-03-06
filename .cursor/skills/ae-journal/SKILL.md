@@ -1,6 +1,6 @@
 ---
 name: ae-journal
-description: "Log an agentic engineering session to the journal. Use when the user says 'journal', 'log this', 'end of session', or asks to record what happened. Triggerable any time — not tied to a specific workflow phase."
+description: "Log an agentic engineering session to the journal. Use when the user says 'journal', 'log this', 'end of session', or asks to record what happened. Triggerable any time."
 ---
 
 # Journal Entry
@@ -11,21 +11,26 @@ Ask the user three questions (use the AskQuestion tool if available, otherwise a
 
 1. **What did you delegate or work on?** — tasks, issues, PRs
 2. **What broke, surprised you, or needed correction?** — agent mistakes, missing context, wrong assumptions
-3. **Anything to add to `~/.claude/CLAUDE.md`?** — conventions learned, gotchas discovered, patterns to enforce
+3. **Anything to add to CLAUDE.md?** — conventions learned, gotchas discovered, patterns to enforce
 
 ## Write the Entry
 
 Append a dated entry to `~/.agent/JOURNAL.md`:
 
-```markdown
+```bash
+cat >> ~/.agent/JOURNAL.md << 'ENTRY'
+
 ---
+## <DATE> — <ONE LINE SUMMARY>
 
-## YYYY-MM-DD
-
-**Delegated:** [answer to Q1]
-**Broke/Surprised:** [answer to Q2]
-**CLAUDE.md candidates:** [answer to Q3, or "none"]
+**Type:** engineering
+**Delegated:** <answer to Q1>
+**Broke/Surprised:** <answer to Q2>
+**CLAUDE.md candidates:** <answer to Q3, or "none">
+ENTRY
 ```
+
+Replace placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date.
 
 ## After Writing
 
@@ -38,5 +43,6 @@ Append a dated entry to `~/.agent/JOURNAL.md`:
 ## Notes
 
 - Keep entries concise — 2-3 sentences per answer max
-- This skill is triggerable **any time**: after implementation, after PR review, after learning, after support investigation, or just at end of day
+- Triggerable any time: after implementation, after PR review, after learning, after support investigation, or just at end of day
 - Never modify existing journal entries — only append
+- Engineering entries use `**Type:** engineering`; learning entries (written by @creative-buddy) use `**Type:** learning`

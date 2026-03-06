@@ -26,11 +26,14 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
    - The relevant tsconfig or jest config path
 
 4. **Draft `$TASK_DIR/SPEC.md`** using `~/.agent/_SPEC_TEMPLATE.md` as the base:
-   - Context: summarize the issue and relevant codebase state
-   - Goal: one sentence
-   - Acceptance Criteria: each with an **exact command that exits 0 on success** (e.g., `yarn test:jest path/to/test.ts`, `yarn test:type_check --project path/tsconfig.json`)
-   - Constraints: what not to touch, patterns to follow
-   - References: specific file paths the implementer should read
+   - **Context**: problem statement, scope (in/out), repo touchpoints (files that will change)
+   - **Goal**: one sentence
+   - **Acceptance Criteria** in three layers:
+     - **Requirements**: infer from the ticket — what the change must achieve. State positive, observable outcomes. These are the real criteria.
+     - **Non-regression**: existing behavior that must not break. These may be verified by code inspection rather than a CLI command — that's fine. Mention specific APIs, types, consumers, or behaviors that must be preserved.
+     - **Quality gates**: read the repo's `AGENTS.md` (or equivalent contributing guide) and extract the prescribed validation commands. Scope them to the affected package — never run repo-wide checks. Do not invent quality gate commands; use exactly what the repo prescribes.
+   - **Tasks**: break the work into atomic units. Each task has **Change** (what to do), **Files** (which files), **Acceptance** (how to verify that task alone). An autonomous agent should be able to execute tasks sequentially without ambiguity.
+   - **References**: file paths to canonical examples. Embed key patterns inline so the spec is self-contained — the agent shouldn't need to read 5 extra files to understand what pattern to follow.
 
 5. **Surface 2-3 questions** for the user to confirm before implementation starts. Common questions:
    - "Should I include test coverage for edge case X?"
@@ -39,9 +42,11 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
 
 ## Quality Bar
 
-Every acceptance criterion MUST be falsifiable in under 60 seconds. If you can't write a concrete verification command, the criterion isn't ready.
-
-"Tests pass" is not a criterion. `yarn test:jest src/services/data_service.test.ts` is.
+- **Requirements AC** must be inferred from the ticket, not invented. If the ticket says "convert X to use Y", the AC is "X uses Y", not "type-check passes".
+- **Non-regression AC** can be verified by inspection. Not everything needs a CLI command. "Return type shape is unchanged" is a valid criterion verified by reading the diff.
+- **Quality gate commands** come from the repo's `AGENTS.md`, scoped to the package. Never `yarn test:jest` (runs everything). Always `yarn test:jest --config path/to/jest.config.js`.
+- **Tasks** must be small enough that each one touches 1-2 files and can be verified independently.
+- The spec must be **self-contained**: include every detail an autonomous agent needs (constraints, exact outputs, file locations, canonical patterns). An agent reading only the spec should be able to implement without exploring.
 
 ## Output
 

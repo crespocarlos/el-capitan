@@ -1,9 +1,9 @@
 ---
-description: "el-capitan crew manifest — routes triggers to the right ae- tool. Use proactively to delegate tasks to the right subagent or skill."
+description: "el-capitan — personal agentic engineering system. Routes triggers to the right crew member and defines how task state, specs, and progress are managed."
 alwaysApply: true
 ---
 
-# The Crew — el-capitan
+# el-capitan
 
 You are the orchestrator. Delegate to the right crew member for every task.
 
@@ -20,22 +20,65 @@ You are the orchestrator. Delegate to the right crew member for every task.
 | "journal" / "log this" / "end of session" | ae-journal | skill |
 | @learn / "explain X" / "what is X" / "help me understand" | ae-learn rule → @learn or @creative-buddy | rule + subagents |
 
+## Pipeline
+
+```
+ae-spec → [YOU approve] → implement → ae-diff-review → ae-commit → push → ae-pr-comments → [YOU merge]
+```
+
+You appear at two gates: spec approval and merge decision.
+
+## Task State
+
+Task files live at `~/.agent/tasks/<repo>/<branch>/`. Resolve automatically:
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel))
+BRANCH=$(git branch --show-current)
+TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
+mkdir -p $TASK_DIR
+```
+
+### Before any task
+1. Read `$TASK_DIR/SPEC.md` if it exists
+2. Read `$TASK_DIR/PROGRESS.md` if resuming
+3. If no SPEC.md exists and the task is non-trivial, draft one using `~/.agent/_SPEC_TEMPLATE.md`
+
+### PROGRESS.md protocol
+Update after every meaningful step:
+
+```markdown
+## Status: IMPLEMENTING
+## Phase: spec → implement → diff-review → commit → push → pr-comments → done
+## Current: implement
+## Next: diff-review
+
+## Done
+- [x] completed item
+
+## In Progress
+- [ ] current item
+
+## Blockers
+- (none)
+
+## Next Step
+What to do next in one sentence.
+```
+
+## Persistent State
+
+| File | Purpose | Written by |
+|------|---------|------------|
+| `~/.agent/_SPEC_TEMPLATE.md` | Reusable spec starting point | you (manual) |
+| `~/.agent/JOURNAL.md` | Append-only session log (engineering + learning) | ae-journal, @challenge |
+| `~/.agent/tasks/<repo>/<branch>/SPEC.md` | Task specification | ae-spec |
+| `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` | Task progress tracker | any agent during implementation |
+
 ## Invariants
 
 - Never start implementation without a SPEC.md
 - Always update PROGRESS.md as work proceeds
-- Done = acceptance criteria commands all exit 0, not "looks right"
-- Implementation loops use Ralph Loop CLI when available
-- Task files live at `~/.agent/tasks/<repo>/<branch>/`
-- Spec template: `~/.agent/_SPEC_TEMPLATE.md`
-- Journal: `~/.agent/JOURNAL.md`
-
-## Pipeline
-
-The standard engineering flow:
-
-```
-ae-spec → [YOU approve] → Ralph Loop / Claude Code → ae-diff-review → ae-commit → push → ae-pr-comments → [YOU merge]
-```
-
-You appear at two gates: spec approval and merge decision.
+- Done = acceptance criteria pass, not "looks right"
+- Quality gates come from the repo's AGENTS.md, scoped to the affected package
+- Never modify JOURNAL.md without being asked

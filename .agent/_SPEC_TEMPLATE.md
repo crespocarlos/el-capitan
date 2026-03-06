@@ -6,19 +6,46 @@
 ## Next: implement
 
 ## Context
-[What exists today. What the problem is. Link to issue/PR.]
+- **Problem**: [What exists today and what's wrong with it. Link to issue/PR.]
+- **Scope**:
+  - In-scope: [What this change covers]
+  - Out-of-scope: [What this change does NOT cover — prevents scope creep]
+- **Repo touchpoints**: [Files and modules that will be modified]
 
 ## Goal
 [One sentence.]
 
 ## Acceptance Criteria
-Each must be verifiable with a single command that exits 0 on success.
 
-- [ ] `[exact verification command]`
-- [ ] `[exact verification command]`
+### Requirements (inferred from the ticket)
+What the change must achieve. Each criterion states a positive, observable outcome.
 
-## Constraints
-[What not to touch. Patterns to follow.]
+- [ ] [Criterion that directly addresses what the ticket prescribes]
+- [ ] [Criterion that directly addresses what the ticket prescribes]
+
+### Non-regression
+Nothing existing breaks. These may be verified by code inspection rather than a command.
+
+- [ ] [Existing behavior X still works as before]
+- [ ] [Downstream consumers of modified APIs/types are unaffected]
+
+### Quality gates
+Baseline hygiene. Follow the repo's AGENTS.md (or equivalent contributing guide) for required validation commands. Scope commands to the affected package — never run repo-wide checks.
+
+- [ ] [Validation commands from AGENTS.md, scoped to affected package]
+
+## Tasks
+Atomic units of work. Each task is independently verifiable.
+
+- [ ] 1) [Task name]
+  - **Change**: [What to do]
+  - **Files**: [Files to create or modify]
+  - **Acceptance**: [How to verify this task alone]
+
+- [ ] 2) [Task name]
+  - **Change**: [What to do]
+  - **Files**: [Files to create or modify]
+  - **Acceptance**: [How to verify this task alone]
 
 ## References
-[File paths, examples, links.]
+[File paths to canonical examples the implementer should read. Include key patterns inline when the spec must be self-contained.]
