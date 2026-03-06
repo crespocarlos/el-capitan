@@ -55,3 +55,11 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
 ## Output
 
 Save to `$TASK_DIR/SPEC.md`. Report back with a summary and your questions. **Stop here** — do not proceed to implementation.
+
+## Session Capture
+
+After writing the spec, append to `$TASK_DIR/SESSION.md`:
+
+```
+[TIME] crew-spec: drafted SPEC.md — <one-line goal from spec>
+```

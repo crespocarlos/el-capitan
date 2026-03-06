@@ -50,12 +50,20 @@ Correct and worth doing, but out of scope for the current change — note it and
 
 - State the verdict first: **Apply**, **Adapt**, **Reject**, or **Defer**
 - One sentence explaining why
-- If applying: make the edit, then explain what changed and why — no pre-edit narration
 - If rejecting: explain the specific reason so the user can push back if they disagree
+
+### User gate — mandatory
+
+**Never apply, reject, or adapt a suggestion without presenting it to the user first.** Show:
+1. The verdict and rationale
+2. The proposed code change (if applying/adapting)
+3. The proposed GitHub reply (if one will be posted)
+
+Wait for the user to approve, modify, or override before proceeding. The user may disagree with your classification — that's expected.
 
 ### GitHub comment format
 
-When posting replies on GitHub (via crew-pr-resolver or directly), always prefix with a robot indicator so agent comments are distinguishable from human ones:
+**Never post a reply on GitHub without explicit user approval.** When approved, prefix with a robot indicator so agent comments are distinguishable from human ones:
 
 ```
 🤖 **Reject** — [rationale]

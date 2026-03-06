@@ -71,6 +71,20 @@ If the repo uses a PR template, read it first and fill in the sections rather th
 
 Show the PR URL and a one-line summary.
 
+## Session Capture
+
+After creating the PR, append to `$TASK_DIR/SESSION.md` (if `TASK_DIR` exists):
+
+```bash
+TASK_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+```
+
+```
+[TIME] crew-pr-open: PR_URL — PR_TITLE
+```
+
+Then suggest: "Want to journal this session?"
+
 ## Rules
 
 - **Derive, don't invent.** The summary comes from SPEC.md and commits, not from re-reading the code.

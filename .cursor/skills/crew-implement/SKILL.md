@@ -43,13 +43,16 @@ Set PROGRESS.md to:
 
 If already on a feature branch (not `main` or the default branch), skip this step.
 
-Otherwise, create a worktree with a new branch:
+Otherwise, fetch the latest from the default branch and create a worktree branching from it:
 
 ```bash
+DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
+git fetch origin "$DEFAULT_BRANCH"
+
 BRANCH_NAME=<type>/<short-description>
 WORKTREE_DIR=../$REPO-$(echo $BRANCH_NAME | tr '/' '-')
 
-git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$DEFAULT_BRANCH"
 ```
 
 Use a conventional branch prefix based on the SPEC.md type:
@@ -91,7 +94,12 @@ EOF
 ralph run "$TASK_DIR/SPEC.md" --extra-instructions "$TASK_DIR/.ralph-instructions"
 ```
 
-Run in the background and monitor output. When it completes, verify all tasks in SPEC.md are checked off. If any failed, report which ones and ask the user how to proceed.
+Run ralph and wait for it to exit. Ralph is done when the process terminates (exit code 0 = success).
+
+After ralph exits:
+1. Re-read `$TASK_DIR/SPEC.md` and verify all tasks are checked off (`- [x]`).
+2. If any tasks are unchecked, report which ones and ask the user how to proceed.
+3. If all tasks are checked, **proceed immediately to Step 6** — do not wait for further input.
 
 ### Step 5b — Inline mode
 
@@ -117,6 +125,11 @@ Update PROGRESS.md:
 
 Tell the user:
 > "All tasks done and quality gates pass. Ready for crew-diff-check."
+
+Append to `$TASK_DIR/SESSION.md`:
+```
+[TIME] crew-implement: completed N/N tasks, files: <changed files summary>
+```
 
 ## Rules
 

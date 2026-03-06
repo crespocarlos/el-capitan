@@ -1,0 +1,5 @@
+# Journal and profile live outside git (personal data)
+.agent/journal/
+.agent/PROFILE.md
+.agent/vectorstore/
+.agent/tools/__pycache__/

@@ -22,6 +22,9 @@ These ship with el-capitan.
 | "handle PR comments" / "what's still open on PR #X" | crew-pr-resolver | subagent |
 | "reviewer says X" / "apply this suggestion" / "Copilot says..." | crew-pr-comments-eval | skill |
 | "journal" / "log this" / "end of session" | crew-journal | skill |
+| "recall X" / "search journal" / "what did we learn about X" | crew-recall | skill |
+| "remember this" / "add to CLAUDE.md" / "promote this pattern" | crew-remember | skill |
+| "brainstorm" / "let's think about X" / "I want to prototype X" / "give me ideas" | crew-creative | subagent |
 | @crew-learn / "explain X" / "what is X" / "help me understand" | crew-learn rule → @crew-learn or @crew-creative | rule + subagents |
 
 ### Overlapping crew — when to use which
@@ -31,7 +34,9 @@ These ship with el-capitan.
 - **crew-pr-resolver**: someone reviewed *your* PR. Fetches all unresolved threads and processes them in batch — applying, adapting, rejecting, or deferring each one.
 - **crew-pr-comments-eval**: the evaluation framework crew-pr-resolver uses per-comment. Also used standalone when the user pastes a single inline suggestion ("Copilot says...", "reviewer says...").
 
-**crew-journal vs crew-creative**: crew-journal *records* an engineering session (what you delegated, what broke, CLAUDE.md candidates). crew-creative *generates ideas* from learning content and writes a learning entry. Both append to JOURNAL.md but with different schemas: crew-journal writes `Type: engineering`, crew-creative writes `Type: learning`. Use crew-journal to log work. Use crew-creative after crew-learn to ideate.
+**crew-journal vs crew-creative**: crew-journal *records* an engineering session (what you did, what broke, what you learned). crew-creative *generates ideas* from learning content. Both write to monthly journal files in `~/.agent/journal/` using a unified schema with shared fields (Type, Tags, What I learned, Connections, Open questions). crew-journal adds engineering-specific fields (Repo, Branch, Files, Decisions). crew-creative adds learning-specific fields (Source, Key idea, Experiments, Patterns). Use crew-journal to log work. Use crew-creative after crew-learn to ideate.
+
+**crew-recall vs crew-remember**: crew-recall *searches* past journal entries by meaning (via `journal-search`) or metadata (via grep). crew-remember *promotes* recurring patterns from journal entries into persistent rules (CLAUDE.md or AGENTS.md).
 
 **crew-learn rule vs crew-learn agent**: The `crew-learn.mdc` rule is a lightweight router that decides whether to invoke @crew-learn or @crew-creative based on user intent. The `crew-learn.md` agent does the actual content fetching and teaching. The rule exists because Cursor needs a rule to trigger conditional routing — the agent can't route to itself.
 
@@ -111,14 +116,19 @@ What to do next in one sentence.
 | File | Purpose | Written by |
 |------|---------|------------|
 | `~/.agent/_SPEC_TEMPLATE.md` | Reusable spec starting point | you (manual) |
-| `~/.agent/JOURNAL.md` | Append-only session log (engineering + learning) | crew-journal, @crew-creative |
+| `~/.agent/_JOURNAL_TEMPLATE.md` | Journal entry schema reference | — |
+| `~/.agent/PROFILE.md` | User context for agent personalization | you (manual) |
+| `~/.agent/journal/YYYY-MM.md` | Monthly journal entries (engineering + learning) | crew-journal, crew-creative |
 | `~/.agent/tasks/<repo>/<branch>/SPEC.md` | Task specification | crew-spec |
 | `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` | Task progress tracker | any agent during implementation |
+| `~/.agent/tasks/<repo>/<branch>/SESSION.md` | Auto-captured pipeline context | crew-spec, crew-implement, crew-pr-open, crew-pr-resolver |
 
 ## Invariants
 
+- **The routing table is authoritative.** If a user trigger matches a row in the Core Crew table, delegate to that crew member. Do not override the routing with your own judgment about what "feels more appropriate." The table exists precisely to prevent ad-hoc rerouting.
 - Never start implementation without a SPEC.md
 - Always update PROGRESS.md as work proceeds
 - Done = acceptance criteria pass, not "looks right"
 - Quality gates come from the repo's AGENTS.md, scoped to the affected package
-- Never modify JOURNAL.md without being asked
+- Journal entries go to `~/.agent/journal/YYYY-MM.md`, never edited after writing
+- SESSION.md is a buffer — flushed to journal on "journal" trigger, then cleared
