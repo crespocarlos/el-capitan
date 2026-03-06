@@ -1,42 +1,25 @@
 # Agent Context — el-capitan
 
-## How I Work
+## Pipeline & Task State
 
-- Spec-driven: every task starts with a SPEC.md before implementation
-- Done = acceptance criteria commands all exit 0, not "looks right"
-- Implementation loops use Ralph Loop CLI when available
+Defined in the orchestrator rule (`ae-orchestrator.mdc`). Key points:
+
+- Spec-driven: every non-trivial task starts with a SPEC.md before implementation
 - Task files live at `~/.agent/tasks/<repo>/<branch>/`
+- Done = acceptance criteria pass, not "looks right"
+- Resolve repo/branch automatically:
+  ```bash
+  REPO=$(basename $(git rev-parse --show-toplevel))
+  BRANCH=$(git branch --show-current)
+  TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
+  ```
 
 ## Pre-Task Checklist
 
-Before starting any task:
 1. `git status` — working tree clean?
 2. `git branch` — correct branch?
-3. Read `~/.agent/tasks/<repo>/<branch>/SPEC.md` if it exists
-4. Read `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` if resuming
-
-Resolve repo and branch automatically:
-```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
-```
-
-## PROGRESS.md Convention
-
-Update `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` after every meaningful step:
-- `Status`: DRAFTING | APPROVED | IMPLEMENTING | REVIEW | COMMITTING | PUSHING | PR_COMMENTS | DONE
-- `Phase`: spec → implement → diff-review → commit → push → pr-comments → done
-- `Current`: which phase you're in now
-- `Next`: which phase comes after
-
-## Spec Template
-
-Copy from `~/.agent/_SPEC_TEMPLATE.md` when drafting a new spec.
-
-## Journal
-
-Append entries to `~/.agent/JOURNAL.md` when asked to log a session.
+3. Read `$TASK_DIR/SPEC.md` if it exists
+4. Read `$TASK_DIR/PROGRESS.md` if resuming
 
 ## Style Preferences
 

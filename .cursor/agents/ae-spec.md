@@ -23,7 +23,7 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
    - Which files and modules are involved
    - Existing patterns to follow
    - What tests exist and how to run them
-   - The relevant tsconfig or jest config path
+   - The relevant build/test config paths (e.g. tsconfig, jest config, Cargo.toml, pyproject.toml — whatever the repo uses)
 
 4. **Draft `$TASK_DIR/SPEC.md`** using `~/.agent/_SPEC_TEMPLATE.md` as the base:
    - **Context**: problem statement, scope (in/out), repo touchpoints (files that will change)
@@ -44,7 +44,7 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
 
 - **Requirements AC** must be inferred from the ticket, not invented. If the ticket says "convert X to use Y", the AC is "X uses Y", not "type-check passes".
 - **Non-regression AC** can be verified by inspection. Not everything needs a CLI command. "Return type shape is unchanged" is a valid criterion verified by reading the diff.
-- **Quality gate commands** come from the repo's `AGENTS.md`, scoped to the package. Never `yarn test:jest` (runs everything). Always `yarn test:jest --config path/to/jest.config.js`.
+- **Quality gate commands** come from the repo's `AGENTS.md`, scoped to the affected package. Never run repo-wide test/lint commands. Always scope to the package or directory that changed (e.g. `--config path/to/config`, `--filter=package-name`, `-p crate-name`).
 - **Tasks** must be small enough that each one touches 1-2 files and can be verified independently.
 - The spec must be **self-contained**: include every detail an autonomous agent needs (constraints, exact outputs, file locations, canonical patterns). An agent reading only the spec should be able to implement without exploring.
 

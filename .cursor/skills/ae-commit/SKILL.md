@@ -8,7 +8,7 @@ description: "Generate a semantic commit message and commit. Use when the user s
 ## When Invoked
 
 1. Check for staged changes: `git diff --staged --stat`
-2. If nothing staged, stage all changes: `git add -A`
+2. If nothing staged, run `git status --short` and show the user what's unstaged. Ask which files to stage — never `git add -A` without explicit approval (it can pick up .env files, debug logs, scratch files).
 3. Read the full staged diff: `git diff --staged`
 4. Read `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)/SPEC.md` if it exists (for intent context)
 

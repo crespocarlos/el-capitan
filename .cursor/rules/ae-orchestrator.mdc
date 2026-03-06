@@ -14,12 +14,24 @@ These ship with el-capitan.
 | Trigger | Crew Member | Type |
 |---------|-------------|------|
 | "spec issue #X" / "draft SPEC.md" / "spec this" | ae-spec | subagent |
-| "review the diff" / "check my changes" / "ready to commit?" | ae-diff-review | skill |
+| "review the diff" / "check my changes" / "ready to commit?" | ae-diff-check | skill |
 | "commit" / "commit this" | ae-commit | skill |
-| "handle PR comments" / "what's still open on PR #X" | ae-pr-comments | subagent |
-| "reviewer says X" / "apply this suggestion" / "Copilot says..." | ae-pr-suggestions | skill |
+| "review PR #X" / "look at this PR" / PR URL to review | ae-pr-review | skill |
+| "handle PR comments" / "what's still open on PR #X" | ae-pr-resolver | subagent |
+| "reviewer says X" / "apply this suggestion" / "Copilot says..." | ae-pr-comments-eval | skill |
 | "journal" / "log this" / "end of session" | ae-journal | skill |
 | @ae-learn / "explain X" / "what is X" / "help me understand" | ae-learn rule → @ae-learn or @ae-creative | rule + subagents |
+
+### Overlapping crew — when to use which
+
+**Three PR crew members — different directions of review**:
+- **ae-pr-review**: you review *someone else's* PR. Deep analysis: reads full files, traces impact, verifies tests, produces a structured review with findings by severity.
+- **ae-pr-resolver**: someone reviewed *your* PR. Fetches all unresolved threads and processes them in batch — applying, adapting, rejecting, or deferring each one.
+- **ae-pr-comments-eval**: the evaluation framework ae-pr-resolver uses per-comment. Also used standalone when the user pastes a single inline suggestion ("Copilot says...", "reviewer says...").
+
+**ae-journal vs ae-creative**: ae-journal *records* an engineering session (what you delegated, what broke, CLAUDE.md candidates). ae-creative *generates ideas* from learning content and writes a learning entry. Both append to JOURNAL.md but with different schemas: ae-journal writes `Type: engineering`, ae-creative writes `Type: learning`. Use ae-journal to log work. Use ae-creative after ae-learn to ideate.
+
+**ae-learn rule vs ae-learn agent**: The `ae-learn.mdc` rule is a lightweight router that decides whether to invoke @ae-learn or @ae-creative based on user intent. The `ae-learn.md` agent does the actual content fetching and teaching. The rule exists because Cursor needs a rule to trigger conditional routing — the agent can't route to itself.
 
 ## Add-ons
 
@@ -36,10 +48,16 @@ Route to add-ons the same way as core crew — match the user's trigger to the a
 ## Pipeline
 
 ```
-ae-spec → [YOU approve] → implement → ae-diff-review → ae-commit → push → ae-pr-comments → [YOU merge]
+ae-spec → [YOU approve] → implement → ae-diff-check → ae-commit → push → ae-pr-resolver → [YOU merge]
 ```
 
 You appear at two gates: spec approval and merge decision.
+
+### When a gate fails
+
+- **Spec rejected**: revise the SPEC.md based on feedback and re-present for approval. Don't start implementing.
+- **Diff check finds issues**: fix the flagged issues, then re-run ae-diff-check. Don't proceed to ae-commit until clean.
+- **PR comments need user input**: surface the threads that need a decision, wait for the user, then resume processing.
 
 ## Task State
 
@@ -58,13 +76,16 @@ mkdir -p $TASK_DIR
 3. If no SPEC.md exists and the task is non-trivial, draft one using `~/.agent/_SPEC_TEMPLATE.md`
 
 ### PROGRESS.md protocol
+
+Statuses: `DRAFTING` | `APPROVED` | `IMPLEMENTING` | `DIFF_CHECK` | `COMMITTING` | `PUSHING` | `PR_RESOLVE` | `DONE`
+
 Update after every meaningful step:
 
 ```markdown
 ## Status: IMPLEMENTING
-## Phase: spec → implement → diff-review → commit → push → pr-comments → done
+## Phase: spec → implement → diff-check → commit → push → pr-resolve → done
 ## Current: implement
-## Next: diff-review
+## Next: diff-check
 
 ## Done
 - [x] completed item

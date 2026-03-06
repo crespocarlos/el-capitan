@@ -1,5 +1,5 @@
 ---
-name: ae-pr-suggestions
+name: ae-pr-comments-eval
 description: Evaluate and act on code suggestions from any source — GitHub Copilot, code reviewers, colleagues, or AI tools. Use when the user pastes a suggestion alongside code and asks whether to apply it, or says "Copilot says...", "reviewer says...", "someone suggested...", etc.
 ---
 

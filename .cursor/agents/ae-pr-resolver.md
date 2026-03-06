@@ -1,5 +1,5 @@
 ---
-name: ae-pr-comments
+name: ae-pr-resolver
 description: "Fetch and action all unresolved PR review comments. Use when the user says 'handle PR comments', 'what's still open on PR #X', 'handle remaining comments', 're-review after fixes', or provides a PR URL/number with open comments."
 ---
 
@@ -44,18 +44,12 @@ If `reviewThreads` has `pageInfo.hasNextPage: true`, paginate with `after` curso
 
 ### Step 2: Process each thread
 
-For each unresolved thread:
+For each unresolved thread, evaluate it using the **ae-pr-comments-eval** skill (read `~/.cursor/skills/ae-pr-comments-eval/SKILL.md`):
 
 1. Read the comment body and `path` to understand the file and area
 2. Read all comments in the thread (first is the suggestion, later are follow-ups)
 3. Read the current state of `path` around `line` in the local working tree
-4. Apply the decision framework:
-
-**Apply** — Real bug, type unsafety, missing edge case, correctness issue
-**Adapt** — Correct diagnosis but needs a different remedy using existing patterns
-**Reject** — Premature optimization, wrong mental model, defeats the purpose, out of scope
-**Defer** — Correct and worth doing but out of scope for this change
-
+4. Apply the ae-pr-comments-eval decision framework to classify as **Apply**, **Adapt**, **Reject**, or **Defer**
 5. If applying or adapting: make the edit
 6. If rejecting: document the reason clearly
 

@@ -1,34 +1,38 @@
 #!/bin/bash
 set -e
 
-echo "Installing el-capitan — personal agentic engineering orchestrator"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Create real directories (not symlinks — add-ons sit alongside core files)
+echo "Installing el-capitan — personal agentic engineering orchestrator"
+echo "  Source: $SCRIPT_DIR"
+
 mkdir -p ~/.claude ~/.cursor/rules ~/.cursor/skills ~/.cursor/agents ~/.agent/tasks
 
-# Symlink rules (individual files)
-for f in ~/el-capitan/.cursor/rules/*.mdc; do
+for f in "$SCRIPT_DIR"/.cursor/rules/*.mdc; do
   ln -sf "$f" ~/.cursor/rules/$(basename "$f")
 done
 
-# Symlink agents (individual files)
-for f in ~/el-capitan/.cursor/agents/*.md; do
+for f in "$SCRIPT_DIR"/.cursor/agents/*.md; do
   ln -sf "$f" ~/.cursor/agents/$(basename "$f")
 done
 
-# Symlink skills (individual directories with SKILL.md)
-for d in ~/el-capitan/.cursor/skills/*/; do
+for d in "$SCRIPT_DIR"/.cursor/skills/*/; do
   name=$(basename "$d")
   mkdir -p ~/.cursor/skills/$name
-  ln -sf ~/el-capitan/.cursor/skills/$name/SKILL.md ~/.cursor/skills/$name/SKILL.md
+  ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.cursor/skills/$name/SKILL.md
+  # Symlink reference files if the skill has a references/ directory
+  if [ -d "$SCRIPT_DIR/.cursor/skills/$name/references" ]; then
+    mkdir -p ~/.cursor/skills/$name/references
+    for ref in "$SCRIPT_DIR/.cursor/skills/$name/references/"*; do
+      ln -sf "$ref" ~/.cursor/skills/$name/references/$(basename "$ref")
+    done
+  fi
 done
 
-# Symlink CLAUDE.md
-ln -sf ~/el-capitan/.claude/CLAUDE.md ~/.claude/CLAUDE.md
+ln -sf "$SCRIPT_DIR/.claude/CLAUDE.md" ~/.claude/CLAUDE.md
 
-# Symlink agent template and journal
-ln -sf ~/el-capitan/.agent/_SPEC_TEMPLATE.md ~/.agent/_SPEC_TEMPLATE.md
-ln -sf ~/el-capitan/.agent/JOURNAL.md ~/.agent/JOURNAL.md
+ln -sf "$SCRIPT_DIR/.agent/_SPEC_TEMPLATE.md" ~/.agent/_SPEC_TEMPLATE.md
+ln -sf "$SCRIPT_DIR/.agent/JOURNAL.md" ~/.agent/JOURNAL.md
 
 echo ""
 echo "Done. Installed:"
