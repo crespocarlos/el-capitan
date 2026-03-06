@@ -16,6 +16,7 @@ These ship with el-capitan.
 | "spec issue #X" / "draft SPEC.md" / "spec this" | ae-spec | subagent |
 | "review the diff" / "check my changes" / "ready to commit?" | ae-diff-check | skill |
 | "commit" / "commit this" | ae-commit | skill |
+| "open PR" / "create PR" / "push and open PR" / "ready to push" | ae-pr-open | skill |
 | "review PR #X" / "look at this PR" / PR URL to review | ae-pr-review | skill |
 | "handle PR comments" / "what's still open on PR #X" | ae-pr-resolver | subagent |
 | "reviewer says X" / "apply this suggestion" / "Copilot says..." | ae-pr-comments-eval | skill |
@@ -48,7 +49,7 @@ Route to add-ons the same way as core crew — match the user's trigger to the a
 ## Pipeline
 
 ```
-ae-spec → [YOU approve] → implement → ae-diff-check → ae-commit → push → ae-pr-resolver → [YOU merge]
+ae-spec → [YOU approve] → implement → ae-diff-check → ae-commit → ae-pr-open → ae-pr-resolver → [YOU merge]
 ```
 
 You appear at two gates: spec approval and merge decision.
@@ -77,13 +78,13 @@ mkdir -p $TASK_DIR
 
 ### PROGRESS.md protocol
 
-Statuses: `DRAFTING` | `APPROVED` | `IMPLEMENTING` | `DIFF_CHECK` | `COMMITTING` | `PUSHING` | `PR_RESOLVE` | `DONE`
+Statuses: `DRAFTING` | `APPROVED` | `IMPLEMENTING` | `DIFF_CHECK` | `COMMITTING` | `PR_OPEN` | `PR_RESOLVE` | `DONE`
 
 Update after every meaningful step:
 
 ```markdown
 ## Status: IMPLEMENTING
-## Phase: spec → implement → diff-check → commit → push → pr-resolve → done
+## Phase: spec → implement → diff-check → commit → pr-open → pr-resolve → done
 ## Current: implement
 ## Next: diff-check
 

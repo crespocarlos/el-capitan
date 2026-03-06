@@ -20,7 +20,7 @@ flowchart TD
         implement["implement"]
         diffcheck["ae-diff-check\nreview local diff"]
         commit["ae-commit\nsemantic commit"]
-        push["push / open PR"]
+        propen["ae-pr-open\npush + open PR"]
         resolver["ae-pr-resolver\nhandle all open threads"]
         merge(["🧑 YOU: merge"])
     end
@@ -34,7 +34,7 @@ flowchart TD
     journalmd[("JOURNAL.md")]
 
     creative -->|"idea → task"| spec
-    spec --> approve --> implement --> diffcheck --> commit --> push --> resolver --> merge
+    spec --> approve --> implement --> diffcheck --> commit --> propen --> resolver --> merge
 
     prreview -.->|"standalone"| prreview
     eval -.->|"standalone"| eval
@@ -55,6 +55,7 @@ flowchart TD
 | **ae-spec** | agent | Fetches a GitHub issue, explores the codebase, drafts a SPEC.md with acceptance criteria |
 | **ae-diff-check** | skill | Scans `git diff` for type safety issues, missing tests, pattern violations |
 | **ae-commit** | skill | Reads diff + SPEC.md, proposes a conventional commit message, waits for approval |
+| **ae-pr-open** | skill | Pushes branch, generates PR description from SPEC.md + commits, opens the PR |
 | **ae-pr-review** | skill | Deep-reviews someone else's PR — reads full files, traces impact, verifies tests |
 | **ae-pr-resolver** | agent | Fetches all unresolved PR threads on your PR, processes each one (apply/adapt/reject/defer) |
 | **ae-pr-comments-eval** | skill | Evaluates a single code suggestion from any source (reviewer, Copilot, colleague) |
@@ -71,7 +72,7 @@ flowchart TD
 ## Pipeline
 
 ```
-ae-spec → [approve] → implement → ae-diff-check → ae-commit → push → ae-pr-resolver → [merge]
+ae-spec → [approve] → implement → ae-diff-check → ae-commit → ae-pr-open → ae-pr-resolver → [merge]
 ```
 
 When a gate fails:
@@ -143,6 +144,7 @@ New machine = clone + install. All agents, skills, rules, templates, and journal
 │       ├── ae-diff-check/SKILL.md
 │       ├── ae-journal/SKILL.md
 │       ├── ae-pr-comments-eval/SKILL.md
+│       ├── ae-pr-open/SKILL.md
 │       └── ae-pr-review/
 │           ├── SKILL.md
 │           └── references/

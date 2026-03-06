@@ -1,7 +1,7 @@
 # Spec: [title]
 
 ## Status: DRAFTING
-## Phase: spec → implement → diff-check → commit → push → pr-resolve → done
+## Phase: spec → implement → diff-check → commit → pr-open → pr-resolve → done
 ## Current: spec
 ## Next: implement
 
