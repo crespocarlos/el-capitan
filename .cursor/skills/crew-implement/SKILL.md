@@ -64,16 +64,14 @@ Store the results as `RECALLED_PATTERNS` to pass to the subagent.
 
 If already on a feature branch (not `main` or the default branch), skip this step.
 
-Otherwise, fetch the latest from the default branch and create a worktree branching from it:
+Otherwise, fetch the latest from the default branch and create a worktree:
 
 ```bash
 DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
 git fetch origin "$DEFAULT_BRANCH"
 
 BRANCH_NAME=<type>/<short-description>
-WORKTREE_DIR=../$REPO-$(echo $BRANCH_NAME | tr '/' '-')
-
-git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$DEFAULT_BRANCH"
+cd "$(resolve-worktree -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
 ```
 
 Use a conventional branch prefix based on the SPEC.md type:

@@ -7,21 +7,11 @@ description: "Evaluate and act on code suggestions from any source. Trigger: 'cr
 
 ## Step 0 — Resolve worktree
 
-If the suggestion references a PR or branch, ensure you're in the right working directory:
+If the suggestion references a PR or branch, resolve to the correct working directory:
 
 ```bash
 BRANCH=<branch from PR or context>
-WORKTREE=$(git worktree list | grep "$BRANCH" | awk '{print $1}')
-```
-
-If a worktree exists for that branch, `cd` into it before reading any files. If not, and you're not already on the correct branch, create one:
-
-```bash
-git fetch origin "$BRANCH"
-REPO=$(basename $(git rev-parse --show-toplevel))
-WORKTREE_DIR=../$REPO-$(echo $BRANCH | tr '/' '-')
-git worktree add "$WORKTREE_DIR" "$BRANCH"
-cd "$WORKTREE_DIR"
+cd "$(resolve-worktree "$BRANCH")"
 ```
 
 If no branch context is provided (standalone suggestion), skip this step and work in the current directory.

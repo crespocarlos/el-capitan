@@ -12,27 +12,10 @@ Extract owner, repo, and PR number from the user's input (URL or number).
 
 ### Step 0: WORKTREE — Ensure you're on the PR branch
 
-Get the PR's head branch:
-
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
+cd "$(resolve-worktree "$PR_BRANCH")"
 ```
-
-Check if it's already checked out in a worktree:
-
-```bash
-WORKTREE_PATH=$(git worktree list --porcelain | grep -B2 "branch refs/heads/$PR_BRANCH" | grep "^worktree " | sed 's/^worktree //')
-```
-
-- If `WORKTREE_PATH` is non-empty, `cd` into it.
-- If empty, create a worktree:
-  ```bash
-  REPO_NAME=$(basename $(git rev-parse --show-toplevel))
-  WORKTREE_DIR=../$REPO_NAME-$(echo $PR_BRANCH | tr '/' '-')
-  git fetch origin "$PR_BRANCH"
-  git worktree add "$WORKTREE_DIR" "origin/$PR_BRANCH"
-  cd "$WORKTREE_DIR"
-  ```
 
 All subsequent steps (fetch threads, read code, make edits) happen in this worktree.
 
