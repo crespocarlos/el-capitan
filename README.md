@@ -1,4 +1,4 @@
-# el-capitan
+# 🏴‍☠️ El Capitan
 
 Your engineering crew, orchestrated. Spec it, build it, ship it — you just approve.
 
@@ -49,99 +49,61 @@ All commands start with `crew`. Explicit routing only — no guessing.
 ## How it works
 
 ```mermaid
-flowchart TD
-    subgraph engineering ["Engineering"]
-        spec["crew-specwriter"]
-        approve(["YOU: approve"])
-        implement["crew-implement"]
-        builder["crew-builder"]
-        implement -->|"launches"| builder
-        diff["crew-diff"]
-        commit["crew-commit"]
-        approveCommit(["YOU: approve"])
-        openpr["crew-open-pr"]
-        approvePR(["YOU: approve"])
-        merge(["YOU: merge"])
-    end
+flowchart LR
+    spec["📋 crew-specwriter"] -->|"YOU: approve"| build["🔨 crew-builder"]
+    build --> diff["crew-diff"] --> commit["crew-commit"]
+    commit -->|"YOU: approve"| pr["crew-open-pr"]
+    pr --> review(["waiting for reviews"])
+    review --> resolve["🧩 crew-pr-resolver"]
+    resolve --> review
+    review -->|"approved"| merge(["YOU: merge"])
 
-    subgraph reviewCycle ["Review Cycle"]
-        waiting(["waiting for reviews"])
-        resolver["crew-pr-resolver"]
-        eval["crew-eval-pr-comments"]
-        waiting -->|"comments arrive"| resolver
-        resolver -->|"per comment"| eval
-        resolver -->|"resolved"| waiting
-    end
-
-    subgraph review ["Review (standalone)"]
-        prreview["crew-pr-reviewer"]
-    end
-
-    subgraph learning ["Learning"]
-        researcher["crew-researcher"]
-        thinker["crew-thinker"]
-        researcher -->|"want ideas?"| thinker
-    end
-
-    subgraph memory ["Memory"]
-        log["crew-log"]
-        recall["crew-recall"]
-        remember["crew-remember"]
-        journalFiles[("journal/")]
-    end
-
-    spec --> approve --> implement
-    builder --> diff --> commit
-    commit --> approveCommit --> openpr
-    openpr --> approvePR --> reviewCycle --> merge
-
-    log --> journalFiles
-    researcher --> journalFiles
-    thinker --> journalFiles
-    recall -->|"semantic search"| journalFiles
-    remember --> journalFiles
-    implement -.->|"auto-recall"| journalFiles
-    diff -.->|"auto-recall"| journalFiles
-    resolver -.->|"auto-recall"| journalFiles
-    eval -.->|"auto-recall"| journalFiles
+    research["🔬 crew-researcher"] -.-> journal[("📓 journal")]
+    think["💡 crew-thinker"] -.-> journal
+    build -.->|"auto-recall"| journal
+    resolve -.->|"auto-recall"| journal
 ```
 
 **Four gates. Everything between runs autonomously.**
 
 ## The crew
 
-### Engineering
+Six agents, each with skills at their disposal. Agents run as isolated subagents for deep, context-heavy work. Skills run inline for quick, interactive tasks.
 
-| Name | Type | What it does |
-|------|------|-------------|
-| **crew-specwriter** | agent | Fetches a GitHub issue, explores the codebase, drafts a SPEC.md with acceptance criteria |
-| **crew-implement** | skill + agent | Gates, spec selection, worktree creation, auto-recall. Launches `@crew-builder` for implementation. |
-| **crew-diff** | skill | Scans `git diff` for type safety, missing tests, pattern violations. Auto-recalls repo patterns. |
-| **crew-commit** | skill | Proposes a conventional commit message, waits for approval |
-| **crew-open-pr** | skill | Pushes branch, generates PR description, opens a draft PR. Fork-aware. |
+### 📋 crew-specwriter
 
-### Review
+Reads an issue or plain description, explores the codebase for patterns and conventions, and drafts a `SPEC.md` with acceptance criteria tight enough for autonomous implementation.
 
-| Name | Type | What it does |
-|------|------|-------------|
-| **crew-pr-reviewer** | agent | Deep-reviews someone else's PR — full files, impact tracing, test verification |
-| **crew-pr-resolver** | agent | Fetches all unresolved threads on your PR, processes each (apply/adapt/reject/defer) |
-| **crew-eval-pr-comments** | skill | Evaluates a single suggestion. Presents verdict for approval before acting. |
+### 🔨 crew-builder
 
-### Learning
+The implementation engine. Codes in isolation from a SPEC — runs acceptance checks, quality gates, and hands back a report. Launched by `crew implement`, which handles the setup:
 
-| Name | Type | What it does |
-|------|------|-------------|
-| **crew-researcher** | agent | Fetches a URL, PR, repo, or concept and teaches you what matters. Writes to journal. |
-| **crew-thinker** | agent | Connects ideas, generates experiments, challenges assumptions. Pipeline or brainstorm mode. |
+- **crew-implement** — selects the spec, creates a worktree, auto-recalls repo patterns, then launches the builder
+- **crew-diff** — reviews the local diff for type safety, missing tests, and pattern violations
+- **crew-commit** — proposes a [conventional commit](https://www.conventionalcommits.org/) message, waits for approval
+- **crew-open-pr** — pushes the branch, generates a PR description, opens a draft PR (fork-aware)
 
-### Memory
+### 🔍 crew-pr-reviewer
 
-| Name | Type | What it does |
-|------|------|-------------|
-| **crew-log** | skill | Logs an engineering session — auto-gathers context, writes to monthly journal |
-| **crew-recall** | skill | Searches journal by meaning (semantic) or metadata (grep) |
-| **crew-remember** | skill | Persists patterns to journal with embeddings. Optional escalation to CLAUDE.md / AGENTS.md. |
+Deep-reviews someone else's PR. Reads full files (not just the diff), traces impact across the codebase, verifies test coverage, and produces a structured review grouped by severity.
+
+### 🧩 crew-pr-resolver
+
+When someone reviews *your* PR — fetches all unresolved threads and processes them in batch: applying, adapting, rejecting, or deferring each one.
+
+- **crew-eval-pr-comments** — evaluates a single suggestion from any source (reviewer, Copilot, colleague). Presents its verdict for your approval before acting.
+
+### 🔬 crew-researcher
+
+Give it a URL, a PR, a repo, or just a concept name — it fetches the content, distills what matters, and teaches you. Writes a rich learning entry to the journal so the knowledge persists.
+
+### 💡 crew-thinker
+
+The brainstorm partner. Two modes: *pipeline* (connects new learnings with past sessions and generates experiments) or *brainstorm* (interactive back-and-forth to flesh out ideas, challenge assumptions, and explore what-if scenarios). Can offer to draft a SPEC when an idea solidifies.
+
+- **crew-log** — records an engineering session, auto-gathers context, writes to the monthly journal
+- **crew-recall** — searches the journal by meaning (semantic search) or metadata (grep)
+- **crew-remember** — persists patterns with embeddings so they surface automatically in future work
 
 ## Key features
 
