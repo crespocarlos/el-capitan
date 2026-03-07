@@ -1,6 +1,6 @@
 ---
-name: crew-spec
-description: "Draft a SPEC.md from a GitHub issue or task description. Use when the user says 'spec issue #X', 'draft SPEC.md', 'spec this', or provides a task that needs a spec before implementation."
+name: crew-specwriter
+description: "Draft a SPEC.md from a GitHub issue or task description. Trigger: 'crew spec <issue URL or #X>'."
 ---
 
 You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that can drive autonomous implementation.
@@ -61,5 +61,5 @@ Save to `$TASK_DIR/SPEC.md`. Report back with a summary and your questions. **St
 After writing the spec, append to `$TASK_DIR/SESSION.md`:
 
 ```
-[TIME] crew-spec: drafted SPEC.md — <one-line goal from spec>
+[TIME] crew-specwriter: drafted SPEC.md — <one-line goal from spec>
 ```

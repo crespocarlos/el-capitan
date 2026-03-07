@@ -1,6 +1,6 @@
 ---
-name: crew-journal
-description: "Log an agentic engineering session to the journal. Use when the user says 'journal', 'log this', 'end of session', or asks to record what happened. Triggerable any time."
+name: crew-log
+description: "Log an agentic engineering session to the journal. Trigger: 'crew log'."
 ---
 
 # Journal Entry
@@ -17,7 +17,7 @@ MONTH=$(date +%Y-%m)
 JOURNAL_FILE=~/.agent/journal/$MONTH.md
 ```
 
-Read `$TASK_DIR/SESSION.md` if it exists — this contains auto-captured context from pipeline skills (crew-implement, crew-diff-check, crew-commit, crew-pr-open, crew-pr-resolver).
+Read `$TASK_DIR/SESSION.md` if it exists — this contains auto-captured context from pipeline skills (crew-implement, crew-diff, crew-commit, crew-open-pr, crew-pr-resolver).
 
 Read `~/.agent/PROFILE.md` for user context.
 
@@ -37,7 +37,7 @@ Ask the user to fill in or confirm:
 1. **What did you learn?** — the one transferable insight from this session
 2. **Decisions made?** — key choices and why (not what, why)
 3. **What broke or surprised you?** — errors, wrong assumptions, corrections
-4. **Anything to promote to rules?** — conventions for CLAUDE.md / AGENTS.md
+4. **Anything to promote to rules?** — conventions worth remembering (crew-remember will persist them)
 
 ### Step 3 — Write the entry
 
@@ -57,7 +57,7 @@ Append to `$JOURNAL_FILE` (create if it doesn't exist):
 **What broke / surprised me:** errors, wrong assumptions, corrections
 **What I learned:** transferable insight
 **Connections:** links to previous entries or patterns, or "none"
-**Promote to rules:** conventions for CLAUDE.md / AGENTS.md, or "none"
+**Promote to rules:** conventions worth remembering, or "none"
 **Open questions:** unresolved questions, or "none"
 ```
 
@@ -76,13 +76,13 @@ If not available, skip silently.
 ### Step 5 — After writing
 
 1. If the user provided "Promote to rules" candidates, offer:
-   > "These look ready for CLAUDE.md: [list]. Want me to promote them now?"
-   If yes, invoke crew-remember.
+   > "These look worth persisting: [list]. Want me to run crew-remember on them?"
+   If yes, invoke crew-remember (which writes to the journal with embeddings, and optionally escalates to static files).
 
 2. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
 
 3. Offer the creative handoff:
-   > "Want @crew-creative to connect this session to past patterns and generate ideas?"
+   > "Want @crew-thinker to connect this session to past patterns and generate ideas?"
 
 ## Rules
 

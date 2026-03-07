@@ -1,6 +1,6 @@
 ---
-name: crew-pr-open
-description: "Push the current branch and open a PR with a generated description. Use when the user says 'open a PR', 'create PR', 'push and open PR', or 'ready to push'."
+name: crew-open-pr
+description: "Push the current branch and open a PR with a generated description. Trigger: 'crew open pr'."
 ---
 
 # Open Pull Request
@@ -80,7 +80,7 @@ TASK_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branc
 ```
 
 ```
-[TIME] crew-pr-open: PR_URL — PR_TITLE
+[TIME] crew-open-pr: PR_URL — PR_TITLE
 ```
 
 Then suggest: "Want to journal this session?"

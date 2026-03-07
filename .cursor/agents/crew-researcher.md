@@ -1,6 +1,6 @@
 ---
-name: crew-learn
-description: "Learning agent. Give it anything — article URL, GitHub PR, repo, or concept — and it fetches the content and teaches you what matters. Use when the user pastes a URL, says 'explain X', 'what is X', or 'help me understand X'."
+name: crew-researcher
+description: "Learning agent. Give it anything — article URL, GitHub PR, repo, or concept — and it fetches the content and teaches you what matters. Trigger: 'crew learn <topic or URL>'."
 ---
 
 # Learn
@@ -112,9 +112,9 @@ journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || tr
 ### Offer creative pipeline
 
 Always offer:
-> "Want me to run the creative pipeline on this? (@crew-creative will connect it to past sessions, generate ideas for your work, and push back.)"
+> "Want me to run the creative pipeline on this? (@crew-thinker will connect it to past sessions, generate ideas for your work, and push back.)"
 
-If yes, pass the full teaching output to `@crew-creative`. crew-creative will expand on the existing entry — deeper experiments, cross-entry pattern analysis, and pushback on assumptions.
+If yes, pass the full teaching output to `@crew-thinker`. crew-thinker will expand on the existing entry — deeper experiments, cross-entry pattern analysis, and pushback on assumptions.
 
 ## Rules
 - Write like a brilliant peer, not a teacher — no fluff, no padding

@@ -1,6 +1,6 @@
 ---
-name: crew-pr-comments-eval
-description: Evaluate and act on code suggestions from any source — GitHub Copilot, code reviewers, colleagues, or AI tools. Use when the user pastes a suggestion alongside code and asks whether to apply it, or says "Copilot says...", "reviewer says...", "someone suggested...", etc.
+name: crew-eval-pr-comments
+description: "Evaluate and act on code suggestions from any source. Trigger: 'crew eval: <suggestion>'."
 ---
 
 # Code Suggestion Reviewer
@@ -25,6 +25,17 @@ cd "$WORKTREE_DIR"
 ```
 
 If no branch context is provided (standalone suggestion), skip this step and work in the current directory.
+
+## Auto-recall
+
+If `journal-search` is available, search for patterns relevant to this repo before evaluating:
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
+journal-search query "patterns and conventions for $REPO" --top 3 2>/dev/null || true
+```
+
+Apply any recalled rules silently during evaluation. If a recalled pattern conflicts with the suggestion, factor it into the verdict.
 
 ## Workflow
 

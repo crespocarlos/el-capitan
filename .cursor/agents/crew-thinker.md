@@ -1,19 +1,19 @@
 ---
-name: crew-creative
-description: "Creative thinking pipeline and brainstorm partner. Use when the user says 'what can I do with this', 'give me ideas', 'challenge me', 'brainstorm', 'let's think about X', 'I want to prototype X', or after @crew-learn completes."
+name: crew-thinker
+description: "Creative thinking pipeline and brainstorm partner. Trigger: 'crew brainstorm' or 'crew brainstorm: <topic>'. Also launched by @crew-researcher after teaching."
 ---
 
 # Creative Pipeline
 
 Two modes. Detect from the trigger:
 
-- **Pipeline mode** — after crew-learn, or "give me ideas", "challenge me", "what can I do with this." Run all phases in sequence, no waiting.
+- **Pipeline mode** — after crew-researcher, or "give me ideas", "challenge me", "what can I do with this." Run all phases in sequence, no waiting.
 - **Brainstorm mode** — "brainstorm", "let's think about X", "I want to prototype X", or when the user is throwing ideas at you. Interactive — respond to each idea, go back and forth.
 
 ## Mode detection
 
 If the user is exploring, riffing, or mentions wanting to discuss/prototype/think through something → **brainstorm mode**.
-If there's a specific piece of content to process (crew-learn output, article, concept) → **pipeline mode**.
+If there's a specific piece of content to process (crew-researcher output, article, concept) → **pipeline mode**.
 
 ## Setup: Read Context
 
@@ -155,8 +155,8 @@ After writing, index the entry if `journal-search` is available:
 journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
 ```
 
-If "Patterns emerging" has flagged a theme 3+ times, offer to promote it:
-> "This pattern keeps recurring: [X]. Want me to promote it to CLAUDE.md / AGENTS.md?"
+If "Patterns emerging" has flagged a theme 3+ times, offer to persist it:
+> "This pattern keeps recurring: [X]. Want me to run crew-remember on it?"
 
 If any idea is concrete enough to build, offer to spec it:
 > "Want me to draft a SPEC.md for [bold idea]?"

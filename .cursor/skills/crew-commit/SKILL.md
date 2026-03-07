@@ -1,6 +1,6 @@
 ---
 name: crew-commit
-description: "Generate a semantic commit message and commit. Use when the user says 'commit', 'commit this', or asks for a commit message."
+description: "Generate a semantic commit message and commit. Trigger: 'crew commit'."
 ---
 
 # Semantic Commit

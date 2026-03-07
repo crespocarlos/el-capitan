@@ -1,15 +1,6 @@
 # crew-implement
 
-Drive implementation of an approved SPEC.md through its tasks until all acceptance criteria pass.
-
-## Modes
-
-This skill supports two execution modes. Both follow the same protocol: pick the first unchecked task, implement it, run its acceptance check, mark it done, repeat.
-
-- **Ralph mode** — hand off to an external loop tool (`ralph`, `ralph.sh`, or similar) that manages agent sessions, context resets, and task progression.
-- **Inline mode** — work through tasks directly in the current Cursor session.
-
-Detection is automatic. The user can override with "implement with ralph" or "implement inline".
+Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and user interaction — then launches the implementation worker subagent for the heavy lifting.
 
 ## Workflow
 
@@ -25,21 +16,51 @@ Read `$TASK_DIR/SPEC.md` and `$TASK_DIR/PROGRESS.md`.
 
 ### Step 2 — Gate check
 
+If `$TASK_DIR/SPEC.md` does not exist, scan for other specs (most recent first):
+
+```bash
+find ~/.agent/tasks -name "SPEC.md" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | awk '{print $2}'
+```
+
+For each found SPEC.md, read its first line (title) and `## Status` field to build a list.
+
+- If specs exist elsewhere, present them sorted by last modified (newest first):
+  > "No SPEC.md for the current repo/branch. Found these specs:"
+  >
+  > | # | Repo / Branch | Title | Status | Last modified |
+  > |---|---|---|---|---|
+  > | 1 | kibana / main | Retry logic for async search | APPROVED | 2 hours ago |
+  > | 2 | kibana / feature/error-handling | Improve error boundaries | IMPLEMENTING | 3 days ago |
+  >
+  > "Which one? (or run `crew spec` to draft a new one)"
+
+  When the user picks one, update `TASK_DIR` to that spec's directory and continue.
+
+- If no specs exist anywhere, stop:
+  > "No specs found. Run `crew spec` first to draft one."
+
 If the SPEC.md status is `DRAFTING`, stop:
-> "The spec hasn't been approved yet. Run crew-spec and get approval before implementing."
+> "The spec hasn't been approved yet. Get approval before implementing."
 
-If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you're resuming — skip to the first unchecked task.
+If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you're resuming — inform the user which tasks are done and which remain.
 
-### Step 3 — Update progress
+### Step 3 — Auto-recall
 
-Set PROGRESS.md to:
+If `journal-search` is available, query for patterns relevant to this repo:
+
+```bash
+journal-search query "patterns and conventions for $REPO" --top 5 2>/dev/null || true
 ```
-## Status: IMPLEMENTING
-## Current: implement
-## Next: diff-check
+
+Also search for `pattern` type entries scoped to this repo:
+
+```bash
+rg "^\*\*Scope:\*\* $REPO" ~/.agent/journal/ -l 2>/dev/null | xargs rg "^\*\*Rule:\*\*" 2>/dev/null || true
 ```
 
-### Step 3.5 — Create worktree
+Store the results as `RECALLED_PATTERNS` to pass to the subagent.
+
+### Step 4 — Create worktree
 
 If already on a feature branch (not `main` or the default branch), skip this step.
 
@@ -70,72 +91,69 @@ Read the `## Type` field from SPEC.md to pick the prefix. Derive the short descr
 After the worktree is created:
 
 1. Update `TASK_DIR` to the new branch path and move `SPEC.md` and `PROGRESS.md` there.
-2. `cd` into the worktree directory. All subsequent work happens there.
+2. Set `WORK_DIR` to the worktree directory.
 
-### Step 4 — Detect mode
+If skipped (already on feature branch), set `WORK_DIR` to the current directory.
+
+### Step 5 — Update progress
+
+Set PROGRESS.md to:
+```
+## Status: IMPLEMENTING
+## Current: implement
+## Next: diff-check
+```
+
+### Step 6 — Detect mode and launch worker
 
 ```bash
 which ralph 2>/dev/null || which ralph.sh 2>/dev/null
 ```
 
-If found and the user didn't say "implement inline", use ralph mode. Otherwise use inline mode.
+If found and the user didn't say "implement inline", set `MODE=ralph`. Otherwise `MODE=inline`.
 
-### Step 5a — Ralph mode
+Launch the `@crew-builder` subagent with:
+- `TASK_DIR` — the resolved task directory path
+- `WORK_DIR` — the worktree or repo directory
+- `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
+- `MODE` — `ralph` or `inline`
+- The full contents of `SPEC.md` (so the subagent has it without needing to re-read)
 
-Hand off to the detected ralph tool with the SPEC.md path and extra instructions to enforce the pipeline boundary:
+### Step 7 — Handle results
 
-```bash
-cat > "$TASK_DIR/.ralph-instructions" <<'EOF'
-STOP after all tasks are checked and quality gates pass.
-Do NOT run git commit, git push, or gh pr create.
-Do NOT create or switch branches — the worktree and branch already exist.
-EOF
+When the subagent returns its Implementation Report:
 
-ralph run "$TASK_DIR/SPEC.md" --extra-instructions "$TASK_DIR/.ralph-instructions"
-```
+**All tasks passed + quality gates passed:**
+1. Update PROGRESS.md:
+   ```
+   ## Status: DIFF_CHECK
+   ## Current: diff-check
+   ## Next: commit
+   ```
+2. Append to `$TASK_DIR/SESSION.md`:
+   ```
+   [TIME] crew-implement: completed N/N tasks, files: <changed files from report>
+   ```
+3. Tell the user:
+   > "All tasks done and quality gates pass. Ready for `crew diff`."
 
-Run ralph and wait for it to exit. Ralph is done when the process terminates (exit code 0 = success).
+**Some tasks failed:**
+1. Show the user which tasks failed and the error summaries from the report.
+2. Ask: "Want to retry the failed tasks, skip them, or stop here?"
+   - **Retry** → re-launch the subagent with only the failed tasks
+   - **Skip** → proceed to diff-check with partial implementation
+   - **Stop** → leave PROGRESS.md as IMPLEMENTING for later resumption
 
-After ralph exits:
-1. Re-read `$TASK_DIR/SPEC.md` and verify all tasks are checked off (`- [x]`).
-2. If any tasks are unchecked, report which ones and ask the user how to proceed.
-3. If all tasks are checked, **proceed immediately to Step 6** — do not wait for further input.
-
-### Step 5b — Inline mode
-
-For each unchecked task in SPEC.md, in order:
-
-1. **Read the task** — understand what to change, which files, and the acceptance check.
-2. **Read related code** — open the target files and understand context before editing.
-3. **Implement** — make the changes described in the task.
-4. **Verify** — run the task's acceptance check command. If it fails, fix and re-run. After 3 failed attempts, stop and ask the user.
-5. **Mark done** — check off the task in SPEC.md (`- [x]`).
-6. **Update PROGRESS.md** — move the task from "In Progress" to "Done", advance to the next task.
-
-After all tasks pass, run the quality gates from SPEC.md (the commands under "Quality gates"). These are typically scoped lint/typecheck/test commands from the repo's AGENTS.md.
-
-### Step 6 — Wrap up
-
-Update PROGRESS.md:
-```
-## Status: DIFF_CHECK
-## Current: diff-check
-## Next: commit
-```
-
-Tell the user:
-> "All tasks done and quality gates pass. Ready for crew-diff-check."
-
-Append to `$TASK_DIR/SESSION.md`:
-```
-[TIME] crew-implement: completed N/N tasks, files: <changed files summary>
-```
+**Quality gates failed:**
+1. Show the failures from the report.
+2. Ask: "Want me to re-launch the worker to fix these, or do you want to fix them manually?"
+   - **Re-launch** → launch subagent with instructions to fix quality gate failures
+   - **Manual** → leave PROGRESS.md as IMPLEMENTING
 
 ## Rules
 
-- Never skip a task's acceptance check. "Looks right" is not done.
-- Never reorder tasks — SPEC.md task order may encode dependencies.
-- If a quality gate command is missing from SPEC.md, check the repo's AGENTS.md for the right scoped command before inventing one.
-- If implementing in inline mode, keep changes focused per task. Don't batch multiple tasks into one edit pass.
-- **Stop after quality gates pass.** Never commit, push, or create a PR. The pipeline is: implement → diff-check → commit → pr-open. Each step requires the user to trigger it.
-- Never run `git commit`, `git push`, or `gh pr create`. Those belong to crew-commit and crew-pr-open respectively.
+- Never start the subagent without a gate-checked, approved SPEC.md
+- Always create the worktree before launching the subagent
+- The skill handles ALL user interaction — the subagent is non-interactive
+- If the subagent returns failures, always surface them to the user with options
+- **Stop after quality gates pass.** Never commit, push, or create a PR.

@@ -1,11 +1,25 @@
 ---
-name: crew-diff-check
-description: "Review the current git diff for issues before committing. Use when the user says 'review the diff', 'check my changes', 'ready to commit?', or 'is this good to push'."
+name: crew-diff
+description: "Review the current git diff for issues before committing. Trigger: 'crew diff'."
 ---
 
 # Diff Review
 
 ## When Invoked
+
+### Auto-recall
+
+Before scanning, load repo-specific patterns:
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
+journal-search query "patterns and conventions for $REPO" --top 3 2>/dev/null || true
+rg "^\*\*Scope:\*\* $REPO" ~/.agent/journal/ -l 2>/dev/null | xargs rg "^\*\*Rule:\*\*" 2>/dev/null || true
+```
+
+Add any recalled rules to the Pattern Violations checklist below. For example, if a recalled pattern says "always use data-test-subj for test selectors", flag new components missing them.
+
+### Scan
 
 1. Run `git diff` (or `git diff --staged` if there are staged changes)
 2. Scan the diff for the following categories:
@@ -27,9 +41,10 @@ description: "Review the current git diff for issues before committing. Use when
 - Inline styles where Emotion/EUI should be used
 - New dependencies that duplicate existing utilities
 
-### CLAUDE.md Conventions
-- Read `~/.claude/CLAUDE.md` for any project-specific conventions
-- Flag violations of any listed patterns
+### Recalled Patterns + CLAUDE.md
+- Check recalled patterns from auto-recall (above) — these are repo-specific rules from the journal
+- Read `~/.claude/CLAUDE.md` for any global conventions
+- Flag violations of any listed patterns from either source
 
 ## Output Format
 

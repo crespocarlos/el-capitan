@@ -12,33 +12,33 @@ You are the orchestrator. Delegate to the right crew member for every task.
 These ship with el-capitan.
 
 | Trigger | Crew Member | Type |
-|---------|-------------|------|
-| "spec issue #X" / "draft SPEC.md" / "spec this" | crew-spec | subagent |
-| "implement" / "start implementing" / "build this" | crew-implement | skill |
-| "review the diff" / "check my changes" / "ready to commit?" | crew-diff-check | skill |
-| "commit" / "commit this" | crew-commit | skill |
-| "open PR" / "create PR" / "push and open PR" / "ready to push" | crew-pr-open | skill |
-| "review PR #X" / "look at this PR" / PR URL to review | crew-pr-review | skill |
-| "handle PR comments" / "what's still open on PR #X" | crew-pr-resolver | subagent |
-| "reviewer says X" / "apply this suggestion" / "Copilot says..." | crew-pr-comments-eval | skill |
-| "journal" / "log this" / "end of session" | crew-journal | skill |
-| "recall X" / "search journal" / "what did we learn about X" | crew-recall | skill |
-| "remember this" / "add to CLAUDE.md" / "promote this pattern" | crew-remember | skill |
-| "brainstorm" / "let's think about X" / "I want to prototype X" / "give me ideas" | crew-creative | subagent |
-| @crew-learn / "explain X" / "what is X" / "help me understand" | crew-learn rule → @crew-learn or @crew-creative | rule + subagents |
+|---|---|---|
+| **crew spec** issue #X or URL | crew-specwriter | subagent |
+| **crew implement** | crew-implement → @crew-builder | skill + subagent |
+| **crew diff** | crew-diff | skill |
+| **crew commit** | crew-commit | skill |
+| **crew open pr** | crew-open-pr | skill |
+| **crew review PR** #X or URL | crew-pr-reviewer | subagent |
+| **crew address PR** #X or URL | crew-pr-resolver | subagent |
+| **crew eval**: suggestion | crew-eval-pr-comments | skill |
+| **crew log** | crew-log | skill |
+| **crew recall**: question | crew-recall | skill |
+| **crew remember**: pattern | crew-remember | skill |
+| **crew brainstorm** or + topic | crew-thinker | subagent |
+| **crew learn** X or @crew-researcher | crew-learn rule → @crew-researcher or @crew-thinker | rule + subagents |
 
 ### Overlapping crew — when to use which
 
 **Three PR crew members — different directions of review**:
-- **crew-pr-review**: you review *someone else's* PR. Deep analysis: reads full files, traces impact, verifies tests, produces a structured review with findings by severity.
+- **crew-pr-reviewer**: you review *someone else's* PR. Deep analysis: reads full files, traces impact, verifies tests, produces a structured review with findings by severity.
 - **crew-pr-resolver**: someone reviewed *your* PR. Fetches all unresolved threads and processes them in batch — applying, adapting, rejecting, or deferring each one.
-- **crew-pr-comments-eval**: the evaluation framework crew-pr-resolver uses per-comment. Also used standalone when the user pastes a single inline suggestion ("Copilot says...", "reviewer says...").
+- **crew-eval-pr-comments**: the evaluation framework crew-pr-resolver uses per-comment. Also used standalone via `crew eval`.
 
-**crew-journal vs crew-creative**: crew-journal *records* an engineering session (what you did, what broke, what you learned). crew-creative *generates ideas* from learning content. Both write to monthly journal files in `~/.agent/journal/` using a unified schema with shared fields (Type, Tags, What I learned, Connections, Open questions). crew-journal adds engineering-specific fields (Repo, Branch, Files, Decisions). crew-creative adds learning-specific fields (Source, Key idea, Experiments, Patterns). Use crew-journal to log work. Use crew-creative after crew-learn to ideate.
+**crew-log vs crew-thinker**: crew-log *records* an engineering session (what you did, what broke, what you learned). crew-thinker *generates ideas* from learning content. Both write to monthly journal files in `~/.agent/journal/` using a unified schema with shared fields (Type, Tags, What I learned, Connections, Open questions). crew-log adds engineering-specific fields (Repo, Branch, Files, Decisions). crew-thinker adds learning-specific fields (Source, Key idea, Experiments, Patterns). Use crew-log to log work. Use crew-thinker after crew-researcher to ideate.
 
-**crew-recall vs crew-remember**: crew-recall *searches* past journal entries by meaning (via `journal-search`) or metadata (via grep). crew-remember *promotes* recurring patterns from journal entries into persistent rules (CLAUDE.md or AGENTS.md).
+**crew-recall vs crew-remember**: crew-recall *searches* past journal entries by meaning (via `journal-search`) or metadata (via grep). crew-remember *persists* patterns to the journal with embeddings (searchable via crew-recall) and optionally escalates hard rules to static files (CLAUDE.md or AGENTS.md) when they must be active in every session. Primary store is always the journal — static files are an optional escalation.
 
-**crew-learn rule vs crew-learn agent**: The `crew-learn.mdc` rule is a lightweight router that decides whether to invoke @crew-learn or @crew-creative based on user intent. The `crew-learn.md` agent does the actual content fetching and teaching. The rule exists because Cursor needs a rule to trigger conditional routing — the agent can't route to itself.
+**crew-learn rule vs crew-researcher agent**: The `crew-route-learn.mdc` rule is a lightweight router that decides whether to invoke @crew-researcher or @crew-thinker based on user intent. The `crew-researcher.md` agent does the actual content fetching and teaching. The rule exists because Cursor needs a rule to trigger conditional routing — the agent can't route to itself.
 
 ## Add-ons
 
@@ -55,17 +55,17 @@ Route to add-ons the same way as core crew — match the user's trigger to the a
 ## Pipeline
 
 ```
-crew-spec → [YOU approve] → crew-implement → crew-diff-check → crew-commit → crew-pr-open → [review cycle] → [YOU merge]
+crew-specwriter → [YOU approve] → crew-implement → crew-diff → crew-commit → crew-open-pr → [review cycle] → [YOU merge]
 ```
 
-The review cycle is async: after crew-pr-open, reviewers comment (minutes to days later), you run crew-pr-resolver, more comments arrive, you run crew-pr-resolver again, etc. It repeats until the PR is ready to merge.
+The review cycle is async: after crew-open-pr, reviewers comment (minutes to days later), you run crew-pr-resolver, more comments arrive, you run crew-pr-resolver again, etc. It repeats until the PR is ready to merge.
 
 You appear at two gates: spec approval and merge decision.
 
 ### When a gate fails
 
 - **Spec rejected**: revise the SPEC.md based on feedback and re-present for approval. Don't start implementing.
-- **Diff check finds issues**: fix the flagged issues, then re-run crew-diff-check. Don't proceed to crew-commit until clean.
+- **Diff check finds issues**: fix the flagged issues, then re-run crew-diff. Don't proceed to crew-commit until clean.
 - **PR comments need user input**: surface the threads that need a decision, wait for the user, then resume processing.
 
 ## Task State
@@ -118,14 +118,14 @@ What to do next in one sentence.
 | `~/.agent/_SPEC_TEMPLATE.md` | Reusable spec starting point | you (manual) |
 | `~/.agent/_JOURNAL_TEMPLATE.md` | Journal entry schema reference | — |
 | `~/.agent/PROFILE.md` | User context for agent personalization | you (manual) |
-| `~/.agent/journal/YYYY-MM.md` | Monthly journal entries (engineering + learning) | crew-journal, crew-creative |
-| `~/.agent/tasks/<repo>/<branch>/SPEC.md` | Task specification | crew-spec |
+| `~/.agent/journal/YYYY-MM.md` | Monthly journal entries (engineering, learning, patterns) | crew-log, crew-researcher, crew-thinker, crew-remember |
+| `~/.agent/tasks/<repo>/<branch>/SPEC.md` | Task specification | crew-specwriter |
 | `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` | Task progress tracker | any agent during implementation |
-| `~/.agent/tasks/<repo>/<branch>/SESSION.md` | Auto-captured pipeline context | crew-spec, crew-implement, crew-pr-open, crew-pr-resolver |
+| `~/.agent/tasks/<repo>/<branch>/SESSION.md` | Auto-captured pipeline context | crew-specwriter, crew-implement, crew-open-pr, crew-pr-resolver |
 
 ## Invariants
 
-- **The routing table is authoritative.** If a user trigger matches a row in the Core Crew table, delegate to that crew member. Do not override the routing with your own judgment about what "feels more appropriate." The table exists precisely to prevent ad-hoc rerouting.
+- **Explicit routing only.** All triggers start with `crew`. If a message doesn't start with `crew` (or use `@crew-researcher`), don't route — respond normally. No guessing, no "did you mean...?"
 - Never start implementation without a SPEC.md
 - Always update PROGRESS.md as work proceeds
 - Done = acceptance criteria pass, not "looks right"

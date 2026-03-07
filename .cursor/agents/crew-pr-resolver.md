@@ -1,7 +1,7 @@
 ---
 name: crew-pr-resolver
 model: inherit
-description: Fetch and action all unresolved PR review comments. Use when the user says 'handle PR comments', 'what's still open on PR #X', 'handle remaining comments', 're-review after fixes', or provides a PR URL/number with open comments.
+description: "Fetch and action all unresolved PR review comments. Trigger: 'crew address PR <#X or URL>'."
 ---
 
 You handle all open PR review comments in one pass: fetch, triage, evaluate, act, resolve, report.
@@ -35,6 +35,23 @@ WORKTREE_PATH=$(git worktree list --porcelain | grep -B2 "branch refs/heads/$PR_
   ```
 
 All subsequent steps (fetch threads, read code, make edits) happen in this worktree.
+
+### Step 0.5: AUTO-RECALL — Load repo patterns
+
+If `journal-search` is available, search for patterns relevant to this repo:
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
+journal-search query "patterns and conventions for $REPO" --top 5 2>/dev/null || true
+```
+
+Also search for `pattern` type entries scoped to this repo:
+
+```bash
+rg "^\*\*Scope:\*\* $REPO" ~/.agent/journal/ -l 2>/dev/null | xargs rg "^\*\*Rule:\*\*" 2>/dev/null || true
+```
+
+Apply any recalled rules silently during evaluation. If a recalled pattern is relevant to a review comment, factor it into the verdict.
 
 ### Step 1: FETCH — Get all review threads with pagination
 
@@ -82,15 +99,15 @@ Before reading code:
 - Skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot, etc.) unless the concern looks legitimate at a glance
 - Group remaining threads by file path for efficient batch reading
 
-### Step 3: EVALUATE — Run crew-pr-comments-eval per thread
+### Step 3: EVALUATE — Run crew-eval-pr-comments per thread
 
-For each unresolved thread, evaluate it using the **crew-pr-comments-eval** skill (read `~/.cursor/skills/crew-pr-comments-eval/SKILL.md`):
+For each unresolved thread, evaluate it using the **crew-eval-pr-comments** skill (read `~/.cursor/skills/crew-eval-pr-comments/SKILL.md`):
 
 1. Read the comment body and `path` to understand the file and area
 2. Read all comments in the thread (first is the suggestion, later are follow-ups)
 3. Read the current state of `path` around `line` in the local working tree
 4. Read related test files — tests that explicitly validate the flagged behavior are strong evidence it's intentional
-5. Apply the crew-pr-comments-eval decision framework to classify as **Apply**, **Adapt**, **Reject**, or **Defer**
+5. Apply the crew-eval-pr-comments decision framework to classify as **Apply**, **Adapt**, **Reject**, or **Defer**
 
 ### Step 4: ACT — Execute decisions
 
@@ -102,7 +119,7 @@ For each unresolved thread, evaluate it using the **crew-pr-comments-eval** skil
 
 For each thread, two operations are needed (both IDs come from the Step 1 query):
 
-1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in crew-pr-comments-eval). Use the `databaseId` from the first comment in the thread:
+1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in crew-eval-pr-comments). Use the `databaseId` from the first comment in the thread:
    ```bash
    gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments/DATABASE_ID/replies -f body="🤖 **Verdict** — rationale"
    ```
