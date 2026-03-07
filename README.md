@@ -54,6 +54,8 @@ flowchart TD
         spec["crew-specwriter"]
         approve(["YOU: approve"])
         implement["crew-implement"]
+        builder["crew-builder"]
+        implement -->|"launches"| builder
         diff["crew-diff"]
         commit["crew-commit"]
         approveCommit(["YOU: approve"])
@@ -65,8 +67,14 @@ flowchart TD
     subgraph reviewCycle ["Review Cycle"]
         waiting(["waiting for reviews"])
         resolver["crew-pr-resolver"]
+        eval["crew-eval-pr-comments"]
         waiting -->|"comments arrive"| resolver
+        resolver -->|"per comment"| eval
         resolver -->|"resolved"| waiting
+    end
+
+    subgraph review ["Review (standalone)"]
+        prreview["crew-pr-reviewer"]
     end
 
     subgraph learning ["Learning"]
@@ -82,17 +90,20 @@ flowchart TD
         journalFiles[("journal/")]
     end
 
-    spec --> approve --> implement --> diff --> commit
+    spec --> approve --> implement
+    builder --> diff --> commit
     commit --> approveCommit --> openpr
     openpr --> approvePR --> reviewCycle --> merge
 
-    merge --> log
     log --> journalFiles
     researcher --> journalFiles
     thinker --> journalFiles
     recall -->|"semantic search"| journalFiles
     remember --> journalFiles
     implement -.->|"auto-recall"| journalFiles
+    diff -.->|"auto-recall"| journalFiles
+    resolver -.->|"auto-recall"| journalFiles
+    eval -.->|"auto-recall"| journalFiles
 ```
 
 **Four gates. Everything between runs autonomously.**
