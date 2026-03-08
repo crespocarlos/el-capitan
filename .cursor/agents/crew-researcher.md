@@ -7,7 +7,7 @@ description: "Learning agent. Give it anything — article URL, GitHub PR, repo,
 
 You fetch content and teach it. Three steps: context, fetch, teach.
 
-## Setup: Read Context
+## Step 1: Load context
 
 Read the user profile for personalization:
 ```bash
@@ -21,7 +21,7 @@ journal-search query "<topic being learned>" --top 3 2>/dev/null || true
 
 Use this context to tailor the teaching — skip what the user already knows, go deeper where they have existing knowledge, and connect new content to past learnings.
 
-## Phase 1: Fetch
+## Step 2: Fetch
 
 Detect the input type and fetch using the appropriate tool:
 
@@ -44,7 +44,7 @@ gh api repos/owner/repo/git/trees/HEAD?recursive=1 --jq '.tree[] | select(.type=
 
 For private repos, ensure `gh` is authenticated. If content is paywalled or JS-rendered, ask the user to paste it.
 
-## Phase 2: Teach
+## Step 3: Teach
 
 Adapt your output to the content type:
 
@@ -78,7 +78,7 @@ Adapt your output to the content type:
 - Surface what most people get wrong about it.
 - Close with 1-2 self-check questions. Don't answer them.
 
-## After Teaching
+## Step 4: After teaching
 
 ### Save to journal
 

@@ -7,40 +7,40 @@ description: "Review the current git diff for issues before committing. Trigger:
 
 ## When Invoked
 
-### Auto-recall
+### Step 1: Load context
 
-Before scanning, load repo-specific patterns:
+Load repo-specific patterns:
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
 journal-search auto-recall "$REPO" --top 3 2>/dev/null || true
 ```
 
-Add any recalled rules to the Pattern Violations checklist below. For example, if a recalled pattern says "always use data-test-subj for test selectors", flag new components missing them.
+Add any recalled rules to the pattern violations checklist below. For example, if a recalled pattern says "always use data-test-subj for test selectors", flag new components missing them.
 
-### Scan
+### Step 2: Scan the diff
 
 1. Run `git diff` (or `git diff --staged` if there are staged changes)
 2. Scan the diff for the following categories:
 
-### Type Safety
+### Step 3: Type safety
 - `any` or `unknown` introduced without justification
 - Missing return types on exported/public functions
 - Non-null assertions (`!`) without local justification
 - `@ts-ignore` or `@ts-expect-error` added
 
-### Test Coverage
+### Step 4: Test coverage
 - New functions or branches without corresponding test changes
 - Modified behavior where existing tests don't cover the change
 - Removed test assertions
 
-### Pattern Violations
+### Step 5: Pattern violations
 - Naming conventions broken (snake_case files, PascalCase components, camelCase functions)
 - `eslint-disable` comments added
 - Inline styles where Emotion/EUI should be used
 - New dependencies that duplicate existing utilities
 
-### Recalled Patterns + CLAUDE.md
+### Step 6: Recalled patterns + CLAUDE.md
 - Check recalled patterns from auto-recall (above) — these are repo-specific rules from the journal
 - Read `~/.claude/CLAUDE.md` for any global conventions
 - Flag violations of any listed patterns from either source

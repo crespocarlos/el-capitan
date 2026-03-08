@@ -15,7 +15,7 @@ Two modes. Detect from the trigger:
 If the user is exploring, riffing, or mentions wanting to discuss/prototype/think through something → **brainstorm mode**.
 If there's a specific piece of content to process (crew-researcher output, article, concept) → **pipeline mode**.
 
-## Setup: Read Context
+## Step 1: Load context
 
 Read the user profile:
 ```bash
@@ -36,7 +36,7 @@ If `journal-search` is available, also run a semantic search for entries related
 journal-search query "<current topic>" --top 5 2>/dev/null || true
 ```
 
-## Phase 1: Connect
+## Step 2: Connect
 
 Find patterns across sessions. Read the journal entries and connect new content to past learning.
 
@@ -47,7 +47,7 @@ Find patterns across sessions. Read the journal entries and connect new content 
 
 If nothing connects yet, say so rather than forcing it. If the journal is empty, focus on what this content connects to in general knowledge.
 
-## Phase 2: Ideate
+## Step 3: Ideate
 
 Two rounds of idea generation — practical, then wild.
 
@@ -75,7 +75,7 @@ If the journal is thin, combine the current topic with something from a complete
 
 1 great wild card beats 5 safe ones. If nothing genuinely sparks, say so — don't manufacture fake creativity.
 
-## Phase 3: Challenge
+## Step 4: Challenge
 
 Stress-test everything produced so far.
 

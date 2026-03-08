@@ -7,7 +7,7 @@ description: "Log an agentic engineering session to the journal. Trigger: 'crew 
 
 ## When Invoked
 
-### Step 1 — Gather context automatically
+### Step 1: Gather context
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
@@ -23,7 +23,7 @@ Read `~/.agent/PROFILE.md` for user context.
 
 If SESSION.md has content, use it to pre-fill the entry. Show the user what was auto-captured and ask them to confirm or edit.
 
-### Step 2 — Fill in the gaps
+### Step 2: Fill in the gaps
 
 Auto-fill what you can from git state and SESSION.md:
 
@@ -39,7 +39,7 @@ Ask the user to fill in or confirm:
 3. **What broke or surprised you?** — errors, wrong assumptions, corrections
 4. **Anything to promote to rules?** — conventions worth adding to CLAUDE.md or AGENTS.md
 
-### Step 3 — Write the entry
+### Step 3: Write the entry
 
 Append to `$JOURNAL_FILE` (create if it doesn't exist):
 
@@ -63,7 +63,7 @@ Append to `$JOURNAL_FILE` (create if it doesn't exist):
 
 Use `$(date +%Y-%m-%d)` for the date. Derive the one-line summary from what the user did.
 
-### Step 4 — Index the entry
+### Step 4: Index the entry
 
 If `journal-search` is available, index the new entry:
 
@@ -73,7 +73,7 @@ journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
 
 The tool verifies the entry was stored and prints what it indexed. If it fails, surface the error to the user.
 
-### Step 5 — After writing
+### Step 5: After writing
 
 1. If the user provided "Promote to rules" candidates, offer:
    > "These look worth persisting: [list]. Want me to add them to CLAUDE.md or AGENTS.md?"

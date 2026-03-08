@@ -35,7 +35,7 @@ ln -sf "$SCRIPT_DIR/.agent/_SPEC_TEMPLATE.md" ~/.agent/_SPEC_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_JOURNAL_TEMPLATE.md" ~/.agent/_JOURNAL_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_PROFILE_TEMPLATE.md" ~/.agent/_PROFILE_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/tools/journal-search" ~/.agent/tools/journal-search
-ln -sf "$SCRIPT_DIR/.agent/tools/resolve-worktree" ~/.agent/tools/resolve-worktree
+ln -sf "$SCRIPT_DIR/.agent/tools/manage-worktree.sh" ~/.agent/tools/manage-worktree
 ln -sf "$SCRIPT_DIR/.agent/tools/requirements.txt" ~/.agent/tools/requirements.txt
 
 # Create PROFILE.md from template if it doesn't exist (preserves existing profile on reinstall)
@@ -54,7 +54,7 @@ echo ""
 # Add tools to PATH hint
 if ! echo "$PATH" | grep -q "$HOME/.agent/tools"; then
   echo ""
-  echo "  Optional: add ~/.agent/tools to your PATH for journal-search and resolve-worktree:"
+  echo "  Optional: add ~/.agent/tools to your PATH for journal-search and manage-worktree:"
   echo "    export PATH=\"\$HOME/.agent/tools:\$PATH\""
 fi
 

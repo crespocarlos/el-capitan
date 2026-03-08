@@ -7,7 +7,7 @@ description: "Search journal entries by meaning or metadata. Trigger: 'crew reca
 
 ## When Invoked
 
-### Step 1 — Classify the query
+### Step 1: Classify the query
 
 Determine what the user wants:
 
@@ -22,7 +22,7 @@ Auto-detect repo scope if inside a repo:
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "")
 ```
 
-### Step 2 — Run the search
+### Step 2: Run the search
 
 **Overview:**
 ```bash
@@ -50,7 +50,7 @@ Metadata filters via ripgrep:
 - Repo: `rg "^\*\*Repo:\*\* kibana" ~/.agent/journal/`
 - Date: search only files named `YYYY-MM.md` where `YYYY-MM >= DATE`
 
-### Step 3 — Present results
+### Step 3: Present results
 
 - **Summary queries**: show the overview as-is, highlight interesting stats.
 - **Specific queries**: for each match, show date, summary, and the most relevant field (Key idea, Rule, What I learned, Decisions made).

@@ -7,24 +7,26 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
 
 ## When Invoked
 
-1. **Determine the task source:**
-   - If given a GitHub issue URL or number: fetch it with `gh issue view <number> --repo <repo> --json title,body,labels,comments`
-   - If given a plain description: use it directly
+### Step 1: Load context
 
-2. **Determine task directory:**
-   ```bash
-   REPO=$(basename $(git rev-parse --show-toplevel))
-   BRANCH=$(git branch --show-current)
-   TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
-   mkdir -p $TASK_DIR
-   ```
+Determine the task source:
+- If given a GitHub issue URL or number: fetch it with `gh issue view <number> --repo <repo> --json title,body,labels,comments`
+- If given a plain description: use it directly
 
-3. **Auto-recall** — load repo-specific patterns before exploring:
-   ```bash
-   journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
-   ```
+Determine task directory and load repo patterns:
 
-4. **Explore the codebase** to understand:
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel))
+BRANCH=$(git branch --show-current)
+TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
+mkdir -p $TASK_DIR
+
+journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
+```
+
+### Step 2: Explore the codebase
+
+Understand:
    - Which files and modules are involved
    - Existing patterns to follow
    - What tests exist and how to run them
@@ -32,7 +34,9 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
 
    **Research conventions before drafting.** If the task involves adopting an existing pattern (e.g. converting code to use a shared utility, following a template convention), find and read at least 2 canonical examples of that pattern before writing any tasks. Use SemanticSearch scoped to the relevant package for targeted pattern questions before falling back to explore subagents for broader structural understanding.
 
-5. **Draft `$TASK_DIR/SPEC.md`** using `~/.agent/_SPEC_TEMPLATE.md` as the base:
+### Step 3: Draft the spec
+
+Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
    - **Context**: problem statement, scope (in/out), repo touchpoints (files that will change)
    - **Goal**: one sentence
    - **Acceptance Criteria** in three layers:
@@ -42,12 +46,16 @@ You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that 
    - **Tasks**: break the work into atomic units. Each task has **Change** (what to do), **Files** (which files), **Acceptance** (how to verify that task alone). An autonomous agent should be able to execute tasks sequentially without ambiguity.
    - **References**: file paths to canonical examples. Embed key patterns inline so the spec is self-contained — the agent shouldn't need to read 5 extra files to understand what pattern to follow.
 
-6. **Surface 2-3 questions** for the user to confirm before implementation starts. Common questions:
+### Step 4: Surface questions
+
+Surface 2-3 questions for the user to confirm before implementation starts. Common questions:
    - "Should I include test coverage for edge case X?"
    - "The existing pattern uses Y — should I follow it or is this a chance to improve?"
    - "This touches module Z which has no tests — should I add some?"
 
-7. **Wait for explicit approval.** After the user answers the questions, incorporate their answers into the SPEC.md, present a summary of what changed, and wait for the user to explicitly approve ("approved", "looks good", "go"). Never mark PROGRESS.md as IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval — approving the updated spec is.
+### Step 5: Wait for approval
+
+After the user answers the questions, incorporate their answers into the SPEC.md, present a summary of what changed, and wait for the user to explicitly approve ("approved", "looks good", "go"). Never mark PROGRESS.md as IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval — approving the updated spec is.
 
 ## Quality Bar
 

@@ -9,7 +9,7 @@ You review Pull Requests by reading beyond the diff to understand intent, trace 
 
 Extract owner, repo, and PR number from the user's input (URL, number, or current checkout).
 
-### Step 0: Auto-recall
+### Step 1: Load context
 
 ```bash
 journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
@@ -17,7 +17,7 @@ journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
 
 Apply recalled patterns when evaluating the PR — e.g., if a pattern says "always use data-test-subj", flag new components missing it.
 
-### Step 1: Understand intent
+### Step 2: Understand intent
 
 ```bash
 gh pr view NUMBER --repo OWNER/REPO --json title,body,labels,baseRefName,headRefName,additions,deletions,changedFiles,comments,reviews
@@ -25,7 +25,7 @@ gh pr view NUMBER --repo OWNER/REPO --json title,body,labels,baseRefName,headRef
 
 Fetch linked issues if referenced in PR body. Summarize the stated intent in one sentence — the entire review evaluates whether the code achieves this.
 
-### Step 2: Read the diff
+### Step 3: Read the diff
 
 ```bash
 gh pr diff NUMBER --repo OWNER/REPO
@@ -51,7 +51,7 @@ Identify:
 - Which changes are structural (new files, moved code) vs behavioral (logic changes)
 - The **spine** — the 2-3 key decisions everything else flows from
 
-### Step 3: Read full files
+### Step 4: Read full files
 
 For every file with behavioral changes, read the **full file** — not just the diff hunks. The diff shows what changed; the full file shows what the change lives inside.
 
@@ -60,7 +60,7 @@ Focus on:
 - What the changed function/component is responsible for
 - What contracts (types, interfaces, API shapes) the change affects
 
-### Step 4: Trace impact
+### Step 5: Trace impact
 
 For changed exports, public functions, or type definitions — find their consumers:
 
@@ -76,7 +76,7 @@ gh api search/code -f q="functionName repo:OWNER/REPO" --jq '.items[].path' | he
 
 This catches the most important class of bugs: changes that are locally correct but break something downstream.
 
-### Step 5: Verify test coverage
+### Step 6: Verify test coverage
 
 For each behavioral change:
 
@@ -87,11 +87,11 @@ For each behavioral change:
 
 If there are no test changes for a behavioral change, flag it.
 
-### Step 6: Check project conventions
+### Step 7: Check project conventions
 
 Read the repo's `AGENTS.md`, `CLAUDE.md`, or contributing guide. Only flag deviations that cause real problems — not stylistic preferences the linter handles.
 
-### Step 7: Produce the review
+### Step 8: Produce the review
 
 Scan for all six review dimensions on every PR:
 
@@ -115,7 +115,7 @@ For each finding:
 - State what you found and why it matters
 - If suggesting a change, show the concrete fix
 
-### Step 8: Overall assessment
+### Step 9: Overall assessment
 
 End with:
 - **Intent match**: does the code achieve what the PR description claims? (yes / partially / no)

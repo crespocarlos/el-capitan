@@ -107,7 +107,7 @@ The brainstorm partner. Two modes: *pipeline* (connects new learnings with past 
 
 ### Worktree-first
 
-`crew implement` creates a git worktree with a conventional branch (`feature/`, `bugfix/`, etc.) so implementation happens in an isolated directory. `crew-pr-resolver` resolves to the correct worktree before applying changes. Main stays clean.
+`crew implement` creates a git worktree with a conventional branch (`feature/`, `bugfix/`, etc.) in a sibling `worktrees/` directory so implementation happens in isolation. `crew-pr-resolver` resolves to the correct worktree before applying changes. Main stays clean. Worktrees whose branches have been merged are auto-pruned on next invocation.
 
 ### Journal-based memory
 

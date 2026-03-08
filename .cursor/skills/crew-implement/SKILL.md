@@ -4,7 +4,7 @@ Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and use
 
 ## Workflow
 
-### Step 1 — Resolve task state
+### Step 1: Resolve task state
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel))
@@ -14,7 +14,7 @@ TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
 
 Read `$TASK_DIR/SPEC.md` and `$TASK_DIR/PROGRESS.md`.
 
-### Step 2 — Gate check
+### Step 2: Gate check
 
 If `$TASK_DIR/SPEC.md` does not exist, scan for other specs (most recent first):
 
@@ -44,7 +44,7 @@ If the SPEC.md status is `DRAFTING`, stop:
 
 If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you're resuming — inform the user which tasks are done and which remain.
 
-### Step 3 — Auto-recall
+### Step 3: Auto-recall
 
 ```bash
 journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
@@ -52,7 +52,7 @@ journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
 
 Store the results as `RECALLED_PATTERNS` to pass to the subagent.
 
-### Step 4 — Create worktree
+### Step 4: Create worktree
 
 If already on a feature branch (not `main` or the default branch), skip this step.
 
@@ -63,7 +63,7 @@ DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}'
 git fetch origin "$DEFAULT_BRANCH"
 
 BRANCH_NAME=<type>/<short-description>
-cd "$(resolve-worktree -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
+cd "$(manage-worktree -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
 ```
 
 Use a conventional branch prefix based on the SPEC.md type:
@@ -85,7 +85,7 @@ After the worktree is created:
 
 If skipped (already on feature branch), set `WORK_DIR` to the current directory.
 
-### Step 5 — Update progress
+### Step 5: Update progress
 
 Set PROGRESS.md to:
 ```
@@ -94,7 +94,7 @@ Set PROGRESS.md to:
 ## Next: diff-check
 ```
 
-### Step 6 — Detect mode and launch worker
+### Step 6: Detect mode and launch worker
 
 ```bash
 which ralph 2>/dev/null || which ralph.sh 2>/dev/null
@@ -109,9 +109,13 @@ Launch the `@crew-builder` subagent with:
 - `MODE` — `ralph` or `inline`
 - The full contents of `SPEC.md` (so the subagent has it without needing to re-read)
 
-### Step 7 — Handle results
+### Step 7: Handle results
 
-When the subagent returns its Implementation Report:
+Read `$TASK_DIR/REPORT.md`. If the subagent returned a message, use that. If the subagent exited without returning (ralph mode, session timeout), fall back to `REPORT.md`. If neither exists, tell the user:
+
+> "The worker finished but didn't produce a report. Check `$TASK_DIR/` for SPEC.md task status, or re-run `crew implement` to resume."
+
+When the Implementation Report is available:
 
 **All tasks passed + quality gates passed:**
 1. Update PROGRESS.md:

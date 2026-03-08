@@ -10,25 +10,21 @@ You handle all open PR review comments in one pass: fetch, triage, evaluate, act
 
 Extract owner, repo, and PR number from the user's input (URL or number).
 
-### Step 0: WORKTREE — Ensure you're on the PR branch
+### Step 1: Load context
+
+Resolve the worktree and load repo patterns:
 
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
-cd "$(resolve-worktree "$PR_BRANCH")"
-```
+cd "$(manage-worktree "$PR_BRANCH")"
 
-All subsequent steps (fetch threads, read code, make edits) happen in this worktree.
-
-### Step 0.5: AUTO-RECALL — Load repo patterns
-
-```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
 journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
-Apply any recalled rules silently during evaluation. If a recalled pattern is relevant to a review comment, factor it into the verdict.
+All subsequent steps happen in this worktree. Apply any recalled rules silently during evaluation.
 
-### Step 1: FETCH — Get all review threads with pagination
+### Step 2: Fetch review threads
 
 Use GraphQL with cursor-based pagination. REST endpoints and MCP `get_review_comments` cap at 100 results without clearly surfacing `hasNextPage` — always use GraphQL for thread discovery.
 
@@ -68,13 +64,13 @@ If `pageInfo.hasNextPage` is true, paginate with `after: "CURSOR"` until all thr
 
 Filter to threads where `isResolved: false` and `isOutdated: false`.
 
-### Step 2: TRIAGE — Classify unresolved threads
+### Step 3: Triage unresolved threads
 
 Before reading code:
 - Skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot, etc.) unless the concern looks legitimate at a glance
 - Group remaining threads by file path for efficient batch reading
 
-### Step 3: EVALUATE — Run crew-eval-pr-comments per thread
+### Step 4: Evaluate each thread
 
 For each unresolved thread, evaluate it using the **crew-eval-pr-comments** skill (read `~/.cursor/skills/crew-eval-pr-comments/SKILL.md`):
 
@@ -84,15 +80,15 @@ For each unresolved thread, evaluate it using the **crew-eval-pr-comments** skil
 4. Read related test files — tests that explicitly validate the flagged behavior are strong evidence it's intentional
 5. Apply the crew-eval-pr-comments decision framework to classify as **Apply**, **Adapt**, **Reject**, or **Defer**
 
-### Step 4: ACT — Execute decisions
+### Step 5: Execute decisions
 
 - **Apply/Adapt**: make the edit, run lints on edited files, run type-check scoped to the affected package
 - **Reject**: prepare a clear rationale explaining the specific reason
 - **Defer**: note what it is and why it's out of scope for this change
 
-### Step 5: RESOLVE — Close threads on GitHub
+### Step 6: Close threads on GitHub
 
-For each thread, two operations are needed (both IDs come from the Step 1 query):
+For each thread, two operations are needed (both IDs come from the Step 2 query):
 
 1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in crew-eval-pr-comments). Use the `databaseId` from the first comment in the thread:
    ```bash
@@ -109,7 +105,7 @@ For each thread, two operations are needed (both IDs come from the Step 1 query)
    }'
    ```
 
-### Step 6: REPORT — Summary
+### Step 7: Report
 
 Report back with a table:
 
@@ -122,7 +118,7 @@ Summary counts: N applied / N adapted / N rejected / N deferred
 
 For each thread that needs user input before proceeding, surface it explicitly.
 
-### Session Capture
+### Step 8: Session capture
 
 After reporting, append to `$TASK_DIR/SESSION.md` (if `TASK_DIR` exists):
 

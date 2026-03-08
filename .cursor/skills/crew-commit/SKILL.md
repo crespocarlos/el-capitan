@@ -7,10 +7,13 @@ description: "Generate a semantic commit message and commit. Trigger: 'crew comm
 
 ## When Invoked
 
-1. Check for staged changes: `git diff --staged --stat`
-2. If nothing staged, run `git status --short` and show the user what's unstaged. Ask which files to stage — never `git add -A` without explicit approval (it can pick up .env files, debug logs, scratch files).
-3. Read the full staged diff: `git diff --staged`
-4. Read `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)/SPEC.md` if it exists (for intent context)
+### Step 1: Check staged changes
+
+Run `git diff --staged --stat`. If nothing staged, run `git status --short` and show the user what's unstaged. Ask which files to stage — never `git add -A` without explicit approval (it can pick up .env files, debug logs, scratch files).
+
+### Step 2: Read the diff
+
+Read the full staged diff: `git diff --staged`. Read `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)/SPEC.md` if it exists (for intent context).
 
 ## Commit Message Format
 
@@ -46,7 +49,7 @@ chore(deps): bump @kbn/inference-common to 1.4.0
 - If SPEC.md exists, the message should reflect its goal
 - Never multi-line for branch commits — the PR description carries the context
 
-## Output
+### Step 3: Propose and commit
 
 Present the proposed message and ask: "Look good?"
 

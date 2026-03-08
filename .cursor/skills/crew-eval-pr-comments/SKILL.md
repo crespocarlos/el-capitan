@@ -5,27 +5,23 @@ description: "Evaluate and act on code suggestions from any source. Trigger: 'cr
 
 # Code Suggestion Reviewer
 
-## Step 0 — Resolve worktree
+### Step 1: Load context
 
 If the suggestion references a PR or branch, resolve to the correct working directory:
 
 ```bash
 BRANCH=<branch from PR or context>
-cd "$(resolve-worktree "$BRANCH")"
-```
+cd "$(manage-worktree "$BRANCH")"
 
-If no branch context is provided (standalone suggestion), skip this step and work in the current directory.
-
-## Auto-recall
-
-```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
 journal-search auto-recall "$REPO" --top 3 2>/dev/null || true
 ```
 
+If no branch context is provided (standalone suggestion), skip worktree resolution and work in the current directory. Still run auto-recall.
+
 Apply any recalled rules silently during evaluation. If a recalled pattern conflicts with the suggestion, factor it into the verdict.
 
-## Workflow
+### Step 2: Evaluate
 
 1. **Read the target code** — always read the file and surrounding context before deciding.
 2. **Read the tests** — if the target code has tests, read them before evaluating. Tests that explicitly validate the flagged behavior (with comments explaining the design, probability model, or intent) are strong evidence the behavior is intentional, not a bug.

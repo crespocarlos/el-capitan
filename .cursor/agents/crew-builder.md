@@ -41,6 +41,7 @@ After ralph exits:
 1. Re-read `$TASK_DIR/SPEC.md` and verify all tasks are checked off (`- [x]`).
 2. If any tasks are unchecked, include them in the report as failures.
 3. If all tasks are checked, proceed to quality gates.
+4. **Write the report to `$TASK_DIR/REPORT.md`** — this is critical. The report must be a durable file, not just a returned message. The orchestrator depends on this file to detect completion.
 
 ## Inline mode
 
@@ -57,7 +58,7 @@ After all tasks, run the quality gates from SPEC.md (the commands under "Quality
 
 ## Report
 
-When done, return a structured report:
+When done, write the report to **`$TASK_DIR/REPORT.md`** and return it:
 
 ```
 ## Implementation Report
@@ -82,7 +83,7 @@ When done, return a structured report:
 <details of what failed and why>
 ```
 
-This report goes back to the crew-implement skill, which decides next steps.
+**Always write `REPORT.md` before returning.** The file is the durable signal — if the agent session ends unexpectedly, the orchestrator can still detect completion by reading this file. The returned message is a convenience; the file is the contract.
 
 ## Rules
 
