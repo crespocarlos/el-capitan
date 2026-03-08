@@ -155,8 +155,8 @@ After writing, index the entry if `journal-search` is available:
 journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
 ```
 
-If "Patterns emerging" has flagged a theme 3+ times, offer to persist it:
-> "This pattern keeps recurring: [X]. Want me to run crew-remember on it?"
+If "Patterns emerging" has flagged a theme 3+ times, note it:
+> "This pattern keeps recurring: [X]. Consider adding it to CLAUDE.md or AGENTS.md."
 
 If any idea is concrete enough to build, offer to spec it:
 > "Want me to draft a SPEC.md for [bold idea]?"

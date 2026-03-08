@@ -23,7 +23,6 @@ These ship with el-capitan.
 | **crew eval**: suggestion | crew-eval-pr-comments | skill |
 | **crew log** | crew-log | skill |
 | **crew recall**: question | crew-recall | skill |
-| **crew remember**: pattern | crew-remember | skill |
 | **crew brainstorm** or + topic | crew-thinker | subagent |
 | **crew learn** X or @crew-researcher | crew-learn rule → @crew-researcher or @crew-thinker | rule + subagents |
 
@@ -35,8 +34,6 @@ These ship with el-capitan.
 - **crew-eval-pr-comments**: the evaluation framework crew-pr-resolver uses per-comment. Also used standalone via `crew eval`.
 
 **crew-log vs crew-thinker**: crew-log *records* an engineering session (what you did, what broke, what you learned). crew-thinker *generates ideas* from learning content. Both write to monthly journal files in `~/.agent/journal/` using a unified schema with shared fields (Type, Tags, What I learned, Connections, Open questions). crew-log adds engineering-specific fields (Repo, Branch, Files, Decisions). crew-thinker adds learning-specific fields (Source, Key idea, Experiments, Patterns). Use crew-log to log work. Use crew-thinker after crew-researcher to ideate.
-
-**crew-recall vs crew-remember**: crew-recall *searches* past journal entries by meaning (via `journal-search`) or metadata (via grep). crew-remember *persists* patterns to the journal with embeddings (searchable via crew-recall) and optionally escalates hard rules to static files (CLAUDE.md or AGENTS.md) when they must be active in every session. Primary store is always the journal — static files are an optional escalation.
 
 **crew-learn rule vs crew-researcher agent**: The `crew-route-learn.mdc` rule is a lightweight router that decides whether to invoke @crew-researcher or @crew-thinker based on user intent. The `crew-researcher.md` agent does the actual content fetching and teaching. The rule exists because Cursor needs a rule to trigger conditional routing — the agent can't route to itself.
 
@@ -118,7 +115,7 @@ What to do next in one sentence.
 | `~/.agent/_SPEC_TEMPLATE.md` | Reusable spec starting point | you (manual) |
 | `~/.agent/_JOURNAL_TEMPLATE.md` | Journal entry schema reference | — |
 | `~/.agent/PROFILE.md` | User context for agent personalization | you (manual) |
-| `~/.agent/journal/YYYY-MM.md` | Monthly journal entries (engineering, learning, patterns) | crew-log, crew-researcher, crew-thinker, crew-remember |
+| `~/.agent/journal/YYYY-MM.md` | Monthly journal entries (engineering, learning, patterns) | crew-log, crew-researcher, crew-thinker |
 | `~/.agent/tasks/<repo>/<branch>/SPEC.md` | Task specification | crew-specwriter |
 | `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` | Task progress tracker | any agent during implementation |
 | `~/.agent/tasks/<repo>/<branch>/SESSION.md` | Auto-captured pipeline context | crew-specwriter, crew-implement, crew-open-pr, crew-pr-resolver |

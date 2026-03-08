@@ -44,7 +44,6 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew brainstorm: what if we cached the API responses?` | Interactive brainstorm on a topic |
 | `crew log` | Log the engineering session to the journal |
 | `crew recall: how do we handle retries in kibana?` | Search journal by meaning |
-| `crew remember: always use data-test-subj for selectors` | Persist a pattern with embeddings |
 
 ## How it works
 
@@ -102,8 +101,7 @@ Give it a URL, a PR, a repo, or just a concept name — it fetches the content, 
 The brainstorm partner. Two modes: *pipeline* (connects new learnings with past sessions and generates experiments) or *brainstorm* (interactive back-and-forth to flesh out ideas, challenge assumptions, and explore what-if scenarios). Can offer to draft a SPEC when an idea solidifies.
 
 - **crew-log** — records an engineering session, auto-gathers context, writes to the monthly journal
-- **crew-recall** — searches the journal by meaning (semantic search) or metadata (grep)
-- **crew-remember** — persists patterns with embeddings so they surface automatically in future work
+- **crew-recall** — searches the journal by meaning (semantic search), metadata (grep), or overview (summary)
 
 ## Key features
 

@@ -46,16 +46,8 @@ If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you
 
 ### Step 3 — Auto-recall
 
-If `journal-search` is available, query for patterns relevant to this repo:
-
 ```bash
-journal-search query "patterns and conventions for $REPO" --top 5 2>/dev/null || true
-```
-
-Also search for `pattern` type entries scoped to this repo:
-
-```bash
-rg "^\*\*Scope:\*\* $REPO" ~/.agent/journal/ -l 2>/dev/null | xargs rg "^\*\*Rule:\*\*" 2>/dev/null || true
+journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 Store the results as `RECALLED_PATTERNS` to pass to the subagent.

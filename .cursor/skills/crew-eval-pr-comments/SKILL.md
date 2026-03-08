@@ -18,11 +18,9 @@ If no branch context is provided (standalone suggestion), skip this step and wor
 
 ## Auto-recall
 
-If `journal-search` is available, search for patterns relevant to this repo before evaluating:
-
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-journal-search query "patterns and conventions for $REPO" --top 3 2>/dev/null || true
+journal-search auto-recall "$REPO" --top 3 2>/dev/null || true
 ```
 
 Apply any recalled rules silently during evaluation. If a recalled pattern conflicts with the suggestion, factor it into the verdict.

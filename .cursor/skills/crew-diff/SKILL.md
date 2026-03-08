@@ -13,8 +13,7 @@ Before scanning, load repo-specific patterns:
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-journal-search query "patterns and conventions for $REPO" --top 3 2>/dev/null || true
-rg "^\*\*Scope:\*\* $REPO" ~/.agent/journal/ -l 2>/dev/null | xargs rg "^\*\*Rule:\*\*" 2>/dev/null || true
+journal-search auto-recall "$REPO" --top 3 2>/dev/null || true
 ```
 
 Add any recalled rules to the Pattern Violations checklist below. For example, if a recalled pattern says "always use data-test-subj for test selectors", flag new components missing them.

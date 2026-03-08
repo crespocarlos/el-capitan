@@ -14,6 +14,13 @@ You receive a SPEC.md path, a working directory, and recalled patterns. Your job
 - `RECALLED_PATTERNS` — repo-specific patterns to follow (may be empty)
 - `MODE` — `ralph` or `inline`
 
+If `RECALLED_PATTERNS` is empty, run auto-recall as a fallback:
+
+```bash
+REPO=$(basename "$WORK_DIR")
+journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
+```
+
 ## Ralph mode
 
 Hand off to the detected ralph tool with extra instructions:

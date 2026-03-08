@@ -9,6 +9,8 @@ Usage:
     journal-search index                              # Index all entries
     journal-search add <file> --entry <date>          # Index a single entry
     journal-search query "<text>" [--top N]           # Search by meaning
+    journal-search summary                            # Overview of what's stored
+    journal-search auto-recall <repo> [--top N]       # Recall patterns for a repo
 """
 
 import argparse
@@ -128,7 +130,14 @@ def cmd_add(args):
     metadatas = [{"date": e["date"], "summary": e["summary"], "file": e["file"]} for e in entries]
 
     collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-    print(f"Indexed {len(entries)} entry(ies).")
+
+    stored = collection.get(ids=ids)
+    if len(stored["ids"]) != len(ids):
+        print(f"Verification failed: expected {len(ids)} entries, found {len(stored['ids'])} in store.", file=sys.stderr)
+        sys.exit(1)
+
+    for entry in entries:
+        print(f"Indexed: [{entry['date']}] {entry['summary']}")
 
 
 def cmd_query(args):
@@ -162,6 +171,134 @@ def cmd_query(args):
             print(f"  ... ({len(lines) - 15} more lines)")
 
 
+def cmd_summary(args):
+    """Print an overview of what's stored in the journal."""
+    if not JOURNAL_DIR.exists():
+        print(f"No journal directory at {JOURNAL_DIR}", file=sys.stderr)
+        sys.exit(1)
+
+    files = sorted(JOURNAL_DIR.glob("*.md"))
+    if not files:
+        print("No journal files found.")
+        return
+
+    all_entries = []
+    for f in files:
+        all_entries.extend(parse_entries(f))
+
+    if not all_entries:
+        print("No entries found.")
+        return
+
+    types = {}
+    tags = {}
+    repos = {}
+    dates = []
+
+    for entry in all_entries:
+        dates.append(entry["date"])
+        content = entry["content"]
+
+        type_match = re.search(r"\*\*Type:\*\*\s*(\w+)", content)
+        if type_match:
+            t = type_match.group(1)
+            types[t] = types.get(t, 0) + 1
+
+        for tag in re.findall(r"#([\w-]+)", content):
+            tags[tag] = tags.get(tag, 0) + 1
+
+        repo_match = re.search(r"\*\*Repo:\*\*\s*(\S+)", content)
+        if repo_match:
+            r = repo_match.group(1)
+            repos[r] = repos.get(r, 0) + 1
+
+    print(f"Journal: {len(all_entries)} entries across {len(files)} files")
+    print(f"Date range: {min(dates)} to {max(dates)}")
+    print()
+
+    if types:
+        print("By type:")
+        for t, count in sorted(types.items(), key=lambda x: -x[1]):
+            print(f"  {t}: {count}")
+        print()
+
+    if repos:
+        print("By repo:")
+        for r, count in sorted(repos.items(), key=lambda x: -x[1]):
+            print(f"  {r}: {count}")
+        print()
+
+    if tags:
+        top_tags = sorted(tags.items(), key=lambda x: -x[1])[:15]
+        print("Top tags:")
+        for tag, count in top_tags:
+            print(f"  #{tag}: {count}")
+        print()
+
+    print("Entries:")
+    for entry in all_entries:
+        print(f"  [{entry['date']}] {entry['summary']}")
+
+
+def cmd_auto_recall(args):
+    """Recall patterns and conventions for a specific repo."""
+    repo = args.repo
+    top = args.top
+
+    all_entries = []
+    if JOURNAL_DIR.exists():
+        for f in sorted(JOURNAL_DIR.glob("*.md")):
+            all_entries.extend(parse_entries(f))
+
+    if not all_entries:
+        print("No journal entries found.", file=sys.stderr)
+        sys.exit(1)
+
+    has_chromadb = False
+    try:
+        import chromadb  # noqa: F401
+        has_chromadb = True
+    except ImportError:
+        pass
+
+    if has_chromadb:
+        try:
+            collection = get_collection()
+            results = collection.query(
+                query_texts=[f"patterns and conventions for {repo}"],
+                n_results=top,
+            )
+            if results["ids"][0]:
+                for doc, metadata, distance in zip(
+                    results["documents"][0],
+                    results["metadatas"][0],
+                    results["distances"][0],
+                ):
+                    score = max(0, 1 - distance)
+                    if score >= 0.3:
+                        print(f"\n--- [{metadata['date']}] {metadata['summary']} (score: {score:.2f}) ---")
+                        lines = doc.strip().split("\n")
+                        for line in lines[:20]:
+                            print(line)
+                        if len(lines) > 20:
+                            print(f"... ({len(lines) - 20} more lines)")
+                return
+        except Exception:
+            pass
+
+    repo_entries = [e for e in all_entries if repo.lower() in e["content"].lower()]
+    if not repo_entries:
+        repo_entries = all_entries[-top:]
+
+    for entry in repo_entries[:top]:
+        print(f"\n--- [{entry['date']}] {entry['summary']} ---")
+        lines = entry["content"].strip().split("\n")
+        for line in lines[:20]:
+            print(line)
+        if len(lines) > 20:
+            print(f"... ({len(lines) - 20} more lines)")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Semantic search over journal entries")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -176,6 +313,12 @@ def main():
     query_parser.add_argument("text", help="Search query")
     query_parser.add_argument("--top", type=int, default=5, help="Number of results")
 
+    subparsers.add_parser("summary", help="Overview of what's stored in the journal")
+
+    recall_parser = subparsers.add_parser("auto-recall", help="Recall patterns for a repo")
+    recall_parser.add_argument("repo", help="Repository name")
+    recall_parser.add_argument("--top", type=int, default=5, help="Number of results")
+
     args = parser.parse_args()
 
     if args.command == "index":
@@ -184,6 +327,10 @@ def main():
         cmd_add(args)
     elif args.command == "query":
         cmd_query(args)
+    elif args.command == "summary":
+        cmd_summary(args)
+    elif args.command == "auto-recall":
+        cmd_auto_recall(args)
 
 
 if __name__ == "__main__":

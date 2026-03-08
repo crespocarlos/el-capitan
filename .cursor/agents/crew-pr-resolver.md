@@ -21,17 +21,9 @@ All subsequent steps (fetch threads, read code, make edits) happen in this workt
 
 ### Step 0.5: AUTO-RECALL — Load repo patterns
 
-If `journal-search` is available, search for patterns relevant to this repo:
-
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-journal-search query "patterns and conventions for $REPO" --top 5 2>/dev/null || true
-```
-
-Also search for `pattern` type entries scoped to this repo:
-
-```bash
-rg "^\*\*Scope:\*\* $REPO" ~/.agent/journal/ -l 2>/dev/null | xargs rg "^\*\*Rule:\*\*" 2>/dev/null || true
+journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 Apply any recalled rules silently during evaluation. If a recalled pattern is relevant to a review comment, factor it into the verdict.

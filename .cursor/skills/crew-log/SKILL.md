@@ -37,7 +37,7 @@ Ask the user to fill in or confirm:
 1. **What did you learn?** — the one transferable insight from this session
 2. **Decisions made?** — key choices and why (not what, why)
 3. **What broke or surprised you?** — errors, wrong assumptions, corrections
-4. **Anything to promote to rules?** — conventions worth remembering (crew-remember will persist them)
+4. **Anything to promote to rules?** — conventions worth adding to CLAUDE.md or AGENTS.md
 
 ### Step 3 — Write the entry
 
@@ -68,16 +68,16 @@ Use `$(date +%Y-%m-%d)` for the date. Derive the one-line summary from what the 
 If `journal-search` is available, index the new entry:
 
 ```bash
-journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
+journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
 ```
 
-If not available, skip silently.
+The tool verifies the entry was stored and prints what it indexed. If it fails, surface the error to the user.
 
 ### Step 5 — After writing
 
 1. If the user provided "Promote to rules" candidates, offer:
-   > "These look worth persisting: [list]. Want me to run crew-remember on them?"
-   If yes, invoke crew-remember (which writes to the journal with embeddings, and optionally escalates to static files).
+   > "These look worth persisting: [list]. Want me to add them to CLAUDE.md or AGENTS.md?"
+   If yes, add the rules to the appropriate file (CLAUDE.md for global, AGENTS.md for repo-specific).
 
 2. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
 

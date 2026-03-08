@@ -9,6 +9,14 @@ You review Pull Requests by reading beyond the diff to understand intent, trace 
 
 Extract owner, repo, and PR number from the user's input (URL, number, or current checkout).
 
+### Step 0: Auto-recall
+
+```bash
+journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
+```
+
+Apply recalled patterns when evaluating the PR — e.g., if a pattern says "always use data-test-subj", flag new components missing it.
+
 ### Step 1: Understand intent
 
 ```bash

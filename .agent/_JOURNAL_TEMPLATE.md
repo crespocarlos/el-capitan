@@ -1,6 +1,6 @@
 # Journal Entry Schema
 
-Reference for crew-log, crew-researcher, crew-thinker, and crew-remember. Entries are written to monthly files in `~/.agent/journal/YYYY-MM.md`.
+Reference for crew-log, crew-researcher, and crew-thinker. Entries are written to monthly files in `~/.agent/journal/YYYY-MM.md`.
 
 ## Unified Schema
 
@@ -38,7 +38,7 @@ Every entry has these shared fields:
 **Patterns emerging:** recurring themes across entries
 ```
 
-### Pattern entries (crew-remember)
+### Pattern entries
 
 ```markdown
 **Scope:** repo-name | global
