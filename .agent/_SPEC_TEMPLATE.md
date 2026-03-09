@@ -35,8 +35,16 @@ Baseline hygiene. Follow the repo's AGENTS.md (or equivalent contributing guide)
 
 - [ ] [Validation commands from AGENTS.md, scoped to affected package]
 
+## Design Constraints
+Structural rules the implementation must follow. Each constraint is verifiable by code inspection. The implementer checks these BEFORE marking tasks complete.
+
+- [ ] [Constraint about function responsibility boundaries — which functions/files should NOT grow]
+- [ ] [Constraint about API surface / return types — minimize fields, one array per consumer]
+- [ ] [Constraint about consistency with existing patterns — return values vs mutation, pure vs stateful]
+- [ ] [Constraint about deduplication — if two outputs share derived data, name the single function]
+
 ## Tasks
-Atomic units of work. Each task is independently verifiable. The last task is always quality gates.
+Atomic units of work, organized by architectural boundary (one new function/module per task, not by modification type). Each task is independently verifiable. The last task is always quality gates.
 
 - [ ] 1) [Task name]
   - **Change**: [What to do]

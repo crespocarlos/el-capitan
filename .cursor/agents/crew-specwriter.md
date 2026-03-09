@@ -49,7 +49,12 @@ Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
      - **Requirements**: infer from the ticket — what the change must achieve. State positive, observable outcomes. These are the real criteria.
      - **Non-regression**: existing behavior that must not break. These may be verified by code inspection rather than a CLI command — that's fine. Mention specific APIs, types, consumers, or behaviors that must be preserved.
      - **Quality gates**: read the repo's `AGENTS.md` (or equivalent contributing guide) and extract the prescribed validation commands. Scope them to the affected package — never run repo-wide checks. Do not invent quality gate commands; use exactly what the repo prescribes.
-   - **Tasks**: break the work into atomic units. Each task has **Change** (what to do), **Files** (which files), **Acceptance** (how to verify that task alone). An autonomous agent should be able to execute tasks sequentially without ambiguity. **The last task must always be "Run quality gates"** — this ensures the agent marks acceptance criteria checkboxes after verification rather than leaving them unchecked.
+   - **Design Constraints**: structural rules that prevent locally-correct but globally-incoherent decisions. Derive them by reading the existing code at every repo touchpoint and answering:
+     1. **Boundaries** — which functions/files should NOT grow? Where should new logic live?
+     2. **API surface** — what does the public return type look like? Minimize fields. One array per consumer.
+     3. **Patterns** — what patterns does the existing code use (return values vs mutation, pure vs stateful)? New code must match.
+     4. **Deduplication** — if two outputs need the same derived data, name the single function that computes it.
+   - **Tasks**: break the work into atomic units organized by **architectural boundary** (one new function/module per task), not by modification type. Each task has **Change** (what to do), **Files** (which files), **Acceptance** (how to verify that task alone). If a task says "modify X to also do Y," split it — X stays focused, Y gets its own task. **The last task must always be "Run quality gates"** — this ensures the agent marks acceptance criteria checkboxes after verification rather than leaving them unchecked.
    - **References**: file paths to canonical examples. Embed key patterns inline so the spec is self-contained — the agent shouldn't need to read 5 extra files to understand what pattern to follow.
 
 ### Step 4: Surface questions
