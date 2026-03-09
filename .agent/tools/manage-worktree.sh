@@ -4,8 +4,8 @@ set -euo pipefail
 # Manage git worktrees: resolve, create, and auto-prune.
 #
 # Usage:
-#   manage-worktree <branch>          # resolve existing or create from fetched remote
-#   manage-worktree -b <branch> <base> # create new branch from base (for crew-implement)
+#   manage-worktree.sh <branch>          # resolve existing or create from fetched remote
+#   manage-worktree.sh -b <branch> <base> # create new branch from base (for crew-implement)
 #
 # Output: prints the worktree path to stdout.
 # If already in the correct worktree, prints the current directory.
@@ -15,7 +15,7 @@ set -euo pipefail
 #   - Removes worktrees whose branches are merged into the default branch
 
 usage() {
-  echo "Usage: manage-worktree [-b] <branch> [base]" >&2
+  echo "Usage: manage-worktree.sh [-b] <branch> [base]" >&2
   exit 1
 }
 

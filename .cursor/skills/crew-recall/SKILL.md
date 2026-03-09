@@ -11,9 +11,9 @@ description: "Search journal entries by meaning or metadata. Trigger: 'crew reca
 
 Determine what the user wants:
 
-- **Overview** ("what do you know?", "what's stored?", "journal status") → run `journal-search summary`
-- **Repo patterns** ("what do you know about kibana?") → run `journal-search auto-recall <repo>`
-- **Specific question** ("how do retries work?", "what did I learn about worktrees?") → run `journal-search query "<text>"`
+- **Overview** ("what do you know?", "what's stored?", "journal status") → run `journal-search.py summary`
+- **Repo patterns** ("what do you know about kibana?") → run `journal-search.py auto-recall <repo>`
+- **Specific question** ("how do retries work?", "what did I learn about worktrees?") → run `journal-search.py query "<text>"`
 - **Filtered search** (by type, tag, date) → fall back to ripgrep
 
 Auto-detect repo scope if inside a repo:
@@ -26,17 +26,17 @@ REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "")
 
 **Overview:**
 ```bash
-journal-search summary
+journal-search.py summary
 ```
 
 **Repo patterns:**
 ```bash
-journal-search auto-recall "$REPO" --top 5
+journal-search.py auto-recall "$REPO" --top 5
 ```
 
 **Semantic search (preferred for questions):**
 ```bash
-journal-search query "<search text>" --top 5
+journal-search.py query "<search text>" --top 5
 ```
 
 **Structured search (fallback for metadata filters):**
@@ -60,7 +60,7 @@ If many results (>5), group by type and summarize themes. If nothing matches, sa
 
 ## Rules
 
-- Always use `journal-search` commands — don't read journal files sequentially
+- Always use `journal-search.py` commands — don't read journal files sequentially
 - Read `~/.agent/PROFILE.md` for context on what the user cares about
 - Present results concisely; the user wants answers, not raw entries
 - When inside a repo, bias toward that repo's entries unless the query is clearly cross-repo

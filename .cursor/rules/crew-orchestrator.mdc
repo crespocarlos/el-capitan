@@ -67,19 +67,37 @@ You appear at two gates: spec approval and merge decision.
 
 ## Task State
 
-Task files live at `~/.agent/tasks/<repo>/<branch>/`. Resolve automatically:
+Each task lives in its own slug directory under the branch:
+
+```
+~/.agent/tasks/<repo>/<branch>/<slug>/SPEC.md
+~/.agent/tasks/<repo>/<branch>/<slug>/PROGRESS.md
+~/.agent/tasks/<repo>/<branch>/<slug>/SESSION.md
+~/.agent/tasks/<repo>/<branch>/<slug>/REPORT.md
+```
+
+Resolve the branch directory, then find or create the task directory:
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel))
 BRANCH=$(git branch --show-current)
-TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
-mkdir -p $TASK_DIR
+BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
 ```
 
+**Creating a new task** (crew-specwriter): generate a slug from the spec title (lowercase, hyphen-separated, ~50 chars max), then `mkdir -p $BRANCH_DIR/<slug>`. Set `TASK_DIR=$BRANCH_DIR/<slug>`.
+
+**Finding an active task** (all other crew members):
+1. Scan `$BRANCH_DIR/*/SPEC.md` for specs
+2. Filter to non-DONE specs (status is not `done`)
+3. If exactly one → use its parent directory as `TASK_DIR`
+4. If multiple → present a choice (interactive crew) or use most recently modified (batch crew)
+5. If none found, check `$BRANCH_DIR/SPEC.md` (backward compat with old flat layout) → use `BRANCH_DIR` as `TASK_DIR`
+
 ### Before any task
-1. Read `$TASK_DIR/SPEC.md` if it exists
-2. Read `$TASK_DIR/PROGRESS.md` if resuming
-3. If no SPEC.md exists and the task is non-trivial, draft one using `~/.agent/_SPEC_TEMPLATE.md`
+1. Resolve `BRANCH_DIR` and find the active `TASK_DIR` using the pattern above
+2. Read `$TASK_DIR/SPEC.md` if it exists
+3. Read `$TASK_DIR/PROGRESS.md` if resuming
+4. If no SPEC.md exists and the task is non-trivial, draft one using `~/.agent/_SPEC_TEMPLATE.md`
 
 ### PROGRESS.md protocol
 
@@ -116,9 +134,10 @@ What to do next in one sentence.
 | `~/.agent/_JOURNAL_TEMPLATE.md` | Journal entry schema reference | — |
 | `~/.agent/PROFILE.md` | User context for agent personalization | you (manual) |
 | `~/.agent/journal/YYYY-MM.md` | Monthly journal entries (engineering, learning, patterns) | crew-log, crew-researcher, crew-thinker |
-| `~/.agent/tasks/<repo>/<branch>/SPEC.md` | Task specification | crew-specwriter |
-| `~/.agent/tasks/<repo>/<branch>/PROGRESS.md` | Task progress tracker | any agent during implementation |
-| `~/.agent/tasks/<repo>/<branch>/SESSION.md` | Auto-captured pipeline context | crew-specwriter, crew-implement, crew-open-pr, crew-pr-resolver |
+| `~/.agent/tasks/<repo>/<branch>/<slug>/SPEC.md` | Task specification | crew-specwriter |
+| `~/.agent/tasks/<repo>/<branch>/<slug>/PROGRESS.md` | Task progress tracker | any agent during implementation |
+| `~/.agent/tasks/<repo>/<branch>/<slug>/SESSION.md` | Auto-captured pipeline context | crew-specwriter, crew-implement, crew-open-pr, crew-pr-resolver |
+| `~/.agent/tasks/<repo>/<branch>/<slug>/REPORT.md` | Durable subagent completion report | crew-builder |
 
 ## Invariants
 

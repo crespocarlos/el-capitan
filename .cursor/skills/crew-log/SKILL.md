@@ -12,10 +12,17 @@ description: "Log an agentic engineering session to the journal. Trigger: 'crew 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
 BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
+BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
 MONTH=$(date +%Y-%m)
 JOURNAL_FILE=~/.agent/journal/$MONTH.md
 ```
+
+Resolve `TASK_DIR` by finding the active task under `$BRANCH_DIR`:
+1. Scan `$BRANCH_DIR/*/SPEC.md` — filter to non-DONE specs
+2. If exactly one → use its parent as `TASK_DIR`
+3. If multiple → use the most recently modified
+4. Backward compat: if `$BRANCH_DIR/SPEC.md` exists (old flat layout) → use `BRANCH_DIR` as `TASK_DIR`
+5. If none found → `TASK_DIR` is unset (no active task, skip SESSION.md)
 
 Read `$TASK_DIR/SESSION.md` if it exists — this contains auto-captured context from pipeline skills (crew-implement, crew-diff, crew-commit, crew-open-pr, crew-pr-resolver).
 
@@ -65,10 +72,10 @@ Use `$(date +%Y-%m-%d)` for the date. Derive the one-line summary from what the 
 
 ### Step 4: Index the entry
 
-If `journal-search` is available, index the new entry:
+If `journal-search.py` is available, index the new entry:
 
 ```bash
-journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
+journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
 ```
 
 The tool verifies the entry was stored and prints what it indexed. If it fails, surface the error to the user.

@@ -13,7 +13,13 @@ Run `git diff --staged --stat`. If nothing staged, run `git status --short` and 
 
 ### Step 2: Read the diff
 
-Read the full staged diff: `git diff --staged`. Read `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)/SPEC.md` if it exists (for intent context).
+Read the full staged diff: `git diff --staged`.
+
+For intent context, find the active SPEC.md:
+```bash
+BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+```
+Look for `$BRANCH_DIR/*/SPEC.md` (non-DONE specs, most recent first). Fall back to `$BRANCH_DIR/SPEC.md` (old flat layout). If found, read it for intent context.
 
 ## Commit Message Format
 

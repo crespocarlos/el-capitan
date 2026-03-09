@@ -14,9 +14,9 @@ Read the user profile for personalization:
 cat ~/.agent/PROFILE.md
 ```
 
-If `journal-search` is available, search for related past learnings:
+If `journal-search.py` is available, search for related past learnings:
 ```bash
-journal-search query "<topic being learned>" --top 3 2>/dev/null || true
+journal-search.py query "<topic being learned>" --top 3 2>/dev/null || true
 ```
 
 Use this context to tailor the teaching — skip what the user already knows, go deeper where they have existing knowledge, and connect new content to past learnings.
@@ -104,9 +104,9 @@ mkdir -p ~/.agent/journal
 **Open questions:** <from the teaching output>
 ```
 
-Index the entry if `journal-search` is available:
+Index the entry if `journal-search.py` is available:
 ```bash
-journal-search add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
+journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
 ```
 
 ### Offer creative pipeline

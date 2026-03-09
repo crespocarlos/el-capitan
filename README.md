@@ -120,7 +120,7 @@ Optional but powerful. Uses [Ollama](https://ollama.ai) + ChromaDB — everythin
 ```bash
 ollama pull nomic-embed-text
 pip install chromadb ollama
-journal-search index
+journal-search.py index
 ```
 
 Without these, everything works — `crew-recall` falls back to ripgrep.
@@ -140,14 +140,14 @@ All task data lives outside any repo at `~/.agent/`:
 
 ```
 ~/.agent/
-├── PROFILE.md              ← your context (optional, gitignored)
-├── journal/                ← monthly entries with embeddings
-├── vectorstore/            ← ChromaDB data (auto-created)
-├── tools/journal-search    ← semantic search CLI
-└── tasks/<repo>/<branch>/  ← SPEC.md, PROGRESS.md, SESSION.md
+├── PROFILE.md                        ← your context (optional, gitignored)
+├── journal/                          ← monthly entries with embeddings
+├── vectorstore/                      ← ChromaDB data (auto-created)
+├── tools/journal-search.py           ← semantic search CLI
+└── tasks/<repo>/<branch>/<slug>/     ← SPEC.md, PROGRESS.md, SESSION.md, REPORT.md
 ```
 
-Path resolved automatically from git state. Journal and profile are private — never tracked by git.
+Each task gets its own slug directory (e.g. `tasks/kibana/main/add-retry-logic/`). Multiple specs can coexist per branch — completed tasks stay alongside active ones. Path resolved automatically from git state. Journal and profile are private — never tracked by git.
 
 ## Prerequisites
 

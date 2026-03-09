@@ -13,16 +13,22 @@ Determine the task source:
 - If given a GitHub issue URL or number: fetch it with `gh issue view <number> --repo <repo> --json title,body,labels,comments`
 - If given a plain description: use it directly
 
-Determine task directory and load repo patterns:
+Resolve the branch directory and create a slug for this task:
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel))
 BRANCH=$(git branch --show-current)
-TASK_DIR=~/.agent/tasks/$REPO/$BRANCH
+BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+
+# Generate slug from issue title or description (lowercase, hyphens, ~50 chars max)
+SLUG=<slug-from-title>
+TASK_DIR=$BRANCH_DIR/$SLUG
 mkdir -p $TASK_DIR
 
-journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
+journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
+
+The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces and special characters replaced with hyphens, truncated to ~50 characters. Examples: "Add retry logic for async search" → `add-retry-logic-for-async-search`, "Convert evals to @kbn/evals format" → `convert-evals-to-kbn-evals-format`.
 
 ### Step 2: Explore the codebase
 

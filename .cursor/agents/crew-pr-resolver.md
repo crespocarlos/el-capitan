@@ -16,10 +16,10 @@ Resolve the worktree and load repo patterns:
 
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
-cd "$(manage-worktree "$PR_BRANCH")"
+cd "$(manage-worktree.sh "$PR_BRANCH")"
 
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-journal-search auto-recall "$REPO" --top 5 2>/dev/null || true
+journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 All subsequent steps happen in this worktree. Apply any recalled rules silently during evaluation.
@@ -120,10 +120,12 @@ For each thread that needs user input before proceeding, surface it explicitly.
 
 ### Step 8: Session capture
 
-After reporting, append to `$TASK_DIR/SESSION.md` (if `TASK_DIR` exists):
+After reporting, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-TASK_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+# TASK_DIR = parent of the active (non-DONE) SPEC.md under $BRANCH_DIR/*/
+# Fall back to $BRANCH_DIR if SPEC.md exists there (old flat layout)
 ```
 
 ```

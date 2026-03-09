@@ -34,7 +34,7 @@ TARGET_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
 
 Read these sources (in order of priority):
 
-1. **SPEC.md** — `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$BRANCH/SPEC.md` for goal, context, acceptance criteria
+1. **SPEC.md** — find the active spec under `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$BRANCH/*/SPEC.md` (non-DONE, most recent; fall back to `.../$BRANCH/SPEC.md` for old flat layout) for goal, context, acceptance criteria
 2. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
 3. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if the stat is small enough (<30 files)
 
@@ -73,10 +73,12 @@ Show the PR URL and a one-line summary.
 
 ## Session Capture
 
-After creating the PR, append to `$TASK_DIR/SESSION.md` (if `TASK_DIR` exists):
+After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-TASK_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+# TASK_DIR = parent of the active (non-DONE) SPEC.md under $BRANCH_DIR/*/
+# Fall back to $BRANCH_DIR if SPEC.md exists there (old flat layout)
 ```
 
 ```

@@ -11,10 +11,10 @@ If the suggestion references a PR or branch, resolve to the correct working dire
 
 ```bash
 BRANCH=<branch from PR or context>
-cd "$(manage-worktree "$BRANCH")"
+cd "$(manage-worktree.sh "$BRANCH")"
 
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-journal-search auto-recall "$REPO" --top 3 2>/dev/null || true
+journal-search.py auto-recall "$REPO" --top 3 2>/dev/null || true
 ```
 
 If no branch context is provided (standalone suggestion), skip worktree resolution and work in the current directory. Still run auto-recall.

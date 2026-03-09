@@ -34,8 +34,8 @@ ln -sf "$SCRIPT_DIR/.claude/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -sf "$SCRIPT_DIR/.agent/_SPEC_TEMPLATE.md" ~/.agent/_SPEC_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_JOURNAL_TEMPLATE.md" ~/.agent/_JOURNAL_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_PROFILE_TEMPLATE.md" ~/.agent/_PROFILE_TEMPLATE.md
-ln -sf "$SCRIPT_DIR/.agent/tools/journal-search" ~/.agent/tools/journal-search
-ln -sf "$SCRIPT_DIR/.agent/tools/manage-worktree.sh" ~/.agent/tools/manage-worktree
+ln -sf "$SCRIPT_DIR/.agent/tools/journal-search.py" ~/.agent/tools/journal-search.py
+ln -sf "$SCRIPT_DIR/.agent/tools/manage-worktree.sh" ~/.agent/tools/manage-worktree.sh
 ln -sf "$SCRIPT_DIR/.agent/tools/requirements.txt" ~/.agent/tools/requirements.txt
 
 # Create PROFILE.md from template if it doesn't exist (preserves existing profile on reinstall)
@@ -54,7 +54,7 @@ echo ""
 # Add tools to PATH hint
 if ! echo "$PATH" | grep -q "$HOME/.agent/tools"; then
   echo ""
-  echo "  Optional: add ~/.agent/tools to your PATH for journal-search and manage-worktree:"
+  echo "  Optional: add ~/.agent/tools to your PATH for journal-search.py and manage-worktree.sh:"
   echo "    export PATH=\"\$HOME/.agent/tools:\$PATH\""
 fi
 
@@ -62,7 +62,7 @@ fi
 if command -v ollama &>/dev/null && python3 -c "import chromadb" 2>/dev/null; then
   echo "  Semantic search: ready (ollama + chromadb found)"
 else
-  echo "  Semantic search: optional — install ollama + 'pip install chromadb' for journal-search"
+  echo "  Semantic search: optional — install ollama + 'pip install chromadb' for journal-search.py"
 fi
 
 echo ""
