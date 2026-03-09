@@ -55,7 +55,7 @@ If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you
 ### Step 3: Auto-recall
 
 ```bash
-journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 Store the results as `RECALLED_PATTERNS` to pass to the subagent.
@@ -71,7 +71,7 @@ DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}'
 git fetch origin "$DEFAULT_BRANCH"
 
 BRANCH_NAME=<type>/<short-description>
-cd "$(manage-worktree.sh -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
+cd "$(~/.agent/tools/manage-worktree.sh -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
 ```
 
 Use a conventional branch prefix based on the SPEC.md type:

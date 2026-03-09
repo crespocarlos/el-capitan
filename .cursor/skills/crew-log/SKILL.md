@@ -72,10 +72,10 @@ Use `$(date +%Y-%m-%d)` for the date. Derive the one-line summary from what the 
 
 ### Step 4: Index the entry
 
-If `journal-search.py` is available, index the new entry:
+If `~/.agent/tools/journal-search.py` is available, index the new entry:
 
 ```bash
-journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
+~/.agent/tools/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
 ```
 
 The tool verifies the entry was stored and prints what it indexed. If it fails, surface the error to the user.

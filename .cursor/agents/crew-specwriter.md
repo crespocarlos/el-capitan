@@ -25,7 +25,7 @@ SLUG=<slug-from-title>
 TASK_DIR=$BRANCH_DIR/$SLUG
 mkdir -p $TASK_DIR
 
-journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces and special characters replaced with hyphens, truncated to ~50 characters. Examples: "Add retry logic for async search" → `add-retry-logic-for-async-search`, "Convert evals to @kbn/evals format" → `convert-evals-to-kbn-evals-format`.

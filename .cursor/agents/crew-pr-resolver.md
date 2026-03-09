@@ -16,10 +16,10 @@ Resolve the worktree and load repo patterns:
 
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
-cd "$(manage-worktree.sh "$PR_BRANCH")"
+cd "$(~/.agent/tools/manage-worktree.sh "$PR_BRANCH")"
 
 REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 All subsequent steps happen in this worktree. Apply any recalled rules silently during evaluation.

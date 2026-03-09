@@ -31,9 +31,9 @@ Read recent journal entries for cross-session memory:
 ls ~/.agent/journal/*.md 2>/dev/null | tail -3 | xargs cat
 ```
 
-If `journal-search.py` is available, also run a semantic search for entries related to the current topic:
+If `~/.agent/tools/journal-search.py` is available, also run a semantic search for entries related to the current topic:
 ```bash
-journal-search.py query "<current topic>" --top 5 2>/dev/null || true
+~/.agent/tools/journal-search.py query "<current topic>" --top 5 2>/dev/null || true
 ```
 
 ## Step 2: Connect
@@ -150,9 +150,9 @@ ENTRY
 
 Replace placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date.
 
-After writing, index the entry if `journal-search.py` is available:
+After writing, index the entry if `~/.agent/tools/journal-search.py` is available:
 ```bash
-journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
+~/.agent/tools/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
 ```
 
 If "Patterns emerging" has flagged a theme 3+ times, note it:

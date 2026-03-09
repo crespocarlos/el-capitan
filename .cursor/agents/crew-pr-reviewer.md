@@ -12,7 +12,7 @@ Extract owner, repo, and PR number from the user's input (URL, number, or curren
 ### Step 1: Load context
 
 ```bash
-journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 Apply recalled patterns when evaluating the PR — e.g., if a pattern says "always use data-test-subj", flag new components missing it.

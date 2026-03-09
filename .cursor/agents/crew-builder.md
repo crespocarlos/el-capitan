@@ -18,7 +18,7 @@ If `RECALLED_PATTERNS` is empty, run auto-recall as a fallback:
 
 ```bash
 REPO=$(basename "$WORK_DIR")
-journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 ## Ralph mode

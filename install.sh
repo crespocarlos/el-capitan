@@ -51,13 +51,6 @@ echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc 
 echo "  Add-ons:  $(find ~/.cursor/agents -maxdepth 1 -name '*.md' ! -type l 2>/dev/null | wc -l | tr -d ' ') (local)"
 echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked)"
 echo ""
-# Add tools to PATH hint
-if ! echo "$PATH" | grep -q "$HOME/.agent/tools"; then
-  echo ""
-  echo "  Optional: add ~/.agent/tools to your PATH for journal-search.py and manage-worktree.sh:"
-  echo "    export PATH=\"\$HOME/.agent/tools:\$PATH\""
-fi
-
 # Check for semantic search dependencies (optional)
 if command -v ollama &>/dev/null && python3 -c "import chromadb" 2>/dev/null; then
   echo "  Semantic search: ready (ollama + chromadb found)"
