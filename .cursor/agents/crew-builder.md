@@ -23,16 +23,46 @@ journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 
 ## Ralph mode
 
-Hand off to the detected ralph tool with extra instructions:
+Detect the shell environment and generate rich instructions:
 
 ```bash
-cat > "$TASK_DIR/.ralph-instructions" <<'EOF'
-STOP after all tasks are checked and quality gates pass.
+NODE_VERSION=$(cat "$WORK_DIR/.nvmrc" 2>/dev/null || echo "")
+NVM_PREAMBLE=""
+if [ -n "$NODE_VERSION" ]; then
+  NVM_PREAMBLE="source ~/.nvm/nvm.sh && nvm use $NODE_VERSION &&"
+fi
+
+TASK_COUNT=$(awk '/^## Tasks$/,/^## [^T]/' "$TASK_DIR/SPEC.md" | grep -c '^\- \[ \]')
+MAX_RUNS=$(( (TASK_COUNT + 1) / 2 + 4 ))
+
+cat > "$TASK_DIR/.ralph-instructions" <<EOF
 Do NOT run git commit, git push, or gh pr create.
 Do NOT create or switch branches — the worktree and branch already exist.
-EOF
+Work directory: $WORK_DIR
 
-ralph run "$TASK_DIR/SPEC.md" --extra-instructions "$TASK_DIR/.ralph-instructions"
+## Shell environment
+Each iteration starts a fresh shell — nvm state does not persist.
+Before running any repo commands (yarn, node, npx, scripts/), prepend:
+  $NVM_PREAMBLE cd $WORK_DIR &&
+
+## Completion protocol
+1. Implement all unchecked items under ## Tasks. Mark each [x] when done.
+2. After all ## Tasks are [x], run every quality gate command from ## Acceptance Criteria > Quality gates. Mark each passing gate [x].
+3. Review each requirement under ## Acceptance Criteria > Requirements — mark [x] if satisfied.
+4. Review each item under ## Acceptance Criteria > Non-regression — mark [x] if verified.
+5. Only then set ## Status to done.
+
+## Already-done guard
+If ## Status is already done AND all checkboxes in the spec are [x], EXIT immediately. Do not re-run anything.
+EOF
+```
+
+Launch ralph with an explicit iteration budget based on actual task count:
+
+```bash
+ralph run "$TASK_DIR/SPEC.md" \
+  --extra-instructions "$TASK_DIR/.ralph-instructions" \
+  --max-runs "$MAX_RUNS"
 ```
 
 Run ralph and wait for it to exit. Ralph is done when the process terminates (exit code 0 = success).
