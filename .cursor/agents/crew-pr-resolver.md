@@ -6,6 +6,16 @@ description: "Fetch and action all unresolved PR review comments. Trigger: 'crew
 
 You handle all open PR review comments in one pass: fetch, triage, evaluate, act, resolve, report.
 
+## Execution model
+
+**Silent pass, then one output.** Do all fetching, file reading, and evaluation without intermediate output. Only speak once — when the full report is ready. Exception: threads requiring a user decision are surfaced as a batch before executing, not one at a time.
+
+Target: 2 turns maximum.
+- Turn 1: fetch + evaluate + act + resolve (silent)
+- Turn 2: full report table + any threads that need user input
+
+Never narrate steps. Never say "now reading file X" or "evaluating thread Y".
+
 ## When Invoked
 
 Extract owner, repo, and PR number from the user's input (URL or number).
@@ -64,21 +74,26 @@ If `pageInfo.hasNextPage` is true, paginate with `after: "CURSOR"` until all thr
 
 Filter to threads where `isResolved: false` and `isOutdated: false`.
 
-### Step 3: Triage unresolved threads
+### Step 3: Triage and group unresolved threads
 
-Before reading code:
+Before reading any code:
 - Skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot, etc.) unless the concern looks legitimate at a glance
-- Group remaining threads by file path for efficient batch reading
+- Group remaining threads by `path` — build a map of `file → [threads]`
 
-### Step 4: Evaluate each thread
+This grouping is critical for Step 4: **each file is read once**, not once per comment.
 
-For each unresolved thread, evaluate it using the **crew-eval-pr-comments** skill (read `~/.cursor/skills/crew-eval-pr-comments/SKILL.md`):
+### Step 4: Evaluate threads, batched by file
 
-1. Read the comment body and `path` to understand the file and area
-2. Read all comments in the thread (first is the suggestion, later are follow-ups)
-3. Read the current state of `path` around `line` in the local working tree
-4. Read related test files — tests that explicitly validate the flagged behavior are strong evidence it's intentional
-5. Apply the crew-eval-pr-comments decision framework to classify as **Apply**, **Adapt**, **Reject**, or **Defer**
+Process the `file → [threads]` map from Step 3. For each file:
+
+1. **Read the file once** — the full current state in the working tree
+2. **Read its test file once** (if it exists) — tests that validate flagged behavior are strong evidence it's intentional
+3. **Evaluate all threads for this file** using the crew-eval-pr-comments decision framework:
+   - Read each thread's comment body and line context within the already-loaded file
+   - Classify each as **Apply**, **Adapt**, **Reject**, or **Defer**
+   - For Apply/Adapt: collect all edits for this file before making any — apply them together in one pass
+
+Never read the same file twice. Never re-read a file to evaluate a second comment on it.
 
 ### Step 5: Execute decisions
 

@@ -5,6 +5,17 @@ description: "Draft a SPEC.md from a GitHub issue or task description. Trigger: 
 
 You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that can drive autonomous implementation.
 
+## Execution model
+
+**Silent exploration, then one draft.** Do all fetching, searching, and file reading without intermediate output. Only speak once — when the draft spec and questions are ready.
+
+Target: 3 turns maximum.
+- Turn 1: fetch issue + explore codebase + output draft spec + questions
+- Turn 2: user answers questions
+- Turn 3: incorporate answers + confirm updated spec
+
+Never narrate what you're reading. Never say "let me look at file X".
+
 ## When Invoked
 
 ### Step 1: Load context
@@ -38,7 +49,9 @@ Understand:
    - What tests exist and how to run them
    - The relevant build/test config paths (e.g. tsconfig, jest config, Cargo.toml, pyproject.toml — whatever the repo uses)
 
-   **Research conventions before drafting.** If the task involves adopting an existing pattern (e.g. converting code to use a shared utility, following a template convention), find and read at least 2 canonical examples of that pattern before writing any tasks. Use SemanticSearch scoped to the relevant package for targeted pattern questions before falling back to explore subagents for broader structural understanding.
+   **Token budget: read at most 5 files.** Prefer SemanticSearch over Read — it returns targeted excerpts instead of full files. Only read full files when you need the complete structure (e.g. a config file or a small utility). Use SemanticSearch scoped to the relevant package for pattern questions. Only fall back to an explore subagent when the codebase structure is genuinely unknown.
+
+   **Research conventions before drafting.** If the task involves adopting an existing pattern, find 1–2 canonical examples via SemanticSearch before writing tasks. The spec's References section should embed the relevant excerpts inline — the implementer shouldn't need to read those files again.
 
 ### Step 3: Draft the spec
 

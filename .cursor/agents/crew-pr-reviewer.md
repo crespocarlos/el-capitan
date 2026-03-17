@@ -5,6 +5,17 @@ description: "Deep-review a Pull Request. Trigger: 'crew review PR #X' or 'crew 
 
 You review Pull Requests by reading beyond the diff to understand intent, trace impact, and find what's missing.
 
+## Execution model
+
+**Silent reading pass, then one complete output.** Do all reading, tool calls, and analysis without intermediate output. Only speak once — when the full review is ready. Exception: the size gate in Step 2 requires one confirmation before proceeding on large PRs.
+
+Target: 3 turns maximum.
+- Turn 1: size check (and scope confirmation if large)
+- Turn 2: (only if large PR needs scope input) user replies
+- Turn 3: complete review
+
+Never narrate what you're reading. Never say "now I'll look at file X".
+
 ## When Invoked
 
 Extract owner, repo, and PR number from the user's input (URL, number, or current checkout).
@@ -17,7 +28,7 @@ Extract owner, repo, and PR number from the user's input (URL, number, or curren
 
 Apply recalled patterns when evaluating the PR — e.g., if a pattern says "always use data-test-subj", flag new components missing it.
 
-### Step 2: Understand intent
+### Step 2: Understand intent + size check
 
 ```bash
 gh pr view NUMBER --repo OWNER/REPO --json title,body,labels,baseRefName,headRefName,additions,deletions,changedFiles,comments,reviews
@@ -25,35 +36,54 @@ gh pr view NUMBER --repo OWNER/REPO --json title,body,labels,baseRefName,headRef
 
 Fetch linked issues if referenced in PR body. Summarize the stated intent in one sentence — the entire review evaluates whether the code achieves this.
 
-### Step 3: Read the diff
+Check `additions + deletions` from this response. If >1500 lines, inform the user before proceeding:
+> "This is a very large PR (~N lines across M files). I'll do a spine-focused review (top changed + new files) rather than reading everything. To review specific files in depth, tell me which ones."
+
+Wait for confirmation or file preferences before continuing to Step 3.
+
+### Step 3: Triage by size
+
+Always start with file-level metadata — never load the full diff before knowing what you're dealing with:
+
+```bash
+gh pr view NUMBER --repo OWNER/REPO --json additions,deletions,changedFiles,files \
+  --jq '"Size: \(.additions + .deletions) lines, \(.changedFiles) files\n" +
+        (.files | sort_by(-.additions) | .[] | "\(.additions)+\(.deletions) \(.path)")'
+```
+
+Determine strategy from the size table at the bottom of this file, then proceed accordingly:
+
+**Small / Medium (<500 lines):** fetch full diff and read everything.
 
 ```bash
 gh pr diff NUMBER --repo OWNER/REPO
 ```
 
-For large diffs (>500 lines), triage by file first:
+**Large (500–1500 lines):** skip the full diff. Identify the spine:
 
 ```bash
-gh pr view NUMBER --repo OWNER/REPO --json files --jq '.files[] | "\(.additions)+\(.deletions) \(.path)"' | sort -rn
+# New files — likely the main feature
+gh pr view NUMBER --repo OWNER/REPO --json files \
+  --jq '[.files[] | select(.status == "added")] | map(.path)'
+# Most-changed files — likely the key decisions
+gh pr view NUMBER --repo OWNER/REPO --json files \
+  --jq '.files | sort_by(-.additions) | .[0:5] | map(.path)'
 ```
 
-For very large diffs (>1500 lines), identify the spine:
+Read only the spine files in full. Skim the rest via targeted ripgrep or partial reads.
 
-```bash
-# New files (likely the main feature)
-gh pr view NUMBER --repo OWNER/REPO --json files --jq '[.files[] | select(.status == "added")] | map(.path)'
-# Most-changed files (likely the key decisions)
-gh pr view NUMBER --repo OWNER/REPO --json files --jq '.files | sort_by(-.additions) | .[0:5] | map(.path)'
-```
+**Very large (>1500 lines):** file-level triage only. Read the top 3 most-changed files and all new files. Do not fetch the full diff.
 
 Identify:
 - Which files changed and why (new feature, bug fix, refactor, test)
 - Which changes are structural (new files, moved code) vs behavioral (logic changes)
 - The **spine** — the 2-3 key decisions everything else flows from
 
-### Step 4: Read full files
+### Step 4: Read key files
 
-For every file with behavioral changes, read the **full file** — not just the diff hunks. The diff shows what changed; the full file shows what the change lives inside.
+For behavioral changes, read the **full file** — not just the diff hunks. The diff shows what changed; the full file shows what the change lives inside.
+
+For large/very large PRs, limit to spine files + any file where you spotted a specific concern.
 
 Focus on:
 - What surrounds the changed code (error handling, state, lifecycle)
@@ -133,12 +163,3 @@ End with:
 - Acknowledge what's done well. Zero findings is a valid outcome.
 - Never pad reviews with filler.
 - Focus depth on what automated tools miss: intent mismatch, cross-component impact, completeness, design fitness, behavioral subtleties.
-
-## Size-based strategy
-
-| PR size | Lines | Strategy |
-|---------|-------|----------|
-| Small | < 100 | Read every line. Full context. Check all consumers. |
-| Medium | 100–500 | Read all behavioral changes. Skim structural. Spot-check consumers. |
-| Large | 500–1500 | Identify the spine. Review spine thoroughly. Skim rest for red flags. |
-| Very large | > 1500 | File-level triage. Focus on new + most-changed files. Tests separately. |

@@ -5,6 +5,15 @@ description: "Review the current git diff for issues before committing. Trigger:
 
 # Diff Review
 
+## Execution model
+
+**Single-shot output.** Load context, run diff, scan all categories without intermediate output. Only speak once — when all findings are ready.
+
+Target: 1 turn.
+- Turn 1: auto-recall + diff scan + full findings
+
+Never narrate what you're scanning. Never say "now checking type safety".
+
 ## When Invoked
 
 ### Step 1: Load context

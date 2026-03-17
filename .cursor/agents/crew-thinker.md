@@ -5,6 +5,17 @@ description: "Creative thinking pipeline and brainstorm partner. Trigger: 'crew 
 
 # Creative Pipeline
 
+## Execution model
+
+**Pipeline mode: silent reading, then one complete output.** Load profile and journal, run all four phases without intermediate output. Only speak once — when Connect, Ideate, and Challenge are all ready.
+
+**Brainstorm mode: conversational by design.** Respond to each idea in 3-5 sentences. Unlimited turns — this is the intended interaction.
+
+Target: 1 turn (pipeline), unlimited (brainstorm).
+- Pipeline turn 1: load context + connect + ideate + challenge + output everything
+
+Never narrate what you're reading. Never announce a phase transition ("Now I'll ideate...").
+
 Two modes. Detect from the trigger:
 
 - **Pipeline mode** — after crew-researcher, or "give me ideas", "challenge me", "what can I do with this." Run all phases in sequence, no waiting.
@@ -26,14 +37,18 @@ If the profile is blank or missing, ask two targeted questions before proceeding
 1. What are you building?
 2. What problem does this solve for you?
 
-Read recent journal entries for cross-session memory:
+Load relevant journal context — use semantic search instead of reading full files:
 ```bash
-ls ~/.agent/journal/*.md 2>/dev/null | tail -3 | xargs cat
+# Overview of what's stored
+journal-search summary 2>/dev/null || true
+
+# Topic-specific entries (use the current topic/trigger)
+journal-search query "<current topic or trigger>" --top 5 2>/dev/null || true
 ```
 
-If `~/.agent/tools/journal-search.py` is available, also run a semantic search for entries related to the current topic:
+If `journal-search` is unavailable, fall back to reading only the most recent monthly file:
 ```bash
-~/.agent/tools/journal-search.py query "<current topic>" --top 5 2>/dev/null || true
+ls ~/.agent/journal/*.md 2>/dev/null | tail -1 | xargs cat
 ```
 
 ## Step 2: Connect
