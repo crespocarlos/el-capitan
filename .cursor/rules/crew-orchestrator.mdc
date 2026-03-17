@@ -1,82 +1,36 @@
 ---
-description: "el-capitan — personal agentic engineering system. Routes triggers to the right crew member and defines how task state, specs, and progress are managed."
+description: "el-capitan orchestrator — routes crew triggers to the right skill or agent."
 alwaysApply: true
 ---
 
 # el-capitan
 
-You are the orchestrator. Delegate to the right crew member for every task.
+Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew` (or `@crew-researcher`), respond normally — no routing.
 
-## Core Crew
+## Routing table
 
-These ship with el-capitan.
+| Trigger | Crew member |
+|---|---|
+| `crew spec` issue/URL/description | crew-specwriter |
+| `crew implement` | crew-implement → @crew-builder |
+| `crew diff` | crew-diff |
+| `crew commit` | crew-commit |
+| `crew open pr` | crew-open-pr |
+| `crew review PR` #X or URL | crew-pr-reviewer |
+| `crew address PR` #X or URL | crew-pr-resolver |
+| `crew eval`: suggestion | crew-eval-pr-comments |
+| `crew log` | crew-log |
+| `crew recall`: question | crew-recall |
+| `crew brainstorm` or + topic | crew-thinker |
+| `crew learn` X or URL | crew-route-learn rule → @crew-researcher or @crew-thinker |
 
-| Trigger | Crew Member | Type |
-|---|---|---|
-| **crew spec** issue #X or URL | crew-specwriter | subagent |
-| **crew implement** | crew-implement → @crew-builder | skill + subagent |
-| **crew diff** | crew-diff | skill |
-| **crew commit** | crew-commit | skill |
-| **crew open pr** | crew-open-pr | skill |
-| **crew review PR** #X or URL | crew-pr-reviewer | subagent |
-| **crew address PR** #X or URL | crew-pr-resolver | subagent |
-| **crew eval**: suggestion | crew-eval-pr-comments | skill |
-| **crew log** | crew-log | skill |
-| **crew recall**: question | crew-recall | skill |
-| **crew brainstorm** or + topic | crew-thinker | subagent |
-| **crew learn** X or @crew-researcher | crew-learn rule → @crew-researcher or @crew-thinker | rule + subagents |
-
-### Overlapping crew — when to use which
-
-**Three PR crew members — different directions of review**:
-- **crew-pr-reviewer**: you review *someone else's* PR. Deep analysis: reads full files, traces impact, verifies tests, produces a structured review with findings by severity.
-- **crew-pr-resolver**: someone reviewed *your* PR. Fetches all unresolved threads and processes them in batch — applying, adapting, rejecting, or deferring each one.
-- **crew-eval-pr-comments**: the evaluation framework crew-pr-resolver uses per-comment. Also used standalone via `crew eval`.
-
-**crew-log vs crew-thinker**: crew-log *records* an engineering session (what you did, what broke, what you learned). crew-thinker *generates ideas* from learning content. Both write to monthly journal files in `~/.agent/journal/` using a unified schema with shared fields (Type, Tags, What I learned, Connections, Open questions). crew-log adds engineering-specific fields (Repo, Branch, Files, Decisions). crew-thinker adds learning-specific fields (Source, Key idea, Experiments, Patterns). Use crew-log to log work. Use crew-thinker after crew-researcher to ideate.
-
-**crew-learn rule vs crew-researcher agent**: The `crew-route-learn.mdc` rule is a lightweight router that decides whether to invoke @crew-researcher or @crew-thinker based on user intent. The `crew-researcher.md` agent does the actual content fetching and teaching. The rule exists because Cursor needs a rule to trigger conditional routing — the agent can't route to itself.
+**This table is authoritative.** Do not override it with judgment calls.
 
 ## Add-ons
 
-Add-ons are skills or subagents that live directly in `~/.cursor/agents/` or `~/.cursor/skills/` without being part of el-capitan. They are work-specific, internal, or experimental.
+Skills/agents in `~/.cursor/` that are regular files (not symlinks) are add-ons. Route to them by matching the user's trigger to their description frontmatter.
 
-To discover available add-ons, list files in `~/.cursor/agents/` and `~/.cursor/skills/` that are NOT symlinks (real files = add-ons, symlinks = el-capitan core):
-
-```bash
-find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -type f -name '*.md' ! -type l
-```
-
-Route to add-ons the same way as core crew — match the user's trigger to the add-on's description.
-
-## Pipeline
-
-```
-crew-specwriter → [YOU approve] → crew-implement → crew-diff → crew-commit → crew-open-pr → [review cycle] → [YOU merge]
-```
-
-The review cycle is async: after crew-open-pr, reviewers comment (minutes to days later), you run crew-pr-resolver, more comments arrive, you run crew-pr-resolver again, etc. It repeats until the PR is ready to merge.
-
-You appear at two gates: spec approval and merge decision.
-
-### When a gate fails
-
-- **Spec rejected**: revise the SPEC.md based on feedback and re-present for approval. Don't start implementing.
-- **Diff check finds issues**: fix the flagged issues, then re-run crew-diff. Don't proceed to crew-commit until clean.
-- **PR comments need user input**: surface the threads that need a decision, wait for the user, then resume processing.
-
-## Task State
-
-Each task lives in its own slug directory under the branch:
-
-```
-~/.agent/tasks/<repo>/<branch>/<slug>/SPEC.md
-~/.agent/tasks/<repo>/<branch>/<slug>/PROGRESS.md
-~/.agent/tasks/<repo>/<branch>/<slug>/SESSION.md
-~/.agent/tasks/<repo>/<branch>/<slug>/REPORT.md
-```
-
-Resolve the branch directory, then find or create the task directory:
+## Task state
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel))
@@ -84,67 +38,23 @@ BRANCH=$(git branch --show-current)
 BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
 ```
 
-**Creating a new task** (crew-specwriter): generate a slug from the spec title (lowercase, hyphen-separated, ~50 chars max), then `mkdir -p $BRANCH_DIR/<slug>`. Set `TASK_DIR=$BRANCH_DIR/<slug>`.
+Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-DONE one. If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
 
-**Finding an active task** (all other crew members):
-1. Scan `$BRANCH_DIR/*/SPEC.md` for specs
-2. Filter to non-DONE specs (status is not `done`)
-3. If exactly one → use its parent directory as `TASK_DIR`
-4. If multiple → present a choice (interactive crew) or use most recently modified (batch crew)
-5. If none found, check `$BRANCH_DIR/SPEC.md` (backward compat with old flat layout) → use `BRANCH_DIR` as `TASK_DIR`
+## Pipeline
 
-### Before any task
-1. Resolve `BRANCH_DIR` and find the active `TASK_DIR` using the pattern above
-2. Read `$TASK_DIR/SPEC.md` if it exists
-3. Read `$TASK_DIR/PROGRESS.md` if resuming
-4. If no SPEC.md exists and the task is non-trivial, draft one using `~/.agent/_SPEC_TEMPLATE.md`
-
-### PROGRESS.md protocol
-
-Statuses: `DRAFTING` | `APPROVED` | `IMPLEMENTING` | `DIFF_CHECK` | `COMMITTING` | `PR_OPEN` | `PR_RESOLVE` | `DONE`
-
-`PR_RESOLVE` can repeat — after resolving a round of comments, status returns to `PR_OPEN` until the next round arrives or the PR is merged.
-
-Update after every meaningful step:
-
-```markdown
-## Status: IMPLEMENTING
-## Phase: spec → crew-implement → diff-check → commit → pr-open → [review cycle] → done
-## Current: implement
-## Next: diff-check
-
-## Done
-- [x] completed item
-
-## In Progress
-- [ ] current item
-
-## Blockers
-- (none)
-
-## Next Step
-What to do next in one sentence.
+```
+crew-specwriter → [YOU approve] → crew-implement → crew-diff → crew-commit → crew-open-pr → [review cycle] → [YOU merge]
 ```
 
-## Persistent State
+Gate failures: spec rejected → revise and re-present. Diff issues → fix and re-run crew-diff. PR comments need input → surface to user and wait.
 
-| File | Purpose | Written by |
-|------|---------|------------|
-| `~/.agent/_SPEC_TEMPLATE.md` | Reusable spec starting point | you (manual) |
-| `~/.agent/_JOURNAL_TEMPLATE.md` | Journal entry schema reference | — |
-| `~/.agent/PROFILE.md` | User context for agent personalization | you (manual) |
-| `~/.agent/journal/YYYY-MM.md` | Monthly journal entries (engineering, learning, patterns) | crew-log, crew-researcher, crew-thinker |
-| `~/.agent/tasks/<repo>/<branch>/<slug>/SPEC.md` | Task specification | crew-specwriter |
-| `~/.agent/tasks/<repo>/<branch>/<slug>/PROGRESS.md` | Task progress tracker | any agent during implementation |
-| `~/.agent/tasks/<repo>/<branch>/<slug>/SESSION.md` | Auto-captured pipeline context | crew-specwriter, crew-implement, crew-open-pr, crew-pr-resolver |
-| `~/.agent/tasks/<repo>/<branch>/<slug>/REPORT.md` | Durable subagent completion report | crew-builder |
+## PROGRESS.md statuses
+
+`DRAFTING` → `APPROVED` → `IMPLEMENTING` → `DIFF_CHECK` → `COMMITTING` → `PR_OPEN` → `PR_RESOLVE` → `DONE`
 
 ## Invariants
 
-- **Explicit routing only.** All triggers start with `crew`. If a message doesn't start with `crew` (or use `@crew-researcher`), don't route — respond normally. No guessing, no "did you mean...?"
-- Never start implementation without a SPEC.md
-- Always update PROGRESS.md as work proceeds
+- Explicit routing only — `crew` prefix required
+- Never start implementation without SPEC.md
 - Done = acceptance criteria pass, not "looks right"
-- Quality gates come from the repo's AGENTS.md, scoped to the affected package
-- Journal entries go to `~/.agent/journal/YYYY-MM.md`, never edited after writing
-- SESSION.md is a buffer — flushed to journal on "journal" trigger, then cleared
+- Quality gates from repo's AGENTS.md, scoped to the affected package
