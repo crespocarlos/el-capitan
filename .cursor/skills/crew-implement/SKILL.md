@@ -117,12 +117,14 @@ which ralph 2>/dev/null || which ralph.sh 2>/dev/null
 
 If found and the user didn't say "implement inline", set `MODE=ralph`. Otherwise `MODE=inline`.
 
-Launch the `@crew-builder` subagent with:
+**Read the `@crew-builder` agent now.** It contains the full protocol for both ralph and inline modes. Launch the `@crew-builder` subagent following that protocol, passing:
 - `TASK_DIR` — the resolved task directory path
 - `WORK_DIR` — the worktree or repo directory
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
 - `MODE` — `ralph` or `inline`
 - The full contents of `SPEC.md` (so the subagent has it without needing to re-read)
+
+Do NOT skip ralph when `MODE=ralph`. If ralph is detected, the subagent MUST use it — falling back to inline implementation is not acceptable unless ralph fails to start.
 
 ### Step 7: Handle results
 
