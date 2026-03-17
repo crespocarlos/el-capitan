@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "Installing el-capitan — personal agentic engineering orchestrator"
 echo "  Source: $SCRIPT_DIR"
 
-mkdir -p ~/.claude ~/.cursor/rules ~/.cursor/skills ~/.cursor/agents ~/.agent/tasks ~/.agent/journal ~/.agent/tools
+mkdir -p ~/.claude ~/.cursor/rules ~/.cursor/skills ~/.cursor/agents ~/.claude/skills ~/.claude/agents ~/.agent/tasks ~/.agent/journal ~/.agent/tools
 
 for f in "$SCRIPT_DIR"/.cursor/rules/*.mdc; do
   ln -sf "$f" ~/.cursor/rules/$(basename "$f")
@@ -14,17 +14,20 @@ done
 
 for f in "$SCRIPT_DIR"/.cursor/agents/*.md; do
   ln -sf "$f" ~/.cursor/agents/$(basename "$f")
+  ln -sf "$f" ~/.claude/agents/$(basename "$f")
 done
 
 for d in "$SCRIPT_DIR"/.cursor/skills/*/; do
   name=$(basename "$d")
-  mkdir -p ~/.cursor/skills/$name
+  mkdir -p ~/.cursor/skills/$name ~/.claude/skills/$name
   ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.cursor/skills/$name/SKILL.md
+  ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.claude/skills/$name/SKILL.md
   # Symlink reference files if the skill has a references/ directory
   if [ -d "$SCRIPT_DIR/.cursor/skills/$name/references" ]; then
-    mkdir -p ~/.cursor/skills/$name/references
+    mkdir -p ~/.cursor/skills/$name/references ~/.claude/skills/$name/references
     for ref in "$SCRIPT_DIR/.cursor/skills/$name/references/"*; do
       ln -sf "$ref" ~/.cursor/skills/$name/references/$(basename "$ref")
+      ln -sf "$ref" ~/.claude/skills/$name/references/$(basename "$ref")
     done
   fi
 done
@@ -46,10 +49,10 @@ fi
 
 echo ""
 echo "Done. Installed:"
-echo "  Rules:    $(ls ~/.cursor/rules/*.mdc 2>/dev/null | wc -l | tr -d ' ') (symlinked)"
-echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc -l | tr -d ' ') core (symlinked)"
+echo "  Rules:    $(ls ~/.cursor/rules/*.mdc 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/rules)"
+echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc -l | tr -d ' ') core (symlinked → ~/.cursor/agents + ~/.claude/agents)"
 echo "  Add-ons:  $(find ~/.cursor/agents -maxdepth 1 -name '*.md' ! -type l 2>/dev/null | wc -l | tr -d ' ') (local)"
-echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked)"
+echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/skills + ~/.claude/skills)"
 echo ""
 # Check for semantic search dependencies (optional)
 if command -v ollama &>/dev/null && python3 -c "import chromadb" 2>/dev/null; then
