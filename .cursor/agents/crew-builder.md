@@ -85,24 +85,28 @@ After ralph exits:
 
 ## Inline mode
 
-**First: change into the working directory.** Every shell command — verifications, quality gates, lints — must run from `WORK_DIR`, not the repo root.
+**First: anchor to the working directory.** `WORK_DIR` is the absolute path provided in the inputs (e.g. `/Users/you/kibana-feature/feature-xyz`). It is not a shell variable — substitute the literal value everywhere.
+
+Run this to confirm you are in the right place before touching anything:
 
 ```bash
-cd "$WORK_DIR"
+cd <WORK_DIR literal value> && pwd
 ```
 
-Confirm you are in the right directory before touching any files or running any commands. If `WORK_DIR` is a worktree, this ensures changes land on the feature branch, not `main`.
+The output of `pwd` must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
+
+**All file operations must use absolute paths rooted at `WORK_DIR`.** This applies to both shell commands and file editing tools (Read, Write, StrReplace). Never use relative paths or paths rooted at the original repo. If a task says "edit `src/foo.ts`", the path you read and write is `<WORK_DIR>/src/foo.ts`.
 
 For each unchecked task in SPEC.md, in order:
 
 1. **Read the task** — understand what to change, which files, and the acceptance check.
-2. **Read related code** — open the target files and understand context before editing.
-3. **Implement** — make the changes described in the task. Apply any recalled patterns silently.
-4. **Verify** — run the task's acceptance check command from `WORK_DIR`. If it fails, fix and re-run. After 3 failed attempts, mark the task as failed and move to the next.
+2. **Read related code** — read `<WORK_DIR>/path/to/file`, not `path/to/file`.
+3. **Implement** — edit `<WORK_DIR>/path/to/file`. Apply any recalled patterns silently.
+4. **Verify** — run the task's acceptance check from `WORK_DIR`: `cd <WORK_DIR> && <command>`. If it fails, fix and re-run. After 3 failed attempts, mark the task as failed and move to the next.
 5. **Mark done** — check off the task in SPEC.md (`- [x]`).
 6. **Update PROGRESS.md** — move the task from "In Progress" to "Done", advance to the next task.
 
-After all tasks, run the quality gates from SPEC.md (the commands under "Quality gates") — always from `WORK_DIR`. These are typically scoped lint/typecheck/test commands from the repo's AGENTS.md.
+After all tasks, run the quality gates from SPEC.md — always as `cd <WORK_DIR> && <gate command>`. Never run quality gates from the original repo root.
 
 ## Report
 

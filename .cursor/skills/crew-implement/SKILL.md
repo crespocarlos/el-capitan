@@ -118,8 +118,8 @@ which ralph 2>/dev/null || which ralph.sh 2>/dev/null
 If found and the user didn't say "implement inline", set `MODE=ralph`. Otherwise `MODE=inline`.
 
 **Read the `@crew-builder` agent now.** It contains the full protocol for both ralph and inline modes. Launch the `@crew-builder` subagent following that protocol, passing:
-- `TASK_DIR` — the resolved task directory path
-- `WORK_DIR` — the worktree or repo directory
+- `TASK_DIR` — the resolved task directory path (absolute)
+- `WORK_DIR` — the worktree or repo directory (absolute path, e.g. `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and shell commands must run. It is not a shell variable — pass the literal path.
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
 - `MODE` — `ralph` or `inline`
 - The full contents of `SPEC.md` (so the subagent has it without needing to re-read)
