@@ -19,7 +19,7 @@ Never narrate task progress. Never say "now working on task N".
 ## Inputs (provided in launch prompt)
 
 - `TASK_DIR` — path to task directory containing SPEC.md and PROGRESS.md
-- `WORK_DIR` — the worktree or repo directory to work in
+- `WORK_DIR` — the worktree or repo directory to work in (**required** — never assume the current directory is correct)
 - `RECALLED_PATTERNS` — repo-specific patterns to follow (may be empty)
 - `MODE` — `ralph` or `inline`
 
@@ -85,16 +85,24 @@ After ralph exits:
 
 ## Inline mode
 
+**First: change into the working directory.** Every shell command — verifications, quality gates, lints — must run from `WORK_DIR`, not the repo root.
+
+```bash
+cd "$WORK_DIR"
+```
+
+Confirm you are in the right directory before touching any files or running any commands. If `WORK_DIR` is a worktree, this ensures changes land on the feature branch, not `main`.
+
 For each unchecked task in SPEC.md, in order:
 
 1. **Read the task** — understand what to change, which files, and the acceptance check.
 2. **Read related code** — open the target files and understand context before editing.
 3. **Implement** — make the changes described in the task. Apply any recalled patterns silently.
-4. **Verify** — run the task's acceptance check command. If it fails, fix and re-run. After 3 failed attempts, mark the task as failed and move to the next.
+4. **Verify** — run the task's acceptance check command from `WORK_DIR`. If it fails, fix and re-run. After 3 failed attempts, mark the task as failed and move to the next.
 5. **Mark done** — check off the task in SPEC.md (`- [x]`).
 6. **Update PROGRESS.md** — move the task from "In Progress" to "Done", advance to the next task.
 
-After all tasks, run the quality gates from SPEC.md (the commands under "Quality gates"). These are typically scoped lint/typecheck/test commands from the repo's AGENTS.md.
+After all tasks, run the quality gates from SPEC.md (the commands under "Quality gates") — always from `WORK_DIR`. These are typically scoped lint/typecheck/test commands from the repo's AGENTS.md.
 
 ## Report
 
