@@ -134,7 +134,7 @@ Read `$TASK_DIR/REPORT.md`. If the subagent returned a message, use that. If the
 
 When the Implementation Report is available:
 
-**All tasks passed + quality gates passed:**
+**All tasks passed:**
 1. Update PROGRESS.md:
    ```
    ## Status: DIFF_CHECK
@@ -146,7 +146,7 @@ When the Implementation Report is available:
    [TIME] crew-implement: completed N/N tasks, files: <changed files from report>
    ```
 3. Tell the user:
-   > "All tasks done and quality gates pass. Ready for `crew diff`."
+   > "All tasks done. Ready for `crew diff`."
 
 **Some tasks failed:**
 1. Show the user which tasks failed and the error summaries from the report.
@@ -155,16 +155,10 @@ When the Implementation Report is available:
    - **Skip** → proceed to diff-check with partial implementation
    - **Stop** → leave PROGRESS.md as IMPLEMENTING for later resumption
 
-**Quality gates failed:**
-1. Show the failures from the report.
-2. Ask: "Want me to re-launch the worker to fix these, or do you want to fix them manually?"
-   - **Re-launch** → launch subagent with instructions to fix quality gate failures
-   - **Manual** → leave PROGRESS.md as IMPLEMENTING
-
 ## Rules
 
 - Never start the subagent without a gate-checked, approved SPEC.md
 - Always create the worktree before launching the subagent
 - The skill handles ALL user interaction — the subagent is non-interactive
 - If the subagent returns failures, always surface them to the user with options
-- **Stop after quality gates pass.** Never commit, push, or create a PR.
+- **Stop after all tasks pass.** Never commit, push, or create a PR.
