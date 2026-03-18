@@ -75,7 +75,7 @@ Reads an issue or plain description, explores the codebase for patterns and conv
 
 ### 🔨 crew-builder
 
-The implementation engine. Codes in isolation from a SPEC — runs acceptance checks, quality gates, and hands back a report. Launched by `crew implement`, which handles the setup:
+The implementation engine. Codes in isolation from a SPEC — runs per-task acceptance checks and hands back a report. Launched by `crew implement`, which handles the setup:
 
 - **crew-implement** — selects the spec, creates a worktree, auto-recalls repo patterns, then launches the builder
 - **crew-diff** — reviews the local diff for type safety, missing tests, and pattern violations

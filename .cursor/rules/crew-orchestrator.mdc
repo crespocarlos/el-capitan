@@ -57,4 +57,3 @@ Gate failures: spec rejected → revise and re-present. Diff issues → fix and 
 - Explicit routing only — `crew` prefix required
 - Never start implementation without SPEC.md
 - Done = acceptance criteria pass, not "looks right"
-- Quality gates from repo's AGENTS.md, scoped to the affected package

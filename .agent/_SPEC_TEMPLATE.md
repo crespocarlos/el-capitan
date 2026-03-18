@@ -30,11 +30,6 @@ Nothing existing breaks. These may be verified by code inspection rather than a 
 - [ ] [Existing behavior X still works as before]
 - [ ] [Downstream consumers of modified APIs/types are unaffected]
 
-### Quality gates
-Baseline hygiene. Follow the repo's AGENTS.md (or equivalent contributing guide) for required validation commands. Scope commands to the affected package — never run repo-wide checks.
-
-- [ ] [Validation commands from AGENTS.md, scoped to affected package]
-
 ## Design Constraints
 Structural rules the implementation must follow. Each constraint is verifiable by code inspection. The implementer checks these BEFORE marking tasks complete.
 
@@ -44,7 +39,7 @@ Structural rules the implementation must follow. Each constraint is verifiable b
 - [ ] [Constraint about deduplication — if two outputs share derived data, name the single function]
 
 ## Tasks
-Atomic units of work, organized by architectural boundary (one new function/module per task, not by modification type). Each task is independently verifiable. The last task is always quality gates.
+Atomic units of work, organized by architectural boundary (one new function/module per task, not by modification type). Each task is independently verifiable.
 
 - [ ] 1) [Task name]
   - **Change**: [What to do]
@@ -55,11 +50,6 @@ Atomic units of work, organized by architectural boundary (one new function/modu
   - **Change**: [What to do]
   - **Files**: [Files to create or modify]
   - **Acceptance**: [How to verify this task alone]
-
-- [ ] N) Run quality gates
-  - **Change**: Run all validation commands from ## Acceptance Criteria > Quality gates
-  - **Files**: (none — verification only)
-  - **Acceptance**: All commands exit 0. Mark each checkbox [x] under Quality gates, Requirements, and Non-regression in ## Acceptance Criteria.
 
 ## References
 [File paths to canonical examples the implementer should read. Include key patterns inline when the spec must be self-contained.]
