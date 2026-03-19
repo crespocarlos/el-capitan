@@ -88,7 +88,9 @@ Read the `## Type` field from SPEC.md to pick the prefix. Derive the short descr
 
 After the worktree is created:
 
-1. Determine the slug (basename of the current `TASK_DIR`). Move the entire slug directory to the new branch:
+1. **Bootstrap dependencies.** Read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. This ensures the worktree has its own `node_modules` instead of symlinks to the main repo.
+
+2. Determine the slug (basename of the current `TASK_DIR`). Move the entire slug directory to the new branch:
    ```bash
    SLUG=$(basename "$TASK_DIR")
    NEW_BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH_NAME
@@ -96,7 +98,7 @@ After the worktree is created:
    mv "$TASK_DIR" "$NEW_BRANCH_DIR/$SLUG"
    TASK_DIR="$NEW_BRANCH_DIR/$SLUG"
    ```
-2. Set `WORK_DIR` to the worktree directory.
+3. Set `WORK_DIR` to the worktree directory (the script outputs the resolved absolute path).
 
 If skipped (already on feature branch), set `WORK_DIR` to the current directory.
 
@@ -117,7 +119,7 @@ which ralph 2>/dev/null || which ralph.sh 2>/dev/null
 
 If found and the user didn't say "implement inline", set `MODE=ralph`. Otherwise `MODE=inline`.
 
-**Read the `@crew-builder` agent now.** It contains the full protocol for both ralph and inline modes. Launch the `@crew-builder` subagent following that protocol, passing:
+**Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists). It contains the full protocol for both ralph and inline modes. Launch a subagent following that protocol, passing:
 - `TASK_DIR` — the resolved task directory path (absolute)
 - `WORK_DIR` — the worktree or repo directory (absolute path, e.g. `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and shell commands must run. It is not a shell variable — pass the literal path.
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")

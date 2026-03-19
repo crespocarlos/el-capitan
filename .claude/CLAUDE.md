@@ -1,28 +1,47 @@
-# Agent Context — el-capitan
+# el-capitan
 
-## Pipeline & Task State
+Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew`, respond normally — no routing.
 
-Defined in the orchestrator rule (`crew-orchestrator.mdc`). Key points:
+## Routing table
 
-- Spec-driven: every non-trivial task starts with a SPEC.md before implementation
-- Each task lives in its own slug directory: `~/.agent/tasks/<repo>/<branch>/<slug>/`
-- Done = acceptance criteria pass, not "looks right"
-- Resolve repo/branch, then find the active task:
-  ```bash
-  REPO=$(basename $(git rev-parse --show-toplevel))
-  BRANCH=$(git branch --show-current)
-  BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
-  # TASK_DIR = parent of the active (non-DONE) SPEC.md under $BRANCH_DIR/*/
-  # Fall back to $BRANCH_DIR/SPEC.md for old flat layout
-  ```
+| Trigger | File to read |
+|---|---|
+| `crew spec` issue/URL/description | `~/.claude/agents/crew-specwriter.md` |
+| `crew implement` | `~/.claude/skills/crew-implement/SKILL.md` |
+| `crew diff` | `~/.claude/skills/crew-diff/SKILL.md` |
+| `crew commit` | `~/.claude/skills/crew-commit/SKILL.md` |
+| `crew open pr` | `~/.claude/skills/crew-open-pr/SKILL.md` |
+| `crew review PR` #X or URL | `~/.claude/agents/crew-pr-reviewer.md` |
+| `crew address PR` #X or URL | `~/.claude/agents/crew-pr-resolver.md` |
+| `crew eval`: suggestion | `~/.claude/skills/crew-eval-pr-comments/SKILL.md` |
+| `crew log` | `~/.claude/skills/crew-log/SKILL.md` |
+| `crew recall`: question | `~/.claude/skills/crew-recall/SKILL.md` |
+| `crew brainstorm` or + topic | `~/.claude/agents/crew-thinker.md` |
+| `crew learn` X or URL | `~/.claude/agents/crew-researcher.md` |
 
-## Pre-Task Checklist
+**This table is authoritative.** Read the file, follow its instructions. Do not override with judgment calls.
 
-1. `git status` — working tree clean?
-2. `git branch` — correct branch?
-3. Find the active `TASK_DIR` under `$BRANCH_DIR`
-4. Read `$TASK_DIR/SPEC.md` if it exists
-5. Read `$TASK_DIR/PROGRESS.md` if resuming
+## Task state
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel))
+BRANCH=$(git branch --show-current)
+BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+```
+
+Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-DONE one. If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
+
+## Pipeline
+
+```
+crew-specwriter → [YOU approve] → crew-implement → crew-diff → crew-commit → crew-open-pr → [review cycle] → [YOU merge]
+```
+
+Gate failures: spec rejected → revise and re-present. Diff issues → fix and re-run crew-diff. PR comments need input → surface to user and wait.
+
+## PROGRESS.md statuses
+
+`DRAFTING` → `APPROVED` → `IMPLEMENTING` → `DIFF_CHECK` → `COMMITTING` → `PR_OPEN` → `PR_RESOLVE` → `DONE`
 
 ## Style Preferences
 
@@ -32,7 +51,10 @@ Defined in the orchestrator rule (`crew-orchestrator.mdc`). Key points:
 - Single quotes
 - `import type` for type-only imports
 
-## Conventions Learned the Hard Way
+## Invariants
 
-- **Explicit handoffs.** Every skill step that hands off to another step must explicitly name the next step and say "proceed immediately." Vague instructions like "monitor output" cause agents to hang waiting for a signal that never comes.
-- **Explicit routing only.** All triggers start with `crew`. No natural-language guessing. If the message doesn't start with `crew` (or use `@crew-researcher`), respond normally.
+- Explicit routing only — `crew` prefix required
+- Never start implementation without SPEC.md
+- Done = acceptance criteria pass, not "looks right"
+- Explicit handoffs: every skill step that hands off must name the next step and say "proceed immediately"
+- **Never run `tsc` or type-check commands from a worktree.** Symlinked `node_modules` causes `tsc -b` to follow the symlink and emit `.d.ts` files in the main repo instead of the worktree.

@@ -40,7 +40,7 @@ Read these sources (in order of priority):
 
 ### Step 2: Generate the description
 
-Use the template in [pr-template.md](./references/pr-template.md). If the repo has its own `.github/PULL_REQUEST_TEMPLATE.md`, fill that in instead.
+Use the template in [pr-template.md](./references/pr-template.md)
 
 ### Step 3: Push and create the PR
 

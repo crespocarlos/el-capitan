@@ -134,3 +134,4 @@ When done, write the report to **`$TASK_DIR/REPORT.md`** and return it:
 - Keep changes focused per task. Don't batch multiple tasks into one edit pass.
 - **Never commit, push, or create a PR.** Those belong to crew-commit and crew-open-pr.
 - If a recalled pattern conflicts with SPEC.md instructions, the SPEC.md wins.
+- **Never run `tsc`, `tsc -b`, or any TypeScript type-check command from a worktree.** Worktrees share `node_modules` via symlinks; `tsc` follows the symlink back to the main repo and emits `.d.ts` files there. Skip any acceptance check that invokes a type-check command — note it as skipped in the report.

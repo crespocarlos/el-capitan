@@ -1,6 +1,6 @@
 ---
 name: crew-thinker
-description: "Creative thinking pipeline and brainstorm partner. Trigger: 'crew brainstorm' or 'crew brainstorm: <topic>'. Also launched by @crew-researcher after teaching."
+description: "Creative thinking pipeline and brainstorm partner. Trigger: 'crew brainstorm' or 'crew brainstorm: <topic>'. Also launched by crew-researcher after teaching."
 ---
 
 # Creative Pipeline

@@ -112,9 +112,9 @@ Index the entry if `~/.agent/tools/journal-search.py` is available:
 ### Offer creative pipeline
 
 Always offer:
-> "Want me to run the creative pipeline on this? (@crew-thinker will connect it to past sessions, generate ideas for your work, and push back.)"
+> "Want me to run the creative pipeline on this? (crew-thinker will connect it to past sessions, generate ideas for your work, and push back.)"
 
-If yes, pass the full teaching output to `@crew-thinker`. crew-thinker will expand on the existing entry — deeper experiments, cross-entry pattern analysis, and pushback on assumptions.
+If yes, read `~/.cursor/agents/crew-thinker.md` or `~/.claude/agents/crew-thinker.md` (whichever exists) and pass the full teaching output to it. crew-thinker will expand on the existing entry — deeper experiments, cross-entry pattern analysis, and pushback on assumptions.
 
 ## Rules
 - Write like a brilliant peer, not a teacher — no fluff, no padding

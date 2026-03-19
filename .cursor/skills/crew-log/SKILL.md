@@ -89,7 +89,7 @@ The tool verifies the entry was stored and prints what it indexed. If it fails, 
 2. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
 
 3. Offer the creative handoff:
-   > "Want @crew-thinker to connect this session to past patterns and generate ideas?"
+   > "Want crew-thinker to connect this session to past patterns and generate ideas?"
 
 ## Rules
 

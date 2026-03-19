@@ -95,4 +95,4 @@ else
   git worktree add "$WORKTREE_DIR" "origin/$BRANCH" >&2
 fi
 
-echo "$WORKTREE_DIR"
+echo "$(cd "$WORKTREE_DIR" && pwd)"
