@@ -23,6 +23,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew recall`: question | crew-recall |
 | `crew brainstorm` or + topic | crew-thinker |
 | `crew learn` X or URL | crew-route-learn rule → @crew-researcher or @crew-thinker |
+| `crew cleanup` | crew-cleanup |
 
 **This table is authoritative.** Do not override it with judgment calls.
 
@@ -57,3 +58,4 @@ Gate failures: spec rejected → revise and re-present. Diff issues → fix and 
 - Explicit routing only — `crew` prefix required
 - Never start implementation without SPEC.md
 - Done = acceptance criteria pass, not "looks right"
+- **`crew implement` always follows crew-builder's protocol.** Code changes go through crew-builder — via ralph, subagent, or inline protocol. Never skip the protocol and implement ad-hoc.

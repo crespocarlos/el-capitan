@@ -12,7 +12,8 @@ set -euo pipefail
 #
 # Side effects:
 #   - Prunes orphaned worktree metadata (git worktree prune)
-#   - Removes worktrees whose branches are merged into the default branch
+#   - Removes worktrees whose remote branch is gone (squash-merge safe)
+#   - Removes worktrees whose branch is merged into the default branch (fallback)
 
 usage() {
   echo "Usage: manage-worktree.sh [-b] <branch> [base]" >&2
@@ -28,12 +29,20 @@ prune_merged_worktrees() {
   default_branch=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || true)
   [[ -z "$default_branch" ]] && return
 
-  git fetch origin "$default_branch" --quiet 2>/dev/null || true
+  git fetch --prune --quiet 2>/dev/null || true
 
   local main_wt
   main_wt=$(git rev-parse --show-toplevel)
 
+  # Collect branches whose remote tracking ref is gone (squash-merge safe)
+  local gone_branches
+  gone_branches=$(git branch -vv 2>/dev/null \
+    | grep ': gone]' \
+    | sed 's/^[* ]*//' \
+    | awk '{print $1}' || true)
+
   while IFS= read -r wt_path; do
+    [[ -z "$wt_path" ]] && continue
     [[ "$wt_path" == "$main_wt" ]] && continue
 
     local wt_branch
@@ -43,9 +52,23 @@ prune_merged_worktrees() {
       | sed 's|^branch refs/heads/||' || true)
     [[ -z "$wt_branch" ]] && continue
 
-    if git branch --merged "origin/$default_branch" 2>/dev/null | grep -q "^[[:space:]]*${wt_branch}$"; then
+    local is_stale=false
+
+    # Primary: remote tracking ref is gone (handles squash-merge)
+    if echo "$gone_branches" | grep -qx "$wt_branch" 2>/dev/null; then
+      is_stale=true
+    fi
+
+    # Fallback: branch is merged via commit ancestry (handles merge commits)
+    if [[ "$is_stale" == false ]] && git branch --merged "origin/$default_branch" 2>/dev/null | grep -q "^[[:space:]]*${wt_branch}$"; then
+      is_stale=true
+    fi
+
+    if [[ "$is_stale" == true ]]; then
       git worktree remove "$wt_path" 2>/dev/null && \
-        echo "Pruned merged worktree: $wt_path ($wt_branch)" >&2 || true
+        echo "Pruned stale worktree: $wt_path ($wt_branch)" >&2 || true
+      git branch -D "$wt_branch" 2>/dev/null && \
+        echo "Deleted local branch: $wt_branch" >&2 || true
     fi
   done < <(git worktree list --porcelain | grep "^worktree " | sed 's/^worktree //')
 }

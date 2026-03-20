@@ -57,7 +57,7 @@ Correct and worth doing, but out of scope for the current change — note it and
 ## After Applying
 
 - Run lints on edited files only; fix any introduced errors
-- Run type-check scoped to the affected package/tsconfig, not the whole repo
+- Run type-check scoped to the affected package/tsconfig, not the whole repo. Respect the symlinked `node_modules` guard from CLAUDE.md.
 - Search for other call sites with the same bug and fix them before closing
 - If the fix introduces a reusable pattern, extract a helper
 - Delete dead code, unused imports, and types that result from the change

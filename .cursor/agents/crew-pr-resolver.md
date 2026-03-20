@@ -97,7 +97,7 @@ Never read the same file twice. Never re-read a file to evaluate a second commen
 
 ### Step 5: Execute decisions
 
-- **Apply/Adapt**: make the edit, run lints on edited files, run type-check scoped to the affected package
+- **Apply/Adapt**: make the edit, run lints on edited files, run type-check scoped to the affected package. **Exception:** if `node_modules` is a symlink (check with `test -L node_modules`), skip type-check — `tsc` will follow the symlink and emit files in the main repo.
 - **Reject**: prepare a clear rationale explaining the specific reason
 - **Defer**: note what it is and why it's out of scope for this change
 

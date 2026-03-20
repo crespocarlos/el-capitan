@@ -1,6 +1,6 @@
 # crew-implement
 
-Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and user interaction — then launches the implementation worker subagent for the heavy lifting.
+Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and user interaction — then launches the implementation worker for the heavy lifting.
 
 ## Workflow
 
@@ -111,26 +111,30 @@ Set PROGRESS.md to:
 ## Next: diff-check
 ```
 
-### Step 6: Detect mode and launch worker
+### Step 6: Launch worker
+
+**Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists).
+
+Check if ralph is available:
 
 ```bash
 which ralph 2>/dev/null || which ralph.sh 2>/dev/null
 ```
 
-If found and the user didn't say "implement inline", set `MODE=ralph`. Otherwise `MODE=inline`.
+**If ralph is found**: launch crew-builder as a subagent (Cursor: Task tool; Claude Code: `ralph run` directly). Pass `MODE=ralph`. Ralph manages its own iterations — crew-builder waits for it to exit.
 
-**Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists). It contains the full protocol for both ralph and inline modes. Launch a subagent following that protocol, passing:
+**If ralph is not found**: launch crew-builder as a subagent if possible (Cursor: Task tool). If subagents are not available (Claude Code), follow crew-builder's inline protocol directly. Pass `MODE=inline`.
+
+Pass these inputs to crew-builder (or use them when following its protocol):
 - `TASK_DIR` — the resolved task directory path (absolute)
 - `WORK_DIR` — the worktree or repo directory (absolute path, e.g. `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and shell commands must run. It is not a shell variable — pass the literal path.
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
 - `MODE` — `ralph` or `inline`
-- The full contents of `SPEC.md` (so the subagent has it without needing to re-read)
-
-Do NOT skip ralph when `MODE=ralph`. If ralph is detected, the subagent MUST use it — falling back to inline implementation is not acceptable unless ralph fails to start.
+- The full contents of `SPEC.md` (so the worker has it without needing to re-read)
 
 ### Step 7: Handle results
 
-Read `$TASK_DIR/REPORT.md`. If the subagent returned a message, use that. If the subagent exited without returning (ralph mode, session timeout), fall back to `REPORT.md`. If neither exists, tell the user:
+Read `$TASK_DIR/REPORT.md`. If the worker returned a message, use that. If the worker exited without returning (ralph mode, session timeout), fall back to `REPORT.md`. If neither exists, tell the user:
 
 > "The worker finished but didn't produce a report. Check `$TASK_DIR/` for SPEC.md task status, or re-run `crew implement` to resume."
 
@@ -149,18 +153,20 @@ When the Implementation Report is available:
    ```
 3. Tell the user:
    > "All tasks done. Ready for `crew diff`."
+   > "Working directory: `<WORK_DIR>` — run tests from there."
 
 **Some tasks failed:**
 1. Show the user which tasks failed and the error summaries from the report.
 2. Ask: "Want to retry the failed tasks, skip them, or stop here?"
-   - **Retry** → re-launch the subagent with only the failed tasks
+   - **Retry** → re-launch the worker with only the failed tasks
    - **Skip** → proceed to diff-check with partial implementation
    - **Stop** → leave PROGRESS.md as IMPLEMENTING for later resumption
 
 ## Rules
 
-- Never start the subagent without a gate-checked, approved SPEC.md
-- Always create the worktree before launching the subagent
-- The skill handles ALL user interaction — the subagent is non-interactive
-- If the subagent returns failures, always surface them to the user with options
+- Never start the worker without a gate-checked, approved SPEC.md
+- Always create the worktree before launching the worker
+- The skill handles ALL user interaction — the worker is non-interactive
+- If the worker returns failures, always surface them to the user with options
 - **Stop after all tasks pass.** Never commit, push, or create a PR.
+- **ALWAYS follow crew-builder's protocol for implementation.** The orchestrator handles setup and gates. Code changes follow crew-builder's instructions — either via a subagent (Cursor Task tool), ralph, or by reading and following crew-builder's inline protocol directly. Never skip crew-builder's protocol and implement ad-hoc.
