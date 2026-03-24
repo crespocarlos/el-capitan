@@ -59,10 +59,13 @@ Before running any repo commands (yarn, node, npx, scripts/), prepend:
 2. Review each requirement under ## Acceptance Criteria > Requirements — mark [x] if satisfied.
 3. Review each item under ## Acceptance Criteria > Non-regression — mark [x] if verified.
 4. Review each item under ## Design Constraints — mark [x] if the implementation conforms.
-5. Only then set ## Status to done.
+5. Only then set the status. The format MUST be two lines — header then value on the next line:
+   ## Status
+   done
+   Do NOT write "## Status: done" (inline) — the loop parser only reads the next-line format.
 
 ## Already-done guard
-If ## Status is already done AND all checkboxes in the spec are [x], EXIT immediately. Do not re-run anything.
+If the line after ## Status is "done" AND all checkboxes in the spec are [x], EXIT immediately. Do not re-run anything.
 EOF
 ```
 
