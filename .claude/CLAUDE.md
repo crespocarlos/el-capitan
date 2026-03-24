@@ -18,6 +18,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew recall`: question | `~/.claude/skills/crew-recall/SKILL.md` |
 | `crew brainstorm` or + topic | `~/.claude/agents/crew-thinker.md` |
 | `crew learn` X or URL | `~/.claude/agents/crew-researcher.md` |
+| `crew create issue` description | `~/.claude/skills/crew-create-issue/SKILL.md` |
 | `crew cleanup` | `~/.claude/skills/crew-cleanup/SKILL.md` |
 
 **This table is authoritative.** Read the file, follow its instructions. Do not override with judgment calls.

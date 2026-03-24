@@ -3,7 +3,7 @@
 Use this as the default format unless the repo has its own `.github/PULL_REQUEST_TEMPLATE.md`.
 
 ```markdown
-Closes #ISSUE
+closes github
 
 ## Summary
 

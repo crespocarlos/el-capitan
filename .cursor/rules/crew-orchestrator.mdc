@@ -23,6 +23,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew recall`: question | crew-recall |
 | `crew brainstorm` or + topic | crew-thinker |
 | `crew learn` X or URL | crew-route-learn rule → @crew-researcher or @crew-thinker |
+| `crew create issue` description | crew-create-issue |
 | `crew cleanup` | crew-cleanup |
 
 **This table is authoritative.** Do not override it with judgment calls.

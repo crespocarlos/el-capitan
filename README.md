@@ -25,6 +25,7 @@ All commands start with `crew`. Explicit routing only — no guessing.
 
 | Command | What it does |
 |---|---|
+| `crew create issue: Lens throws when esqlVariables is null` | Structure and file a GitHub issue |
 | `crew spec https://github.com/org/repo/issues/123` | Draft a SPEC.md from an issue |
 | `crew implement` | Create worktree + build from SPEC |
 | `crew diff` | Review the local diff |
@@ -44,11 +45,13 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew brainstorm: what if we cached the API responses?` | Interactive brainstorm on a topic |
 | `crew log` | Log the engineering session to the journal |
 | `crew recall: how do we handle retries in kibana?` | Search journal by meaning |
+| `crew cleanup` | Remove stale worktrees interactively |
 
 ## How it works
 
 ```mermaid
 flowchart LR
+    issue["📝 crew-create-issue"] -.->|"crew spec #N"| spec
     spec["📋 crew-specwriter"] -->|"YOU: approve"| build["🔨 crew-builder"]
     build --> diff["crew-diff"] --> commit["crew-commit"]
     commit -->|"YOU: approve"| pr["crew-open-pr"]
@@ -57,6 +60,7 @@ flowchart LR
     resolve --> review
     review -->|"approved"| merge(["YOU: merge"])
 
+    reviewer["🔍 crew-pr-reviewer"] -.->|"review others' PRs"| review
     research["🔬 crew-researcher"] -.-> journal[("📓 journal")]
     think["💡 crew-thinker"] -.-> journal
     build -.->|"auto-recall"| journal
@@ -73,6 +77,8 @@ Six agents, each with skills at their disposal. Agents run as isolated subagents
 
 Reads an issue or plain description, explores the codebase for patterns and conventions, and drafts a `SPEC.md` with acceptance criteria tight enough for autonomous implementation.
 
+- **crew-create-issue** — structures a rough idea into a well-formed GitHub issue (summary, repro steps, AC), asks gap-filling questions, files it with `gh`, and suggests `crew spec` as the next step
+
 ### 🔨 crew-builder
 
 The implementation engine. Codes in isolation from a SPEC — runs per-task acceptance checks and hands back a report. Launched by `crew implement`, which handles the setup:
@@ -81,6 +87,7 @@ The implementation engine. Codes in isolation from a SPEC — runs per-task acce
 - **crew-diff** — reviews the local diff for type safety, missing tests, and pattern violations
 - **crew-commit** — proposes a [conventional commit](https://www.conventionalcommits.org/) message, waits for approval
 - **crew-open-pr** — pushes the branch, generates a PR description, opens a draft PR (fork-aware)
+- **crew-cleanup** — interactive removal of stale worktrees, local branches, and task directories
 
 ### 🔍 crew-pr-reviewer
 
