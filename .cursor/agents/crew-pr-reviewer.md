@@ -140,10 +140,17 @@ Structure findings by severity:
 
 **Consider** — worth discussing. Alternative approaches, simplification opportunities, patterns that diverge from codebase conventions.
 
-For each finding:
-- Name the file and line area
-- State what you found and why it matters
-- If suggesting a change, show the concrete fix
+Each finding MUST include the file path and line range. Use this format:
+
+```
+**<file_path>:<start_line>–<end_line>** — <one-line summary>
+
+<explanation of what you found and why it matters>
+
+<concrete fix if suggesting a change>
+```
+
+If a finding spans multiple files, list each location on its own line before the explanation. Never produce a finding without a file anchor — if you can't point to a specific location, it's not a finding.
 
 ### Step 9: Overall assessment
 

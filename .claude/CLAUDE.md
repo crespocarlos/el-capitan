@@ -17,7 +17,8 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew log` | `~/.claude/skills/crew-log/SKILL.md` |
 | `crew recall`: question | `~/.claude/skills/crew-recall/SKILL.md` |
 | `crew brainstorm` or + topic | `~/.claude/agents/crew-thinker.md` |
-| `crew learn` X or URL | `~/.claude/agents/crew-researcher.md` |
+| `crew learn` URL/PR/repo/article | `~/.claude/agents/crew-researcher.md` |
+| `crew learn` concept/"what if"/ideas | `~/.claude/agents/crew-thinker.md` |
 | `crew create issue` description | `~/.claude/skills/crew-create-issue/SKILL.md` |
 | `crew cleanup` | `~/.claude/skills/crew-cleanup/SKILL.md` |
 
@@ -44,14 +45,6 @@ Gate failures: spec rejected → revise and re-present. Diff issues → fix and 
 ## PROGRESS.md statuses
 
 `DRAFTING` → `APPROVED` → `IMPLEMENTING` → `DIFF_CHECK` → `COMMITTING` → `PR_OPEN` → `PR_RESOLVE` → `DONE`
-
-## Style Preferences
-
-- TypeScript, const arrow functions, explicit return types
-- snake_case filenames, PascalCase components
-- No `any`, no `@ts-ignore`
-- Single quotes
-- `import type` for type-only imports
 
 ## Invariants
 

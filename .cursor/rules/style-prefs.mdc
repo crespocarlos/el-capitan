@@ -1,0 +1,13 @@
+---
+description: "TypeScript style preferences for all conversations"
+globs: 
+alwaysApply: true
+---
+
+# Style Preferences
+
+- TypeScript, const arrow functions, explicit return types
+- snake_case filenames, PascalCase components
+- No `any`, no `@ts-ignore`
+- Single quotes
+- `import type` for type-only imports

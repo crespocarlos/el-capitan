@@ -46,6 +46,8 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew log` | Log the engineering session to the journal |
 | `crew recall: how do we handle retries in kibana?` | Search journal by meaning |
 | `crew cleanup` | Remove stale worktrees interactively |
+| `crew implement --parallel` | Parallel implementation attempts (best-of-n) |
+| `crew automations` | Reference guide for Cursor Automations setup |
 
 ## How it works
 
@@ -109,6 +111,38 @@ The brainstorm partner. Two modes: *pipeline* (connects new learnings with past 
 
 - **crew-log** — records an engineering session, auto-gathers context, writes to the monthly journal
 - **crew-recall** — searches the journal by meaning (semantic search), metadata (grep), or overview (summary)
+
+## Subagent dispatch
+
+Heavy agents run as isolated subagents via Cursor's Task tool, keeping the orchestrator's context clean:
+
+| Command | Runs as |
+|---|---|
+| `crew spec`, `crew review PR`, `crew learn`, `crew brainstorm` | Isolated subagent |
+| `crew implement` | Subagent (via crew-builder) |
+| `crew implement --parallel` | 2-3 best-of-n runners in parallel worktrees |
+| Everything else | Inline in orchestrator |
+
+On Claude Code (no Task tool), agents fall back to inline execution automatically.
+
+## Claude Code hooks
+
+When using Claude Code, project-level hooks in `.claude/settings.json` provide observability:
+
+- **PostToolUse** — logs every Bash/Write/Edit call to `~/.agent/telemetry/` as JSONL
+- **Notification** — macOS notification when Claude needs your input
+- **SessionStart** — logs session start time
+
+Hooks never block the agent — all exit 0 on error. Telemetry data is local-only.
+
+## Cursor Automations
+
+Run crew members as event-driven cloud agents without the IDE. Two modes:
+
+- **Gated** — automations comment/suggest, you decide (PR review as comment, diff analysis, weekly cleanup as PR)
+- **Automated** — automations handle the full pipeline (review + approve, auto-fix on push, spec from labeled issues)
+
+Run `crew automations` for the full configuration reference. Configure at [cursor.com/automations](https://cursor.com/automations).
 
 ## Key features
 

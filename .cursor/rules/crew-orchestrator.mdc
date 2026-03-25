@@ -13,6 +13,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 |---|---|
 | `crew spec` issue/URL/description | crew-specwriter |
 | `crew implement` | crew-implement → @crew-builder |
+| `crew implement --parallel` | crew-implement (best-of-n mode) |
 | `crew diff` | crew-diff |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
@@ -25,8 +26,27 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew learn` X or URL | crew-route-learn rule → @crew-researcher or @crew-thinker |
 | `crew create issue` description | crew-create-issue |
 | `crew cleanup` | crew-cleanup |
+| `crew automations` | crew-automations |
 
 **This table is authoritative.** Do not override it with judgment calls.
+
+## Subagent dispatch
+
+Some crew members do heavy exploration and should run as isolated subagents (Cursor Task tool) to avoid polluting the orchestrator's context. Others are lightweight and run inline.
+
+| Command | Dispatch | subagent_type |
+|---|---|---|
+| `crew spec` | **Subagent** | `crew-specwriter` |
+| `crew review PR` | **Subagent** | `crew-pr-reviewer` |
+| `crew learn` (researcher path) | **Subagent** | `crew-researcher` |
+| `crew brainstorm` | **Subagent** | `crew-thinker` |
+| `crew implement` | **Subagent** (via crew-implement skill) | `crew-builder` |
+| `crew implement --parallel` | **best-of-n-runner** (via crew-implement skill) | `best-of-n-runner` |
+| All other commands | **Inline** | — |
+
+**How to launch a subagent:** Use the Task tool with the `subagent_type` from the table. Pass a detailed prompt containing all context the agent needs (repo, branch, issue URL, user input, recalled patterns). The subagent runs autonomously and returns its result.
+
+**Claude Code fallback:** When the Task tool is unavailable (Claude Code), read the agent file directly and follow its protocol inline.
 
 ## Add-ons
 

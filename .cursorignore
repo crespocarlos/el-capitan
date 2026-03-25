@@ -1,0 +1,5 @@
+.agent/journal/
+.agent/vectorstore/
+**/SESSION.md
+**/PROGRESS.md
+__pycache__/

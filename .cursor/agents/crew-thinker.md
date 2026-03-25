@@ -40,10 +40,10 @@ If the profile is blank or missing, ask two targeted questions before proceeding
 Load relevant journal context — use semantic search instead of reading full files:
 ```bash
 # Overview of what's stored
-journal-search summary 2>/dev/null || true
+~/.agent/tools/journal-search.py summary 2>/dev/null || true
 
 # Topic-specific entries (use the current topic/trigger)
-journal-search query "<current topic or trigger>" --top 5 2>/dev/null || true
+~/.agent/tools/journal-search.py query "<current topic or trigger>" --top 5 2>/dev/null || true
 ```
 
 If `journal-search` is unavailable, fall back to reading only the most recent monthly file:

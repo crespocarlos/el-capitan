@@ -162,6 +162,28 @@ When the Implementation Report is available:
    - **Skip** → proceed to diff-check with partial implementation
    - **Stop** → leave PROGRESS.md as IMPLEMENTING for later resumption
 
+## Alternative: best-of-n
+
+When the user says `crew implement --parallel` or "try multiple approaches", use `best-of-n-runner` instead of the standard single-worker flow.
+
+**When to use:** Large specs (>5 tasks), ambiguous implementation paths, or when the user wants to compare approaches.
+
+**How it works:**
+1. Complete Steps 1–5 as normal (resolve task, gate check, auto-recall, worktree, progress)
+2. Instead of launching one crew-builder, spawn 2–3 Task subagents with `subagent_type="best-of-n-runner"`. Each gets its own isolated git worktree and branch.
+3. Each runner follows the crew-builder protocol independently
+4. When all runners complete, compare their REPORT.md files against the spec's Acceptance Criteria
+5. Present the results to the user: which runner passed more AC, which had cleaner diffs, which approach was simpler
+6. The user picks the winner. The losing worktrees are cleaned up.
+
+**Limitations:**
+- Higher token cost (2–3x a single run)
+- Requires worktree support (the runners create their own branches)
+- Each runner works independently — they can't share discoveries
+- Not useful for small, straightforward specs where there's only one obvious approach
+
+**Default behavior is unchanged.** `crew implement` (without `--parallel`) always uses the single-worker flow.
+
 ## Rules
 
 - Never start the worker without a gate-checked, approved SPEC.md
