@@ -70,3 +70,14 @@ Example:
 ```
 
 If the diff looks clean, say so in one sentence.
+
+## Progress
+
+After reporting findings, append to `$TASK_DIR/PROGRESS.md` (resolve TASK_DIR the same way as other skills):
+
+```bash
+# If issues found:
+~/.agent/tools/log-progress.sh "$TASK_DIR" "DIFF_CHECK: issues found — pending fixes"
+# If clean:
+~/.agent/tools/log-progress.sh "$TASK_DIR" "DIFF_CHECK → COMMITTING"
+```

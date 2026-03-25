@@ -89,20 +89,7 @@ JOURNAL_FILE=~/.agent/journal/$(date +%Y-%m).md
 mkdir -p ~/.agent/journal
 ```
 
-```markdown
----
-## DATE — SUMMARY
-
-**Type:** learning
-**Tags:** #tag1 #tag2
-**Source:** <URL, PR, repo, or concept>
-**Key idea:** <core insight from the teaching>
-**What I learned:** <the transferable takeaway>
-**Connections:** <links to past entries found during Setup, or "none">
-**Experiments queued:** <concrete things to build or try — at least 1, or "none">
-**Patterns emerging:** <recurring themes across this and past entries, or "none" if first entry on this topic>
-**Open questions:** <from the teaching output>
-```
+Write a learning entry following the schema in `~/.agent/_JOURNAL_TEMPLATE.md` (use the **Learning entries** format). Replace all placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date. Append to `$JOURNAL_FILE`.
 
 Index the entry if `~/.agent/tools/journal-search.py` is available:
 ```bash

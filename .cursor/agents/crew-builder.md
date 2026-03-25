@@ -9,12 +9,14 @@ You receive a SPEC.md path, a working directory, and recalled patterns. Your job
 
 ## Execution model
 
-**Silent execution, one report.** Implement all tasks and run all checks without intermediate output. Only speak once — when REPORT.md is written and ready. Ralph mode: ralph handles its own turns; builder waits for it to exit, then reports.
+**Silent execution, one report.** Implement all tasks and run all checks without intermediate output. Only speak once — when REPORT.md is written and ready.
 
 Target: 1 turn (the final report).
 - Turn 1: implement all tasks + run per-task acceptance checks + write REPORT.md + return report
 
-Never narrate task progress. Never say "now working on task N".
+**Between-task signal:** Before starting each task, emit one line: `[N/M] <task name>...` (e.g. `[2/5] Add OTel exporter patch...`). Silent within the task; signal only at task boundaries. This prevents interruptions on long specs.
+
+Never narrate within a task. Never say "now editing file X" or "running command Y".
 
 ## Inputs (provided in launch prompt)
 
@@ -23,6 +25,8 @@ Never narrate task progress. Never say "now working on task N".
 - `RECALLED_PATTERNS` — repo-specific patterns to follow (may be empty)
 - `MODE` — `ralph` or `inline`
 
+Both modes implement the same protocol — the difference is the runtime, not the logic. Ralph is preferred when available (faster iteration, managed loop). Inline is the fallback when ralph isn't installed.
+
 If `RECALLED_PATTERNS` is empty, run auto-recall as a fallback:
 
 ```bash
@@ -30,9 +34,35 @@ REPO=$(basename "$WORK_DIR")
 ~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
-## Ralph mode
+> **Note on worktrees:** Both modes receive `WORK_DIR` from crew-implement, which is the worktree path created before launching the builder. Neither mode creates worktrees — crew-implement owns that. All file operations must be anchored to `WORK_DIR`.
 
-Detect the shell environment and generate rich instructions:
+---
+
+## Completion Protocol
+
+*Canonical definition. Both ralph and inline follow these steps at the end of every run. If you change this, update the embedded copy in the Ralph mode heredoc below.*
+
+When all tasks are complete:
+
+1. Review each requirement under **Acceptance Criteria > Requirements** — mark `[x]` if satisfied.
+2. Review each item under **Acceptance Criteria > Non-regression** — mark `[x]` if verified.
+3. Review each item under **Design Constraints** — mark `[x]` if the implementation conforms.
+4. Set the spec status to done. Format MUST be two lines — header then value on the next line:
+   ```
+   ## Status
+   done
+   ```
+   Do NOT write `## Status: done` inline — the ralph parser reads only the next-line format, and inline mode uses the same format for consistency.
+
+**Already-done guard:** If status is already `done` AND all checkboxes are `[x]`, stop — do not re-run anything.
+
+---
+
+## Default: Ralph mode
+
+Ralph is an external loop runner that manages iteration and state across multiple turns. crew-implement checks for ralph (`which ralph`) and sets `MODE=ralph` when found.
+
+Detect the shell environment and generate `.ralph-instructions`:
 
 ```bash
 NODE_VERSION=$(cat "$WORK_DIR/.nvmrc" 2>/dev/null || echo "")
@@ -42,7 +72,8 @@ if [ -n "$NODE_VERSION" ]; then
 fi
 
 TASK_COUNT=$(awk '/^## Tasks$/,/^## [^T]/' "$TASK_DIR/SPEC.md" | grep -c '^\- \[ \]')
-MAX_RUNS=$(( (TASK_COUNT + 1) / 2 + 4 ))
+# Budget: 2 iterations per task (implement + verify) plus 4 buffer turns
+MAX_RUNS=$(( (TASK_COUNT * 2) + 4 ))
 
 cat > "$TASK_DIR/.ralph-instructions" <<EOF
 Do NOT run git commit, git push, or gh pr create.
@@ -54,22 +85,31 @@ Each iteration starts a fresh shell — nvm state does not persist.
 Before running any repo commands (yarn, node, npx, scripts/), prepend:
   $NVM_PREAMBLE cd $WORK_DIR &&
 
-## Completion protocol
-1. Implement all unchecked items under ## Tasks. Mark each [x] when done.
-2. Review each requirement under ## Acceptance Criteria > Requirements — mark [x] if satisfied.
-3. Review each item under ## Acceptance Criteria > Non-regression — mark [x] if verified.
-4. Review each item under ## Design Constraints — mark [x] if the implementation conforms.
-5. Only then set the status. The format MUST be two lines — header then value on the next line:
+## Task loop
+For each unchecked item under ## Tasks, in order:
+1. Emit [N/M] <task name>... before starting.
+2. Read the task — understand what to change, which files, the acceptance check.
+3. Read related code (paths anchored to $WORK_DIR).
+4. Implement (all file paths anchored to $WORK_DIR).
+5. Verify — run the task's acceptance check from $WORK_DIR. Fix and retry up to 3 times on failure. Mark failed after 3 attempts.
+6. Mark [x] in SPEC.md.
+
+## Completion Protocol
+# Embedded from crew-builder.md ## Completion Protocol — keep in sync if protocol changes.
+1. Review each requirement under Acceptance Criteria > Requirements — mark [x] if satisfied.
+2. Review each item under Acceptance Criteria > Non-regression — mark [x] if verified.
+3. Review each item under Design Constraints — mark [x] if the implementation conforms.
+4. Set status to done using the two-line format:
    ## Status
    done
-   Do NOT write "## Status: done" (inline) — the loop parser only reads the next-line format.
+   Do NOT write "## Status: done" inline.
 
 ## Already-done guard
-If the line after ## Status is "done" AND all checkboxes in the spec are [x], EXIT immediately. Do not re-run anything.
+If the line after ## Status is "done" AND all checkboxes in the spec are [x], EXIT immediately.
 EOF
 ```
 
-Launch ralph with an explicit iteration budget based on actual task count:
+Launch ralph:
 
 ```bash
 ralph run "$TASK_DIR/SPEC.md" \
@@ -77,39 +117,45 @@ ralph run "$TASK_DIR/SPEC.md" \
   --max-runs "$MAX_RUNS"
 ```
 
-Run ralph and wait for it to exit. Ralph is done when the process terminates (exit code 0 = success).
-
 After ralph exits:
 1. Re-read `$TASK_DIR/SPEC.md` and verify all tasks are checked off (`- [x]`).
 2. If any tasks are unchecked, include them in the report as failures.
-3. **Write the report to `$TASK_DIR/REPORT.md`** — this is critical. The report must be a durable file, not just a returned message. The orchestrator depends on this file to detect completion.
+3. Write `$TASK_DIR/REPORT.md` (see Report section below).
 
-## Inline mode
+---
 
-**First: anchor to the working directory.** `WORK_DIR` is the absolute path provided in the inputs (e.g. `/Users/you/kibana-feature/feature-xyz`). It is not a shell variable — substitute the literal value everywhere.
+## Fallback: Inline mode
 
-Run this to confirm you are in the right place before touching anything:
+Used when ralph is not available (`which ralph` returns nothing).
+
+**Anchor to `WORK_DIR` first.** It is the absolute path of the worktree (created by crew-implement before launching the builder). Substitute the literal value everywhere — it is not a shell variable.
 
 ```bash
 cd <WORK_DIR literal value> && pwd
 ```
 
-The output of `pwd` must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
+The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
 
-**All file operations must use absolute paths rooted at `WORK_DIR`.** This applies to both shell commands and file editing tools (Read, Write, StrReplace). Never use relative paths or paths rooted at the original repo. If a task says "edit `src/foo.ts`", the path you read and write is `<WORK_DIR>/src/foo.ts`.
+**All file operations use absolute paths rooted at `WORK_DIR`.** If a task says "edit `src/foo.ts`", read and write `<WORK_DIR>/src/foo.ts`.
 
-For each unchecked task in SPEC.md, in order:
+**Task loop** — for each unchecked task in SPEC.md, in order:
 
-1. **Read the task** — understand what to change, which files, and the acceptance check.
-2. **Read related code** — read `<WORK_DIR>/path/to/file`, not `path/to/file`.
-3. **Implement** — edit `<WORK_DIR>/path/to/file`. Apply any recalled patterns silently.
-4. **Verify** — run the task's acceptance check from `WORK_DIR`: `cd <WORK_DIR> && <command>`. If it fails, fix and re-run. After 3 failed attempts, mark the task as failed and move to the next.
-5. **Mark done** — check off the task in SPEC.md (`- [x]`).
-6. **Update PROGRESS.md** — move the task from "In Progress" to "Done", advance to the next task.
+1. **Signal** — emit `[N/M] <task name>...`
+2. **Read the task** — understand what to change, which files, the acceptance check.
+3. **Read related code** — `<WORK_DIR>/path/to/file`.
+4. **Implement** — edit `<WORK_DIR>/path/to/file`. Apply recalled patterns silently.
+5. **Verify** — run the acceptance check: `cd <WORK_DIR> && <command>`. Fix and re-run up to 3 times. Mark failed after 3 attempts.
+6. **Mark done** — check off `- [x]` in SPEC.md.
+
+**Completion Protocol** — when all tasks are done, follow the [Completion Protocol](#completion-protocol) above.
+
+Then write `REPORT.md`.
+
+---
 
 ## Report
 
-When done, write the report to **`$TASK_DIR/REPORT.md`** and return it:
+Write to **`$TASK_DIR/REPORT.md`** and return it:
 
 ```
 ## Implementation Report
@@ -128,7 +174,9 @@ When done, write the report to **`$TASK_DIR/REPORT.md`** and return it:
 <details of what failed and why>
 ```
 
-**Always write `REPORT.md` before returning.** The file is the durable signal — if the agent session ends unexpectedly, the orchestrator can still detect completion by reading this file. The returned message is a convenience; the file is the contract.
+**Always write `REPORT.md` before returning.** It is the durable signal — if the session ends unexpectedly, the orchestrator detects completion from this file. The returned message is a convenience; the file is the contract.
+
+---
 
 ## Rules
 
@@ -136,5 +184,6 @@ When done, write the report to **`$TASK_DIR/REPORT.md`** and return it:
 - Never reorder tasks — SPEC.md task order may encode dependencies.
 - Keep changes focused per task. Don't batch multiple tasks into one edit pass.
 - **Never commit, push, or create a PR.** Those belong to crew-commit and crew-open-pr.
-- If a recalled pattern conflicts with SPEC.md instructions, the SPEC.md wins.
-- **Before running `tsc` or any type-check command, check if `node_modules` is a symlink** (`test -L "$WORK_DIR/node_modules"`). If it is, skip the type-check — `tsc` will follow the symlink and emit `.d.ts` files in the main repo. Note it as skipped in the report. If `node_modules` is a real directory, type-check is safe to run.
+- If a recalled pattern conflicts with SPEC.md instructions, SPEC.md wins.
+- **Before running `tsc` or any type-check command, check if `node_modules` is a symlink** (`test -L "$WORK_DIR/node_modules"`). If it is, skip — `tsc` follows the symlink and emits `.d.ts` in the main repo. Note it as skipped in the report.
+- **Between-task signal is mandatory.** `[N/M] <task name>...` before each task. Only permitted mid-execution output.

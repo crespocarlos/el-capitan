@@ -85,6 +85,12 @@ BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git bra
 [TIME] crew-open-pr: PR_URL — PR_TITLE
 ```
 
+Also log the transition:
+
+```bash
+~/.agent/tools/log-progress.sh "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
+```
+
 Then suggest: "Want to journal this session?"
 
 ## Rules

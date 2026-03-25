@@ -2,29 +2,17 @@
 
 Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew`, respond normally — no routing.
 
-## Routing table
+## Routing
 
-| Trigger | File to read |
-|---|---|
-| `crew spec` issue/URL/description | `~/.claude/agents/crew-specwriter.md` |
-| `crew implement` | `~/.claude/skills/crew-implement/SKILL.md` |
-| `crew diff` | `~/.claude/skills/crew-diff/SKILL.md` |
-| `crew commit` | `~/.claude/skills/crew-commit/SKILL.md` |
-| `crew open pr` | `~/.claude/skills/crew-open-pr/SKILL.md` |
-| `crew review PR` #X or URL | `~/.claude/agents/crew-pr-reviewer.md` |
-| `crew address PR` #X or URL | `~/.claude/agents/crew-pr-resolver.md` |
-| `crew eval`: suggestion | `~/.claude/skills/crew-eval-pr-comments/SKILL.md` |
-| `crew log` | `~/.claude/skills/crew-log/SKILL.md` |
-| `crew recall`: question | `~/.claude/skills/crew-recall/SKILL.md` |
-| `crew brainstorm` or + topic | `~/.claude/agents/crew-thinker.md` |
-| `crew learn` URL/PR/repo/article | `~/.claude/agents/crew-researcher.md` |
-| `crew learn` concept/"what if"/ideas | `~/.claude/agents/crew-thinker.md` |
-| `crew create issue` description | `~/.claude/skills/crew-create-issue/SKILL.md` |
-| `crew cleanup` | `~/.claude/skills/crew-cleanup/SKILL.md` |
-| `crew autopilot` | Auto-advance pipeline to next gate (see Pipeline section) |
-| `crew status` | Print current pipeline state (see Pipeline section) |
+**Command list is in `crew-router.mdc`** — that file is the single source of truth. Do not duplicate it here.
 
-**This table is authoritative.** Read the file, follow its instructions. Do not override with judgment calls.
+File path convention:
+- Agents: `~/.claude/agents/<name>.md`
+- Skills: `~/.claude/skills/<name>/SKILL.md`
+
+`crew autopilot` and `crew status` are handled inline — see Pipeline section below.
+
+**This routing is authoritative.** Read the file, follow its instructions. Do not override with judgment calls.
 
 ## Task state
 
@@ -46,11 +34,22 @@ Two gates. Everything between auto-advances with `crew autopilot`.
 
 **`crew autopilot`**: chains from current state to next gate. Not a mode toggle — means "advance from here." If a step fails, pauses and surfaces the error. No auto-retry.
 
-**`crew status`**: prints current pipeline state (task slug, status, next step).
+**`crew status`**: prints current pipeline state derived from git/gh state. See crew-orchestrator.mdc for the full logic.
 
-## PROGRESS.md statuses
+## PROGRESS.md
 
-`DRAFTING` → `APPROVED` → `IMPLEMENTING` → `DIFF_CHECK` → `COMMITTING` → `PR_OPEN` → `DONE`
+Append-only event log. Pipeline steps write `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. Never overwrite — only append. `crew status` reads git/gh, not this file. Use `cat PROGRESS.md` for the human-readable audit trail.
+
+## Memory
+
+Two memory systems. Keep them explicitly partitioned.
+
+| System | What it stores | Horizon | How it's updated |
+|--------|----------------|---------|-----------------|
+| Journal (`~/.agent/journal/`) | Engineering decisions, what was built, what was learned, session outcomes | Long — weeks to months | Manually via `crew log` |
+| Auto-memory (`~/.claude/projects/*/memory/`) | Behavioral corrections, style preferences, workflow patterns | Short — conversation to session | Auto-saved by Claude Code |
+
+`crew log` is the only intended bridge: after writing a journal entry it may optionally promote a rule to auto-memory (saves as `feedback_*.md`). Do not cross-pollinate in the other direction.
 
 ## Invariants
 

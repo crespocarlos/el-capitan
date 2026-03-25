@@ -13,7 +13,6 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 |---|---|
 | `crew spec` issue/URL/description | crew-specwriter |
 | `crew implement` | crew-implement → @crew-builder |
-| `crew implement --parallel` | crew-implement (best-of-n mode) |
 | `crew diff` | crew-diff |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
@@ -43,7 +42,6 @@ Some crew members do heavy exploration and should run as isolated subagents (Cur
 | `crew learn` (researcher path) | **Subagent** | `crew-researcher` |
 | `crew brainstorm` | **Subagent** | `crew-thinker` |
 | `crew implement` | **Subagent** (via crew-implement skill) | `crew-builder` |
-| `crew implement --parallel` | **best-of-n-runner** (via crew-implement skill) | `best-of-n-runner` |
 | All other commands | **Inline** | — |
 
 **How to launch a subagent:** Use the Task tool with the `subagent_type` from the table. Pass a detailed prompt containing all context the agent needs (repo, branch, issue URL, user input, recalled patterns). The subagent runs autonomously and returns its result.

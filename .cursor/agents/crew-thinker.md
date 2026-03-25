@@ -143,27 +143,7 @@ JOURNAL_FILE=~/.agent/journal/$(date +%Y-%m).md
 mkdir -p ~/.agent/journal
 ```
 
-Append an entry using the unified schema:
-
-```bash
-cat >> "$JOURNAL_FILE" << 'ENTRY'
-
----
-## <DATE> — <ONE LINE SUMMARY>
-
-**Type:** learning
-**Tags:** #tag1 #tag2
-**Source:** <URL, PR, repo, or concept>
-**Key idea:** <single most important thing — the "Core Insight">
-**What I learned:** <transferable insight worth remembering>
-**Connections:** <links to previous entries or known patterns, or "none">
-**Experiments queued:** <things to build or try>
-**Patterns emerging:** <recurring themes across entries>
-**Open questions:** <unresolved questions>
-ENTRY
-```
-
-Replace placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date.
+Write a learning entry following the schema in `~/.agent/_JOURNAL_TEMPLATE.md` (use the **Learning entries** format). Replace all placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date. Append to `$JOURNAL_FILE`.
 
 After writing, index the entry if `~/.agent/tools/journal-search.py` is available:
 ```bash

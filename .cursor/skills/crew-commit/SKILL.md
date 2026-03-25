@@ -64,3 +64,13 @@ Only commit after the user approves:
 ```bash
 git commit -m "<the message>"
 ```
+
+After a successful commit, resolve `TASK_DIR` and log the transition:
+
+```bash
+BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+TASK_DIR=$(find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
+if [ -n "$TASK_DIR" ]; then
+  ~/.agent/tools/log-progress.sh "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
+fi
+```

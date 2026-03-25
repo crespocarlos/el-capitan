@@ -24,8 +24,10 @@ Every entry has these shared fields:
 **Branch:** branch-name
 **Files touched:** path/to/file.ts, path/to/other.ts
 **What I did:** 1-2 sentences
+**Hypothesis:** (optional) — what you expected before starting
 **Decisions made:** key choices and why
 **What broke / surprised me:** errors, wrong assumptions, corrections
+**Outcome:** (optional) — fill after PR merges: did it work? any friction in review?
 **Promote to rules:** conventions worth remembering, or "none"
 ```
 
@@ -34,7 +36,9 @@ Every entry has these shared fields:
 ```markdown
 **Source:** URL, PR, repo, or concept
 **Key idea:** single most important thing
+**Hypothesis:** (optional) — what you expected this to teach you before reading/session
 **Experiments queued:** things to build or try
+**Outcome:** (optional) — what it actually taught you vs expectation; fill after experimenting
 **Patterns emerging:** recurring themes across entries
 ```
 
