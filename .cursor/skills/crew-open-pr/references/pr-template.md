@@ -3,7 +3,7 @@
 Use this as the default format unless the repo has its own `.github/PULL_REQUEST_TEMPLATE.md`.
 
 ```markdown
-closes github
+closes <GITHUB_ISSUE_URL_OR_NUMBER>
 
 ## Summary
 
@@ -25,7 +25,7 @@ Steps to verify the change. If you know how, write them. If not, don't invent st
 
 ## Rules
 
-- `Closes #ISSUE` goes at the top, before the summary. GitHub auto-closes from the body.
+- `closes <URL_OR_NUMBER>` goes at the top, before the summary. Use the full GitHub issue URL (e.g. `closes https://github.com/org/repo/issues/123`) or `closes #123` if same repo. GitHub auto-closes from the body.
 - Summary tone: direct, for engineers. No fluff, no "This PR aims to..."
 - If SPEC.md exists, derive the summary from its goal — don't paraphrase the diff.
 - "How to test" is best-effort. Real steps from SPEC.md acceptance criteria if available. Otherwise keep it brief.
