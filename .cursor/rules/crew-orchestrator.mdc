@@ -1,0 +1,125 @@
+---
+description: "el-capitan orchestrator — pipeline state machine, session awareness, and autopilot."
+alwaysApply: true
+---
+
+# Pipeline Orchestrator
+
+Manages the pipeline state machine. Reads PROGRESS.md to know where you are, surfaces status on session start, and auto-advances between gates in autopilot mode.
+
+## State machine
+
+```
+DRAFTING → [gate: approve spec] → IMPLEMENTING → DIFF_CHECK → COMMITTING → [gate: approve message] → PR_OPEN → DONE
+```
+
+Two gates. Everything between them auto-advances in autopilot.
+
+| From | To | Gate? | What runs |
+|---|---|---|---|
+| DRAFTING | APPROVED | **Gate 1** — user approves spec | — |
+| APPROVED | IMPLEMENTING | auto | `crew implement` |
+| IMPLEMENTING | DIFF_CHECK | auto | `crew diff` |
+| DIFF_CHECK | COMMITTING | auto | `crew commit` (presents message) |
+| COMMITTING | PR_OPEN | **Gate 2** — user approves message | `crew open pr` |
+| PR_OPEN | DONE | auto | — |
+
+## Session-start awareness
+
+On every conversation start, check for an active task:
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
+BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+```
+
+Scan `$BRANCH_DIR/*/SPEC.md` for non-done specs (where the line after `## Status` is not `done`). If one exists, read its PROGRESS.md and surface:
+
+> Active task: **<slug>** (<STATUS>). Next step: `<next crew command>`.
+
+If no active task, say nothing — do not announce the absence of a task.
+
+## `crew status`
+
+Print the current pipeline state on demand:
+
+1. Find the active task (same scan as session-start)
+2. If found, show:
+   - Task slug, repo, branch
+   - Current PROGRESS.md status
+   - Next step in the pipeline
+   - Files changed so far (`git diff --stat` in WORK_DIR if available)
+3. If no active task: "No active task. Run `crew spec` to start one."
+
+## `crew autopilot`
+
+Auto-advance from the current state to the next gate. This is NOT a permanent mode toggle — it means "chain forward and stop at the next gate or error."
+
+### How it works
+
+1. Read PROGRESS.md to determine the current state.
+2. Execute each step in the auto-advance segment until hitting a gate or an error.
+3. At each step:
+   - Run the corresponding crew command (follow the skill/agent protocol as if the user typed it)
+   - Read the result
+   - If success, update PROGRESS.md and advance to the next state
+   - If failure, stop and surface the error. The user decides how to proceed.
+4. Stop at the next gate and prompt the user.
+
+### Autopilot from each state
+
+**From APPROVED (after spec approval):**
+1. Run `crew implement` (creates worktree, launches ralph/builder)
+2. When done, run `crew diff`
+3. If diff is clean, run `crew commit` → presents message → **stops at Gate 2**
+4. If diff has issues, stop and surface them
+
+**From DIFF_CHECK (after implement):**
+1. Run `crew diff`
+2. If clean, run `crew commit` → presents message → **stops at Gate 2**
+3. If issues, stop and surface them
+
+**From COMMITTING (after commit approved):**
+1. Run `crew open pr`
+2. Update status to DONE
+3. Pipeline complete
+
+**From any other state:** Tell the user where they are and what `crew autopilot` can do from here. If at a gate, remind them what needs to happen first.
+
+### Error handling
+
+If a step fails during autopilot:
+- Surface the error clearly: which step failed, what went wrong
+- Do NOT auto-retry — the user decides
+- Suggest options: retry, skip, or stop
+- The user can fix the issue and run `crew autopilot` again to resume from the current state
+
+## Task state resolution
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel))
+BRANCH=$(git branch --show-current)
+BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+```
+
+Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-done one. If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
+
+## PROGRESS.md statuses
+
+`DRAFTING` → `APPROVED` → `IMPLEMENTING` → `DIFF_CHECK` → `COMMITTING` → `PR_OPEN` → `DONE`
+
+## Gate failures
+
+- Spec rejected → revise and re-present (stays in DRAFTING)
+- Diff has issues → surface to user, stay in DIFF_CHECK
+- Commit message rejected → re-propose (stays in COMMITTING)
+- `crew open pr` fails → surface error, stay in COMMITTING
+
+## Invariants
+
+- Never start implementation without an approved SPEC.md
+- Done = acceptance criteria pass, not "looks right"
+- PROGRESS.md is the single source of truth for pipeline state
+- Autopilot never skips a gate — it chains between gates, not through them
+- Autopilot never auto-retries on failure — the user always decides

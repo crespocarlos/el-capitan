@@ -2,7 +2,7 @@
 
 Your engineering crew, orchestrated. Spec it, build it, ship it — you just approve.
 
-el-capitan is a portable system of AI agents and skills for [Cursor](https://cursor.com) and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that handles speccing, implementing, reviewing, committing, and PR management. You make four decisions: **approve the spec**, **approve the commit**, **approve the PR**, and **merge**.
+el-capitan is a portable system of AI agents and skills for [Cursor](https://cursor.com) and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that handles speccing, implementing, reviewing, committing, and PR management. Three layers — a **router** dispatches commands, an **orchestrator** manages pipeline state, and a **runtime** (ralph, hooks, journal) does the work. You make two decisions: **approve the spec** and **approve the commit message**. Everything else auto-advances.
 
 ## Quick start
 
@@ -48,28 +48,28 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew cleanup` | Remove stale worktrees interactively |
 | `crew implement --parallel` | Parallel implementation attempts (best-of-n) |
 | `crew automations` | Reference guide for Cursor Automations setup |
+| `crew autopilot` | Auto-advance pipeline to next gate |
+| `crew status` | Print current pipeline state |
 
 ## How it works
 
 ```mermaid
 flowchart LR
     issue["📝 crew-create-issue"] -.->|"crew spec #N"| spec
-    spec["📋 crew-specwriter"] -->|"YOU: approve"| build["🔨 crew-builder"]
-    build --> diff["crew-diff"] --> commit["crew-commit"]
-    commit -->|"YOU: approve"| pr["crew-open-pr"]
-    pr --> review(["waiting for reviews"])
-    review --> resolve["🧩 crew-pr-resolver"]
-    resolve --> review
-    review -->|"approved"| merge(["YOU: merge"])
+    spec["📋 crew-specwriter"] -->|"Gate 1: approve"| build["🔨 crew-builder"]
+    build -->|"auto"| diff["crew-diff"]
+    diff -->|"auto"| commit["crew-commit"]
+    commit -->|"Gate 2: approve"| pr["crew-open-pr"]
+    pr --> pipelineDone(["done"])
 
-    reviewer["🔍 crew-pr-reviewer"] -.->|"review others' PRs"| review
+    resolver["🧩 crew-pr-resolver"] -.->|"async: address reviews"| pr
+    reviewer["🔍 crew-pr-reviewer"] -.->|"standalone: review others"| pr
     research["🔬 crew-researcher"] -.-> journal[("📓 journal")]
     think["💡 crew-thinker"] -.-> journal
     build -.->|"auto-recall"| journal
-    resolve -.->|"auto-recall"| journal
 ```
 
-**Four gates. Everything between runs autonomously.**
+**Two gates. Everything between auto-advances.** Run `crew autopilot` to chain the full segment, or type each command manually — your choice.
 
 ## The crew
 
@@ -111,6 +111,29 @@ The brainstorm partner. Two modes: *pipeline* (connects new learnings with past 
 
 - **crew-log** — records an engineering session, auto-gathers context, writes to the monthly journal
 - **crew-recall** — searches the journal by meaning (semantic search), metadata (grep), or overview (summary)
+
+## Architecture
+
+Three layers, each with a clear job:
+
+| Layer | File | Responsibility |
+|---|---|---|
+| **Router** | `.cursor/rules/crew-router.mdc` | Pure dispatch — trigger in, handler out |
+| **Orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness, autopilot |
+| **Runtime** | ralph, hooks, journal, automations | Execution engines — do the actual work |
+
+The router maps `crew <command>` to the right handler. The orchestrator knows where you are in the pipeline (via PROGRESS.md) and can auto-advance between gates. The runtime does the heavy lifting.
+
+### Autopilot
+
+`crew autopilot` chains from your current pipeline state to the next gate:
+
+- After spec approval: implement → diff → commit (stops for approval)
+- After commit approval: open PR → done
+
+If anything fails, autopilot pauses and surfaces the error. No auto-retry — you decide.
+
+`crew autopilot` is not a mode toggle. It means "advance from here." Use it mid-pipeline or from the start.
 
 ## Subagent dispatch
 

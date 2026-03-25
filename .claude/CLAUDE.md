@@ -21,6 +21,8 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew learn` concept/"what if"/ideas | `~/.claude/agents/crew-thinker.md` |
 | `crew create issue` description | `~/.claude/skills/crew-create-issue/SKILL.md` |
 | `crew cleanup` | `~/.claude/skills/crew-cleanup/SKILL.md` |
+| `crew autopilot` | Auto-advance pipeline to next gate (see Pipeline section) |
+| `crew status` | Print current pipeline state (see Pipeline section) |
 
 **This table is authoritative.** Read the file, follow its instructions. Do not override with judgment calls.
 
@@ -32,19 +34,23 @@ BRANCH=$(git branch --show-current)
 BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
 ```
 
-Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-DONE one. If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
+Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-done one. If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
 
 ## Pipeline
 
 ```
-crew-specwriter → [YOU approve] → crew-implement → crew-diff → crew-commit → crew-open-pr → [review cycle] → [YOU merge]
+spec → [Gate 1: approve spec] → implement → diff → commit → [Gate 2: approve message] → open PR → done
 ```
 
-Gate failures: spec rejected → revise and re-present. Diff issues → fix and re-run crew-diff. PR comments need input → surface to user and wait.
+Two gates. Everything between auto-advances with `crew autopilot`.
+
+**`crew autopilot`**: chains from current state to next gate. Not a mode toggle — means "advance from here." If a step fails, pauses and surfaces the error. No auto-retry.
+
+**`crew status`**: prints current pipeline state (task slug, status, next step).
 
 ## PROGRESS.md statuses
 
-`DRAFTING` → `APPROVED` → `IMPLEMENTING` → `DIFF_CHECK` → `COMMITTING` → `PR_OPEN` → `PR_RESOLVE` → `DONE`
+`DRAFTING` → `APPROVED` → `IMPLEMENTING` → `DIFF_CHECK` → `COMMITTING` → `PR_OPEN` → `DONE`
 
 ## Invariants
 

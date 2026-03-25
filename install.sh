@@ -34,6 +34,17 @@ done
 
 ln -sf "$SCRIPT_DIR/.claude/CLAUDE.md" ~/.claude/CLAUDE.md
 
+# Claude Code hooks (settings + hook scripts)
+if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
+  ln -sf "$SCRIPT_DIR/.claude/settings.json" ~/.claude/settings.json
+fi
+if [ -d "$SCRIPT_DIR/.claude/hooks" ]; then
+  mkdir -p ~/.claude/hooks
+  for h in "$SCRIPT_DIR/.claude/hooks/"*; do
+    ln -sf "$h" ~/.claude/hooks/$(basename "$h")
+  done
+fi
+
 ln -sf "$SCRIPT_DIR/.agent/_SPEC_TEMPLATE.md" ~/.agent/_SPEC_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_JOURNAL_TEMPLATE.md" ~/.agent/_JOURNAL_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_PROFILE_TEMPLATE.md" ~/.agent/_PROFILE_TEMPLATE.md
