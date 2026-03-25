@@ -73,7 +73,7 @@ flowchart LR
 
 ## The crew
 
-Six agents, each with skills at their disposal. Agents run as isolated subagents for deep, context-heavy work. Skills run inline for quick, interactive tasks.
+Six agents and ten skills, orchestrated by a routing rule. Agents run as isolated subagents for deep, context-heavy work. Skills run inline for quick, interactive tasks.
 
 ### 📋 crew-specwriter
 

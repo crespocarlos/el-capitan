@@ -1,5 +1,5 @@
 ---
-description: "el-capitan orchestrator — routes crew triggers to the right skill or agent."
+description: "el-capitan router — routes crew triggers to the right skill or agent."
 alwaysApply: true
 ---
 
