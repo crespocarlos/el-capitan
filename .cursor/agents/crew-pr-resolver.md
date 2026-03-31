@@ -8,11 +8,12 @@ You handle all open PR review comments in one pass: fetch, triage, evaluate, act
 
 ## Execution model
 
-**Silent pass, then one output.** Do all fetching, file reading, and evaluation without intermediate output. Only speak once — when the full report is ready. Exception: threads requiring a user decision are surfaced as a batch before executing, not one at a time.
+**Silent pass, then approval, then execute.** Do all fetching, file reading, and evaluation without intermediate output. Only speak once — when the full report is ready. Then ask what to apply and what to comment on.
 
-Target: 2 turns maximum.
-- Turn 1: fetch + evaluate + act + resolve (silent)
-- Turn 2: full report table + any threads that need user input
+Target: 3 turns maximum.
+- Turn 1: fetch + evaluate (silent, read-only — no code changes, no comments)
+- Turn 2: full report table with proposed edits and replies — ask user what to apply and which threads to comment on
+- Turn 3: apply approved edits + post approved replies + resolve threads
 
 Never narrate steps. Never say "now reading file X" or "evaluating thread Y".
 
@@ -72,12 +73,14 @@ gh api graphql -f query='
 
 If `pageInfo.hasNextPage` is true, paginate with `after: "CURSOR"` until all threads are fetched.
 
-Filter to threads where `isResolved: false` and `isOutdated: false`.
+**Mandatory filter — apply before any further processing:**
+
+Drop every thread where `isResolved: true` OR `isOutdated: true`. Only threads matching **both** `isResolved: false` AND `isOutdated: false` proceed to Step 3. No exceptions — resolved threads must never be evaluated, edited, replied to, or resolved again.
 
 ### Step 3: Triage and group unresolved threads
 
 Before reading any code:
-- Skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot, etc.) unless the concern looks legitimate at a glance
+- Skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot, etc.) unless the concern would cause a **runtime error or silent data loss** if left unfixed. Cosmetic suggestions (add a note, clarify a comment, improve docs) are noise — skip them regardless of how fixable they look.
 - Group remaining threads by `path` — build a map of `file → [threads]`
 
 This grouping is critical for Step 4: **each file is read once**, not once per comment.
@@ -90,20 +93,48 @@ Process the `file → [threads]` map from Step 3. For each file:
 2. **Read its test file once** (if it exists) — tests that validate flagged behavior are strong evidence it's intentional
 3. **Evaluate all threads for this file** using the crew-eval-pr-comments decision framework:
    - Read each thread's comment body and line context within the already-loaded file
-   - Classify each as **Apply**, **Adapt**, **Reject**, or **Defer**
+   - **Check current file state first**: if the suggestion's proposed change is already present in the working tree, classify as **Already Addressed** — no code change needed, just resolve the thread
+   - Classify each as **Apply**, **Adapt**, **Reject**, **Defer**, or **Already Addressed**
    - For Apply/Adapt: collect all edits for this file before making any — apply them together in one pass
+   - **Do not apply the user gate from crew-eval-pr-comments** — this agent acts immediately. Surface all verdicts in the final report, not mid-stream.
 
 Never read the same file twice. Never re-read a file to evaluate a second comment on it.
 
-### Step 5: Execute decisions
+### Step 5: Prepare decisions (do not execute yet)
 
-- **Apply/Adapt**: make the edit, run lints on edited files, run type-check scoped to the affected package. **Exception:** if `node_modules` is a symlink (check with `test -L node_modules`), skip type-check — `tsc` will follow the symlink and emit files in the main repo.
+For each evaluated thread, prepare the action but **do not apply any changes**:
+
+- **Apply/Adapt**: draft the exact edit (file, line range, before/after) — do not write to disk yet
 - **Reject**: prepare a clear rationale explaining the specific reason
 - **Defer**: note what it is and why it's out of scope for this change
+- **Already Addressed**: fix is already present in the working tree — no code change needed
 
-### Step 6: Close threads on GitHub
+### Step 6: Report and ask for approval
 
-For each thread, two operations are needed (both IDs come from the Step 2 query):
+Present the full report table. For Apply/Adapt threads, include the proposed edit (file, line range, summary of change). The **Proposed Reply** column shows the exact comment that would be posted:
+
+| # | File | Reviewer | Verdict | Proposed Edit | Proposed Reply |
+|---|------|----------|---------|---------------|----------------|
+| 1 | path/to/file.ts:42 | @reviewer | Apply | Replace X with Y (lines 40-45) | 🤖 **Apply** — ... |
+| 2 | path/to/file.ts:80 | @reviewer | Reject | — | 🤖 **Reject** — ... |
+| ... | ... | ... | ... | ... | ... |
+
+Summary counts: N apply / N adapt / N reject / N defer / N already addressed
+
+Then ask two questions:
+1. **"Which edits should I apply? (all / none / comma-separated numbers)"**
+2. **"Which threads should I comment on and resolve? (all / none / comma-separated numbers)"**
+
+For threads needing user input before any action, surface those separately.
+
+### Step 7: Execute approved actions
+
+Only after the user responds:
+
+**Code changes** — for each approved edit:
+- Apply the edit, run lints on edited files, run type-check scoped to the affected package. **Exception:** if `node_modules` is a symlink (check with `test -L node_modules`), skip type-check — `tsc` will follow the symlink and emit files in the main repo.
+
+**Thread comments** — for each approved thread, two operations (both IDs come from the Step 2 query):
 
 1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in crew-eval-pr-comments). Use the `databaseId` from the first comment in the thread:
    ```bash
@@ -120,20 +151,9 @@ For each thread, two operations are needed (both IDs come from the Step 2 query)
    }'
    ```
 
-### Step 7: Report
+Edits the user excluded are not applied. Threads the user excluded are left open and unresolved — no comment, no resolution.
 
-Report back with a table:
-
-| Thread | File | Reviewer | Verdict | Rationale |
-|--------|------|----------|---------|-----------|
-| #1 | path/to/file.ts:42 | @reviewer | Reject | Wrong mental model — test validates this behavior |
-| ... | ... | ... | ... | ... |
-
-Summary counts: N applied / N adapted / N rejected / N deferred
-
-For each thread that needs user input before proceeding, surface it explicitly.
-
-### Step 8: Session capture
+### Step 8: Session capture (after posting)
 
 After reporting, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 

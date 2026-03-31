@@ -23,6 +23,7 @@ Apply any recalled rules silently during evaluation. If a recalled pattern confl
 
 ### Step 2: Evaluate
 
+0. **Skip resolved threads** — if the suggestion comes from a PR review thread that is already resolved, skip it entirely. Only evaluate unresolved threads.
 1. **Read the target code** — always read the file and surrounding context before deciding.
 2. **Read the tests** — if the target code has tests, read them before evaluating. Tests that explicitly validate the flagged behavior (with comments explaining the design, probability model, or intent) are strong evidence the behavior is intentional, not a bug.
 3. **Classify** — see decision framework below.
@@ -53,6 +54,9 @@ Correct diagnosis, needs a different remedy:
 
 ### Defer
 Correct and worth doing, but out of scope for the current change — note it and move on.
+
+### Already Addressed
+The suggestion is correct but the fix is already present in the current working tree. No code change needed — resolve the thread and note it in the report.
 
 ## After Applying
 
