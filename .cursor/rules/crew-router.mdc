@@ -16,7 +16,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew diff` | crew-diff |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
-| `crew review PR` #X or URL | crew-pr-reviewer |
+| `crew review` [PR #X \| spec \| (self)] | crew-pr-reviewer |
 | `crew address PR` #X or URL | crew-pr-resolver |
 | `crew eval`: suggestion | crew-eval-pr-comments |
 | `crew log` | crew-log |
@@ -38,7 +38,7 @@ Some crew members do heavy exploration and should run as isolated subagents (Cur
 | Command | Dispatch | subagent_type |
 |---|---|---|
 | `crew spec` | **Subagent** | `crew-specwriter` |
-| `crew review PR` | **Subagent** | `crew-pr-reviewer` |
+| `crew review` | **Subagent** | `crew-pr-reviewer` |
 | `crew learn` (researcher path) | **Subagent** | `crew-researcher` |
 | `crew brainstorm` | **Subagent** | `crew-thinker` |
 | `crew implement` | **Subagent** (via crew-implement skill) | `crew-builder` |
