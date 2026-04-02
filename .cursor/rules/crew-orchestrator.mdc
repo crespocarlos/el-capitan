@@ -121,6 +121,8 @@ Auto-advance from current state to the next gate. Not a mode toggle — means "a
 **From DIFF_CHECK:**
 1. Read `~/.claude/skills/crew-commit/SKILL.md` and follow its protocol → presents message → **stop at Gate 2**
 
+> **Optional:** Before proceeding to commit, the user can run `crew review` for a self-review of the branch diff. This is a manual command — autopilot does not run it automatically.
+
 **From COMMITTING (after Gate 2 approval):**
 1. Read `~/.claude/skills/crew-open-pr/SKILL.md` and follow its protocol
 2. Append `[timestamp] TRANSITION: COMMITTING → PR_OPEN` to PROGRESS.md
@@ -134,6 +136,12 @@ Auto-advance from current state to the next gate. Not a mode toggle — means "a
 - Do NOT auto-retry — the user decides
 - Suggest options: retry, skip, or stop
 - User can fix and run `crew autopilot` again to resume
+
+## Optional: Self-review with `crew review`
+
+Between DIFF_CHECK and COMMITTING, the user can optionally run `crew review` to get a multi-lens review of the branch diff before committing. This launches parallel reviewer personas and produces a consolidated findings report.
+
+This is **not a pipeline state** — it's a manual command. The state machine is unchanged. Autopilot skips it. The user invokes it when they want a thorough review of their own changes before opening a PR.
 
 ## Task state resolution
 

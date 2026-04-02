@@ -37,7 +37,9 @@ All commands start with `crew`. Explicit routing only — no guessing.
 
 | Command | What it does |
 |---|---|
-| `crew review PR #456` | Deep-review someone else's PR |
+| `crew review` | Multi-lens self-review of your branch |
+| `crew review PR #456` | Multi-lens review of someone else's PR |
+| `crew review spec` | Multi-lens review of the active SPEC.md |
 | `crew eval: reviewer says use retry() instead` | Evaluate a single code suggestion |
 | `crew learn git worktrees` | Fetch + teach a concept |
 | `crew learn https://article.com/post` | Fetch + teach from a URL |
@@ -63,7 +65,7 @@ flowchart LR
     pr --> pipelineDone(["done"])
 
     resolver["🧩 crew-pr-resolver"] -.->|"async: address reviews"| pr
-    reviewer["🔍 crew-pr-reviewer"] -.->|"standalone: review others"| pr
+    reviewer["🔍 crew-reviewer"] -.->|"standalone: review self/others/spec"| pr
     research["🔬 crew-researcher"] -.-> journal[("📓 journal")]
     think["💡 crew-thinker"] -.-> journal
     build -.->|"auto-recall"| journal
@@ -91,9 +93,9 @@ The implementation engine. Codes in isolation from a SPEC — runs per-task acce
 - **crew-open-pr** — pushes the branch, generates a PR description, opens a draft PR (fork-aware)
 - **crew-cleanup** — interactive removal of stale worktrees, local branches, and task directories
 
-### 🔍 crew-pr-reviewer
+### 🔍 crew-reviewer
 
-Deep-reviews someone else's PR. Reads full files (not just the diff), traces impact across the codebase, verifies test coverage, and produces a structured review grouped by severity.
+Unified multi-lens review. Launches specialized reviewer personas in parallel (Code Quality, Adversarial, Fresh Eyes, plus signal-triggered Architecture and Product Flow), consolidates findings into a single prioritized report. Three modes: self-review your branch, review someone else's PR, or review a SPEC.md before approving it.
 
 ### 🧩 crew-pr-resolver
 
@@ -141,7 +143,7 @@ Heavy agents run as isolated subagents via Cursor's Task tool, keeping the orche
 
 | Command | Runs as |
 |---|---|
-| `crew spec`, `crew review PR`, `crew learn`, `crew brainstorm` | Isolated subagent |
+| `crew spec`, `crew review`, `crew learn`, `crew brainstorm` | Isolated subagent |
 | `crew implement` | Subagent (via crew-builder) |
 | `crew implement --parallel` | 2-3 best-of-n runners in parallel worktrees |
 | Everything else | Inline in orchestrator |
