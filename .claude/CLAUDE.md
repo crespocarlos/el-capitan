@@ -11,7 +11,15 @@ File path convention:
 - Agent personas: `~/.claude/agents/<name>/<role-plural>/<persona>.md` (optional subdirectory for multi-persona agents)
 - Skills: `~/.claude/skills/<name>/SKILL.md`
 
-When the Task tool is unavailable, agents run inline: read the agent file and follow its protocol directly. Multi-persona agents (crew-reviewer, crew-specwriter, crew-thinker) document their own Claude Code fallback — typically parallel `claude` CLI processes or inline sequential execution.
+## How to invoke agents (CRITICAL)
+
+**Agents are NOT tools or skills. Do NOT try to invoke them via the Skill tool or any tool call.** They are markdown instruction files. To "invoke" an agent:
+
+1. Read the agent file with `cat ~/.claude/agents/<name>.md`
+2. Follow the instructions in the file as if they were your own directives
+3. Execute each step described in the file directly — run the bash commands, read the files it says to read, produce the output it specifies
+
+Multi-persona agents (crew-reviewer, crew-specwriter, crew-thinker) have persona subdirectories. Their instructions say to dispatch personas — in Claude Code, this means spawning parallel `claude` CLI processes or running each persona's protocol inline sequentially. The agent file documents the specific fallback.
 
 `crew autopilot` and `crew status` are handled inline — see Pipeline section below.
 
