@@ -35,7 +35,7 @@ Trigger:  GitHub → Pull request opened
 Tools:    Comment on PR (approvals DISABLED)
 Prompt:
   You are a code reviewer. Read the PR diff and the repo's
-  .cursor/agents/crew-pr-reviewer.md for your review protocol.
+  .cursor/agents/crew-reviewer.md for your review protocol.
   Follow it exactly. Post your review as a PR comment.
   For each finding, include the file path and line range.
   Never approve or request changes — comment only.
@@ -77,7 +77,7 @@ Trigger:  GitHub → Pull request opened
 Tools:    Comment on PR (approvals ENABLED)
 Prompt:
   You are a code reviewer. Read the PR diff and the repo's
-  .cursor/agents/crew-pr-reviewer.md for your review protocol.
+  .cursor/agents/crew-reviewer.md for your review protocol.
   Follow it exactly. Post your review as a PR comment.
   For each finding, include the file path and line range.
   If there are Critical findings, request changes.

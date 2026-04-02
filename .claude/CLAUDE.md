@@ -8,7 +8,10 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 File path convention:
 - Agents: `~/.claude/agents/<name>.md`
+- Agent personas: `~/.claude/agents/<name>/<role-plural>/<persona>.md` (optional subdirectory for multi-persona agents)
 - Skills: `~/.claude/skills/<name>/SKILL.md`
+
+When the Task tool is unavailable, agents run inline: read the agent file and follow its protocol directly. Multi-persona agents (crew-reviewer, crew-specwriter, crew-thinker) document their own Claude Code fallback — typically parallel `claude` CLI processes or inline sequential execution.
 
 `crew autopilot` and `crew status` are handled inline — see Pipeline section below.
 

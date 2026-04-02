@@ -16,7 +16,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew diff` | crew-diff |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
-| `crew review` [PR #X \| spec \| (self)] | crew-pr-reviewer |
+| `crew review` [PR #X \| spec \| (self)] | crew-reviewer |
 | `crew address PR` #X or URL | crew-pr-resolver |
 | `crew eval`: suggestion | crew-eval-pr-comments |
 | `crew log` | crew-log |
@@ -38,7 +38,7 @@ Some crew members do heavy exploration and should run as isolated subagents (Cur
 | Command | Dispatch | subagent_type |
 |---|---|---|
 | `crew spec` | **Subagent** | `crew-specwriter` |
-| `crew review` | **Subagent** | `crew-pr-reviewer` |
+| `crew review` | **Subagent** | `crew-reviewer` |
 | `crew learn` (researcher path) | **Subagent** | `crew-researcher` |
 | `crew brainstorm` | **Subagent** | `crew-thinker` |
 | `crew implement` | **Subagent** (via crew-implement skill) | `crew-builder` |
@@ -46,7 +46,7 @@ Some crew members do heavy exploration and should run as isolated subagents (Cur
 
 **How to launch a subagent:** Use the Task tool with the `subagent_type` from the table. Pass a detailed prompt containing all context the agent needs (repo, branch, issue URL, user input, recalled patterns). The subagent runs autonomously and returns its result.
 
-**Claude Code fallback:** When the Task tool is unavailable (Claude Code), read the agent file directly and follow its protocol inline.
+**Claude Code fallback:** When the Task tool is unavailable (Claude Code), read the agent file directly and follow its protocol inline. Agents that dispatch sub-subagents (personas) document their own Claude Code fallback — typically spawning parallel `claude` CLI processes or running persona protocols inline sequentially. Agent files live at `~/.claude/agents/<name>.md` with persona subdirectories at `~/.claude/agents/<name>/<role-plural>/`.
 
 ## Add-ons
 
