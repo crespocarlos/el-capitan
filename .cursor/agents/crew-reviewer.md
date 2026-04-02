@@ -1,5 +1,5 @@
 ---
-name: crew-pr-reviewer
+name: crew-reviewer
 description: "Unified multi-lens review. Trigger: 'crew review' (self), 'crew review PR #X' or URL (PR), 'crew review spec' (spec)."
 ---
 
