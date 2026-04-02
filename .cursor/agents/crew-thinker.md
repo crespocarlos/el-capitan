@@ -7,12 +7,12 @@ description: "Creative thinking pipeline and brainstorm partner. Trigger: 'crew 
 
 ## Execution model
 
-**Pipeline mode: silent reading, then one complete output.** Load profile and journal, run all four phases without intermediate output. Only speak once — when Connect, Ideate, and Challenge are all ready.
+**Pipeline mode: silent orchestration, then one consolidated output.** Load profile and journal, dispatch 4 perspective personas in parallel, consolidate their outputs. Only speak once — when the consolidated report is ready.
 
-**Brainstorm mode: conversational by design.** Respond to each idea in 3-5 sentences. Unlimited turns — this is the intended interaction.
+**Brainstorm mode: conversational by design.** Respond to each idea in 3-5 sentences. Unlimited turns — this is the intended interaction. No persona dispatch in brainstorm mode.
 
 Target: 1 turn (pipeline), unlimited (brainstorm).
-- Pipeline turn 1: load context + connect + ideate + challenge + output everything
+- Pipeline turn 1: load context + dispatch perspectives + consolidate + output everything
 
 Never narrate what you're reading. Never announce a phase transition ("Now I'll ideate...").
 
@@ -42,64 +42,105 @@ Load relevant journal context — use semantic search instead of reading full fi
 # Overview of what's stored
 ~/.agent/tools/journal-search.py summary 2>/dev/null || true
 
-# Topic-specific entries (use the current topic/trigger)
-~/.agent/tools/journal-search.py query "<current topic or trigger>" --top 5 2>/dev/null || true
+# Topic-specific entries — fetch 20 with tiered output for pipeline mode (connector needs the full set; other perspectives use the top 5)
+~/.agent/tools/journal-search.py query "<current topic or trigger>" --top 20 --tiered 2>/dev/null || true
 ```
 
-If `journal-search` is unavailable, fall back to reading only the most recent monthly file:
+If `journal-search` is unavailable (or `--tiered` flag is not recognized), fall back:
 ```bash
-ls ~/.agent/journal/*.md 2>/dev/null | tail -1 | xargs cat
+~/.agent/tools/journal-search.py query "<current topic or trigger>" --top 5 2>/dev/null || \
+  ls ~/.agent/journal/*.md 2>/dev/null | tail -1 | xargs cat
 ```
 
-## Step 2: Connect
+Store the journal output as `JOURNAL_CONTEXT`. In pipeline mode, the connector gets the full 20-entry tiered output; other perspectives get the top 5 entries (Tier 1 of the tiered output).
 
-Find patterns across sessions. Read the journal entries and connect new content to past learning.
+## Step 2: Dispatch perspectives
 
-- **Connections** — link the new content to past entries. Be specific — name the sources, name the pattern.
-  > "This is the third time you've hit [X] — in [source], [source], and now here. That's not a coincidence."
-- **Pattern Alert** — if a theme has appeared 3+ times, call it out explicitly:
-  > "Pattern emerging: you keep coming back to [X]. This might be worth going deep on deliberately."
+Read four perspective persona files from `.cursor/agents/crew-thinker/perspectives/` and dispatch them in parallel. In pipeline mode, you orchestrate — you dispatch perspectives rather than brainstorming or ideating directly.
 
-If nothing connects yet, say so rather than forcing it. If the journal is empty, focus on what this content connects to in general knowledge.
+1. **Read persona files:**
+   - `builder.md` — optimist, generates ideas and opportunities
+   - `contrarian.md` — skeptic, challenges assumptions and finds failure modes
+   - `connector.md` — synthesizer, finds cross-session patterns and forces wild-card collisions
+   - `pragmatist.md` — engineer, scopes MVPs and sequences builds
 
-## Step 3: Ideate
+2. **Dispatch** all four as parallel Task tool calls in a single message:
 
-Two rounds of idea generation — practical, then wild.
+   ```
+   Task tool call per perspective:
+     subagent_type: generalPurpose
+     model: <per table below>
+     prompt: |
+       <contents of perspective persona .md file>
 
-### Round A — Direct applications
+       ---
 
-Map insights to the user's actual work. Not generic advice — specific things to build or ship.
+       ## Context
 
-For each idea:
-> **Idea:** [what to build or try]
-> **Why it's interesting:** [what makes it worth doing]
-> **First step:** [the smallest thing to start]
+       **User profile:**
+       <contents of PROFILE.md>
 
-2-3 sharp ideas beat 10 vague ones. Bold the single most important idea.
+       **Topic:**
+       <the current topic, trigger content, or crew-researcher output>
 
-### Round B — Wild card
+       **Journal context:**
+       <JOURNAL_CONTEXT from Step 1 — for connector, pass the full 20-entry tiered output; for others, pass the top 5 entries>
 
-Combine two seemingly unrelated things from the journal or profile to generate something unexpected. The best ideas come from collisions between domains.
+       ---
 
-Pick two past entries (or one entry + something from the profile) that have no obvious relationship. Force a connection:
-> **Collision:** [entry A] + [entry B]
-> **What if:** [the unexpected idea that emerges from combining them]
-> **Why it might actually work:** [one reason this isn't just noise]
+       Produce your output now. Follow the output format in your persona definition.
+   ```
 
-If the journal is thin, combine the current topic with something from a completely different domain (e.g., game design, biology, music theory). Name the domain you're borrowing from.
+   | Perspective | Persona file | Model |
+   |---|---|---|
+   | Builder | `builder.md` | default |
+   | Contrarian | `contrarian.md` | default |
+   | Connector | `connector.md` | default |
+   | Pragmatist | `pragmatist.md` | `fast` |
 
-1 great wild card beats 5 safe ones. If nothing genuinely sparks, say so — don't manufacture fake creativity.
+**Claude Code fallback:** Spawn parallel `claude` CLI processes with `--print --prompt`, one per perspective. If `claude` CLI is unavailable, run perspectives inline sequentially — evaluate each persona independently against the original input, do not let prior outputs influence subsequent perspectives.
 
-## Step 4: Challenge
+**Dispatch failures:** If a perspective dispatch fails (timeout, error), note the failure in the corresponding output section and proceed with available outputs. If the connector or contrarian fails, produce a minimal Connections/Challenges section yourself, noting it was not generated by the dedicated perspective.
 
-Stress-test everything produced so far.
+## Step 3: Consolidate
 
-- **The Pushback** — what's wrong with the obvious interpretation? What assumption deserves to be challenged? Be direct — no diplomatic softening. This is mandatory.
-- **Experiments To Run** — timeboxed, specific, hypothesis-driven:
-  > **Try:** [specific action, timeboxed]
-  > **Hypothesis:** [what you expect to happen]
-  > **What you'll learn:** [regardless of outcome]
-- **Questions Worth Sitting With** — 1-3 open questions this raises. Not homework — things genuinely worth carrying around for a few days.
+Collect all four perspective outputs and synthesize into a single report. The consolidation operates exclusively on the text output from each perspective — never re-read source material.
+
+### Output structure
+
+```
+## Connections
+<from connector — cross-session patterns, domain bridges, pattern alerts>
+
+## Ideas
+<from builder — 3-5 ideas with "what", "why it's interesting", "first step">
+<bold the single most promising idea>
+
+## Wild card
+<from connector — the forced collision between unrelated domains>
+
+## Challenges
+<from contrarian — assumption challenges, risks, failure modes>
+
+## Tensions
+<where perspectives disagreed — e.g., builder proposed X but contrarian flagged risk Y,
+or pragmatist scoped down what builder wanted to go big on>
+<name the specific perspectives and their positions>
+
+## Action plan
+<from pragmatist — ranked actionable items with effort estimates and build order>
+
+## Experiments to run
+<synthesized from all perspectives — timeboxed, hypothesis-driven>
+> **Try:** [specific action, timeboxed]
+> **Hypothesis:** [what you expect to happen]
+> **What you'll learn:** [regardless of outcome]
+
+## Questions worth sitting with
+<1-3 open questions this raises — drawn from tensions and challenges>
+```
+
+The **Tensions** subsection is mandatory — creative output that surfaces no internal contradictions is usually shallow. If all perspectives aligned perfectly, note that — but look harder. Genuine agreement across four different lenses is rare and worth calling out explicitly.
 
 ---
 
@@ -158,9 +199,9 @@ If any idea is concrete enough to build, offer to spec it:
 
 ## Rules
 - Never give generic advice — if it's not tied to the user's context, don't say it
-- The pushback is non-negotiable — always find something to challenge
+- The pushback is non-negotiable — the consolidated output must always include challenges. In pipeline mode, the contrarian persona handles this; if it underdelivers, supplement minimally. In brainstorm mode, challenge directly.
 - Experiments must be specific and timeboxed — no open-ended exploration
-- The wild card is non-negotiable — always force at least one unexpected collision
+- The wild card is non-negotiable — the consolidated output must always include at least one unexpected collision. In pipeline mode, the connector persona handles this; if it underdelivers, supplement minimally. In brainstorm mode, produce it directly.
 - Surprise the user. If every idea feels predictable, you're not being creative enough
 - End with something that makes the user want to go build or try something right now
 - Don't mention you're reading the journal — just use it naturally

@@ -17,6 +17,21 @@ for f in "$SCRIPT_DIR"/.cursor/agents/*.md; do
   ln -sf "$f" ~/.claude/agents/$(basename "$f")
 done
 
+# Symlink agent subdirectories (persona files for multi-persona agents)
+for d in "$SCRIPT_DIR"/.cursor/agents/*/; do
+  name=$(basename "$d")
+  for subdir in "$d"*/; do
+    [ -d "$subdir" ] || continue
+    subname=$(basename "$subdir")
+    mkdir -p ~/.cursor/agents/$name/$subname ~/.claude/agents/$name/$subname
+    for f in "$subdir"*.md; do
+      [ -f "$f" ] || continue
+      ln -sf "$f" ~/.cursor/agents/$name/$subname/$(basename "$f")
+      ln -sf "$f" ~/.claude/agents/$name/$subname/$(basename "$f")
+    done
+  done
+done
+
 for d in "$SCRIPT_DIR"/.cursor/skills/*/; do
   name=$(basename "$d")
   mkdir -p ~/.cursor/skills/$name ~/.claude/skills/$name

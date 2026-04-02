@@ -79,7 +79,7 @@ Six agents and ten skills, orchestrated by a routing rule. Agents run as isolate
 
 ### 📋 crew-specwriter
 
-Reads an issue or plain description, explores the codebase for patterns and conventions, and drafts a `SPEC.md` with acceptance criteria tight enough for autonomous implementation.
+Reads an issue or plain description, explores the codebase for patterns and conventions, and drafts a `SPEC.md` with acceptance criteria tight enough for autonomous implementation. Runs a silent self-critique phase (scope, adversarial, implementer personas) before presenting the spec — catches engineering problems before they reach Gate 1.
 
 - **crew-create-issue** — structures a rough idea into a well-formed GitHub issue (summary, repro steps, AC), asks gap-filling questions, files it with `gh`, and suggests `crew spec` as the next step
 
@@ -109,7 +109,7 @@ Give it a URL, a PR, a repo, or just a concept name — it fetches the content, 
 
 ### 💡 crew-thinker
 
-The brainstorm partner. Two modes: *pipeline* (connects new learnings with past sessions and generates experiments) or *brainstorm* (interactive back-and-forth to flesh out ideas, challenge assumptions, and explore what-if scenarios). Can offer to draft a SPEC when an idea solidifies.
+The brainstorm partner. Two modes: *pipeline* (dispatches 4 thinking personas in parallel — builder, contrarian, connector, pragmatist — and consolidates into a report with explicit tensions) or *brainstorm* (interactive back-and-forth to flesh out ideas, challenge assumptions, and explore what-if scenarios). Can offer to draft a SPEC when an idea solidifies.
 
 - **crew-log** — records an engineering session, auto-gathers context, writes to the monthly journal
 - **crew-recall** — searches the journal by meaning (semantic search), metadata (grep), or overview (summary)
