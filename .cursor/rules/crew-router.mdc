@@ -46,7 +46,7 @@ Some crew members do heavy exploration and should run as isolated subagents (Cur
 
 **How to launch a subagent:** Use the Task tool with the `subagent_type` from the table. Pass a detailed prompt containing all context the agent needs (repo, branch, issue URL, user input, recalled patterns). The subagent runs autonomously and returns its result.
 
-**Claude Code fallback:** When the Task tool is unavailable (Claude Code), read the agent file directly and follow its protocol inline. Agents that dispatch sub-subagents (personas) document their own Claude Code fallback — typically spawning parallel `claude` CLI processes or running persona protocols inline sequentially. Agent files live at `~/.claude/agents/<name>.md` with persona subdirectories at `~/.claude/agents/<name>/<role-plural>/`.
+**Claude Code fallback:** When the Task tool is unavailable (Claude Code), read the agent file directly and follow its protocol inline. Multi-persona orchestrators (crew-reviewer, crew-specwriter, crew-thinker) dispatch persona subagents natively via the Agent tool, or fall back to `claude -p` file-based dispatch. All agents and personas are flat files at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
 
 ## Add-ons
 

@@ -75,7 +75,7 @@ flowchart LR
 
 ## The crew
 
-Six agents and ten skills, orchestrated by a routing rule. Agents run as isolated subagents for deep, context-heavy work. Skills run inline for quick, interactive tasks.
+Six orchestrator agents, twelve persona subagents, and ten skills. Orchestrators dispatch persona subagents in parallel for multi-lens analysis. Skills run inline for quick, interactive tasks.
 
 ### 📋 crew-specwriter
 
@@ -139,7 +139,7 @@ If anything fails, autopilot pauses and surfaces the error. No auto-retry — yo
 
 ## Subagent dispatch
 
-Heavy agents run as isolated subagents via Cursor's Task tool, keeping the orchestrator's context clean:
+Heavy agents run as isolated subagents, keeping the orchestrator's context clean. Multi-persona orchestrators (review, spec, brainstorm) dispatch persona subagents in parallel — each persona gets its own context window.
 
 | Command | Runs as |
 |---|---|
@@ -148,7 +148,7 @@ Heavy agents run as isolated subagents via Cursor's Task tool, keeping the orche
 | `crew implement --parallel` | 2-3 best-of-n runners in parallel worktrees |
 | Everything else | Inline in orchestrator |
 
-On Claude Code (no Task tool), agents fall back to inline execution automatically.
+Persona subagents (e.g., `reviewer-adversarial`, `specwriter-scope`, `thinker-builder`) are registered as native subagents in both environments — Cursor dispatches via Task tool, Claude Code via Agent tool. Falls back to `claude -p` file-based dispatch when neither is available.
 
 ## Claude Code hooks
 
