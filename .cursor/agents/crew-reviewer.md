@@ -142,45 +142,41 @@ No context tiers — all reviewers receive the full SPEC.md text.
 
 ## Step 6: Parallel dispatch
 
-Read each reviewer persona file from `.cursor/agents/crew-reviewer/reviewers/` and construct the dispatch prompt.
+Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discovered by both Cursor and Claude Code). The orchestrator dispatches them by name — no need to inline persona content.
 
 ### Reviewer roster by mode
 
 **Self-review and PR review:**
 
-| Reviewer | Persona file | Context tier | Model |
+| Reviewer | Subagent name | Context tier | Model |
 |---|---|---|---|
-| Code Quality | `code-quality.md` | Tier 1 (Hunks+) | `fast` |
-| Adversarial | `adversarial.md` | Tier 3 (Full+) | default |
-| Fresh Eyes | `fresh-eyes.md` | Tier 1 (Hunks+) | default |
-| Architecture | `architecture.md` | Tier 3 (Full+) | default |
-| Product Flow | `product-flow.md` | Tier 2 (Function) | `fast` |
+| Code Quality | `reviewer-code-quality` | Tier 1 (Hunks+) | `fast` |
+| Adversarial | `reviewer-adversarial` | Tier 3 (Full+) | default |
+| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) | default |
+| Architecture | `reviewer-architecture` | Tier 3 (Full+) | default |
+| Product Flow | `reviewer-product-flow` | Tier 2 (Function) | `fast` |
 
 Architecture and Product Flow only activate when their signal triggers match (Step 4).
 
 **Spec review:**
 
-| Reviewer | Persona file | Model |
+| Reviewer | Subagent name | Model |
 |---|---|---|
-| Architecture | `architecture.md` | default |
-| Adversarial | `adversarial.md` | default |
-| Product Flow | `product-flow.md` | `fast` |
+| Architecture | `reviewer-architecture` | default |
+| Adversarial | `reviewer-adversarial` | default |
+| Product Flow | `reviewer-product-flow` | `fast` |
 
 All three always run for spec review. Other reviewers are not applicable (no code to review).
 
 ### Cursor dispatch (Task tool available)
 
-Launch all active reviewers as parallel Task tool calls:
+Launch all active reviewers as parallel Task tool calls. Each reviewer is a registered subagent — dispatch by name, passing only context (not the persona prompt):
 
 ```
 Task tool call per reviewer:
-  subagent_type: generalPurpose
+  subagent_type: <subagent name from table above>
   model: <per reviewer table above>
   prompt: |
-    <contents of persona .md file>
-
-    ---
-
     ## Review context
 
     <mode description: what is being reviewed and why>
@@ -197,20 +193,90 @@ Task tool call per reviewer:
 
 All Task tool calls go in a single message to execute in parallel.
 
-### Claude Code fallback (Task tool unavailable)
+### Claude Code dispatch (Agent tool — inline session)
 
-Spawn parallel `claude` CLI processes:
+Per CLAUDE.md, the orchestrator runs inline in the main session. The main session CAN dispatch subagents natively via the Agent tool. Dispatch each reviewer by name — the Agent tool finds the registered subagent and uses its system prompt automatically:
 
-```bash
-for reviewer in "${active_reviewers[@]}"; do
-  persona=$(cat ".cursor/agents/crew-reviewer/reviewers/${reviewer}.md")
-  claude --print --prompt "$(printf '%s\n\n---\n\n## Review context\n\n%s\n\n## Source material\n\n%s\n\n---\n\nProduce your review now.' "$persona" "$mode_description" "$context_package")" \
-    > "/tmp/review-${reviewer}.txt" 2>&1 &
-done
-wait
+```
+Agent tool call per reviewer:
+  agent_type: <subagent name from table above>
+  prompt: |
+    ## Review context
+
+    <mode description>
+
+    ## Source material
+
+    <context package for this reviewer's tier>
+
+    ---
+
+    Produce your review now.
 ```
 
-If `claude` CLI is unavailable, fall back to running reviewers inline sequentially — read each persona file, apply it to the context, and produce findings one reviewer at a time.
+All Agent tool calls go in a single message for parallel dispatch. If a reviewer fails, note the failure in the `### Reviewers` section of the consolidated report.
+
+### Degraded fallback (no Task tool, no Agent tool)
+
+File-based dispatch with parallel `claude` CLI processes. Same dispatch pattern as crew-specwriter and crew-thinker fallbacks.
+
+**Note:** The bash below is a protocol template — variables like `$active_reviewers` and `$REVIEW_MODE` are set by the AI agent executing the preceding steps, not by literal shell.
+
+```bash
+if command -v claude &>/dev/null; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+  REPO="$(basename "$REPO_ROOT")"
+  BRANCH="$(git branch --show-current)"
+  FAST_MODEL="${CLAUDE_FAST_MODEL:-sonnet}"
+
+  if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout 180"
+  elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout 180"
+  else TIMEOUT_CMD=""; fi
+
+  if [[ "$REVIEW_MODE" == "spec" ]]; then
+    DISPATCH_BASE="$TASK_DIR"
+  else
+    DISPATCH_BASE="$HOME/.agent/reviews/$REPO/$BRANCH"
+  fi
+
+  mkdir -p "$DISPATCH_BASE/personas"
+  RUN_DIR="$(mktemp -d "$DISPATCH_BASE/personas/run-XXXXXXXXXX")"
+  mkdir -p "$RUN_DIR/prompts" "$RUN_DIR/output" "$RUN_DIR/context"
+
+  for reviewer in "${active_reviewers[@]}"; do
+    {
+      cat "$REPO_ROOT/.cursor/agents/reviewer-${reviewer}.md"
+      printf '\n\n---\n\n## Review context\n\n%s\n\n## Source material\n\n' "$mode_description"
+      if [[ "$REVIEW_MODE" == "spec" ]]; then cat "$TASK_DIR/SPEC.md"
+      else cat "$RUN_DIR/context/${reviewer}.txt"; fi
+      printf '\n\n---\n\nProduce your review now. Follow the output format in your persona definition.\n'
+    } > "$RUN_DIR/prompts/${reviewer}.txt"
+  done
+
+  NAMES=("${active_reviewers[@]}")
+  PIDS=()
+  for i in "${!NAMES[@]}"; do
+    name="${NAMES[$i]}"
+    model_flag=""
+    case "$name" in
+      code-quality|product-flow) model_flag="--model $FAST_MODEL" ;;
+    esac
+    $TIMEOUT_CMD claude -p $model_flag < "$RUN_DIR/prompts/${name}.txt" \
+      > "$RUN_DIR/output/${name}.txt" 2>"$RUN_DIR/output/${name}.stderr" &
+    PIDS+=($!)
+  done
+
+  FAILURES=()
+  for i in "${!NAMES[@]}"; do
+    name="${NAMES[$i]}"
+    if ! wait "${PIDS[$i]}"; then FAILURES+=("$name (exit $?)")
+    elif [[ ! -s "$RUN_DIR/output/${name}.txt" ]]; then FAILURES+=("$name (empty output)"); fi
+  done
+else
+  # No dispatch mechanism — run reviewers inline sequentially.
+  # Known degradation: ordering bias (later reviewers see accumulated context).
+fi
+```
 
 ## Step 7: Consolidation
 
@@ -262,11 +328,11 @@ Return the single consolidated report. For PR review mode, append the overall as
 
 The reviewer roster is extensible. To add a domain-specific reviewer:
 
-1. Create a new `.md` file in `.cursor/agents/crew-reviewer/reviewers/` following the persona format (identity, scope boundaries, focus areas, severity definitions, output format)
+1. Create a new `.cursor/agents/reviewer-<name>.md` file with YAML frontmatter (`name`, `description`, `model: inherit`, `readonly: true`, `tools: Read, Grep, Glob`, `maxTurns: 5`) and a persona prompt (identity, scope boundaries, focus areas, severity definitions, output format)
 2. Add a signal rule in Step 4 of this orchestrator to determine when the reviewer activates
 3. Assign a context tier and model in the dispatch table (Step 6)
 
-For example, an SRE team could add an `observability.md` persona that activates on monitoring/alerting files and checks query quality, false positive risk, and alert actionability.
+For example, an SRE team could add a `reviewer-observability.md` persona that activates on monitoring/alerting files and checks query quality, false positive risk, and alert actionability.
 
 ## Rules
 

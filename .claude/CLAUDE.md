@@ -7,19 +7,22 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 **Command list is in `crew-router.mdc`** — that file is the single source of truth. Do not duplicate it here.
 
 File path convention:
-- Agents: `~/.claude/agents/<name>.md`
-- Agent personas: `~/.claude/agents/<name>/<role-plural>/<persona>.md` (optional subdirectory for multi-persona agents)
+- Orchestrator agents: `~/.claude/agents/crew-<name>.md` (e.g., `crew-reviewer.md`)
+- Persona subagents: `~/.claude/agents/<orchestrator>-<persona>.md` (e.g., `reviewer-adversarial.md`)
 - Skills: `~/.claude/skills/<name>/SKILL.md`
+
+All agents and personas are registered as subagents at the top level of `~/.claude/agents/`. Personas have YAML frontmatter with `name`, `description`, `model`, `tools`, and `maxTurns`.
 
 ## How to invoke agents (CRITICAL)
 
-**Agents are NOT tools or skills. Do NOT try to invoke them via the Skill tool or any tool call.** They are markdown instruction files. To "invoke" an agent:
+**Orchestrator agents** (crew-reviewer, crew-specwriter, crew-thinker) run inline: read the agent file with `cat ~/.claude/agents/<name>.md` and follow its protocol directly. They dispatch persona subagents as part of their protocol.
 
-1. Read the agent file with `cat ~/.claude/agents/<name>.md`
-2. Follow the instructions in the file as if they were your own directives
-3. Execute each step described in the file directly — run the bash commands, read the files it says to read, produce the output it specifies
+**Persona subagents** (reviewer-adversarial, specwriter-scope, thinker-builder, etc.) are dispatched BY the orchestrator, not invoked directly. They are registered subagents that can be dispatched natively via the Agent tool — each gets its own context window.
 
-Multi-persona agents (crew-reviewer, crew-specwriter, crew-thinker) have persona subdirectories. Their instructions say to dispatch personas — in Claude Code, this means spawning parallel `claude` CLI processes or running each persona's protocol inline sequentially. The agent file documents the specific fallback.
+Multi-persona dispatch priority:
+1. **Agent tool** (native subagent dispatch) — preferred when available
+2. **`claude -p` file-based dispatch** — parallel CLI processes as fallback
+3. **Inline sequential** — run each persona's protocol one at a time (degraded, ordering bias)
 
 `crew autopilot` and `crew status` are handled inline — see Pipeline section below.
 

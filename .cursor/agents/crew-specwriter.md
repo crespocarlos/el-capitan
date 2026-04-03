@@ -73,22 +73,19 @@ Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
 
 Run three critic personas in parallel against the draft spec. This phase is invisible to the user — they see only the improved spec in the output.
 
-1. **Read persona files** from `.cursor/agents/crew-specwriter/critics/`:
-   - `scope.md` — evaluates PR boundaries, task granularity, split-line identification
-   - `adversarial.md` — stress-tests acceptance criteria, surfaces missing edge cases
-   - `implementer.md` — evaluates builder compatibility, path clarity, verifiability
+1. **Critic subagents** are registered at `.cursor/agents/specwriter-*.md` (auto-discovered by both Cursor and Claude Code):
+   - `specwriter-scope` — evaluates PR boundaries, task granularity, split-line identification
+   - `specwriter-adversarial` — stress-tests acceptance criteria, surfaces missing edge cases
+   - `specwriter-implementer` — evaluates builder compatibility, path clarity, verifiability
 
-2. **Dispatch** all three as parallel Task tool calls in a single message:
+2. **Dispatch** all three in parallel. Each critic is a registered subagent — dispatch by name, passing only the draft spec as context (not the persona prompt):
 
+   **Cursor (Task tool):**
    ```
    Task tool call per critic:
-     subagent_type: generalPurpose
+     subagent_type: <subagent name from table below>
      model: <per table below>
      prompt: |
-       <contents of critic persona .md file>
-
-       ---
-
        ## Critique context
 
        You are reviewing a draft SPEC.md before it is presented to the user.
@@ -103,11 +100,14 @@ Run three critic personas in parallel against the draft spec. This phase is invi
        Produce your critique now. Follow the output format in your persona definition.
    ```
 
-   | Critic | Persona file | Model |
+   **Claude Code (Agent tool — inline session):**
+   Same prompt structure, dispatch via Agent tool by name. The main session can dispatch subagents natively.
+
+   | Critic | Subagent name | Model |
    |---|---|---|
-   | Scope | `scope.md` | `fast` |
-   | Adversarial | `adversarial.md` | default |
-   | Implementer | `implementer.md` | `fast` |
+   | Scope | `specwriter-scope` | `fast` |
+   | Adversarial | `specwriter-adversarial` | default |
+   | Implementer | `specwriter-implementer` | `fast` |
 
 3. **Collect findings** from all three critics. If a critic dispatch fails (timeout, error), proceed with the available findings — do not block on a single failure.
 
@@ -117,7 +117,57 @@ Run three critic personas in parallel against the draft spec. This phase is invi
 
 6. Proceed to Step 5 with the improved spec.
 
-**Claude Code fallback:** Spawn parallel `claude` CLI processes with `--print --prompt`, one per critic. If `claude` CLI is unavailable, run critics inline sequentially — evaluate each persona independently against the original draft, do not let prior findings influence subsequent critique.
+### Degraded fallback (no Task tool, no Agent tool)
+
+File-based dispatch with parallel `claude` CLI processes. Same pattern as crew-reviewer and crew-thinker fallbacks.
+
+**Note:** The bash below is a protocol template — variables like `$TASK_DIR` are set by the AI agent executing the preceding steps, not by literal shell.
+
+```bash
+if command -v claude &>/dev/null; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+  FAST_MODEL="${CLAUDE_FAST_MODEL:-sonnet}"
+  DISPATCH_BASE="$TASK_DIR"
+
+  if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout 180"
+  elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout 180"
+  else TIMEOUT_CMD=""; fi
+
+  mkdir -p "$DISPATCH_BASE/personas"
+  RUN_DIR="$(mktemp -d "$DISPATCH_BASE/personas/run-XXXXXXXXXX")"
+  mkdir -p "$RUN_DIR/prompts" "$RUN_DIR/output"
+
+  for critic in scope adversarial implementer; do
+    {
+      cat "$REPO_ROOT/.cursor/agents/specwriter-${critic}.md"
+      printf '\n\n---\n\n## Critique context\n\nYou are reviewing a draft SPEC.md before it is presented to the user.\nFind problems — do not suggest rewrites. The specwriter will apply fixes.\n\n## Draft spec\n\n'
+      cat "$TASK_DIR/SPEC.md"
+      printf '\n\n---\n\nProduce your critique now. Follow the output format in your persona definition.\n'
+    } > "$RUN_DIR/prompts/${critic}.txt"
+  done
+
+  NAMES=(scope adversarial implementer)
+  PIDS=()
+  for i in "${!NAMES[@]}"; do
+    name="${NAMES[$i]}"
+    model_flag=""
+    case "$name" in scope|implementer) model_flag="--model $FAST_MODEL" ;; esac
+    $TIMEOUT_CMD claude -p $model_flag < "$RUN_DIR/prompts/${name}.txt" \
+      > "$RUN_DIR/output/${name}.txt" 2>"$RUN_DIR/output/${name}.stderr" &
+    PIDS+=($!)
+  done
+
+  FAILURES=()
+  for i in "${!NAMES[@]}"; do
+    name="${NAMES[$i]}"
+    if ! wait "${PIDS[$i]}"; then FAILURES+=("$name (exit $?)")
+    elif [[ ! -s "$RUN_DIR/output/${name}.txt" ]]; then FAILURES+=("$name (empty output)"); fi
+  done
+else
+  # No dispatch mechanism — run critics inline sequentially.
+  # Known degradation: ordering bias (later critics see accumulated context).
+fi
+```
 
 ### Step 5: Surface questions
 

@@ -56,25 +56,22 @@ Store the journal output as `JOURNAL_CONTEXT`. In pipeline mode, the connector g
 
 ## Step 2: Dispatch perspectives
 
-Read four perspective persona files from `.cursor/agents/crew-thinker/perspectives/` and dispatch them in parallel. In pipeline mode, you orchestrate — you dispatch perspectives rather than brainstorming or ideating directly.
+Perspective subagents are registered at `.cursor/agents/thinker-*.md` (auto-discovered by both Cursor and Claude Code). In pipeline mode, you orchestrate — you dispatch perspectives rather than brainstorming or ideating directly.
 
-1. **Read persona files:**
-   - `builder.md` — optimist, generates ideas and opportunities
-   - `contrarian.md` — skeptic, challenges assumptions and finds failure modes
-   - `connector.md` — synthesizer, finds cross-session patterns and forces wild-card collisions
-   - `pragmatist.md` — engineer, scopes MVPs and sequences builds
+1. **Perspective subagents:**
+   - `thinker-builder` — optimist, generates ideas and opportunities
+   - `thinker-contrarian` — skeptic, challenges assumptions and finds failure modes
+   - `thinker-connector` — synthesizer, finds cross-session patterns and forces wild-card collisions
+   - `thinker-pragmatist` — engineer, scopes MVPs and sequences builds
 
-2. **Dispatch** all four as parallel Task tool calls in a single message:
+2. **Dispatch** all four in parallel. Each perspective is a registered subagent — dispatch by name, passing only context (not the persona prompt):
 
+   **Cursor (Task tool):**
    ```
    Task tool call per perspective:
-     subagent_type: generalPurpose
+     subagent_type: <subagent name from table below>
      model: <per table below>
      prompt: |
-       <contents of perspective persona .md file>
-
-       ---
-
        ## Context
 
        **User profile:**
@@ -91,14 +88,107 @@ Read four perspective persona files from `.cursor/agents/crew-thinker/perspectiv
        Produce your output now. Follow the output format in your persona definition.
    ```
 
-   | Perspective | Persona file | Model |
-   |---|---|---|
-   | Builder | `builder.md` | default |
-   | Contrarian | `contrarian.md` | default |
-   | Connector | `connector.md` | default |
-   | Pragmatist | `pragmatist.md` | `fast` |
+   **Claude Code (Agent tool — inline session):**
+   Same prompt structure, dispatch via Agent tool by name. The main session can dispatch subagents natively.
 
-**Claude Code fallback:** Spawn parallel `claude` CLI processes with `--print --prompt`, one per perspective. If `claude` CLI is unavailable, run perspectives inline sequentially — evaluate each persona independently against the original input, do not let prior outputs influence subsequent perspectives.
+   | Perspective | Subagent name | Model |
+   |---|---|---|
+   | Builder | `thinker-builder` | default |
+   | Contrarian | `thinker-contrarian` | default |
+   | Connector | `thinker-connector` | default |
+   | Pragmatist | `thinker-pragmatist` | `fast` |
+
+### Degraded fallback (no Task tool, no Agent tool)
+
+File-based dispatch with parallel `claude` CLI processes. Same pattern as crew-reviewer and crew-specwriter fallbacks.
+
+**Note:** The bash below is a protocol template — variables like `$TOPIC`, `$JOURNAL_CONTEXT_FULL`, and `$JOURNAL_CONTEXT_TOP5` are set by the AI agent executing the preceding steps, not by literal shell.
+
+```bash
+if command -v claude &>/dev/null; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+  REPO="$(basename "$REPO_ROOT")"
+  FAST_MODEL="${CLAUDE_FAST_MODEL:-sonnet}"
+  DISPATCH_BASE="$HOME/.agent/thinker/$REPO"
+
+  # Timeout: prefer GNU timeout, fall back to gtimeout (Homebrew), or skip
+  if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout 180"
+  elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout 180"
+  else TIMEOUT_CMD=""; fi
+
+  mkdir -p "$DISPATCH_BASE/personas"
+  RUN_DIR="$(mktemp -d "$DISPATCH_BASE/personas/run-XXXXXXXXXX")"
+  mkdir -p "$RUN_DIR/prompts" "$RUN_DIR/output"
+
+  # Write two context files — connector gets the full 20-entry journal, others get top-5
+  cat > "$RUN_DIR/context-full.txt" <<CTXEOF
+**User profile:**
+$(cat ~/.agent/PROFILE.md)
+
+**Topic:**
+$TOPIC
+
+**Journal context:**
+$JOURNAL_CONTEXT_FULL
+CTXEOF
+
+  cat > "$RUN_DIR/context-top5.txt" <<CTXEOF
+**User profile:**
+$(cat ~/.agent/PROFILE.md)
+
+**Topic:**
+$TOPIC
+
+**Journal context:**
+$JOURNAL_CONTEXT_TOP5
+CTXEOF
+
+  # Assemble prompt files — persona + separator + context + instruction
+  for perspective in builder contrarian connector pragmatist; do
+    context_file="$RUN_DIR/context-top5.txt"
+    if [[ "$perspective" == "connector" ]]; then
+      context_file="$RUN_DIR/context-full.txt"
+    fi
+    {
+      cat "$REPO_ROOT/.cursor/agents/thinker-${perspective}.md"
+      printf '\n\n---\n\n## Context\n\n'
+      cat "$context_file"
+      printf '\n\n---\n\nProduce your output now. Follow the output format in your persona definition.\n'
+    } > "$RUN_DIR/prompts/${perspective}.txt"
+  done
+
+  # Parallel dispatch — indexed arrays for macOS Bash 3.2 compat
+  NAMES=(builder contrarian connector pragmatist)
+  PIDS=()
+  for i in "${!NAMES[@]}"; do
+    name="${NAMES[$i]}"
+    model_flag=""
+    case "$name" in
+      pragmatist) model_flag="--model $FAST_MODEL" ;;
+    esac
+    $TIMEOUT_CMD claude -p $model_flag < "$RUN_DIR/prompts/${name}.txt" \
+      > "$RUN_DIR/output/${name}.txt" 2>"$RUN_DIR/output/${name}.stderr" &
+    PIDS+=($!)
+  done
+
+  # Collect — validate exit code + output content
+  FAILURES=()
+  for i in "${!NAMES[@]}"; do
+    name="${NAMES[$i]}"
+    if ! wait "${PIDS[$i]}"; then
+      FAILURES+=("$name (exit $?)")
+    elif [[ ! -s "$RUN_DIR/output/${name}.txt" ]]; then
+      FAILURES+=("$name (empty output)")
+    fi
+  done
+
+  # Read successful $RUN_DIR/output/*.txt and pass to Step 3 consolidation.
+  # For failed perspectives, note the failure in the corresponding output section.
+else
+  # No dispatch mechanism — run perspectives inline sequentially.
+  # Known degradation: ordering bias (later perspectives see accumulated context).
+fi
+```
 
 **Dispatch failures:** If a perspective dispatch fails (timeout, error), note the failure in the corresponding output section and proceed with available outputs. If the connector or contrarian fails, produce a minimal Connections/Challenges section yourself, noting it was not generated by the dedicated perspective.
 
