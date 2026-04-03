@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "REPO=$(basename \"$(git rev-parse --show-toplevel 2>/dev/null)\" 2>/dev/null || echo 'unknown'); BRANCH=$(git branch --show-current 2>/dev/null || echo ''); osascript -e \"display notification \\\"$REPO${BRANCH:+ ($BRANCH)} needs your input\\\" with title \\\"el-capitan\\\" sound name \\\"Glass\\\"\" 2>/dev/null; exit 0"
+            "command": "REPO=$(basename \"$(git rev-parse --show-toplevel 2>/dev/null)\" 2>/dev/null || echo 'unknown'); BRANCH=$(git branch --show-current 2>/dev/null || echo ''); MSG=\"$REPO${BRANCH:+ ($BRANCH)} needs your input\"; if command -v terminal-notifier >/dev/null 2>&1; then terminal-notifier -title 'el-capitan' -message \"$MSG\" -sound Glass -activate com.googlecode.iterm2 2>/dev/null; else osascript -e \"display notification \\\"$MSG\\\" with title \\\"el-capitan\\\" sound name \\\"Glass\\\"\" 2>/dev/null; fi; exit 0"
           }
         ]
       }
