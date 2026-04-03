@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "REPO=$(basename \"$(git rev-parse --show-toplevel 2>/dev/null)\" 2>/dev/null || echo 'unknown'); BRANCH=$(git branch --show-current 2>/dev/null || echo ''); osascript -e \"display notification \\\"$REPO${BRANCH:+ ($BRANCH)} needs your input\\\" with title \\\"el-capitan\\\"\" 2>/dev/null; exit 0"
+            "command": "REPO=$(basename \"$(git rev-parse --show-toplevel 2>/dev/null)\" 2>/dev/null || echo 'unknown'); BRANCH=$(git branch --show-current 2>/dev/null || echo ''); osascript -e \"display notification \\\"$REPO${BRANCH:+ ($BRANCH)} needs your input\\\" with title \\\"el-capitan\\\"\" -e 'tell application \"iTerm2\" to activate' 2>/dev/null; exit 0"
           }
         ]
       }
