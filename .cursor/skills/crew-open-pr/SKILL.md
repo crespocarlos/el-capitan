@@ -14,23 +14,30 @@ BRANCH=$(git branch --show-current)
 BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main")
 ```
 
-Detect fork workflow:
+Detect fork workflow and determine target repo:
 
 ```bash
 UPSTREAM_REPO=$(gh repo view --json parent --jq '.parent.owner.login + "/" + .parent.name' 2>/dev/null)
+ORIGIN_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)
 ```
 
-If `UPSTREAM_REPO` is non-empty, `origin` is a fork. The PR should target the upstream repo. Set:
+If `UPSTREAM_REPO` is non-empty, `origin` is a fork. Check whether the base branch exists on upstream:
 
 ```bash
-TARGET_REPO="$UPSTREAM_REPO"
+if [ -n "$UPSTREAM_REPO" ]; then
+  # Check if base branch exists on upstream
+  if gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null; then
+    TARGET_REPO="$UPSTREAM_REPO"
+  else
+    # Base branch only exists on the fork — target the fork
+    TARGET_REPO="$ORIGIN_REPO"
+  fi
+else
+  TARGET_REPO="$ORIGIN_REPO"
+fi
 ```
 
-If empty (not a fork), the PR targets the current repo:
-
-```bash
-TARGET_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
-```
+This handles the common case where feature branches are based on other feature branches in your fork, not on upstream's main.
 
 Read these sources (in order of priority):
 
