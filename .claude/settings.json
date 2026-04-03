@@ -3,20 +3,15 @@
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "if": "Bash(git push --force*)",
         "hooks": [
           {
             "type": "command",
+            "if": "Bash(git push --force *)",
             "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Force push blocked by hook. Use --force-with-lease instead.\"}}'"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "if": "Bash(git reset --hard*)",
-        "hooks": [
+          },
           {
             "type": "command",
+            "if": "Bash(git reset --hard*)",
             "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Hard reset blocked by hook. Use git stash or a soft reset.\"}}'"
           }
         ]
