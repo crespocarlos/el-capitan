@@ -222,7 +222,6 @@ Each task gets its own slug directory (e.g. `tasks/kibana/main/add-retry-logic/`
 | [Cursor](https://cursor.com) or [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Yes |
 | Git + [GitHub CLI (`gh`)](https://cli.github.com) | Yes |
 | Python 3.9+ | For semantic search |
-| [terminal-notifier](https://github.com/julienXX/terminal-notifier) | Optional — clickable notifications with click-to-focus |
 | [Ollama](https://ollama.ai) + `nomic-embed-text` | Optional — local semantic search |
 | `pip install chromadb ollama` | Optional — semantic search dependencies |
 
