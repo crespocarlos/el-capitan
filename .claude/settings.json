@@ -15,6 +15,15 @@
             "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Hard reset blocked by hook. Use git stash or a soft reset.\"}}'"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-write-boundary.sh\" 2>/dev/null; exit 0"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -34,7 +43,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "osascript -e 'display notification \"Claude Code needs your attention\" with title \"el-capitan\"' 2>/dev/null; exit 0"
+            "command": "REPO=$(basename \"$(git rev-parse --show-toplevel 2>/dev/null)\" 2>/dev/null || echo 'unknown'); BRANCH=$(git branch --show-current 2>/dev/null || echo ''); osascript -e \"display notification \\\"$REPO${BRANCH:+ ($BRANCH)} needs your input\\\" with title \\\"el-capitan\\\" sound name \\\"Glass\\\"\" 2>/dev/null; exit 0"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "afplay /System/Library/Sounds/Tink.aiff 2>/dev/null; exit 0"
           }
         ]
       }
