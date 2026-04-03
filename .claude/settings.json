@@ -1,19 +1,41 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "if": "Bash(git push --force*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Force push blocked by hook. Use --force-with-lease instead.\"}}'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(git reset --hard*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Hard reset blocked by hook. Use git stash or a soft reset.\"}}'"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash|Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/log-tool-use.sh 2>/dev/null; exit 0"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-tool-use.sh\" 2>/dev/null; exit 0"
           }
         ]
       }
     ],
     "Notification": [
       {
-        "matcher": "",
+        "matcher": "idle_prompt",
         "hooks": [
           {
             "type": "command",
@@ -24,11 +46,21 @@
     ],
     "SessionStart": [
       {
-        "matcher": "",
+        "matcher": "startup",
         "hooks": [
           {
             "type": "command",
             "command": "mkdir -p ~/.agent/telemetry && echo \"{\\\"ts\\\":\\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\",\\\"event\\\":\\\"session_start\\\",\\\"cwd\\\":\\\"$(pwd)\\\"}\" >> ~/.agent/telemetry/$(date +%Y-%m-%d).jsonl; exit 0"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p ~/.agent/telemetry && echo \"{\\\"ts\\\":\\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\",\\\"event\\\":\\\"session_end\\\",\\\"cwd\\\":\\\"$(pwd)\\\"}\" >> ~/.agent/telemetry/$(date +%Y-%m-%d).jsonl; exit 0"
           }
         ]
       }
