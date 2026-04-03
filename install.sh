@@ -66,7 +66,13 @@ echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc 
 echo "  Add-ons:  $(find ~/.cursor/agents -maxdepth 1 -name '*.md' ! -type l 2>/dev/null | wc -l | tr -d ' ') (local)"
 echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/skills + ~/.claude/skills)"
 echo ""
-# Check for semantic search dependencies (optional)
+# Check optional dependencies
+if command -v terminal-notifier &>/dev/null; then
+  echo "  Notifications: ready (terminal-notifier found — clickable with focus)"
+else
+  echo "  Notifications: basic — 'brew install terminal-notifier' for clickable notifications"
+fi
+
 if command -v ollama &>/dev/null && python3 -c "import chromadb" 2>/dev/null; then
   echo "  Semantic search: ready (ollama + chromadb found)"
 else
