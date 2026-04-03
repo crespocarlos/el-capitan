@@ -6,13 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git push --force *)",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Force push blocked by hook. Use --force-with-lease instead.\"}}'"
-          },
-          {
-            "type": "command",
-            "if": "Bash(git reset --hard*)",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Hard reset blocked by hook. Use git stash or a soft reset.\"}}'"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-destructive-git.sh\" 2>/dev/null; exit 0"
           }
         ]
       },
