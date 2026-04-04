@@ -33,6 +33,7 @@ Brainstorm or research before building.
 - **Entry**: `crew brainstorm` or `crew learn`
 - Open-ended — no stages, no gates, no terminal condition.
 - Optionally feeds into `build` when you're ready to spec something.
+- Note: explore has no persistent state — `crew status` will not detect an active explore session. When you're ready to commit to a direction, run `crew spec` to transition into the build workflow.
 
 ## Quick start
 
@@ -80,16 +81,17 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew review` | Multi-lens self-review of your branch |
 | `crew review PR #456` | Multi-lens review of someone else's PR |
 | `crew review spec` | Multi-lens review of the active SPEC.md |
-| `crew learn git worktrees` | Fetch + teach a concept |
-| `crew learn https://article.com/post` | Fetch + teach from a URL |
+| `crew learn git worktrees` | Fetch + teach a concept (routes to researcher, then thinker) |
+| `crew learn https://article.com/post` | Fetch + teach from a URL (URL/PR → researcher; concept → thinker) |
 | `crew brainstorm` | Creative session — connect ideas, challenge assumptions |
 | `crew brainstorm: what if we cached the API responses?` | Interactive brainstorm on a topic |
 | `crew log` | Log the engineering session to the journal |
 | `crew recall: how do we handle retries in kibana?` | Search journal by meaning |
 | `crew cleanup` | Remove stale worktrees interactively |
-| `crew implement --parallel` | Parallel implementation attempts (best-of-n) |
+| `crew implement --parallel` | Parallel implementation attempts (best-of-n, handled inside crew-builder) |
 | `crew autopilot` | Auto-advance pipeline to next gate |
 | `crew status` | Print current pipeline state |
+| `crew migrate` | Migrate task state from old repo/branch layout to UUID layout |
 
 ## How it works
 
@@ -129,7 +131,7 @@ flowchart TB
 
 ## The crew
 
-Six orchestrator agents, twelve persona subagents, and ten skills. Orchestrators dispatch persona subagents in parallel for multi-lens analysis. Skills run inline for quick, interactive tasks.
+Crew agents dispatch persona subagents in parallel for multi-lens analysis. Skills run inline for quick, interactive tasks.
 
 ### 📋 crew-specwriter
 
@@ -167,6 +169,10 @@ The brainstorm partner. Two modes: *pipeline* (dispatches 4 thinking personas in
 - **crew-log** — records an engineering session, auto-gathers context, writes to the monthly journal
 - **crew-recall** — searches the journal by meaning (semantic search), metadata (grep), or overview (summary)
 
+### 🔄 crew-migrate
+
+One-time utility. Migrates task state from the old `~/.agent/tasks/<repo>/<branch>/<slug>/` layout to the current UUID layout (`~/.agent/tasks/<uuid>/`). Run if `crew status` shows no active task but you have pre-UUID task directories. Safe to skip if you set up el-capitan after the UUID migration.
+
 ## Architecture
 
 Three layers, each with a clear job:
@@ -174,10 +180,11 @@ Three layers, each with a clear job:
 | Layer | File | Responsibility |
 |---|---|---|
 | **Router** | `.cursor/rules/crew-router.mdc` | Pure dispatch — trigger in, handler out |
-| **Orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness, autopilot |
+| **Pipeline orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness, autopilot |
+| **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
 | **Runtime** | ralph, hooks, journal, automations | Execution engines — do the actual work |
 
-The router maps `crew <command>` to the right handler. The orchestrator knows where you are in the pipeline (via PROGRESS.md) and can auto-advance between gates. The runtime does the heavy lifting.
+The router maps `crew <command>` to the right handler. The pipeline orchestrator knows where you are in the pipeline (via git/gh state) and can auto-advance between gates. Crew agents each own a workflow and dispatch persona subagents in parallel. The runtime does the heavy lifting.
 
 ### Autopilot
 
@@ -269,9 +276,7 @@ To add a custom skill: create `~/.cursor/skills/<name>/SKILL.md` with a `## Prot
 
 ## Task state
 
-All task data lives outside any repo at `~/.agent/`. Task state lives at `~/.agent/tasks/<repo>/<branch>/`.
-
-All task data:
+All task data lives outside any repo at `~/.agent/`. Each task gets a UUID directory resolved automatically from git state.
 
 ```
 ~/.agent/
@@ -279,16 +284,18 @@ All task data:
 ├── journal/                          ← monthly entries with embeddings
 ├── vectorstore/                      ← ChromaDB data (auto-created)
 ├── tools/journal-search.py           ← semantic search CLI
-└── tasks/<repo>/<branch>/<slug>/     ← SPEC.md, PROGRESS.md, SESSION.md, REPORT.md
+└── tasks/<uuid>/                     ← SPEC.md, PROGRESS.md, SESSION.md, REPORT.md
 ```
 
-Each task gets its own slug directory (e.g. `tasks/kibana/main/add-retry-logic/`). Multiple specs can coexist per branch — completed tasks stay alongside active ones. Path resolved automatically from git state. Journal and profile are private — never tracked by git.
+Multiple tasks can coexist — each has its own UUID directory with a `.task-id` JSON file binding it to a repo remote URL and branch. Completed tasks stay alongside active ones. Journal and profile are private — never tracked by git.
+
+> If you have task state from before the UUID migration, run `crew migrate` to move it to the new layout.
 
 ## PROFILE.md
 
 `~/.agent/PROFILE.md` is your personal context file — it persists across sessions and machines, and is never tracked by any git repo.
 
-**Which commands read it:** `crew brainstorm`, `crew thinker` (pipeline mode), `crew spec` (optional context).
+**Which commands read it:** `crew brainstorm`, `crew thinker` (pipeline mode), `crew spec` (optional context), `crew implement` (auto-recall of repo patterns at build start).
 
 **What's useful to include:** your role, current project, build context, preferences, and any recurring patterns you want the crew to apply.
 
@@ -314,7 +321,7 @@ Each task gets its own slug directory (e.g. `tasks/kibana/main/add-retry-logic/`
 | [Ollama](https://ollama.ai) + `nomic-embed-text` | Optional — local journal semantic search |
 | `pip install chromadb ollama` | Optional — journal semantic search dependencies |
 | `ralph` | Optional — autonomous implementation runner |
-| `claude mcp add --scope user SemanticCodeSearch -- npx @elastic/semantic-code-search-mcp-server` | Optional — semantic code search in Claude Code |
+| `claude mcp add --scope user SemanticCodeSearch -- npx @elastic/semantic-code-search-mcp-server` | Optional — enables semantic code search in Claude Code; used by `crew review` (reviewer-explorer persona) and `crew spec` (specwriter-explorer persona) to find relevant patterns beyond keyword matching |
 
 **macOS note:** The notification hook (`osascript`, iTerm2 focus) requires macOS. It skips gracefully on non-macOS systems — no configuration needed.
 

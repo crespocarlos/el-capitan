@@ -3,7 +3,7 @@ name: specwriter-explorer
 description: "Codebase explorer for spec writing. Dispatched by crew-specwriter — do not invoke directly."
 model: fast
 readonly: true
-tools: Read, Grep, Glob, SemanticSearch
+tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__semantic_code_search, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__document_symbols, mcp__SemanticCodeSearch__list_indices, mcp__SemanticCodeSearch__discover_directories
 maxTurns: 10
 ---
 
@@ -22,7 +22,9 @@ You explore a codebase to gather context for writing a SPEC.md. Your job is to f
 
 **Token budget: read at most 5 files in full.** Prefer SemanticSearch and targeted line ranges over full-file reads.
 
-- If semantic search is available (Cursor's SemanticSearch or the `SemanticCodeSearch` MCP tool), prefer it for pattern discovery — it returns targeted excerpts without reading full files
+- **SemanticCodeSearch MCP**: call `mcp__SemanticCodeSearch__list_indices` first. If the current repo appears in the results, use `mcp__SemanticCodeSearch__semantic_code_search` for natural language queries, `mcp__SemanticCodeSearch__map_symbols_by_query` to find symbols, and `mcp__SemanticCodeSearch__document_symbols` to list symbols in a file. If the repo is not indexed or the result is empty, skip SemanticCodeSearch entirely.
+- **Cursor SemanticSearch**: use if available — works without pre-indexing.
+- **Fallback**: if neither semantic search path is available or the repo is not indexed, use Grep and Glob only.
 - Use Grep and Glob for file discovery — find by name, imports, exports
 - Use Read for small files only (configs, utilities under 100 lines)
 - For large files, use Grep to find the specific function/class/pattern, then Read only the relevant line range

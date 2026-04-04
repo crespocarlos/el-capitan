@@ -58,7 +58,9 @@ Multi-persona orchestrators dispatch persona subagents in parallel. All agents a
 
 ## Add-ons
 
-Skills/agents in `~/.cursor/` that are regular files (not symlinks) are add-ons. Route to them by matching the user's trigger to their description frontmatter.
+Skills/agents in `~/.cursor/` that are regular files (not symlinks) are add-ons. Route to them by matching the user's trigger to their `description` frontmatter field.
+
+Example: an agent file `~/.cursor/agents/crew-deploy.md` with frontmatter `description: "Deploy the current branch to staging"` would be routed to when the user types `crew deploy`. The description is the routing key — make it describe the trigger, not the implementation.
 
 ## Invariants
 

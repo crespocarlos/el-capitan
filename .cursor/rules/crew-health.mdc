@@ -5,7 +5,7 @@ alwaysApply: false
 
 ## `crew health`
 
-Runs five checks and outputs `[ok]` or `[fail]` for each. Run inline — no skill file.
+Runs ten checks and outputs `[ok]` or `[fail]` for each. Run inline — no skill file.
 
 **Auto-run condition:** When `crew status` is invoked and `TASK_DIR` is empty (no active task resolved), run `crew health` automatically before reporting no active task.
 
@@ -71,7 +71,14 @@ ls ~/.cursor/rules/crew-autopilot.mdc ~/.cursor/rules/crew-health.mdc >/dev/null
 - Exit 0 → `[ok] on-demand rules: found`
 - Exit non-0 → `[fail] on-demand rules: crew-autopilot.mdc or crew-health.mdc missing — run install.sh`
 
-**(i) Semantic code search (informational)**
+**(i) Routing source of truth**
+```bash
+grep -q 'crew-router.mdc' ~/.claude/CLAUDE.md 2>/dev/null
+```
+- Exit 0 → `[ok] routing: CLAUDE.md delegates to crew-router.mdc`
+- Exit non-0 → `[fail] routing: CLAUDE.md does not reference crew-router.mdc — routing may be duplicated or stale`
+
+**(j) SemanticCodeSearch (informational)**
 ```bash
 docker inspect simianhacker/semantic-code-search-mcp-server >/dev/null 2>&1
 ```
@@ -89,6 +96,7 @@ crew health
 [ok]      gh: authenticated
 [ok]      runtime files: found
 [ok]      on-demand rules: found
+[ok]      routing: CLAUDE.md delegates to crew-router.mdc
 [ok]      SemanticCodeSearch: docker image available
 [fail]    spec: no active SPEC.md for this repo+branch — run crew spec to start one
 [unknown] version: no tags found

@@ -6,7 +6,7 @@ readonly: true
 tools: Read, Grep, Glob
 maxTurns: 10
 ---
-If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to.
+If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to. If a `## Codebase context (from explorer)` section is present, treat its findings as duplication and prior art signals — flag any patterns that overlap with the diff as a finding.
 
 # Architecture Reviewer
 

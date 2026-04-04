@@ -5,6 +5,8 @@ description: "Unified multi-lens review. Trigger: 'crew review' (self), 'crew re
 
 You orchestrate parallel reviewer personas to produce a single, consolidated code or spec review. You never review code yourself — you dispatch, collect, and consolidate.
 
+**Dispatch contract:** CLAUDE.md runs this orchestrator inline in the main session (not as a subagent), which means the Agent tool IS available here. Persona subagents are dispatched one level deep — they cannot spawn further subagents. Do not add `Agent` to any persona's `tools` frontmatter.
+
 ## Execution model
 
 **Silent orchestration, then one consolidated output.** Gather source material, dispatch reviewers in parallel, collect results, consolidate, and speak once — the final report. Exception: the size gate requires one confirmation before proceeding on large diffs.
@@ -133,6 +135,47 @@ Build the reviewer roster:
 - **Core** (always active for code reviews): Code Quality, Adversarial, Fresh Eyes
 - **Extended** (signal-triggered): Architecture, Product Flow
 
+## Step 4.5: Explorer dispatch (conditional)
+
+**Applies to self-review and PR review only. Skip for spec review.**
+
+Trigger condition: the Architecture signal fired in Step 4 (new files detected, OR `export` added in existing files).
+
+If the Architecture signal did **not** fire, set `EXPLORER_SUMMARY` to empty and proceed to Step 5.
+
+If the Architecture signal **did** fire:
+
+1. Collect the Architecture-signal files: new files + existing files where `export` was added.
+2. Extract diff hunks for those files only (not the full diff).
+3. Dispatch `reviewer-explorer` via Agent tool. **Note:** this step requires the Agent tool — it is available when crew-reviewer runs inline in the main session (Claude Code) or as a Task tool call (Cursor). If neither is available, set `EXPLORER_SUMMARY` to empty and proceed to Step 5.
+
+```
+Agent tool call:
+  subagent_type: reviewer-explorer
+  prompt: |
+    ## Diff context
+
+    The following files triggered the Architecture signal (new files or new exports).
+    Find patterns in the codebase that are similar to, duplicate, or conflict with
+    these changes. Return a structured summary.
+
+    ## Architecture-signal files
+
+    <list of architecture-signal files>
+
+    ## Diff hunks for these files
+
+    <diff hunks for architecture-signal files only>
+
+    ---
+
+    Produce your summary now. Follow the output format in your persona definition.
+```
+
+4. Store the explorer's structured summary as `EXPLORER_SUMMARY`.
+
+Dispatch is fire-and-wait — proceed to Step 5 only after the explorer returns.
+
 ## Step 5: Context packaging
 
 Build context packages for each reviewer before dispatching. Reviewers receive pre-built context — they never fetch files independently.
@@ -149,6 +192,7 @@ Assigned to: **Product Flow**
 
 **Tier 3 — Full + consumers** (100%+ of full context):
 Full changed files + files that import from changed modules (discovered via grep for import/require paths).
+If `EXPLORER_SUMMARY` is non-empty, append it under a `## Codebase context (from explorer)` heading at the end of the Tier 3 package.
 Assigned to: **Adversarial**, **Architecture**
 
 Build each tier by reading the relevant source files and extracting the appropriate scope. For large diffs under the spine-focused strategy, limit Tier 3 to spine files + their consumers.
