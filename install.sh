@@ -89,13 +89,29 @@ if [ -d "$SCRIPT_DIR/.claude/hooks" ]; then
 fi
 
 ln -sf "$SCRIPT_DIR/.agent/_SPEC_TEMPLATE.md" ~/.agent/_SPEC_TEMPLATE.md
+ln -sf "$SCRIPT_DIR/.agent/_BUG_SPEC_TEMPLATE.md" ~/.agent/_BUG_SPEC_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_JOURNAL_TEMPLATE.md" ~/.agent/_JOURNAL_TEMPLATE.md
 ln -sf "$SCRIPT_DIR/.agent/_PROFILE_TEMPLATE.md" ~/.agent/_PROFILE_TEMPLATE.md
+ln -sf "$SCRIPT_DIR/.agent/.ralph-instructions-template" ~/.agent/.ralph-instructions-template 2>/dev/null
 ln -sf "$SCRIPT_DIR/.agent/tools/journal-search.py" ~/.agent/tools/journal-search.py
 ln -sf "$SCRIPT_DIR/.agent/tools/manage-worktree.sh" ~/.agent/tools/manage-worktree.sh
 ln -sf "$SCRIPT_DIR/.agent/tools/log-progress.sh" ~/.agent/tools/log-progress.sh
 ln -sf "$SCRIPT_DIR/.agent/tools/resolve-task-dir.sh" ~/.agent/tools/resolve-task-dir.sh
 ln -sf "$SCRIPT_DIR/.agent/tools/requirements.txt" ~/.agent/tools/requirements.txt
+
+# Symlink scripts and queries directories
+if [ -d "$SCRIPT_DIR/.agent/scripts" ]; then
+  mkdir -p ~/.agent/scripts
+  for f in "$SCRIPT_DIR/.agent/scripts/"*; do
+    ln -sf "$f" ~/.agent/scripts/$(basename "$f")
+  done
+fi
+if [ -d "$SCRIPT_DIR/.agent/queries" ]; then
+  mkdir -p ~/.agent/queries
+  for f in "$SCRIPT_DIR/.agent/queries/"*; do
+    ln -sf "$f" ~/.agent/queries/$(basename "$f")
+  done
+fi
 
 # Create PROFILE.md from template if it doesn't exist (preserves existing profile on reinstall)
 if [ ! -f ~/.agent/PROFILE.md ]; then
