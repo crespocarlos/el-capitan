@@ -112,17 +112,23 @@ This snapshot is used by `crew commit` to detect out-of-scope modifications.
 
 **Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists).
 
-Check if ralph is available:
+#### Step 6a — Ralph check (required, do not skip)
 
 ```bash
 which ralph 2>/dev/null || which ralph.sh 2>/dev/null
 ```
 
-**If ralph is found**: launch crew-builder as a subagent (Cursor: Task tool; Claude Code: `ralph run` directly). Pass `MODE=ralph`. Ralph manages its own iterations — crew-builder waits for it to exit.
+This check is mandatory. Do not proceed to 6b or 6c without running it.
 
-**If ralph is not found**: launch crew-builder as a subagent if possible (Cursor: Task tool). If subagents are not available (Claude Code), follow crew-builder's inline protocol directly. Pass `MODE=inline`.
+#### Step 6b — Ralph mode (if ralph found)
 
-> **Ralph not found — inline fallback:** When ralph is unavailable, crew-builder's protocol is executed inline. Claude handles the build steps directly in the current session — reads each task from SPEC.md, implements it, runs the acceptance check, and marks it done. The same tasks and checks run; the difference is conversational (inline) rather than autonomous (ralph). No configuration needed — the fallback activates automatically.
+Launch crew-builder as a subagent (Cursor: Task tool; Claude Code: `ralph run` directly). Pass `MODE=ralph`. Ralph manages its own iterations — crew-builder waits for it to exit.
+
+#### Step 6c — Inline mode (only if ralph not found)
+
+Launch crew-builder as a subagent if possible (Cursor: Task tool). If subagents are not available (Claude Code), follow crew-builder's inline protocol directly. Pass `MODE=inline`.
+
+When ralph is unavailable, crew-builder's protocol is executed inline. Claude handles the build steps directly in the current session — reads each task from SPEC.md, implements it, runs the acceptance check, and marks it done. The same tasks and checks run; the difference is conversational (inline) rather than autonomous (ralph).
 
 Pass these inputs to crew-builder (or use them when following its protocol):
 - `TASK_DIR` — the resolved task directory path (absolute)
