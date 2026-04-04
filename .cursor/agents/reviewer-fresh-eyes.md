@@ -6,6 +6,7 @@ readonly: true
 tools: Read, Grep, Glob
 maxTurns: 10
 ---
+If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to.
 
 # Fresh Eyes Reviewer
 

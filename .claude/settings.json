@@ -29,6 +29,15 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log-tool-use.sh\" 2>/dev/null; exit 0"
           }
         ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-logger.sh\" 2>/dev/null; exit 0"
+          }
+        ]
       }
     ],
     "Notification": [
@@ -37,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "REPO=$(basename \"$(git rev-parse --show-toplevel 2>/dev/null)\" 2>/dev/null || echo 'unknown'); BRANCH=$(git branch --show-current 2>/dev/null || echo ''); osascript -e \"display notification \\\"$REPO${BRANCH:+ ($BRANCH)} needs your input\\\" with title \\\"el-capitan\\\"\" -e 'tell application \"iTerm2\" to activate' 2>/dev/null; exit 0"
+            "command": "REPO=$(basename \"$(git rev-parse --show-toplevel 2>/dev/null)\" 2>/dev/null || echo 'unknown'); BRANCH=$(git branch --show-current 2>/dev/null || echo ''); if [[ \"$(uname)\" == \"Darwin\" ]]; then osascript -e \"display notification \\\"$REPO${BRANCH:+ ($BRANCH)} needs your input\\\" with title \\\"el-capitan\\\"\" -e 'tell application \"iTerm2\" to activate' 2>/dev/null; fi; exit 0"
           }
         ]
       }
@@ -59,6 +68,16 @@
           {
             "type": "command",
             "command": "mkdir -p ~/.agent/telemetry && echo \"{\\\"ts\\\":\\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\",\\\"event\\\":\\\"session_end\\\",\\\"cwd\\\":\\\"$(pwd)\\\"}\" >> ~/.agent/telemetry/$(date +%Y-%m-%d).jsonl; exit 0"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-logger.sh\" 2>/dev/null; exit 0"
           }
         ]
       }

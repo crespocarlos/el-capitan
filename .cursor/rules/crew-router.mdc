@@ -30,6 +30,8 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew automations` | crew-automations |
 | `crew autopilot` | crew-orchestrator (auto-advance to next gate) |
 | `crew status` | crew-orchestrator (print pipeline state) |
+| `crew health` | crew-orchestrator (run health checks inline) |
+| `crew abandon` | crew-abandon skill |
 
 **This table is authoritative.** Do not override it with judgment calls.
 
