@@ -108,6 +108,19 @@ If skipped (already on feature branch), set `WORK_DIR` to the current directory.
 ~/.agent/tools/log-progress.sh "$TASK_DIR" "APPROVED → IMPLEMENTING"
 ```
 
+### Step 5b: Capture baseline diff
+
+Before making any code changes, capture the current state of the working tree:
+
+```bash
+# Re-entry guard: skip if BASELINE.diff already exists (resuming a previous session)
+if [ ! -f "$TASK_DIR/BASELINE.diff" ]; then
+  git diff HEAD > "$TASK_DIR/BASELINE.diff"
+fi
+```
+
+This snapshot is used by `crew commit` to detect out-of-scope modifications.
+
 ### Step 6: Launch worker
 
 **Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists).
@@ -121,6 +134,8 @@ which ralph 2>/dev/null || which ralph.sh 2>/dev/null
 **If ralph is found**: launch crew-builder as a subagent (Cursor: Task tool; Claude Code: `ralph run` directly). Pass `MODE=ralph`. Ralph manages its own iterations — crew-builder waits for it to exit.
 
 **If ralph is not found**: launch crew-builder as a subagent if possible (Cursor: Task tool). If subagents are not available (Claude Code), follow crew-builder's inline protocol directly. Pass `MODE=inline`.
+
+> **Ralph not found — inline fallback:** When ralph is unavailable, crew-builder's protocol is executed inline. Claude handles the build steps directly in the current session — reads each task from SPEC.md, implements it, runs the acceptance check, and marks it done. The same tasks and checks run; the difference is conversational (inline) rather than autonomous (ralph). No configuration needed — the fallback activates automatically.
 
 Pass these inputs to crew-builder (or use them when following its protocol):
 - `TASK_DIR` — the resolved task directory path (absolute)

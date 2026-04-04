@@ -55,6 +55,27 @@ chore(deps): bump @kbn/inference-common to 1.4.0
 - If SPEC.md exists, the message should reflect its goal
 - Never multi-line for branch commits — the PR description carries the context
 
+### Step 2b: Out-of-scope check
+
+Before proposing the commit message, check for out-of-scope modifications:
+
+```bash
+BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+TASK_DIR=$(find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
+```
+
+If `$TASK_DIR/BASELINE.diff` exists:
+
+1. List currently modified files: `git diff --name-only HEAD`
+2. For each modified file, check if its name (basename or relative path) appears as a literal string in `$TASK_DIR/SPEC.md`:
+   ```bash
+   grep -q "<filename>" "$TASK_DIR/SPEC.md"
+   ```
+3. For each modified file whose name does **not** appear as a literal string in SPEC.md, emit:
+   > "Out-of-scope warning: [file] was modified but is not referenced in SPEC.md."
+
+Surface all warnings before proposing the commit message. The user decides whether to proceed, remove the files from staging, or update the spec.
+
 ### Step 3: Propose and commit
 
 Present the proposed message and ask: "Look good?"

@@ -27,6 +27,23 @@ Parse the user's input to determine the review mode:
 
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
 
+## Project mode
+
+**Trigger condition:** `git diff origin/main...HEAD` returns empty output — no commits or changed files relative to main, regardless of branch name.
+
+When this condition is true, skip the normal diff-review path and run a project-level review instead.
+
+**Protocol:**
+1. Detect: run `git diff origin/main...HEAD --stat`. If output is empty, enter project mode.
+2. Dispatch architecture, product-flow, and fresh-eyes reviewer personas against the following target files:
+   - `README.md`
+   - `crew-orchestrator.mdc`
+   - `crew-router.mdc`
+3. Build context packages: read and pass the full content of each target file to the dispatched reviewers.
+4. Collect and consolidate outputs using the same Step 7 consolidation format.
+
+**Post-dispatch truncation check:** After collecting all persona responses (in both project mode and normal mode), check the word count of each response. If any persona response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
+
 ## Step 2: Lightweight metadata (no full diff yet)
 
 Fetch **only metadata** first — file list, sizes, change types. Never load the full diff before the size gate.

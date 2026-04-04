@@ -71,11 +71,20 @@ gh api graphql -f query='
 }'
 ```
 
-If `pageInfo.hasNextPage` is true, paginate with `after: "CURSOR"` until all threads are fetched.
+Pagination loop — run until all threads are fetched:
+
+```
+While pageInfo.hasNextPage is true:
+  Re-issue the query with `after: "CURSOR"` (using the endCursor value)
+  Merge returned threads into the running list
+  Update cursor to the new endCursor
+```
 
 **Mandatory filter — apply before any further processing:**
 
-Drop every thread where `isResolved: true` OR `isOutdated: true`. Only threads matching **both** `isResolved: false` AND `isOutdated: false` proceed to Step 3. No exceptions — resolved threads must never be evaluated, edited, replied to, or resolved again.
+- **Drop** every thread where `isResolved: true`. Resolved threads must never be evaluated, edited, replied to, or resolved again.
+- **Route to Outdated Threads list** every thread where `isOutdated: true AND isResolved: false`. These are surfaced in the Step 6 report but not actioned.
+- Only threads with **both** `isResolved: false AND isOutdated: false` proceed to Step 3.
 
 ### Step 3: Triage and group unresolved threads
 
@@ -120,6 +129,14 @@ Present the full report table. For Apply/Adapt threads, include the proposed edi
 | ... | ... | ... | ... | ... | ... |
 
 Summary counts: N apply / N adapt / N reject / N defer / N already addressed
+
+**Outdated Threads** (read-only — do not propose edits or resolve):
+
+| # | File | Reviewer | Note |
+|---|------|----------|------|
+| 1 | path/to/file.ts:42 | @reviewer | Thread is outdated — verify if concern still applies to current code. |
+
+No edits proposed for outdated threads. Do not resolve them.
 
 Then ask two questions:
 1. **"Which edits should I apply? (all / none / comma-separated numbers)"**
@@ -167,9 +184,11 @@ BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git bra
 [TIME] crew-pr-resolver: N applied / N adapted / N rejected / N deferred
 ```
 
+Changes applied. Run `crew commit` to propose a message.
+
 ## Notes
 
-- `isOutdated: true` means the code has changed since the comment — skip unless the concern still applies to the current code
+- `isOutdated: true` means the code has changed since the comment — these are surfaced in the Outdated Threads section of the report, not actioned
 - Multiple comments in a thread = read all for context before deciding (first is the suggestion, later are follow-ups and discussion)
 - Never apply a suggestion that defeats the purpose of the original code
 - GraphQL is the only reliable way to get thread resolution state + both ID types in a single round-trip

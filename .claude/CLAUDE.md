@@ -52,6 +52,10 @@ Two gates. Everything between auto-advances with `crew autopilot`.
 
 **`crew status`**: prints current pipeline state derived from git/gh state. See crew-orchestrator.mdc for the full logic.
 
+**`crew health`**: runs five health checks inline (symlinks, hooks, jq, gh auth, active SPEC.md). Auto-runs when `crew status` finds no active task.
+
+**`crew abandon`**: gracefully abandons the current task — stashes changes, writes SESSION.md stub, appends ABANDONED to PROGRESS.md.
+
 ## PROGRESS.md
 
 Append-only event log. Pipeline steps write `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. Never overwrite — only append. `crew status` reads git/gh, not this file. Use `cat PROGRESS.md` for the human-readable audit trail.

@@ -102,6 +102,21 @@ EXISTING=$(git worktree list --porcelain \
   | grep "^worktree " \
   | sed 's/^worktree //' || true)
 
+# Collision guard: runs after $EXISTING is known, before the early-exit.
+# Handles the case where $WORKTREE_DIR exists on disk but is not registered for the target branch.
+if [ -d "$WORKTREE_DIR" ] && [ -z "$EXISTING" ]; then
+  # Check if it belongs to a different branch via worktree registry
+  OTHER_BRANCH=$(git worktree list --porcelain \
+    | grep -B2 "^worktree $(cd "$WORKTREE_DIR" 2>/dev/null && pwd)$" \
+    | grep "^branch " | sed 's|^branch refs/heads/||' || true)
+  if [ -n "$OTHER_BRANCH" ]; then
+    echo "Error: $WORKTREE_DIR is already a worktree for branch '$OTHER_BRANCH'. Cannot reuse for '$BRANCH'." >&2
+    exit 1
+  fi
+  # Directory exists but not registered as a worktree — append hash suffix to avoid collision
+  WORKTREE_DIR="${WORKTREE_DIR}-$(git rev-parse --short HEAD)"
+fi
+
 if [[ -n "$EXISTING" ]]; then
   echo "$EXISTING"
   exit 0

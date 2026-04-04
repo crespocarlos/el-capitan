@@ -13,6 +13,8 @@ bash ~/el-capitan/install.sh
 
 Then, in any repo:
 
+> Type these in Cursor's chat or Claude Code — not your terminal.
+
 ```
 crew spec https://github.com/org/repo/issues/123
 ```
@@ -150,6 +152,18 @@ Heavy agents run as isolated subagents, keeping the orchestrator's context clean
 
 Persona subagents (e.g., `reviewer-adversarial`, `specwriter-scope`, `thinker-builder`) are registered as native subagents in both environments — Cursor dispatches via Task tool, Claude Code via Agent tool. Falls back to `claude -p` file-based dispatch when neither is available.
 
+## Ralph (optional, recommended)
+
+[ralph](https://github.com/simianhacker/ralph-loop) is a code agent that runs autonomously — an external loop runner that manages implementation across multiple turns without holding a conversation open.
+
+**Status:** Optional but recommended for `crew implement`. The implementation experience is noticeably smoother with ralph.
+
+**Mode difference:**
+- **Ralph mode** (`which ralph` found): ralph manages the build loop autonomously — implements each task, runs acceptance checks, retries on failure, and hands back a report.
+- **Inline mode** (ralph not found): Claude handles the build steps directly in the current session — same tasks and checks, just conversational rather than autonomous.
+
+**When ralph is missing:** `crew implement` falls back to inline implementation automatically.
+
 ## Claude Code hooks
 
 When using Claude Code, project-level hooks in `.claude/settings.json` provide observability:
@@ -193,16 +207,20 @@ Without these, everything works — `crew-recall` falls back to ripgrep.
 
 ### Add-ons
 
-Drop custom agents or skills into `~/.cursor/agents/` or `~/.cursor/skills/` as regular files. The orchestrator discovers them at runtime.
+Drop custom agents or skills into `~/.cursor/agents/` or `~/.cursor/skills/` as regular files (not symlinks). The orchestrator discovers them at runtime.
 
 ```bash
 # Symlinks = core (el-capitan), regular files = your add-ons
 find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -type f -name '*.md' ! -type l
 ```
 
+To add a custom skill: create `~/.cursor/skills/<name>/SKILL.md` with a `## Protocol` section. To add a custom agent: create `~/.cursor/agents/<name>.md` with YAML frontmatter (`name`, `description`) and a prompt. Add an entry to `crew-router.mdc` to route a trigger to it.
+
 ## Task state
 
-All task data lives outside any repo at `~/.agent/`:
+All task data lives outside any repo at `~/.agent/`. Task state lives at `~/.agent/tasks/<repo>/<branch>/`.
+
+All task data:
 
 ```
 ~/.agent/
@@ -215,6 +233,26 @@ All task data lives outside any repo at `~/.agent/`:
 
 Each task gets its own slug directory (e.g. `tasks/kibana/main/add-retry-logic/`). Multiple specs can coexist per branch — completed tasks stay alongside active ones. Path resolved automatically from git state. Journal and profile are private — never tracked by git.
 
+## PROFILE.md
+
+`~/.agent/PROFILE.md` is your personal context file — it persists across sessions and machines, and is never tracked by any git repo.
+
+**Which commands read it:** `crew brainstorm`, `crew thinker` (pipeline mode), `crew spec` (optional context).
+
+**What's useful to include:** your role, current project, build context, preferences, and any recurring patterns you want the crew to apply.
+
+**Minimal starter example:**
+
+```markdown
+# Profile
+
+**Role:** Senior engineer, backend focus
+**Current project:** Distributed event pipeline for real-time analytics
+**Stack:** TypeScript, Node.js, Kafka, PostgreSQL
+**Preferences:** Prefer explicit error types over any-catch, no magic globals
+**Recurring context:** We use feature flags (LaunchDarkly) — any new behavior should be gated
+```
+
 ## Prerequisites
 
 | Requirement | Required? |
@@ -224,6 +262,9 @@ Each task gets its own slug directory (e.g. `tasks/kibana/main/add-retry-logic/`
 | Python 3.9+ | For semantic search |
 | [Ollama](https://ollama.ai) + `nomic-embed-text` | Optional — local semantic search |
 | `pip install chromadb ollama` | Optional — semantic search dependencies |
+| `ralph` | Optional — autonomous implementation runner |
+
+**macOS note:** The notification hook (`osascript`, iTerm2 focus) requires macOS. It skips gracefully on non-macOS systems — no configuration needed.
 
 ## Install
 
@@ -233,6 +274,19 @@ bash ~/el-capitan/install.sh
 ```
 
 New machine = clone + install. Everything restored via symlinks. Task state starts empty. Journal and profile persist locally.
+
+## Data & Privacy
+
+**What leaves your machine:** Claude API calls with the prompt content you send — code snippets, file content in context windows, and commands you type. This is sent to Anthropic's API under your API key.
+
+**What stays local:**
+- Journal entries (`~/.agent/journal/`) — private, never synced
+- Task state (`~/.agent/tasks/`) — private, never synced
+- `.claude/` config — your hooks, settings, and agent files (in-repo, but gitignored if you choose)
+- Worktrees (`../worktrees/`) — local git worktrees, not pushed until `crew open pr`
+- PROFILE.md — private, never synced
+
+No telemetry is sent to el-capitan's maintainers. The only outbound traffic is your Claude API usage.
 
 ## License
 
