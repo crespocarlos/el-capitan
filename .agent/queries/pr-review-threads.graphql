@@ -1,0 +1,67 @@
+# pr-review-threads.graphql — fetch unresolved PR review threads with pagination.
+#
+# Usage:
+#   Step 1 (first page, no cursor):
+#     gh api graphql -f query="$(sed '/^#/d; /^$/d' ~/.agent/queries/pr-review-threads.graphql | head -n -10)" #       --field owner=OWNER --field repo=REPO --field pr=PR_NUMBER
+#
+#   Step 2+ (subsequent pages, after: CURSOR from previous pageInfo.endCursor):
+#     Same call, add: --field cursor=CURSOR and use the paginated variant below.
+#
+# Note: For the first call, omit the `after` argument (or pass null). Do NOT pass the
+# literal string "CURSOR" — that is a placeholder. Only add `after: $cursor` on page 2+.
+
+# === INITIAL PAGE (no cursor) ===
+query InitialPage($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          isOutdated
+          comments(first: 10) {
+            nodes {
+              id
+              databaseId
+              author { login }
+              body
+              path
+              line
+              originalLine
+              diffHunk
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# === PAGINATED (cursor required) ===
+query PaginatedPage($owner: String!, $repo: String!, $pr: Int!, $cursor: String!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          isOutdated
+          comments(first: 10) {
+            nodes {
+              id
+              databaseId
+              author { login }
+              body
+              path
+              line
+              originalLine
+              diffHunk
+            }
+          }
+        }
+      }
+    }
+  }
+}

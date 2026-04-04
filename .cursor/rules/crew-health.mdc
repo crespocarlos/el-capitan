@@ -1,0 +1,88 @@
+---
+description: "crew health — five-check health diagnostic for the el-capitan setup."
+alwaysApply: false
+---
+
+## `crew health`
+
+Runs five checks and outputs `[ok]` or `[fail]` for each. Run inline — no skill file.
+
+**Auto-run condition:** When `crew status` is invoked and `TASK_DIR` is empty (no active task resolved), run `crew health` automatically before reporting no active task.
+
+### Checks
+
+Run all five checks sequentially and print each result:
+
+**(a) Symlinks present**
+```bash
+ls ~/.claude/agents/crew-reviewer.md ~/.cursor/rules/crew-router.mdc >/dev/null 2>&1
+```
+- Exit 0 → `[ok] symlinks: found`
+- Exit non-0 → `[fail] symlinks: one or more symlinks missing — run install.sh`
+
+**(b) Hook scripts accessible**
+```bash
+ls ~/.claude/hooks/log-tool-use.sh >/dev/null 2>&1
+```
+- Exit 0 → `[ok] hooks: found`
+- Exit non-0 → `[fail] hooks: hook scripts missing in ~/.claude/hooks/ — run install.sh`
+
+**(c) jq on PATH**
+```bash
+command -v jq >/dev/null 2>&1
+```
+- Exit 0 → `[ok] jq: found`
+- Exit non-0 → `[fail] jq: not found — install via brew install jq`
+
+**(d) gh auth status**
+```bash
+gh auth status >/dev/null 2>&1
+```
+- Exit 0 → `[ok] gh: authenticated`
+- Exit non-0 → `[fail] gh: not authenticated — run gh auth login`
+
+**(e) Active SPEC.md**
+```bash
+# Run canonical resolution recipe (above) then check if TASK_DIR is set
+[ -n "$TASK_DIR" ] && echo "$TASK_DIR/SPEC.md" || echo ""
+```
+- Returns a path → `[ok] spec: active task found at <path>`
+- Returns nothing → `[fail] spec: no active SPEC.md for this repo+branch — run crew spec to start one`
+
+**(f) Version check (informational)**
+```bash
+git -C "$(dirname "$(realpath ~/.cursor/rules/crew-router.mdc)")" describe --tags 2>/dev/null
+```
+- Exit 0 → `[ok] version: <tag>`
+- Exit non-0 (no tags) → `[unknown] version: no tags found`
+
+
+**(g) Runtime scripts and templates**
+```bash
+ls ~/.agent/scripts/dispatch-critics.sh    ~/.agent/scripts/dispatch-perspectives.sh    ~/.agent/scripts/dispatch-reviewers.sh    ~/.agent/.ralph-instructions-template    ~/.agent/queries/pr-review-threads.graphql    ~/.agent/_BUG_SPEC_TEMPLATE.md >/dev/null 2>&1
+```
+- Exit 0 → `[ok] runtime files: found`
+- Exit non-0 → `[fail] runtime files: one or more missing — run install.sh`
+
+**(h) On-demand rule files**
+```bash
+ls ~/.cursor/rules/crew-autopilot.mdc ~/.cursor/rules/crew-health.mdc >/dev/null 2>&1
+```
+- Exit 0 → `[ok] on-demand rules: found`
+- Exit non-0 → `[fail] on-demand rules: crew-autopilot.mdc or crew-health.mdc missing — run install.sh`
+
+### Output format
+
+```
+crew health
+───────────
+[ok]      symlinks: found
+[ok]      hooks: found
+[ok]      jq: found
+[ok]      gh: authenticated
+[ok]      runtime files: found
+[ok]      on-demand rules: found
+[fail]    spec: no active SPEC.md for this repo+branch — run crew spec to start one
+[unknown] version: no tags found
+───────────
+```

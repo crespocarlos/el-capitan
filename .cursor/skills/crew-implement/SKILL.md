@@ -1,3 +1,5 @@
+**Workflow**: build | **Stage**: implement
+
 # crew-implement
 
 Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and user interaction — then launches the implementation worker for the heavy lifting.
@@ -148,6 +150,8 @@ When the Implementation Report is available:
 3. Tell the user:
    > "All tasks done. Ready for `crew diff`."
    > "Working directory: `<WORK_DIR>` — run tests from there."
+
+> Next: run `crew diff` to continue.
 
 **Some tasks failed:**
 1. Show the user which tasks failed and the error summaries from the report.

@@ -62,51 +62,13 @@ When all tasks are complete:
 
 Ralph is an external loop runner that manages iteration and state across multiple turns. crew-implement checks for ralph (`which ralph`) and sets `MODE=ralph` when found.
 
-Detect the shell environment and generate `.ralph-instructions`:
+Detect the shell environment and generate `.ralph-instructions` from the template at `~/.agent/.ralph-instructions-template`. The template uses bare placeholder tokens (not `$VAR` syntax). Substitute using `sed` or `envsubst`-style replacement:
 
 ```bash
-NODE_VERSION=$(cat "$WORK_DIR/.nvmrc" 2>/dev/null || echo "")
-NVM_PREAMBLE=""
-if [ -n "$NODE_VERSION" ]; then
-  NVM_PREAMBLE="source ~/.nvm/nvm.sh && nvm use $NODE_VERSION &&"
-fi
-
-TASK_COUNT=$(awk '/^## Tasks$/,/^## [^T]/' "$TASK_DIR/SPEC.md" | grep -c '^\- \[ \]')
-# Budget: 2 iterations per task (implement + verify) plus 4 buffer turns
-MAX_RUNS=$(( (TASK_COUNT * 2) + 4 ))
-
-cat > "$TASK_DIR/.ralph-instructions" <<EOF
-Do NOT run git commit, git push, or gh pr create.
-Do NOT create or switch branches — the worktree and branch already exist.
-Work directory: $WORK_DIR
-
-## Shell environment
-Each iteration starts a fresh shell — nvm state does not persist.
-Before running any repo commands (yarn, node, npx, scripts/), prepend:
-  $NVM_PREAMBLE cd $WORK_DIR &&
-
-## Task loop
-For each unchecked item under ## Tasks, in order:
-1. Emit [N/M] <task name>... before starting.
-2. Read the task — understand what to change, which files, the acceptance check.
-3. Read related code (paths anchored to $WORK_DIR).
-4. Implement (all file paths anchored to $WORK_DIR).
-5. Verify — run the task's acceptance check from $WORK_DIR. Fix and retry up to 3 times on failure. Mark failed after 3 attempts.
-6. Mark [x] in SPEC.md.
-
-## Completion Protocol
-# Embedded from crew-builder.md ## Completion Protocol — keep in sync if protocol changes.
-1. Review each requirement under Acceptance Criteria > Requirements — mark [x] if satisfied.
-2. Review each item under Acceptance Criteria > Non-regression — mark [x] if verified.
-3. Review each item under Design Constraints — mark [x] if the implementation conforms.
-4. Set status to done using the two-line format:
-   ## Status
-   done
-   Do NOT write "## Status: done" inline.
-
-## Already-done guard
-If the line after ## Status is "done" AND all checkboxes in the spec are [x], EXIT immediately.
-EOF
+TASK_COUNT=$(grep -c '^\- \[ \]' "$TASK_DIR/SPEC.md" || echo 4)
+MAX_RUNS=$(( TASK_COUNT * 2 + 4 ))
+NVM_PREAMBLE=$([ -f .nvmrc ] && echo 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use' || echo '')
+sed -e "s|WORK_DIR|$WORK_DIR|g"     -e "s|NVM_PREAMBLE|$NVM_PREAMBLE|g"     -e "s|MAX_RUNS|$MAX_RUNS|g"     ~/.agent/.ralph-instructions-template > .ralph-instructions
 ```
 
 Launch ralph:

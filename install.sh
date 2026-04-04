@@ -8,6 +8,12 @@ echo "  Source: $SCRIPT_DIR"
 
 mkdir -p ~/.claude ~/.cursor/rules ~/.cursor/skills ~/.cursor/agents ~/.claude/skills ~/.claude/agents ~/.agent/tasks ~/.agent/journal ~/.agent/tools
 
+# Remove symlinks for deleted source files (idempotent)
+rm -f ~/.cursor/skills/crew-eval-pr-comments/SKILL.md ~/.claude/skills/crew-eval-pr-comments/SKILL.md
+rmdir ~/.cursor/skills/crew-eval-pr-comments ~/.claude/skills/crew-eval-pr-comments 2>/dev/null || true
+rm -f ~/.cursor/skills/crew-automations/SKILL.md ~/.claude/skills/crew-automations/SKILL.md
+rmdir ~/.cursor/skills/crew-automations ~/.claude/skills/crew-automations 2>/dev/null || true
+
 for f in "$SCRIPT_DIR"/.cursor/rules/*.mdc; do
   ln -sf "$f" ~/.cursor/rules/$(basename "$f")
 done

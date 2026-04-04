@@ -19,41 +19,42 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
 | `crew review` [PR #X \| spec \| (self)] | crew-reviewer |
-| `crew address PR` #X or URL | crew-pr-resolver |
-| `crew eval`: suggestion | crew-eval-pr-comments |
+| `crew resolve PR` #X or URL | crew-pr-resolver (formerly `crew address PR`) |
+| `crew address PR` #X or URL | crew-pr-resolver *(deprecated — use `crew resolve PR`)* |
 | `crew log` | crew-log |
 | `crew recall`: question | crew-recall |
 | `crew brainstorm` or + topic | crew-thinker |
 | `crew learn` X or URL | crew-route-learn rule → @crew-researcher or @crew-thinker |
 | `crew create issue` description | crew-create-issue |
 | `crew cleanup` | crew-cleanup |
-| `crew automations` | crew-automations |
 | `crew autopilot` | crew-orchestrator (auto-advance to next gate) |
 | `crew status` | crew-orchestrator (print pipeline state) |
 | `crew health` | crew-orchestrator (run health checks inline) |
 | `crew abandon` | crew-abandon skill |
 | `crew migrate` | crew-migrate |
+| `crew start build` | crew-specwriter (same as `crew spec`) |
+| `crew start review-cycle <PR#>` | crew-pr-resolver (same as `crew resolve PR`) |
 
 **This table is authoritative.** Do not override it with judgment calls.
 
+> Note: `crew start` is an alias layer — routes to existing handlers, introduces no new state or pipeline logic.
+
 ## Subagent dispatch
 
-Some crew members do heavy exploration and should run as isolated subagents (Cursor Task tool) to avoid polluting the orchestrator's context. Others are lightweight and run inline.
+Heavy commands run as isolated subagents to avoid polluting the orchestrator's context.
 
-| Command | Dispatch | subagent_type |
+| Command | subagent_type | Dispatch |
 |---|---|---|
-| `crew spec` | **Subagent** | `crew-specwriter` |
-| `crew review` | **Subagent** | `crew-reviewer` |
-| `crew learn` (researcher path) | **Subagent** | `crew-researcher` |
-| `crew brainstorm` | **Subagent** | `crew-thinker` |
-| `crew implement` | **Subagent** (via crew-implement skill) | `crew-builder` |
-| `crew address PR` | **Subagent** | `crew-pr-resolver` |
-| `crew migrate` | **Subagent** | `crew-migrate` |
-| All other commands | **Inline** | — |
+| `crew spec` | `crew-specwriter` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew review` | `crew-reviewer` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew learn` (researcher path) | `crew-researcher` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew brainstorm` | `crew-thinker` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew implement` | `crew-builder` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew resolve PR` | `crew-pr-resolver` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew migrate` | `crew-migrate` | Claude Code: Agent tool; Cursor: Task tool |
+| All other commands | — | Inline |
 
-**How to launch a subagent:** Use the Task tool with the `subagent_type` from the table. Pass a detailed prompt containing all context the agent needs (repo, branch, issue URL, user input, recalled patterns). The subagent runs autonomously and returns its result.
-
-**Claude Code dispatch:** Use the Agent tool (not the Task tool). All subagent dispatches in the table above use the Agent tool in Claude Code. Multi-persona orchestrators dispatch persona subagents via Agent tool too, or fall back to `claude -p` file-based dispatch. All agents and personas are flat files at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
+Multi-persona orchestrators dispatch persona subagents in parallel. All agents at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
 
 ## Add-ons
 

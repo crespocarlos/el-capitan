@@ -14,4 +14,16 @@ if [ -z "$TASK_DIR" ] || [ -z "$TRANSITION" ]; then
 fi
 
 mkdir -p "$TASK_DIR"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] TRANSITION: $TRANSITION" >> "$TASK_DIR/PROGRESS.md"
+STEP=$(echo "$TRANSITION" | sed 's/.*→ *//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+SUFFIX=""
+if [ -n "${CREW_WORKFLOW:-}" ] || [ -n "${CREW_MEMBER:-}" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    SUFFIX=" $(jq -cn --arg step "$STEP" --arg wf "${CREW_WORKFLOW:-}" --arg crew "${CREW_MEMBER:-}" '{step: $step, workflow: (if $wf == "" then null else $wf end), crew: (if $crew == "" then null else $crew end)}')"
+  else
+    STEP_ESC="${STEP//"/\\"}"
+    WF="${CREW_WORKFLOW:-}"; [ -z "$WF" ] && WF_JSON="null" || WF_JSON="\"${WF//"/\\"}\""
+    CREW="${CREW_MEMBER:-}"; [ -z "$CREW" ] && CREW_JSON="null" || CREW_JSON="\"${CREW//"/\\"}\""
+    SUFFIX=" {\"step\":\"${STEP_ESC}\",\"workflow\":${WF_JSON},\"crew\":${CREW_JSON}}"
+  fi
+fi
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] TRANSITION: $TRANSITION$SUFFIX" >> "$TASK_DIR/PROGRESS.md"

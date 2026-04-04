@@ -2,6 +2,7 @@
 name: crew-diff
 description: "Review the current git diff for issues before committing. Trigger: 'crew diff'."
 ---
+**Workflow**: build | **Stage**: diff
 
 # Diff Review
 
@@ -98,4 +99,6 @@ Output: `Verdict: PASS` / `Verdict: WARN` / `Verdict: BLOCK`
 
 **Conclusion:**
 - If PASS or WARN: "Run `crew commit` to proceed."
+
+> Next: run `crew commit` to continue.
 - If BLOCK: "Address the issues above before committing."

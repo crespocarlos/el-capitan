@@ -2,6 +2,7 @@
 name: crew-commit
 description: "Generate a semantic commit message and commit. Trigger: 'crew commit'."
 ---
+**Workflow**: build | **Stage**: commit
 
 # Semantic Commit
 
@@ -90,3 +91,5 @@ if [ -n "$TASK_DIR" ]; then
   ~/.agent/tools/log-progress.sh "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
 fi
 ```
+
+> Next: run `crew open pr` to continue.
