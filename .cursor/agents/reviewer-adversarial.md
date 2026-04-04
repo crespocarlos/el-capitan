@@ -6,7 +6,7 @@ readonly: true
 tools: Read, Grep, Glob
 maxTurns: 10
 ---
-If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to.
+If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to. If a `## Codebase context (from explorer)` section is present, treat its findings as assumption signals — if the diff assumes it is the only implementation of a concept but the explorer found the same concept elsewhere, that assumption is broken and should be flagged.
 
 # Adversarial Reviewer
 

@@ -51,6 +51,7 @@ Two gates. Everything between them auto-advances in autopilot.
 On every conversation start, check for an active task:
 
 ```bash
+# Silent failure: session-start should not interrupt if no task is found
 TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
@@ -67,6 +68,7 @@ Derive pipeline state from git and gh. PROGRESS.md is an audit trail, not the so
 **State derivation (in order):**
 
 ```bash
+# Hard failure: crew status must surface task resolution errors explicitly
 TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 ```
 
@@ -76,6 +78,10 @@ TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 
    Status validation:
    KNOWN_STATUSES = [DRAFTING, APPROVED, IMPLEMENTING, DONE]
+
+   Note: DIFF_CHECK, COMMITTING, and PR_OPEN are runtime-only pipeline states — they are derived
+   from git/gh signals (staged changes, open PR), not written into SPEC.md. Only the four
+   KNOWN_STATUSES above are valid SPEC.md values.
 
    If no SPEC.md found → skip validation (no warning).
    If SPEC.md found and status in KNOWN_STATUSES → proceed normally.
@@ -87,7 +93,10 @@ TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 
 3. **Check for worktree:**
    ```bash
-   git worktree list | grep -v "^$(git rev-parse --show-toplevel)"
+   # Capture root first — if git rev-parse fails (e.g., not in a git repo), the empty
+   # substitution would silently filter ALL worktrees, producing a wrong-state read.
+   REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "Error: not in a git repo"; exit 1; }
+   git worktree list | grep -v "^$REPO_ROOT"
    ```
    If a worktree exists for this branch AND no `$TASK_DIR/REPORT.md` → state = IMPLEMENTING
 
@@ -125,8 +134,14 @@ Changed: <git diff --stat output, or "none yet">
        { repository(owner: "OWNER", name: "REPO") {
          pullRequests(first: 10, states: OPEN, headRefName: "BRANCH") { nodes {
            number
-           reviewThreads(first: 50) { nodes { isResolved } }
-         }}}}' --jq '.data.repository.pullRequests.nodes[] | select(.reviewThreads.nodes | map(select(.isResolved == false)) | length > 0) | .number' 2>/dev/null
+           reviewThreads(first: 200) { nodes { isResolved } pageInfo { hasNextPage } }
+         }}}}' --jq '
+         .data.repository.pullRequests.nodes[] |
+         if .reviewThreads.pageInfo.hasNextPage then
+           error("review thread list truncated for PR \(.number) — increase first limit")
+         else . end |
+         select(.reviewThreads.nodes | map(select(.isResolved == false)) | length > 0) |
+         .number' 2>/dev/null
 
    → If found: `Workflow: respond | Next: crew start review-cycle #<PR>`
 
@@ -164,3 +179,5 @@ Append-only event log. Never read for state — only write. Format:
 ## `crew health`
 
 **Health check logic**: see `crew-health.mdc` — read it when `crew health` is invoked.
+
+Runs five checks inline: symlinks, hooks, jq availability, gh auth, and active SPEC.md presence. Auto-runs when `crew status` finds no active task.

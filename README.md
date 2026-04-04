@@ -66,6 +66,7 @@ El Capitan has three layers:
 |---|---|---|
 | **Router** | `.cursor/rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
 | **Orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state, session awareness, autopilot |
+| **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
 | **Runtime** | ralph, hooks, journal tools | Execution engines |
 
 ---
@@ -104,6 +105,8 @@ Brainstorm, research a concept or a URL, connect ideas across your journal. No g
 crew brainstorm: what if we cached the API responses?
 crew learn https://martinfowler.com/articles/feature-toggles.html
 ```
+
+> **Note:** explore has no persistent state — `crew status` will not detect an active explore session. When you're ready to commit to a direction, run `crew spec` to transition into the build workflow.
 
 ---
 
@@ -300,6 +303,10 @@ Two modes:
 
 **Skills:** `crew-log`, `crew-recall`
 
+### 🔄 crew-migrate
+
+One-time utility. Migrates task state from the old `~/.agent/tasks/<repo>/<branch>/<slug>/` layout to the current UUID layout (`~/.agent/tasks/<uuid>/`). Run if `crew status` shows no active task but you have pre-UUID task directories. Safe to skip if you set up el-capitan after the UUID migration.
+
 ---
 
 ## Architecture
@@ -370,7 +377,7 @@ Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are l
 
 ### PROFILE.md
 
-`~/.agent/PROFILE.md` is your personal context file. It persists across sessions and machines, is never tracked by git, and is read by `crew brainstorm`, `crew thinker` (pipeline mode), and optionally `crew spec`.
+`~/.agent/PROFILE.md` is your personal context file. It persists across sessions and machines, is never tracked by git, and is read by `crew brainstorm`, `crew thinker` (pipeline mode), `crew spec` (optional context), and `crew implement` (auto-recall of repo patterns at build start).
 
 Fill it with anything that helps the agents work in your context:
 
