@@ -67,8 +67,6 @@ No explicit `--type bug` flag or `crew start bug` command is required.
 
 Delegate exploration to the `specwriter-explorer` subagent to preserve context. **Do NOT read codebase files directly** — the explorer returns a structured summary in its own context window.
 
-**Token budget: read at most 5 files.** Prefer SemanticSearch over Read — it returns targeted excerpts instead of full files. Only read full files when you need the complete structure (e.g. a config file or a small utility). Use SemanticSearch scoped to the relevant package for pattern questions. Only fall back to the built-in `Explore` subagent type when the codebase structure is genuinely unknown.
-
 ```
 Task/Agent tool call:
   subagent_type: specwriter-explorer

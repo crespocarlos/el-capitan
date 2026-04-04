@@ -71,6 +71,13 @@ ls ~/.cursor/rules/crew-autopilot.mdc ~/.cursor/rules/crew-health.mdc >/dev/null
 - Exit 0 → `[ok] on-demand rules: found`
 - Exit non-0 → `[fail] on-demand rules: crew-autopilot.mdc or crew-health.mdc missing — run install.sh`
 
+**(i) Semantic code search (informational)**
+```bash
+docker inspect simianhacker/semantic-code-search-mcp-server >/dev/null 2>&1
+```
+- Exit 0 → `[ok] SemanticCodeSearch: docker image available`
+- Exit non-0 → `[skip] SemanticCodeSearch: docker image not found — optional, pull with docker pull simianhacker/semantic-code-search-mcp-server`
+
 ### Output format
 
 ```
@@ -82,6 +89,7 @@ crew health
 [ok]      gh: authenticated
 [ok]      runtime files: found
 [ok]      on-demand rules: found
+[ok]      SemanticCodeSearch: docker image available
 [fail]    spec: no active SPEC.md for this repo+branch — run crew spec to start one
 [unknown] version: no tags found
 ───────────

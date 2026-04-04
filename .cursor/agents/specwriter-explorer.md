@@ -3,7 +3,7 @@ name: specwriter-explorer
 description: "Codebase explorer for spec writing. Dispatched by crew-specwriter — do not invoke directly."
 model: fast
 readonly: true
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, SemanticSearch
 maxTurns: 10
 ---
 
@@ -20,10 +20,12 @@ You explore a codebase to gather context for writing a SPEC.md. Your job is to f
 
 ## How to explore
 
+**Token budget: read at most 5 files in full.** Prefer SemanticSearch and targeted line ranges over full-file reads.
+
+- If semantic search is available (Cursor's SemanticSearch or the `SemanticCodeSearch` MCP tool), prefer it for pattern discovery — it returns targeted excerpts without reading full files
 - Use Grep and Glob for file discovery — find by name, imports, exports
-- Use Read for small files (configs, utilities under 100 lines)
+- Use Read for small files only (configs, utilities under 100 lines)
 - For large files, use Grep to find the specific function/class/pattern, then Read only the relevant line range
-- Never read more than 5 files in full — prefer targeted line ranges
 
 ## Output format
 

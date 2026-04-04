@@ -311,9 +311,10 @@ Each task gets its own slug directory (e.g. `tasks/kibana/main/add-retry-logic/`
 | [Cursor](https://cursor.com) or [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Yes |
 | Git + [GitHub CLI (`gh`)](https://cli.github.com) | Yes |
 | Python 3.9+ | For semantic search |
-| [Ollama](https://ollama.ai) + `nomic-embed-text` | Optional — local semantic search |
-| `pip install chromadb ollama` | Optional — semantic search dependencies |
+| [Ollama](https://ollama.ai) + `nomic-embed-text` | Optional — local journal semantic search |
+| `pip install chromadb ollama` | Optional — journal semantic search dependencies |
 | `ralph` | Optional — autonomous implementation runner |
+| `claude mcp add --scope user SemanticCodeSearch -- npx @elastic/semantic-code-search-mcp-server` | Optional — semantic code search in Claude Code |
 
 **macOS note:** The notification hook (`osascript`, iTerm2 focus) requires macOS. It skips gracefully on non-macOS systems — no configuration needed.
 
