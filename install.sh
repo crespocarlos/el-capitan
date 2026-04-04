@@ -3,6 +3,36 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Symlink regular files from $1 into $2 (creates dest). nullglob; skips subdirs; no-op if $1 missing.
+link_dir_files() {
+  local src="$1" dest="$2"
+  [[ -d "$src" ]] || return 0
+  mkdir -p "$dest"
+  shopt -s nullglob
+  local f
+  for f in "$src"/*; do
+    [[ -f "$f" ]] || continue
+    ln -sf "$f" "$dest/$(basename "$f")"
+  done
+  shopt -u nullglob
+}
+
+# Same as link_dir_files but mirrors each file into two dest dirs (e.g. ~/.cursor/... + ~/.claude/...).
+link_dir_files_mirror() {
+  local src="$1" dest_a="$2" dest_b="$3"
+  [[ -d "$src" ]] || return 0
+  mkdir -p "$dest_a" "$dest_b"
+  shopt -s nullglob
+  local f base
+  for f in "$src"/*; do
+    [[ -f "$f" ]] || continue
+    base=$(basename "$f")
+    ln -sf "$f" "$dest_a/$base"
+    ln -sf "$f" "$dest_b/$base"
+  done
+  shopt -u nullglob
+}
+
 echo "Installing el-capitan — personal agentic engineering orchestrator"
 echo "  Source: $SCRIPT_DIR"
 
@@ -14,29 +44,21 @@ rmdir ~/.cursor/skills/crew-eval-pr-comments ~/.claude/skills/crew-eval-pr-comme
 rm -f ~/.cursor/skills/crew-automations/SKILL.md ~/.claude/skills/crew-automations/SKILL.md
 rmdir ~/.cursor/skills/crew-automations ~/.claude/skills/crew-automations 2>/dev/null || true
 
-for f in "$SCRIPT_DIR"/.cursor/rules/*.mdc; do
-  ln -sf "$f" ~/.cursor/rules/$(basename "$f")
-done
+link_dir_files "$SCRIPT_DIR/.cursor/rules" ~/.cursor/rules
+link_dir_files_mirror "$SCRIPT_DIR/.cursor/agents" ~/.cursor/agents ~/.claude/agents
 
-for f in "$SCRIPT_DIR"/.cursor/agents/*.md; do
-  ln -sf "$f" ~/.cursor/agents/$(basename "$f")
-  ln -sf "$f" ~/.claude/agents/$(basename "$f")
-done
-
-for d in "$SCRIPT_DIR"/.cursor/skills/*/; do
-  name=$(basename "$d")
-  mkdir -p ~/.cursor/skills/$name ~/.claude/skills/$name
-  ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.cursor/skills/$name/SKILL.md
-  ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.claude/skills/$name/SKILL.md
-  # Symlink reference files if the skill has a references/ directory
-  if [ -d "$SCRIPT_DIR/.cursor/skills/$name/references" ]; then
-    mkdir -p ~/.cursor/skills/$name/references ~/.claude/skills/$name/references
-    for ref in "$SCRIPT_DIR/.cursor/skills/$name/references/"*; do
-      ln -sf "$ref" ~/.cursor/skills/$name/references/$(basename "$ref")
-      ln -sf "$ref" ~/.claude/skills/$name/references/$(basename "$ref")
-    done
-  fi
-done
+if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
+  shopt -s nullglob
+  for d in "$SCRIPT_DIR"/.cursor/skills/*/; do
+    name=$(basename "$d")
+    mkdir -p ~/.cursor/skills/$name ~/.claude/skills/$name
+    ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.cursor/skills/$name/SKILL.md
+    ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.claude/skills/$name/SKILL.md
+    link_dir_files_mirror "$SCRIPT_DIR/.cursor/skills/$name/references" \
+      ~/.cursor/skills/$name/references ~/.claude/skills/$name/references
+  done
+  shopt -u nullglob
+fi
 
 # NOTE: When adding new crew commands, update BOTH .cursor/rules/crew-router.mdc
 # AND .claude/CLAUDE.md — they must stay in sync.
@@ -52,66 +74,21 @@ if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
     cp "$SETTINGS_SRC" "$SETTINGS_DEST"
     echo "  Created ~/.claude/settings.json"
   else
-    python3 - "$SETTINGS_SRC" "$SETTINGS_DEST" <<'PYEOF'
-import sys, json, os
-src_path, dest_path = sys.argv[1], sys.argv[2]
-with open(src_path) as f: src = json.load(f)
-with open(dest_path) as f: dest = json.load(f)
-# hooks is a dict keyed by event type (PreToolUse, PostToolUse, etc.)
-# Each value is an array of {matcher, hooks} entries. Merge per event type,
-# deduping by matcher so re-running install.sh is idempotent.
-src_hooks = src.get("hooks", {})
-dest_hooks = dest.get("hooks", {})
-for event_type, entries in src_hooks.items():
-  if event_type not in dest_hooks:
-    dest_hooks[event_type] = entries
-  else:
-    existing_matchers = {e.get("matcher", "") for e in dest_hooks[event_type]}
-    for entry in entries:
-      if entry.get("matcher", "") not in existing_matchers:
-        dest_hooks[event_type].append(entry)
-dest["hooks"] = dest_hooks
-for k, v in src.items():
-  if k != "hooks" and k not in dest:
-    dest[k] = v
-tmp = dest_path + ".tmp"
-with open(tmp, "w") as f: json.dump(dest, f, indent=2)
-os.rename(tmp, dest_path)
-print("  Merged ~/.claude/settings.json")
-PYEOF
+    python3 "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST"
   fi
 fi
-if [ -d "$SCRIPT_DIR/.claude/hooks" ]; then
-  mkdir -p ~/.claude/hooks
-  for h in "$SCRIPT_DIR/.claude/hooks/"*; do
-    ln -sf "$h" ~/.claude/hooks/$(basename "$h")
-  done
-fi
+link_dir_files "$SCRIPT_DIR/.claude/hooks" ~/.claude/hooks
 
-ln -sf "$SCRIPT_DIR/.agent/_SPEC_TEMPLATE.md" ~/.agent/_SPEC_TEMPLATE.md
-ln -sf "$SCRIPT_DIR/.agent/_BUG_SPEC_TEMPLATE.md" ~/.agent/_BUG_SPEC_TEMPLATE.md
-ln -sf "$SCRIPT_DIR/.agent/_JOURNAL_TEMPLATE.md" ~/.agent/_JOURNAL_TEMPLATE.md
-ln -sf "$SCRIPT_DIR/.agent/_PROFILE_TEMPLATE.md" ~/.agent/_PROFILE_TEMPLATE.md
+# ~/.agent templates (dotfile keeps stderr hush if optional upstream omits it)
+for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _PROFILE_TEMPLATE.md; do
+  ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
+done
 ln -sf "$SCRIPT_DIR/.agent/.ralph-instructions-template" ~/.agent/.ralph-instructions-template 2>/dev/null
-ln -sf "$SCRIPT_DIR/.agent/tools/journal-search.py" ~/.agent/tools/journal-search.py
-ln -sf "$SCRIPT_DIR/.agent/tools/manage-worktree.sh" ~/.agent/tools/manage-worktree.sh
-ln -sf "$SCRIPT_DIR/.agent/tools/log-progress.sh" ~/.agent/tools/log-progress.sh
-ln -sf "$SCRIPT_DIR/.agent/tools/resolve-task-dir.sh" ~/.agent/tools/resolve-task-dir.sh
-ln -sf "$SCRIPT_DIR/.agent/tools/requirements.txt" ~/.agent/tools/requirements.txt
 
-# Symlink scripts and queries directories
-if [ -d "$SCRIPT_DIR/.agent/scripts" ]; then
-  mkdir -p ~/.agent/scripts
-  for f in "$SCRIPT_DIR/.agent/scripts/"*; do
-    ln -sf "$f" ~/.agent/scripts/$(basename "$f")
-  done
-fi
-if [ -d "$SCRIPT_DIR/.agent/queries" ]; then
-  mkdir -p ~/.agent/queries
-  for f in "$SCRIPT_DIR/.agent/queries/"*; do
-    ln -sf "$f" ~/.agent/queries/$(basename "$f")
-  done
-fi
+# ~/.agent/{tools,scripts,queries}
+link_dir_files "$SCRIPT_DIR/.agent/tools" ~/.agent/tools
+link_dir_files "$SCRIPT_DIR/.agent/scripts" ~/.agent/scripts
+link_dir_files "$SCRIPT_DIR/.agent/queries" ~/.agent/queries
 
 # Create PROFILE.md from template if it doesn't exist (preserves existing profile on reinstall)
 if [ ! -f ~/.agent/PROFILE.md ]; then
