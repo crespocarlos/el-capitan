@@ -65,15 +65,43 @@ No explicit `--type bug` flag or `crew start bug` command is required.
 
 ### Step 2: Explore the codebase
 
-Understand:
-   - Which files and modules are involved
-   - Existing patterns to follow
-   - What tests exist and how to run them
-   - The relevant build/test config paths (e.g. tsconfig, jest config, Cargo.toml, pyproject.toml — whatever the repo uses)
+Delegate exploration to the `specwriter-explorer` subagent to preserve context. **Do NOT read codebase files directly** — the explorer returns a structured summary in its own context window.
 
-   **Token budget: read at most 5 files.** Prefer SemanticSearch over Read — it returns targeted excerpts instead of full files. Only read full files when you need the complete structure (e.g. a config file or a small utility). Use SemanticSearch scoped to the relevant package for pattern questions. Only fall back to the built-in `Explore` subagent type when the codebase structure is genuinely unknown.
+**Token budget: read at most 5 files.** Prefer SemanticSearch over Read — it returns targeted excerpts instead of full files. Only read full files when you need the complete structure (e.g. a config file or a small utility). Use SemanticSearch scoped to the relevant package for pattern questions. Only fall back to the built-in `Explore` subagent type when the codebase structure is genuinely unknown.
 
-   **Research conventions before drafting.** If the task involves adopting an existing pattern, find 1–2 canonical examples via SemanticSearch before writing tasks. The spec's References section should embed the relevant excerpts inline — the implementer shouldn't need to read those files again.
+```
+Task/Agent tool call:
+  subagent_type: specwriter-explorer
+  model: fast
+  prompt: |
+    ## Task
+    <issue title and description, or user's plain description>
+
+    ## Repo context
+    Repo: <repo name>
+    Likely modules: <any hints from the issue about which files/packages are involved>
+    Specific files mentioned: <any file paths from the issue, or "none">
+
+    ## Recalled patterns
+    <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
+
+    ---
+
+    Explore now. Follow the output format in your persona definition.
+```
+
+**Claude Code (Agent tool — inline session):**
+Same prompt structure, dispatch via Agent tool by name. The main session can dispatch subagents natively.
+
+| Explorer | Subagent name | Model |
+|---|---|---|
+| Codebase explorer | `specwriter-explorer` | `fast` |
+
+The explorer returns: files involved, canonical pattern examples (with inline excerpts), test locations + commands, and build config. Use this summary as the foundation for the spec — do not re-read the files yourself.
+
+**Fallback (no subagent dispatch):** Use SemanticSearch directly. Read at most 2 full files (config files or small utilities only). Prefer SemanticSearch scoped to the relevant package.
+
+**Research conventions before drafting.** The exploration summary should include 1–2 canonical examples with inline excerpts. The spec's References section embeds these — the implementer shouldn't need to read those files again.
 
 ### Step 3: Draft the spec
 
