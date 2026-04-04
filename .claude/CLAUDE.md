@@ -33,12 +33,65 @@ Multi-persona dispatch priority:
 ## Task state
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+# Resolve TASK_DIR for the current repo+branch via .task-id reverse lookup.
+# Assumption: remote URL is stable after spec creation (SSH vs HTTPS not normalized).
+# If no remote or no branch, skip resolution and print an error.
+CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
+
+if [ -z "$CURRENT_REMOTE" ]; then
+  echo "No git remote configured; cannot resolve task state." >&2; exit 1
+fi
+if [ -z "$CURRENT_BRANCH" ]; then
+  echo "Not on a branch; crew commands require an active branch." >&2; exit 1
+fi
+
+# Collect all matching task dirs with their created_at and SPEC.md status
+MATCHES=()
+for task_id_file in ~/.agent/tasks/*/.task-id; do
+  [ -f "$task_id_file" ] || continue
+  file_remote=$(python3 -c "import json; d=json.load(open('$task_id_file')); print(d.get('repo_remote_url',''))" 2>/dev/null || echo "PARSE_ERROR")
+  file_branch=$(python3 -c "import json; d=json.load(open('$task_id_file')); print(d.get('branch',''))" 2>/dev/null || echo "PARSE_ERROR")
+  if [ "$file_remote" = "PARSE_ERROR" ] || [ "$file_branch" = "PARSE_ERROR" ]; then
+    echo "Warning: malformed .task-id at $task_id_file — skipping." >&2
+    continue
+  fi
+  if [ "$file_remote" = "$CURRENT_REMOTE" ] && [ "$file_branch" = "$CURRENT_BRANCH" ]; then
+    created_at=$(python3 -c "import json; d=json.load(open('$task_id_file')); print(d.get('created_at',''))" 2>/dev/null || echo "")
+    MATCHES+=("$created_at $(dirname "$task_id_file")")
+  fi
+done
+
+TASK_DIR=""
+if [ "${#MATCHES[@]}" -eq 0 ]; then
+  TASK_DIR=""  # No active task
+elif [ "${#MATCHES[@]}" -eq 1 ]; then
+  TASK_DIR="${MATCHES[0]#* }"  # Strip the created_at prefix
+else
+  # Multiple matches: prefer non-DONE, then most recent created_at
+  BEST=""
+  BEST_DATE=""
+  for entry in "${MATCHES[@]}"; do
+    dir="${entry#* }"
+    date="${entry%% *}"
+    spec_status=$(grep -A1 "^## Status" "$dir/SPEC.md" 2>/dev/null | tail -1 | tr -d ' ' || echo "")
+    if [ "$spec_status" != "done" ]; then
+      if [ -z "$BEST" ] || [[ "$date" > "$BEST_DATE" ]]; then
+        BEST="$dir"; BEST_DATE="$date"
+      fi
+    fi
+  done
+  # If all are DONE, pick most recent
+  if [ -z "$BEST" ]; then
+    BEST=$(printf '%s\n' "${MATCHES[@]}" | sort -r | head -1)
+    BEST="${BEST#* }"
+  fi
+  TASK_DIR="$BEST"
+  echo "Multiple tasks found for this repo+branch. Using: $TASK_DIR (most recent non-DONE)." >&2
+fi
 ```
 
-Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-done one. If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
+Find active task: scan `~/.agent/tasks/*/.task-id`, match on `repo_remote_url` + `branch` to find the UUID task directory. `TASK_DIR` is set to the UUID directory (`~/.agent/tasks/<uuid>/`) containing `SPEC.md`, `PROGRESS.md`, etc. If multiple match, prefer non-DONE; if all DONE, pick most recent `created_at`.
 
 ## Pipeline
 
