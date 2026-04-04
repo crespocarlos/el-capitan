@@ -130,18 +130,16 @@ Changed: <git diff --stat output, or "none yet">
 
 1. Check for open PR with unresolved threads (highest priority):
 
-       gh api graphql -f query='
-       { repository(owner: "OWNER", name: "REPO") {
-         pullRequests(first: 10, states: OPEN, headRefName: "BRANCH") { nodes {
-           number
-           reviewThreads(first: 200) { nodes { isResolved } pageInfo { hasNextPage } }
-         }}}}' --jq '
-         .data.repository.pullRequests.nodes[] |
-         if .reviewThreads.pageInfo.hasNextPage then
-           error("review thread list truncated for PR \(.number) — increase first limit")
-         else . end |
-         select(.reviewThreads.nodes | map(select(.isResolved == false)) | length > 0) |
-         .number' 2>/dev/null
+       gh api graphql \
+         --field owner=OWNER --field repo=REPO --field branch=BRANCH \
+         -f query="$(cat ~/.agent/queries/open-prs-with-threads.graphql)" \
+         --jq '
+           .data.repository.pullRequests.nodes[] |
+           if .reviewThreads.pageInfo.hasNextPage then
+             error("review thread list truncated for PR \(.number) — increase first limit")
+           else . end |
+           select(.reviewThreads.nodes | map(select(.isResolved == false)) | length > 0) |
+           .number' 2>/dev/null
 
    → If found: `Workflow: respond | Next: crew start review-cycle #<PR>`
 

@@ -29,22 +29,7 @@ Parse the user's input to determine the review mode:
 
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
 
-## Project mode
-
-**Trigger condition:** `git diff origin/main...HEAD` returns empty output — no commits or changed files relative to main, regardless of branch name.
-
-When this condition is true, skip the normal diff-review path and run a project-level review instead.
-
-**Protocol:**
-1. Detect: run `git diff origin/main...HEAD --stat`. If output is empty, enter project mode.
-2. Dispatch architecture, product-flow, and fresh-eyes reviewer personas against the following target files:
-   - `README.md`
-   - `crew-orchestrator.mdc`
-   - `crew-router.mdc`
-3. Build context packages: read and pass the full content of each target file to the dispatched reviewers.
-4. Collect and consolidate outputs using the same Step 7 consolidation format.
-
-**Post-dispatch truncation check:** After collecting all persona responses (in both project mode and normal mode), check the word count of each response. If any persona response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
+**Post-dispatch truncation check:** After collecting all persona responses, check the word count of each response. If any persona response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
 
 ## Step 2: Lightweight metadata (no full diff yet)
 
@@ -53,12 +38,21 @@ Fetch **only metadata** first — file list, sizes, change types. Never load the
 ### Self-review
 
 ```bash
-BASE=$(git merge-base HEAD origin/main)
-git diff "$BASE"..HEAD --stat
-git diff "$BASE"..HEAD --name-status
+source ~/.agent/scripts/get-diff.sh --stat        # sets DIFF_SOURCE, BASE; prints stat
+source ~/.agent/scripts/get-diff.sh --name-status # file list for signal detection
 ```
 
-Store `BASE` for later. Do NOT run `git diff` without `--stat` or `--name-status` yet.
+`get-diff.sh` resolves the base ref automatically (`upstream/main` preferred for forks, falls back to `origin/main`). It uses `--fork-point` to find the exact branch-off point, so it won't walk back into upstream changes that were merged after the branch was cut.
+
+`get-diff.sh` exits 1 with a message if there are no committed branch changes. Surface that message to the user and stop:
+
+> "No committed changes found on this branch. `crew review` reviews branch commits.
+>
+> Other options:
+> - Review an open PR: `crew review PR #N`
+> - Review a spec: `crew review spec`"
+
+`BASE` is set inside `get-diff.sh` — it is exported and available after sourcing. Do NOT fetch the full diff yet.
 
 ### PR review
 
@@ -87,25 +81,22 @@ Read `$TASK_DIR/SPEC.md`. No diff needed — skip directly to Step 4.
 
 Derive total size from the metadata gathered in Step 2 (sum of additions + deletions from `--stat` or the JSON response). Do NOT fetch the full diff to measure size.
 
-If >1500 lines:
-> "This is a large diff (~N lines across M files). I'll do a spine-focused review — top changed files + all new files. To focus on specific files instead, name them."
+If >5000 lines: automatically use spine-focused strategy — top 10 changed files by line count + all new files. Do not ask the user. Note the strategy in the final report: `(spine-focused: ~N lines across M files — reviewing top 10 + new files)`.
 
-Wait for confirmation or file preferences. After the user responds, determine the **review file set** (spine or user-specified files).
-
-If ≤1500 lines, the review file set is all changed files. Proceed to Step 4.
+If ≤5000 lines: review all changed files. Proceed to Step 4.
 
 ### Fetching the diff (after size gate passes)
 
 Only now, fetch the diff — and only for files in the review file set:
 
-**Self-review (≤1500 lines):**
+**Self-review (full):**
 ```bash
-git diff "$BASE"..HEAD
+source ~/.agent/scripts/get-diff.sh --full
 ```
 
-**Self-review (>1500 lines, spine-focused):**
+**Self-review (spine-focused, >5000 lines):**
 ```bash
-git diff "$BASE"..HEAD -- <file1> <file2> ...
+source ~/.agent/scripts/get-diff.sh --full -- <file1> <file2> ...
 ```
 
 **PR review (≤1500 lines):**
@@ -141,13 +132,13 @@ Build the reviewer roster:
 
 Trigger condition: the Architecture signal fired in Step 4 (new files detected, OR `export` added in existing files).
 
-If the Architecture signal did **not** fire, set `EXPLORER_SUMMARY` to empty and proceed to Step 5.
+If the Architecture signal did **not** fire, set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=skipped`, and proceed to Step 5.
 
 If the Architecture signal **did** fire:
 
-1. Collect the Architecture-signal files: new files + existing files where `export` was added.
+1. Collect the Architecture-signal files: new files + existing files where `export` was added. **Cap at 5 files** — if more than 5 triggered the signal, take the 5 with the most diff lines and note the count in the prompt.
 2. Extract diff hunks for those files only (not the full diff).
-3. Dispatch `reviewer-explorer` via Agent tool. **Note:** this step requires the Agent tool — it is available when crew-reviewer runs inline in the main session (Claude Code) or as a Task tool call (Cursor). If neither is available, set `EXPLORER_SUMMARY` to empty and proceed to Step 5.
+3. Dispatch `reviewer-explorer` via Agent tool. **Note:** this step requires the Agent tool — it is available when crew-reviewer runs inline in the main session (Claude Code) or as a Task tool call (Cursor). If neither is available, set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=unavailable`, and proceed to Step 5.
 
 ```
 Agent tool call:
@@ -156,25 +147,27 @@ Agent tool call:
     ## Diff context
 
     The following files triggered the Architecture signal (new files or new exports).
-    Find patterns in the codebase that are similar to, duplicate, or conflict with
-    these changes. Return a structured summary.
+    Do a single-pass scan for patterns in the codebase that are similar to, duplicate,
+    or conflict with these changes. Return a structured summary under 400 words and stop.
+    Do not iterate or go deeper after your initial pass.
 
-    ## Architecture-signal files
+    ## Architecture-signal files (<N> of <total> — largest by diff size)
 
-    <list of architecture-signal files>
+    <list of up to 5 architecture-signal files>
 
     ## Diff hunks for these files
 
-    <diff hunks for architecture-signal files only>
+    <diff hunks for the files above>
 
     ---
 
     Produce your summary now. Follow the output format in your persona definition.
 ```
 
-4. Store the explorer's structured summary as `EXPLORER_SUMMARY`.
+4. If the dispatch **succeeds**: store the result as `EXPLORER_SUMMARY`, set `EXPLORER_STATUS=ok`.
+   If the dispatch **fails** (error, timeout, empty response): set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=failed`, note the error for the consolidated report.
 
-Dispatch is fire-and-wait — proceed to Step 5 only after the explorer returns.
+Dispatch is fire-and-wait — proceed to Step 5 only after the explorer returns or fails.
 
 ## Step 5: Context packaging
 
@@ -317,6 +310,12 @@ Structure the consolidated report:
 
 ### Reviewers
 <list of which reviewers ran and their individual finding counts>
+
+**Explorer:** <one of:>
+- `skipped` — Architecture signal did not fire (expected)
+- `ok` — ran successfully, findings included in Architecture and Adversarial context
+- `failed` — dispatch failed: <error summary>. Architecture and Adversarial reviewers had no codebase context. Consider re-running `crew review` or checking reviewer-explorer logs.
+- `unavailable` — Agent tool not available in this execution context
 ```
 
 If a severity section has no findings, omit it. If there are no findings at all across all reviewers, state that clearly — zero findings is a valid outcome.

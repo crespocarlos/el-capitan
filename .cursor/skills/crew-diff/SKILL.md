@@ -36,7 +36,7 @@ Add any recalled rules to the pattern violations checklist below. For example, i
 
 ### Step 2: Scan the diff
 
-1. Run `git diff` (or `git diff --staged` if there are staged changes)
+1. Run `source ~/.agent/scripts/get-diff.sh --full` to get the branch diff. If it exits 1 (no committed changes), fall back to `git diff --cached` (staged) or `git diff` (unstaged) — crew diff is typically run mid-implementation before committing, so uncommitted changes are expected here.
 2. Scan the diff for the following categories:
 
 ### Step 3: Type safety

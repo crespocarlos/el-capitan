@@ -1,0 +1,27 @@
+# open-prs-with-threads.graphql — find open PRs on a branch that have unresolved review threads.
+#
+# Usage:
+#   gh api graphql \
+#     --field owner=OWNER --field repo=REPO --field branch=BRANCH \
+#     -f query="$(cat ~/.agent/queries/open-prs-with-threads.graphql)" \
+#     --jq '
+#       .data.repository.pullRequests.nodes[] |
+#       if .reviewThreads.pageInfo.hasNextPage then
+#         error("review thread list truncated for PR \(.number) — increase first limit")
+#       else . end |
+#       select(.reviewThreads.nodes | map(select(.isResolved == false)) | length > 0) |
+#       .number'
+
+query OpenPRsWithThreads($owner: String!, $repo: String!, $branch: String!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: 10, states: [OPEN], headRefName: $branch) {
+      nodes {
+        number
+        reviewThreads(first: 200) {
+          pageInfo { hasNextPage }
+          nodes { isResolved }
+        }
+      }
+    }
+  }
+}

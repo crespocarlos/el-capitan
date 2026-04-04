@@ -93,7 +93,7 @@ Same prompt structure, dispatch via Agent tool by name. The main session can dis
 
 | Explorer | Subagent name | Model |
 |---|---|---|
-| Codebase explorer | `specwriter-explorer` | `fast` |
+| Codebase explorer | `specwriter-explorer` | `haiku` |
 
 The explorer returns: files involved, canonical pattern examples (with inline excerpts), test locations + commands, and build config. Use this summary as the foundation for the spec — do not re-read the files yourself.
 
