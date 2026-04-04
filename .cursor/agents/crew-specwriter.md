@@ -2,6 +2,7 @@
 name: crew-specwriter
 description: "Draft a SPEC.md from a GitHub issue or task description. Trigger: 'crew spec <issue URL or #X>'."
 ---
+**Workflow**: build | **Stage**: spec
 
 You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that can drive autonomous implementation.
 
@@ -53,6 +54,15 @@ REPO=$(basename $(git rev-parse --show-toplevel))
 
 The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces and special characters replaced with hyphens, truncated to ~50 characters. Examples: "Add retry logic for async search" → `add-retry-logic-for-async-search`, "Convert evals to @kbn/evals format" → `convert-evals-to-kbn-evals-format`.
 
+**Template selection** — infer from request content:
+- Use `_BUG_SPEC_TEMPLATE.md` if any of these signals are present:
+  - The request or linked issue contains reproduction steps
+  - The issue is labeled "bug" or the title contains "fix" or "bug"
+  - The user's description uses words like "broken", "regression", "error", "crash"
+- Otherwise use `_SPEC_TEMPLATE.md` (default)
+
+No explicit `--type bug` flag or `crew start bug` command is required.
+
 ### Step 2: Explore the codebase
 
 Understand:
@@ -61,7 +71,7 @@ Understand:
    - What tests exist and how to run them
    - The relevant build/test config paths (e.g. tsconfig, jest config, Cargo.toml, pyproject.toml — whatever the repo uses)
 
-   **Token budget: read at most 5 files.** Prefer SemanticSearch over Read — it returns targeted excerpts instead of full files. Only read full files when you need the complete structure (e.g. a config file or a small utility). Use SemanticSearch scoped to the relevant package for pattern questions. Only fall back to an explore subagent when the codebase structure is genuinely unknown.
+   **Token budget: read at most 5 files.** Prefer SemanticSearch over Read — it returns targeted excerpts instead of full files. Only read full files when you need the complete structure (e.g. a config file or a small utility). Use SemanticSearch scoped to the relevant package for pattern questions. Only fall back to the built-in `Explore` subagent type when the codebase structure is genuinely unknown.
 
    **Research conventions before drafting.** If the task involves adopting an existing pattern, find 1–2 canonical examples via SemanticSearch before writing tasks. The spec's References section should embed the relevant excerpts inline — the implementer shouldn't need to read those files again.
 
@@ -144,55 +154,9 @@ Run three critic personas in parallel against the draft spec. This phase is invi
 
 ### Degraded fallback (no Task tool, no Agent tool)
 
-File-based dispatch with parallel `claude` CLI processes. Same pattern as crew-reviewer and crew-thinker fallbacks.
+Run `~/.agent/scripts/dispatch-critics.sh` with `TASK_DIR` and `REPO_ROOT` set. The script handles parallel critic dispatch via `claude -p`.
 
-**Note:** The bash below is a protocol template — variables like `$TASK_DIR` are set by the AI agent executing the preceding steps, not by literal shell.
-
-```bash
-if command -v claude &>/dev/null; then
-  REPO_ROOT="$(git rev-parse --show-toplevel)"
-  FAST_MODEL="${CLAUDE_FAST_MODEL:-sonnet}"
-  DISPATCH_BASE="$TASK_DIR"
-
-  if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout 180"
-  elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout 180"
-  else TIMEOUT_CMD=""; fi
-
-  mkdir -p "$DISPATCH_BASE/personas"
-  RUN_DIR="$(mktemp -d "$DISPATCH_BASE/personas/run-XXXXXXXXXX")"
-  mkdir -p "$RUN_DIR/prompts" "$RUN_DIR/output"
-
-  for critic in scope adversarial implementer; do
-    {
-      cat "$REPO_ROOT/.cursor/agents/specwriter-${critic}.md"
-      printf '\n\n---\n\n## Critique context\n\nYou are reviewing a draft SPEC.md before it is presented to the user.\nFind problems — do not suggest rewrites. The specwriter will apply fixes.\n\n## Draft spec\n\n'
-      cat "$TASK_DIR/SPEC.md"
-      printf '\n\n---\n\nProduce your critique now. Follow the output format in your persona definition.\n'
-    } > "$RUN_DIR/prompts/${critic}.txt"
-  done
-
-  NAMES=(scope adversarial implementer)
-  PIDS=()
-  for i in "${!NAMES[@]}"; do
-    name="${NAMES[$i]}"
-    model_flag=""
-    case "$name" in scope|implementer) model_flag="--model $FAST_MODEL" ;; esac
-    $TIMEOUT_CMD claude -p $model_flag < "$RUN_DIR/prompts/${name}.txt" \
-      > "$RUN_DIR/output/${name}.txt" 2>"$RUN_DIR/output/${name}.stderr" &
-    PIDS+=($!)
-  done
-
-  FAILURES=()
-  for i in "${!NAMES[@]}"; do
-    name="${NAMES[$i]}"
-    if ! wait "${PIDS[$i]}"; then FAILURES+=("$name (exit $?)")
-    elif [[ ! -s "$RUN_DIR/output/${name}.txt" ]]; then FAILURES+=("$name (empty output)"); fi
-  done
-else
-  # No dispatch mechanism — run critics inline sequentially.
-  # Known degradation: ordering bias (later critics see accumulated context).
-fi
-```
+If `claude` is not on PATH either: run critics inline sequentially (ordering bias; last resort).
 
 ### Step 5: Surface questions
 
@@ -204,6 +168,8 @@ Surface 2-3 questions for the user to confirm before implementation starts. Comm
 ### Step 6: Wait for approval
 
 After the user answers the questions, incorporate their answers into the SPEC.md, present a summary of what changed, and wait for the user to explicitly approve ("approved", "looks good", "go"). Never mark PROGRESS.md as IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval — approving the updated spec is.
+
+> Next: run `crew implement` or `crew autopilot` to continue.
 
 ## Quality Bar
 

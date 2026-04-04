@@ -7,6 +7,28 @@ alwaysApply: true
 
 Manages the pipeline state machine. Derives state from git/gh, surfaces status on session start, and auto-advances between gates in autopilot mode.
 
+## Workflows
+
+Three workflows. Build something, respond to review, or explore before committing.
+
+### build
+Entry: `crew start build` or `crew spec <issue>`
+Stages: spec → implement → diff → commit → open-pr
+Terminal: PR opened as draft
+Note: crew-specwriter infers the spec template (standard or bug) from the request content.
+No `crew start bug` command — template selection is automatic.
+
+### respond
+Entry: `crew start review-cycle <PR>` or `crew resolve PR <PR>`
+Stages: address-pr → diff → commit → push
+Terminal: all review threads resolved and pushed; reviewer approval is external
+
+### explore
+Entry: `crew brainstorm` or `crew learn`
+Open-ended — no stages, no gates, no terminal condition.
+Optionally feeds into `build` when you're ready to spec something.
+Note: `crew status` cannot detect an active explore session (no persistent state).
+
 ## State machine
 
 ```
@@ -48,21 +70,7 @@ Derive pipeline state from git and gh. PROGRESS.md is an audit trail, not the so
 TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 ```
 
-After resolving `TASK_DIR`, check for old-layout task directories:
-
-```bash
-# Old-layout detection: dirs with no .task-id but containing subdirs with SPEC.md
-for dir in ~/.agent/tasks/*/; do
-  [ -d "$dir" ] || continue
-  [ -f "${dir}.task-id" ] && continue  # skip UUID dirs
-  # Check if any subdirectory contains SPEC.md
-  if find "$dir" -mindepth 2 -maxdepth 2 -name "SPEC.md" 2>/dev/null | grep -q .; then
-    echo "Legacy task state found at ${dir%/}. Run 'crew migrate' to migrate to UUID layout."
-  fi
-done
-```
-
-1. **No SPEC.md** → "No active task for this repo+branch. Run `crew spec` to start one." Skip status validation.
+1. **No SPEC.md** → emit: `No active workflow. Start one: \`crew start build\` | \`crew start review-cycle\` | \`crew brainstorm\`` If you have stale task state from before the UUID migration, run `crew migrate` first. Skip status validation.
 
 2. **Read SPEC.md Status field** (the line after `## Status`):
 
@@ -105,55 +113,36 @@ done
 ```
 Task: <slug> | Repo: <repo> | Branch: <branch>
 State: <STATE> → Next: <next step>
+Workflow: build | Stage: IMPLEMENTING | Next: crew diff
 Changed: <git diff --stat output, or "none yet">
 ```
 
+**Workflow detection** (runs after state derivation):
+
+1. Check for open PR with unresolved threads (highest priority):
+
+       gh api graphql -f query='
+       { repository(owner: "OWNER", name: "REPO") {
+         pullRequests(first: 10, states: OPEN, headRefName: "BRANCH") { nodes {
+           number
+           reviewThreads(first: 50) { nodes { isResolved } }
+         }}}}' --jq '.data.repository.pullRequests.nodes[] | select(.reviewThreads.nodes | map(select(.isResolved == false)) | length > 0) | .number' 2>/dev/null
+
+   → If found: `Workflow: respond | Next: crew start review-cycle #<PR>`
+
+2. Else if SPEC.md present (any Type):
+   → `Workflow: build | Stage: <pipeline-state> | Next: <next-command>`
+
+3. Else:
+   → `No active workflow. Start one: \`crew start build\` | \`crew start review-cycle\` | \`crew brainstorm\``
+   (If you have stale pre-migration task state, run `crew migrate` first.)
+
+Precedence: open PR with unresolved threads beats SPEC.md when both are present.
+`explore` has no detectable state — it does not appear in `crew status` output.
+
 ## `crew autopilot`
 
-Auto-advance from current state to the next gate. Not a mode toggle — means "advance from here and stop at the next gate or error."
-
-### How it works
-
-1. Derive current state using the `crew status` logic above.
-2. Execute each step by **reading the skill file and following its protocol directly** — do not re-trigger through the routing layer.
-3. At each step:
-   - Follow the skill/agent protocol inline
-   - Append to PROGRESS.md: `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`
-   - If success, advance to the next state
-   - If failure, stop and surface the error. The user decides.
-4. Stop at the next gate and prompt the user.
-
-### Autopilot from each state
-
-**From APPROVED:**
-1. Read `~/.claude/skills/crew-implement/SKILL.md` and follow its protocol
-2. When done, read `~/.claude/skills/crew-diff/SKILL.md` and follow its protocol
-3. If diff is clean, read `~/.claude/skills/crew-commit/SKILL.md` and follow its protocol → presents message → **stop at Gate 2**
-4. If diff has issues, stop and surface them
-
-**From IMPLEMENTING (resuming):**
-1. Read `~/.claude/skills/crew-diff/SKILL.md` and follow its protocol
-2. If clean, read `~/.claude/skills/crew-commit/SKILL.md` → presents message → **stop at Gate 2**
-3. If issues, stop and surface them
-
-**From DIFF_CHECK:**
-1. Read `~/.claude/skills/crew-commit/SKILL.md` and follow its protocol → presents message → **stop at Gate 2**
-
-> **Optional:** Before proceeding to commit, the user can run `crew review` for a self-review of the branch diff. This is a manual command — autopilot does not run it automatically.
-
-**From COMMITTING (after Gate 2 approval):**
-1. Read `~/.claude/skills/crew-open-pr/SKILL.md` and follow its protocol
-2. Append `[timestamp] TRANSITION: COMMITTING → PR_OPEN` to PROGRESS.md
-3. Pipeline complete
-
-**From any other state:** Tell the user where they are and what `crew autopilot` can do from here.
-
-### Error handling
-
-- Surface the error: which step failed, what went wrong
-- Do NOT auto-retry — the user decides
-- Suggest options: retry, skip, or stop
-- User can fix and run `crew autopilot` again to resume
+**Full autopilot logic**: see `crew-autopilot.mdc` — read it when `crew autopilot` is invoked.
 
 ## PROGRESS.md
 
@@ -174,67 +163,4 @@ Append-only event log. Never read for state — only write. Format:
 
 ## `crew health`
 
-Runs five checks and outputs `[ok]` or `[fail]` for each. Run inline — no skill file.
-
-**Auto-run condition:** When `crew status` is invoked and `TASK_DIR` is empty (no active task resolved), run `crew health` automatically before reporting no active task.
-
-### Checks
-
-Run all five checks sequentially and print each result:
-
-**(a) Symlinks present**
-```bash
-ls ~/.claude/agents/crew-reviewer.md ~/.cursor/rules/crew-router.mdc >/dev/null 2>&1
-```
-- Exit 0 → `[ok] symlinks: found`
-- Exit non-0 → `[fail] symlinks: one or more symlinks missing — run install.sh`
-
-**(b) Hook scripts accessible**
-```bash
-ls ~/.claude/hooks/log-tool-use.sh >/dev/null 2>&1
-```
-- Exit 0 → `[ok] hooks: found`
-- Exit non-0 → `[fail] hooks: hook scripts missing in ~/.claude/hooks/ — run install.sh`
-
-**(c) jq on PATH**
-```bash
-command -v jq >/dev/null 2>&1
-```
-- Exit 0 → `[ok] jq: found`
-- Exit non-0 → `[fail] jq: not found — install via brew install jq`
-
-**(d) gh auth status**
-```bash
-gh auth status >/dev/null 2>&1
-```
-- Exit 0 → `[ok] gh: authenticated`
-- Exit non-0 → `[fail] gh: not authenticated — run gh auth login`
-
-**(e) Active SPEC.md**
-```bash
-# Run canonical resolution recipe (above) then check if TASK_DIR is set
-[ -n "$TASK_DIR" ] && echo "$TASK_DIR/SPEC.md" || echo ""
-```
-- Returns a path → `[ok] spec: active task found at <path>`
-- Returns nothing → `[fail] spec: no active SPEC.md for this repo+branch — run crew spec to start one`
-
-**(f) Version check (informational)**
-```bash
-git -C "$(dirname "$(realpath ~/.cursor/rules/crew-router.mdc)")" describe --tags 2>/dev/null
-```
-- Exit 0 → `[ok] version: <tag>`
-- Exit non-0 (no tags) → `[unknown] version: no tags found`
-
-### Output format
-
-```
-crew health
-───────────
-[ok]      symlinks: found
-[ok]      hooks: found
-[ok]      jq: found
-[ok]      gh: authenticated
-[fail]    spec: no active SPEC.md for this repo+branch — run crew spec to start one
-[unknown] version: no tags found
-───────────
-```
+**Health check logic**: see `crew-health.mdc` — read it when `crew health` is invoked.

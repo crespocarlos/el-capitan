@@ -235,65 +235,9 @@ All Agent tool calls go in a single message for parallel dispatch. If a reviewer
 
 ### Degraded fallback (no Task tool, no Agent tool)
 
-File-based dispatch with parallel `claude` CLI processes. Same dispatch pattern as crew-specwriter and crew-thinker fallbacks.
+Run `~/.agent/scripts/dispatch-reviewers.sh` with `TASK_DIR`, `REPO_ROOT`, `REVIEW_MODE`, and `active_reviewers` set. The script handles parallel reviewer dispatch via `claude -p`.
 
-**Note:** The bash below is a protocol template — variables like `$active_reviewers` and `$REVIEW_MODE` are set by the AI agent executing the preceding steps, not by literal shell.
-
-```bash
-if command -v claude &>/dev/null; then
-  REPO_ROOT="$(git rev-parse --show-toplevel)"
-  REPO="$(basename "$REPO_ROOT")"
-  BRANCH="$(git branch --show-current)"
-  FAST_MODEL="${CLAUDE_FAST_MODEL:-sonnet}"
-
-  if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout 180"
-  elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout 180"
-  else TIMEOUT_CMD=""; fi
-
-  if [[ "$REVIEW_MODE" == "spec" ]]; then
-    DISPATCH_BASE="$TASK_DIR"
-  else
-    DISPATCH_BASE="$HOME/.agent/reviews/$REPO/$BRANCH"
-  fi
-
-  mkdir -p "$DISPATCH_BASE/personas"
-  RUN_DIR="$(mktemp -d "$DISPATCH_BASE/personas/run-XXXXXXXXXX")"
-  mkdir -p "$RUN_DIR/prompts" "$RUN_DIR/output" "$RUN_DIR/context"
-
-  for reviewer in "${active_reviewers[@]}"; do
-    {
-      cat "$REPO_ROOT/.cursor/agents/reviewer-${reviewer}.md"
-      printf '\n\n---\n\n## Review context\n\n%s\n\n## Source material\n\n' "$mode_description"
-      if [[ "$REVIEW_MODE" == "spec" ]]; then cat "$TASK_DIR/SPEC.md"
-      else cat "$RUN_DIR/context/${reviewer}.txt"; fi
-      printf '\n\n---\n\nProduce your review now. Follow the output format in your persona definition.\n'
-    } > "$RUN_DIR/prompts/${reviewer}.txt"
-  done
-
-  NAMES=("${active_reviewers[@]}")
-  PIDS=()
-  for i in "${!NAMES[@]}"; do
-    name="${NAMES[$i]}"
-    model_flag=""
-    case "$name" in
-      code-quality|product-flow) model_flag="--model $FAST_MODEL" ;;
-    esac
-    $TIMEOUT_CMD claude -p $model_flag < "$RUN_DIR/prompts/${name}.txt" \
-      > "$RUN_DIR/output/${name}.txt" 2>"$RUN_DIR/output/${name}.stderr" &
-    PIDS+=($!)
-  done
-
-  FAILURES=()
-  for i in "${!NAMES[@]}"; do
-    name="${NAMES[$i]}"
-    if ! wait "${PIDS[$i]}"; then FAILURES+=("$name (exit $?)")
-    elif [[ ! -s "$RUN_DIR/output/${name}.txt" ]]; then FAILURES+=("$name (empty output)"); fi
-  done
-else
-  # No dispatch mechanism — run reviewers inline sequentially.
-  # Known degradation: ordering bias (later reviewers see accumulated context).
-fi
-```
+If `claude` is not on PATH: run reviewers inline sequentially (ordering bias; last resort).
 
 ## Step 7: Consolidation
 

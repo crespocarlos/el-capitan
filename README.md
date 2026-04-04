@@ -4,6 +4,36 @@ Your engineering crew, orchestrated. Spec it, build it, ship it — you just app
 
 el-capitan is a portable system of AI agents and skills for [Cursor](https://cursor.com) and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that handles speccing, implementing, reviewing, committing, and PR management. Three layers — a **router** dispatches commands, an **orchestrator** manages pipeline state, and a **runtime** (ralph, hooks, journal) does the work. You make two decisions: **approve the spec** and **approve the commit message**. Everything else auto-advances.
 
+
+## Workflows
+
+Three workflows. Build something, respond to review, or explore first. Pick one — the system chains the right agents.
+
+### build
+
+Build anything: a feature, a bug fix, a refactor, a chore.
+
+- **Entry**: `crew start build` or `crew spec <issue>`
+- **Stages**: spec → implement → diff → commit → open-pr
+- **Terminal**: PR opened as draft
+- Note: crew-specwriter infers the spec template (standard or bug) from the request content — no `--type` flag needed.
+
+### respond
+
+Respond to review comments on an open PR.
+
+- **Entry**: `crew start review-cycle <PR>` or `crew resolve PR <PR>`
+- **Stages**: address-pr → diff → commit → push
+- **Terminal**: all review threads resolved and pushed; reviewer approval is external
+
+### explore
+
+Brainstorm or research before building.
+
+- **Entry**: `crew brainstorm` or `crew learn`
+- Open-ended — no stages, no gates, no terminal condition.
+- Optionally feeds into `build` when you're ready to spec something.
+
 ## Quick start
 
 ```bash
@@ -15,11 +45,17 @@ Then, in any repo:
 
 > Type these in Cursor's chat or Claude Code — not your terminal.
 
+Start a new build:
+```
+crew start build
+```
+
+Or go directly to speccing from an issue:
 ```
 crew spec https://github.com/org/repo/issues/123
 ```
 
-## Usage
+## Full command reference
 
 All commands start with `crew`. Explicit routing only — no guessing.
 
@@ -33,7 +69,9 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew diff` | Review the local diff |
 | `crew commit` | Propose a semantic commit message |
 | `crew open pr` | Push + open a draft PR |
-| `crew address PR #456` | Handle open review comments |
+| `crew resolve PR #456` | Handle open review comments |
+| `crew start build` | Start a new build workflow (alias for `crew spec`) |
+| `crew start review-cycle <PR>` | Start a respond workflow (alias for `crew resolve PR`) |
 
 ### Standalone
 
@@ -42,7 +80,6 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew review` | Multi-lens self-review of your branch |
 | `crew review PR #456` | Multi-lens review of someone else's PR |
 | `crew review spec` | Multi-lens review of the active SPEC.md |
-| `crew eval: reviewer says use retry() instead` | Evaluate a single code suggestion |
 | `crew learn git worktrees` | Fetch + teach a concept |
 | `crew learn https://article.com/post` | Fetch + teach from a URL |
 | `crew brainstorm` | Creative session — connect ideas, challenge assumptions |
@@ -51,29 +88,44 @@ All commands start with `crew`. Explicit routing only — no guessing.
 | `crew recall: how do we handle retries in kibana?` | Search journal by meaning |
 | `crew cleanup` | Remove stale worktrees interactively |
 | `crew implement --parallel` | Parallel implementation attempts (best-of-n) |
-| `crew automations` | Reference guide for Cursor Automations setup |
 | `crew autopilot` | Auto-advance pipeline to next gate |
 | `crew status` | Print current pipeline state |
 
 ## How it works
 
 ```mermaid
-flowchart LR
-    issue["📝 crew-create-issue"] -.->|"crew spec #N"| spec
-    spec["📋 crew-specwriter"] -->|"Gate 1: approve"| build["🔨 crew-builder"]
-    build -->|"auto"| diff["crew-diff"]
-    diff -->|"auto"| commit["crew-commit"]
-    commit -->|"Gate 2: approve"| pr["crew-open-pr"]
-    pr --> pipelineDone(["done"])
+flowchart TB
+    subgraph explore["explore"]
+        direction LR
+        research["🔬 crew-researcher"] -.-> think["💡 crew-thinker"]
+        think -.-> journal[("📓 journal")]
+        research -.-> journal
+    end
 
-    resolver["🧩 crew-pr-resolver"] -.->|"async: address reviews"| pr
-    reviewer["🔍 crew-reviewer"] -.->|"standalone: review self/others/spec"| pr
-    research["🔬 crew-researcher"] -.-> journal[("📓 journal")]
-    think["💡 crew-thinker"] -.-> journal
-    build -.->|"auto-recall"| journal
+    subgraph build["build"]
+        direction LR
+        issue["📝 create-issue"] -.->|"crew spec"| spec["📋 specwriter"]
+        spec -->|"Gate 1: approve"| impl["🔨 builder"]
+        impl -->|"auto"| bdiff["diff"]
+        bdiff -->|"auto"| bcommit["commit"]
+        bcommit -->|"Gate 2: approve"| openpr["open-pr"]
+        openpr --> done(["PR opened"])
+        impl -.->|"auto-recall"| journal2[("📓 journal")]
+    end
+
+    subgraph respond["respond"]
+        direction LR
+        resolver["🧩 pr-resolver"] --> rdiff["diff"]
+        rdiff --> rcommit["commit"]
+        rcommit --> pushed(["pushed"])
+    end
+
+    think -.->|"feeds into"| spec
+    done -.->|"crew resolve PR"| resolver
+    reviewer["🔍 reviewer"] -.->|"standalone"| impl
 ```
 
-**Two gates. Everything between auto-advances.** Run `crew autopilot` to chain the full segment, or type each command manually — your choice.
+**Three workflows. Two gates in `build`.** Run `crew autopilot` to chain from your current state to the next gate, or type each command manually — your choice.
 
 ## The crew
 
@@ -103,7 +155,6 @@ Unified multi-lens review. Launches specialized reviewer personas in parallel (C
 
 When someone reviews *your* PR — fetches all unresolved threads and processes them in batch: applying, adapting, rejecting, or deferring each one.
 
-- **crew-eval-pr-comments** — evaluates a single suggestion from any source (reviewer, Copilot, colleague). Presents its verdict for your approval before acting.
 
 ### 🔬 crew-researcher
 
@@ -181,7 +232,7 @@ Run crew members as event-driven cloud agents without the IDE. Two modes:
 - **Gated** — automations comment/suggest, you decide (PR review as comment, diff analysis, weekly cleanup as PR)
 - **Automated** — automations handle the full pipeline (review + approve, auto-fix on push, spec from labeled issues)
 
-Run `crew automations` for the full configuration reference. Configure at [cursor.com/automations](https://cursor.com/automations).
+Configure at [cursor.com/automations](https://cursor.com/automations).
 
 ## Key features
 

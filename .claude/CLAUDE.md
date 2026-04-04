@@ -4,8 +4,6 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 ## Routing
 
-> Sync source: .cursor/rules/crew-router.mdc — that file is the single source of truth for the command list.
-
 **Command list is in `crew-router.mdc`** — that file is the single source of truth. Do not duplicate it here.
 
 File path convention:
@@ -13,7 +11,7 @@ File path convention:
 - Persona subagents: `~/.claude/agents/<orchestrator>-<persona>.md` (e.g., `reviewer-adversarial.md`)
 - Skills: `~/.claude/skills/<name>/SKILL.md`
 
-All agents and personas are registered as subagents at the top level of `~/.claude/agents/`. Personas have YAML frontmatter with `name`, `description`, `model`, `tools`, and `maxTurns`.
+All agents and personas are registered at `~/.claude/agents/`. Personas have YAML frontmatter: `name`, `description`, `model`, `tools`, `maxTurns`.
 
 ## How to invoke agents (CRITICAL)
 
@@ -29,26 +27,13 @@ Dispatch fallback priority (when Agent tool is unavailable):
 
 **This routing is authoritative.** Read the file, follow its instructions. Do not override with judgment calls.
 
-## Task state
-
-```bash
-# Resolve TASK_DIR via .task-id reverse lookup.
-# Hard (exits 1 if no git remote or not on a branch — for pipeline commands):
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
-
-# Soft (returns empty string — for session capture / optional logging):
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
-```
-
-Find active task: scan `~/.agent/tasks/*/.task-id`, match on `repo_remote_url` + `branch` to find the UUID task directory. `TASK_DIR` is set to the UUID directory (`~/.agent/tasks/<uuid>/`) containing `SPEC.md`, `PROGRESS.md`, etc. If multiple match, prefer non-DONE; if all DONE, pick most recent `created_at`.
+**Task state**: resolve via `~/.agent/tools/resolve-task-dir.sh`. Scans `~/.agent/tasks/*/.task-id`, matches `repo_remote_url` + `branch`.
 
 ## Pipeline
 
 ```
 spec → [Gate 1: approve spec] → implement → diff → commit → [Gate 2: approve message] → open PR → done
 ```
-
-Two gates. Everything between auto-advances with `crew autopilot`.
 
 **`crew autopilot`**: chains from current state to next gate. Not a mode toggle — means "advance from here." If a step fails, pauses and surfaces the error. No auto-retry.
 
@@ -58,20 +43,15 @@ Two gates. Everything between auto-advances with `crew autopilot`.
 
 **`crew abandon`**: gracefully abandons the current task — stashes changes, writes SESSION.md stub, appends ABANDONED to PROGRESS.md.
 
+`crew start build` → crew-specwriter. `crew start review-cycle <PR#>` → crew-pr-resolver. (Alias layer — no new state.)
+
 ## PROGRESS.md
 
-Append-only event log. Pipeline steps write `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. Never overwrite — only append. `crew status` reads git/gh, not this file. Use `cat PROGRESS.md` for the human-readable audit trail.
+Append-only. Format: `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. `crew status` reads git/gh, not this file.
 
 ## Memory
 
-Two memory systems. Keep them explicitly partitioned.
-
-| System | What it stores | Horizon | How it's updated |
-|--------|----------------|---------|-----------------|
-| Journal (`~/.agent/journal/`) | Engineering decisions, what was built, what was learned, session outcomes | Long — weeks to months | Manually via `crew log` |
-| Auto-memory (`~/.claude/projects/*/memory/`) | Behavioral corrections, style preferences, workflow patterns | Short — conversation to session | Auto-saved by Claude Code |
-
-`crew log` is the only intended bridge: after writing a journal entry it may optionally promote a rule to auto-memory (saves as `feedback_*.md`). Do not cross-pollinate in the other direction.
+Two systems, keep them partitioned. Journal (`~/.agent/journal/`) — long-term, updated manually via `crew log`. Auto-memory (`~/.claude/projects/*/memory/`) — session-scoped, auto-saved. `crew log` is the only bridge — do not cross-pollinate.
 
 ## Invariants
 

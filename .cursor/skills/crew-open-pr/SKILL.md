@@ -2,6 +2,7 @@
 name: crew-open-pr
 description: "Push the current branch and open a PR with a generated description. Trigger: 'crew open pr'."
 ---
+**Workflow**: build | **Stage**: open-pr
 
 # Open Pull Request
 
@@ -77,6 +78,8 @@ If the repo uses a PR template, read it first and fill in the sections rather th
 ### Step 4: Report back
 
 Show the PR URL and a one-line summary.
+
+> Next: build workflow complete. Watch for review comments — run `crew resolve PR` if they arrive.
 
 ## Session Capture
 

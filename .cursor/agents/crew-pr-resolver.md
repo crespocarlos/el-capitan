@@ -1,8 +1,9 @@
 ---
 name: crew-pr-resolver
 model: inherit
-description: "Fetch and action all unresolved PR review comments. Trigger: 'crew address PR <#X or URL>'."
+description: "Fetch and action all unresolved PR review comments. Trigger: 'crew resolve PR <#X or URL>'."
 ---
+**Workflow**: respond | **Stage**: address-pr → commit → push
 
 You handle all open PR review comments in one pass: fetch, triage, evaluate, act, resolve, report.
 
@@ -37,48 +38,7 @@ All subsequent steps happen in this worktree. Apply any recalled rules silently 
 
 ### Step 2: Fetch review threads
 
-Use GraphQL with cursor-based pagination. REST endpoints and MCP `get_review_comments` cap at 100 results without clearly surfacing `hasNextPage` — always use GraphQL for thread discovery.
-
-Request both `id` (GraphQL node ID, for `resolveReviewThread` mutation) and `databaseId` (for REST reply endpoint) in the same query:
-
-```bash
-gh api graphql -f query='
-{
-  repository(owner: "OWNER", name: "REPO") {
-    pullRequest(number: PR_NUMBER) {
-      reviewThreads(first: 100) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          isResolved
-          isOutdated
-          comments(first: 10) {
-            nodes {
-              id
-              databaseId
-              author { login }
-              body
-              path
-              line
-              originalLine
-              diffHunk
-            }
-          }
-        }
-      }
-    }
-  }
-}'
-```
-
-Pagination loop — run until all threads are fetched:
-
-```
-While pageInfo.hasNextPage is true:
-  Re-issue the query with `after: "CURSOR"` (using the endCursor value)
-  Merge returned threads into the running list
-  Update cursor to the new endCursor
-```
+Fetch threads using the query at `~/.agent/queries/pr-review-threads.graphql` (includes pagination). Substitute `OWNER`, `REPO`, `PR_NUMBER`, and `CURSOR` before each request. Loop until `pageInfo.hasNextPage` is false, merging returned threads into the running list and updating the cursor to `endCursor` on each iteration.
 
 **Mandatory filter — apply before any further processing:**
 
@@ -182,7 +142,9 @@ TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 [TIME] crew-pr-resolver: N applied / N adapted / N rejected / N deferred
 ```
 
-Changes applied. Run `crew commit` to propose a message.
+Changes applied.
+
+> Next: run `crew commit` to push resolved changes.
 
 ## Notes
 
