@@ -15,13 +15,10 @@ Store the response as `<reason>`.
 ### Step 2: Resolve task directory
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
-TASK_DIR=$(find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
-If `$TASK_DIR` is empty, use `$BRANCH_DIR` as the fallback.
+If `$TASK_DIR` is empty, no active task was found for this repo+branch — proceed without task directory operations.
 
 ### Step 3: Append ABANDONED to PROGRESS.md
 

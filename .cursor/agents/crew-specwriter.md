@@ -24,18 +24,30 @@ Determine the task source:
 - If given a GitHub issue URL or number: fetch it with `gh issue view <number> --repo <repo> --json title,body,labels,comments`
 - If given a plain description: use it directly
 
-Resolve the branch directory and create a slug for this task:
+Generate a UUID, create the task directory, and write the `.task-id` metadata file:
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
-
 # Generate slug from issue title or description (lowercase, hyphens, ~50 chars max)
 SLUG=<slug-from-title>
-TASK_DIR=$BRANCH_DIR/$SLUG
-mkdir -p $TASK_DIR
 
+UUID=$(uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
+TASK_DIR=~/.agent/tasks/$UUID
+mkdir -p "$TASK_DIR"
+
+# Write .task-id JSON with all five fields
+python3 -c "
+import json, sys
+data = {
+  'uuid': '$UUID',
+  'repo_remote_url': '$(git remote get-url origin)',
+  'branch': '$(git branch --show-current)',
+  'slug': '$SLUG',
+  'created_at': '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
+}
+json.dump(data, sys.stdout, indent=2)
+" > "$TASK_DIR/.task-id"
+
+REPO=$(basename $(git rev-parse --show-toplevel))
 ~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 

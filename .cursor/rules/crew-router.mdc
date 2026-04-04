@@ -32,6 +32,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew status` | crew-orchestrator (print pipeline state) |
 | `crew health` | crew-orchestrator (run health checks inline) |
 | `crew abandon` | crew-abandon skill |
+| `crew migrate` | crew-migrate |
 
 **This table is authoritative.** Do not override it with judgment calls.
 
@@ -46,11 +47,13 @@ Some crew members do heavy exploration and should run as isolated subagents (Cur
 | `crew learn` (researcher path) | **Subagent** | `crew-researcher` |
 | `crew brainstorm` | **Subagent** | `crew-thinker` |
 | `crew implement` | **Subagent** (via crew-implement skill) | `crew-builder` |
+| `crew address PR` | **Subagent** | `crew-pr-resolver` |
+| `crew migrate` | **Subagent** | `crew-migrate` |
 | All other commands | **Inline** | — |
 
 **How to launch a subagent:** Use the Task tool with the `subagent_type` from the table. Pass a detailed prompt containing all context the agent needs (repo, branch, issue URL, user input, recalled patterns). The subagent runs autonomously and returns its result.
 
-**Claude Code fallback:** When the Task tool is unavailable (Claude Code), read the agent file directly and follow its protocol inline. Multi-persona orchestrators (crew-reviewer, crew-specwriter, crew-thinker) dispatch persona subagents natively via the Agent tool, or fall back to `claude -p` file-based dispatch. All agents and personas are flat files at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
+**Claude Code dispatch:** Use the Agent tool (not the Task tool). All subagent dispatches in the table above use the Agent tool in Claude Code. Multi-persona orchestrators dispatch persona subagents via Agent tool too, or fall back to `claude -p` file-based dispatch. All agents and personas are flat files at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
 
 ## Add-ons
 

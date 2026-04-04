@@ -17,14 +17,13 @@ All agents and personas are registered as subagents at the top level of `~/.clau
 
 ## How to invoke agents (CRITICAL)
 
-**Orchestrator agents** (crew-reviewer, crew-specwriter, crew-thinker) run inline: read the agent file with `cat ~/.claude/agents/<name>.md` and follow its protocol directly. They dispatch persona subagents as part of their protocol.
+**Orchestrator agents** (crew-reviewer, crew-specwriter, crew-thinker, crew-researcher, crew-pr-resolver) are dispatched via the Agent tool — never read inline. Pass the user's raw request as the prompt. Each orchestrator runs in its own context window, keeping the main session lean.
 
-**Persona subagents** (reviewer-adversarial, specwriter-scope, thinker-builder, etc.) are dispatched BY the orchestrator, not invoked directly. They are registered subagents that can be dispatched natively via the Agent tool — each gets its own context window.
+**Persona subagents** (reviewer-adversarial, specwriter-scope, thinker-builder, etc.) are dispatched BY the orchestrator via the Agent tool — each gets its own context window.
 
-Multi-persona dispatch priority:
-1. **Agent tool** (native subagent dispatch) — preferred when available
-2. **`claude -p` file-based dispatch** — parallel CLI processes as fallback
-3. **Inline sequential** — run each persona's protocol one at a time (degraded, ordering bias)
+Dispatch fallback priority (when Agent tool is unavailable):
+1. **`claude -p` file-based dispatch** — parallel CLI processes
+2. **Inline sequential** — degraded; ordering bias; only when no other option
 
 `crew autopilot` and `crew status` are handled inline — see Pipeline section below.
 
@@ -33,12 +32,15 @@ Multi-persona dispatch priority:
 ## Task state
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+# Resolve TASK_DIR via .task-id reverse lookup.
+# Hard (exits 1 if no git remote or not on a branch — for pipeline commands):
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
+
+# Soft (returns empty string — for session capture / optional logging):
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
-Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-done one. If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
+Find active task: scan `~/.agent/tasks/*/.task-id`, match on `repo_remote_url` + `branch` to find the UUID task directory. `TASK_DIR` is set to the UUID directory (`~/.agent/tasks/<uuid>/`) containing `SPEC.md`, `PROGRESS.md`, etc. If multiple match, prefer non-DONE; if all DONE, pick most recent `created_at`.
 
 ## Pipeline
 

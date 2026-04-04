@@ -21,8 +21,14 @@ Never narrate what you're scanning. Never say "now checking type safety".
 Load repo-specific patterns:
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
+REPO=$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
 ~/.agent/tools/journal-search.py auto-recall "$REPO" --top 3 2>/dev/null || true
+```
+
+Resolve TASK_DIR for progress logging:
+
+```bash
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 ```
 
 Add any recalled rules to the pattern violations checklist below. For example, if a recalled pattern says "always use data-test-subj for test selectors", flag new components missing them.
@@ -73,7 +79,7 @@ If the diff looks clean, say so in one sentence.
 
 ## Progress
 
-After reporting findings, append to `$TASK_DIR/PROGRESS.md` (resolve TASK_DIR the same way as other skills):
+After reporting findings, append to `$TASK_DIR/PROGRESS.md` (TASK_DIR resolved above):
 
 ```bash
 # If issues found:

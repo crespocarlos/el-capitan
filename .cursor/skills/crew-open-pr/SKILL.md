@@ -41,7 +41,7 @@ This handles the common case where feature branches are based on other feature b
 
 Read these sources (in order of priority):
 
-1. **SPEC.md** — find the active spec under `~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$BRANCH/*/SPEC.md` (non-DONE, most recent; fall back to `.../$BRANCH/SPEC.md` for old flat layout) for goal, context, acceptance criteria
+1. **SPEC.md** — resolve `TASK_DIR` using the canonical resolution recipe (see Session Capture block below) and read `$TASK_DIR/SPEC.md` for goal, context, acceptance criteria
 2. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
 3. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if the stat is small enough (<30 files)
 
@@ -83,9 +83,7 @@ Show the PR URL and a one-line summary.
 After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
-# TASK_DIR = parent of the active (non-DONE) SPEC.md under $BRANCH_DIR/*/
-# Fall back to $BRANCH_DIR if SPEC.md exists there (old flat layout)
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
 ```

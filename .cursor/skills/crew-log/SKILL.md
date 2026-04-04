@@ -10,19 +10,17 @@ description: "Log an agentic engineering session to the journal. Trigger: 'crew 
 ### Step 1: Gather context
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
 MONTH=$(date +%Y-%m)
 JOURNAL_FILE=~/.agent/journal/$MONTH.md
 ```
 
-Resolve `TASK_DIR` by finding the active task under `$BRANCH_DIR`:
-1. Scan `$BRANCH_DIR/*/SPEC.md` — filter to non-DONE specs
-2. If exactly one → use its parent as `TASK_DIR`
-3. If multiple → use the most recently modified
-4. Backward compat: if `$BRANCH_DIR/SPEC.md` exists (old flat layout) → use `BRANCH_DIR` as `TASK_DIR`
-5. If none found → `TASK_DIR` is unset (no active task, skip pipeline artifact harvesting)
+Resolve `TASK_DIR` via `.task-id` reverse lookup:
+
+```bash
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
+```
+
+If `TASK_DIR` is empty, no active task — skip pipeline artifact harvesting.
 
 Read `$TASK_DIR/SESSION.md` if it exists — auto-captured context from pipeline skills.
 
