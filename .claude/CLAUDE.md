@@ -4,6 +4,8 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 ## Routing
 
+> Sync source: .cursor/rules/crew-router.mdc — that file is the single source of truth for the command list.
+
 **Command list is in `crew-router.mdc`** — that file is the single source of truth. Do not duplicate it here.
 
 File path convention:
