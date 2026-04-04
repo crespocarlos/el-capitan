@@ -32,11 +32,48 @@ for d in "$SCRIPT_DIR"/.cursor/skills/*/; do
   fi
 done
 
+# NOTE: When adding new crew commands, update BOTH .cursor/rules/crew-router.mdc
+# AND .claude/CLAUDE.md — they must stay in sync.
 ln -sf "$SCRIPT_DIR/.claude/CLAUDE.md" ~/.claude/CLAUDE.md
 
 # Claude Code hooks (settings + hook scripts)
 if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
-  ln -sf "$SCRIPT_DIR/.claude/settings.json" ~/.claude/settings.json
+  # settings.json: merge el-capitan hooks into existing config rather than symlinking.
+  # This is a managed copy — re-run install.sh to pick up upstream changes.
+  SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.json"
+  SETTINGS_DEST="$HOME/.claude/settings.json"
+  if [ ! -f "$SETTINGS_DEST" ]; then
+    cp "$SETTINGS_SRC" "$SETTINGS_DEST"
+    echo "  Created ~/.claude/settings.json"
+  else
+    python3 - "$SETTINGS_SRC" "$SETTINGS_DEST" <<'PYEOF'
+import sys, json, os
+src_path, dest_path = sys.argv[1], sys.argv[2]
+with open(src_path) as f: src = json.load(f)
+with open(dest_path) as f: dest = json.load(f)
+# hooks is a dict keyed by event type (PreToolUse, PostToolUse, etc.)
+# Each value is an array of {matcher, hooks} entries. Merge per event type,
+# deduping by matcher so re-running install.sh is idempotent.
+src_hooks = src.get("hooks", {})
+dest_hooks = dest.get("hooks", {})
+for event_type, entries in src_hooks.items():
+  if event_type not in dest_hooks:
+    dest_hooks[event_type] = entries
+  else:
+    existing_matchers = {e.get("matcher", "") for e in dest_hooks[event_type]}
+    for entry in entries:
+      if entry.get("matcher", "") not in existing_matchers:
+        dest_hooks[event_type].append(entry)
+dest["hooks"] = dest_hooks
+for k, v in src.items():
+  if k != "hooks" and k not in dest:
+    dest[k] = v
+tmp = dest_path + ".tmp"
+with open(tmp, "w") as f: json.dump(dest, f, indent=2)
+os.rename(tmp, dest_path)
+print("  Merged ~/.claude/settings.json")
+PYEOF
+  fi
 fi
 if [ -d "$SCRIPT_DIR/.claude/hooks" ]; then
   mkdir -p ~/.claude/hooks

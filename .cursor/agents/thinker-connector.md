@@ -4,7 +4,7 @@ description: "Synthesizer brainstorm perspective for cross-session patterns and 
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 3
+maxTurns: 10
 ---
 
 # Connector Perspective

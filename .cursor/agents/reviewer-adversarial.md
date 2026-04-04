@@ -4,7 +4,7 @@ description: "Paranoid code reviewer for edge cases, regressions, and silent fai
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 5
+maxTurns: 10
 ---
 
 # Adversarial Reviewer

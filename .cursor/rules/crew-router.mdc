@@ -5,6 +5,8 @@ alwaysApply: true
 
 # el-capitan
 
+> Sync target: ~/.claude/CLAUDE.md — keep routing table entries in sync when adding commands.
+
 Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew` (or `@crew-researcher`), respond normally — no routing.
 
 ## Routing table

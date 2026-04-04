@@ -53,9 +53,18 @@ BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
 TASK_DIR=$(find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
 ```
 
-1. **No SPEC.md** → "No active task. Run `crew spec` to start one."
+1. **No SPEC.md** → "No active task. Run `crew spec` to start one." Skip status validation.
 
 2. **Read SPEC.md Status field** (the line after `## Status`):
+
+   Status validation:
+   KNOWN_STATUSES = [DRAFTING, APPROVED, IMPLEMENTING, DONE]
+
+   If no SPEC.md found → skip validation (no warning).
+   If SPEC.md found and status in KNOWN_STATUSES → proceed normally.
+   If SPEC.md found and status NOT in KNOWN_STATUSES → emit:
+     "Warning: SPEC.md has unknown status '[VALUE]' — expected one of: DRAFTING, APPROVED, IMPLEMENTING, DONE."
+
    - `DRAFTING` → state = DRAFTING *(git has no signal — spec not yet approved)*
    - `APPROVED`, no worktree for this branch → state = APPROVED
 

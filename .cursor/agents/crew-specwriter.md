@@ -55,6 +55,14 @@ Understand:
 
 ### Step 3: Draft the spec
 
+Before writing, check if `$TASK_DIR/SPEC.md` already exists:
+
+If `$TASK_DIR/SPEC.md` exists (any status, including DRAFTING):
+  Read its `Status:` field.
+  Output: "SPEC.md exists with status [STATUS]. Overwrite and reset to DRAFTING? (yes/no)"
+  If no → stop, do not write.
+  If yes → proceed; write new spec with Status: DRAFTING.
+
 Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
    - **Context**: problem statement, scope (in/out), repo touchpoints (files that will change)
    - **Goal**: one sentence
@@ -113,7 +121,12 @@ Run three critic personas in parallel against the draft spec. This phase is invi
 
 4. **Write raw critique** to `$TASK_DIR/CRITIQUE.md` — concatenate all critic outputs with headers. This file is an audit artifact (like PROGRESS.md) — always written, never surfaced in conversation, not consumed by downstream agents. Overwritten on re-runs of `crew spec` with the same slug.
 
-5. **Apply improvements** to the draft SPEC.md in a single pass — address Critical and Important findings. Consider findings are noted but not necessarily acted on. If critics disagree, prefer the scope critic on boundaries and the implementer on task granularity.
+5. **Apply improvements** to the draft SPEC.md:
+   - **Critical findings are blocking.** Every Critical finding must be addressed before the spec is presented. If a Critical finding requires a user decision that cannot be inferred, surface it as a question — do not present a spec with known Critical issues unresolved.
+   - **Important findings should be addressed** unless doing so contradicts a Critical finding or requires user input not yet available. If skipping an Important finding, note the reason in the spec or in your questions.
+   - **Consider findings** are noted but not necessarily acted on.
+   - After applying fixes, verify: re-read CRITIQUE.md's Critical list. If any remain unaddressed, fix them. **Do not present a spec with open Critical findings.**
+   - If critics disagree, prefer the scope critic on boundaries and the implementer on task granularity.
 
 6. Proceed to Step 5 with the improved spec.
 

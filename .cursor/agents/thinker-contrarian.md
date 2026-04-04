@@ -4,7 +4,7 @@ description: "Skeptic brainstorm perspective for challenging assumptions. Dispat
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 3
+maxTurns: 10
 ---
 
 # Contrarian Perspective

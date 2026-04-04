@@ -4,7 +4,7 @@ description: "Engineer brainstorm perspective for MVP scoping and build sequenci
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 3
+maxTurns: 10
 ---
 
 # Pragmatist Perspective

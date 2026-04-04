@@ -4,7 +4,7 @@ description: "Systematic code quality reviewer with structured checklist. Dispat
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 5
+maxTurns: 10
 ---
 
 # Code Quality Reviewer

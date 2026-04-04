@@ -4,7 +4,7 @@ description: "Product manager reviewer for user experience and flow completeness
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 5
+maxTurns: 10
 ---
 
 # Product Flow Reviewer

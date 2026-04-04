@@ -4,7 +4,7 @@ description: "Staff-level architecture reviewer for system coherence and backwar
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 5
+maxTurns: 10
 ---
 
 # Architecture Reviewer

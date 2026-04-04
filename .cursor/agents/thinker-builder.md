@@ -4,7 +4,7 @@ description: "Optimist brainstorm perspective for ideas and opportunities. Dispa
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 3
+maxTurns: 10
 ---
 
 # Builder Perspective

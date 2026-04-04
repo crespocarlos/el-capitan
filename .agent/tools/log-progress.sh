@@ -14,4 +14,4 @@ if [ -z "$TASK_DIR" ] || [ -z "$TRANSITION" ]; then
 fi
 
 mkdir -p "$TASK_DIR"
-echo "[$(date '+%Y-%m-%d %H:%M')] TRANSITION: $TRANSITION" >> "$TASK_DIR/PROGRESS.md"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] TRANSITION: $TRANSITION" >> "$TASK_DIR/PROGRESS.md"
