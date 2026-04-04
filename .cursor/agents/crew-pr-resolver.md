@@ -29,7 +29,7 @@ Resolve the worktree and load repo patterns:
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
 cd "$(~/.agent/tools/manage-worktree.sh "$PR_BRANCH")"
 
-REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
+REPO=$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
 ~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
@@ -175,9 +175,7 @@ Edits the user excluded are not applied. Threads the user excluded are left open
 After reporting, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
-# TASK_DIR = parent of the active (non-DONE) SPEC.md under $BRANCH_DIR/*/
-# Fall back to $BRANCH_DIR if SPEC.md exists there (old flat layout)
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
 ```

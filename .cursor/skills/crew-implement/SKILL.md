@@ -7,24 +7,14 @@ Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and use
 ### Step 1: Resolve task state
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
-Scan for specs under the current branch (each task lives in its own slug subdirectory):
-
-```bash
-find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" -type f 2>/dev/null
-```
-
-Filter to non-DONE specs (where `## Status` is not `done`). If exactly one, set `TASK_DIR` to its parent directory and read `SPEC.md` + `PROGRESS.md`. If multiple non-DONE specs exist, present a choice (see Step 2).
-
-Backward compat: if no subdirectory specs are found but `$BRANCH_DIR/SPEC.md` exists (old flat layout), use `BRANCH_DIR` as `TASK_DIR`.
+If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs (see Step 2).
 
 ### Step 2: Gate check
 
-If no specs were found under `$BRANCH_DIR`, scan globally for other specs (most recent first):
+If no task was resolved (TASK_DIR is empty), scan globally for other specs (most recent first):
 
 ```bash
 find ~/.agent/tasks -name "SPEC.md" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | awk '{print $2}'
@@ -55,6 +45,7 @@ If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you
 ### Step 3: Auto-recall
 
 ```bash
+REPO=$(basename $(git rev-parse --show-toplevel))
 ~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
@@ -90,15 +81,9 @@ After the worktree is created:
 
 1. **Bootstrap dependencies.** Read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. This ensures the worktree has its own `node_modules` instead of symlinks to the main repo.
 
-2. Determine the slug (basename of the current `TASK_DIR`). Move the entire slug directory to the new branch:
-   ```bash
-   SLUG=$(basename "$TASK_DIR")
-   NEW_BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH_NAME
-   mkdir -p "$NEW_BRANCH_DIR"
-   mv "$TASK_DIR" "$NEW_BRANCH_DIR/$SLUG"
-   TASK_DIR="$NEW_BRANCH_DIR/$SLUG"
-   ```
-3. Set `WORK_DIR` to the worktree directory (the script outputs the resolved absolute path).
+2. Set `WORK_DIR` to the worktree directory (the script outputs the resolved absolute path).
+
+The UUID task directory (`$TASK_DIR`) is stable — it does not move when a worktree is created.
 
 If skipped (already on feature branch), set `WORK_DIR` to the current directory.
 

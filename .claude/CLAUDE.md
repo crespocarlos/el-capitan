@@ -17,14 +17,13 @@ All agents and personas are registered as subagents at the top level of `~/.clau
 
 ## How to invoke agents (CRITICAL)
 
-**Orchestrator agents** (crew-reviewer, crew-specwriter, crew-thinker) run inline: read the agent file with `cat ~/.claude/agents/<name>.md` and follow its protocol directly. They dispatch persona subagents as part of their protocol.
+**Orchestrator agents** (crew-reviewer, crew-specwriter, crew-thinker, crew-researcher, crew-pr-resolver) are dispatched via the Agent tool — never read inline. Pass the user's raw request as the prompt. Each orchestrator runs in its own context window, keeping the main session lean.
 
-**Persona subagents** (reviewer-adversarial, specwriter-scope, thinker-builder, etc.) are dispatched BY the orchestrator, not invoked directly. They are registered subagents that can be dispatched natively via the Agent tool — each gets its own context window.
+**Persona subagents** (reviewer-adversarial, specwriter-scope, thinker-builder, etc.) are dispatched BY the orchestrator via the Agent tool — each gets its own context window.
 
-Multi-persona dispatch priority:
-1. **Agent tool** (native subagent dispatch) — preferred when available
-2. **`claude -p` file-based dispatch** — parallel CLI processes as fallback
-3. **Inline sequential** — run each persona's protocol one at a time (degraded, ordering bias)
+Dispatch fallback priority (when Agent tool is unavailable):
+1. **`claude -p` file-based dispatch** — parallel CLI processes
+2. **Inline sequential** — degraded; ordering bias; only when no other option
 
 `crew autopilot` and `crew status` are handled inline — see Pipeline section below.
 
@@ -33,62 +32,12 @@ Multi-persona dispatch priority:
 ## Task state
 
 ```bash
-# Resolve TASK_DIR for the current repo+branch via .task-id reverse lookup.
-# Assumption: remote URL is stable after spec creation (SSH vs HTTPS not normalized).
-# If no remote or no branch, skip resolution and print an error.
-CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
+# Resolve TASK_DIR via .task-id reverse lookup.
+# Hard (exits 1 if no git remote or not on a branch — for pipeline commands):
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 
-if [ -z "$CURRENT_REMOTE" ]; then
-  echo "No git remote configured; cannot resolve task state." >&2; exit 1
-fi
-if [ -z "$CURRENT_BRANCH" ]; then
-  echo "Not on a branch; crew commands require an active branch." >&2; exit 1
-fi
-
-# Collect all matching task dirs with their created_at and SPEC.md status
-MATCHES=()
-for task_id_file in ~/.agent/tasks/*/.task-id; do
-  [ -f "$task_id_file" ] || continue
-  file_remote=$(python3 -c "import json; d=json.load(open('$task_id_file')); print(d.get('repo_remote_url',''))" 2>/dev/null || echo "PARSE_ERROR")
-  file_branch=$(python3 -c "import json; d=json.load(open('$task_id_file')); print(d.get('branch',''))" 2>/dev/null || echo "PARSE_ERROR")
-  if [ "$file_remote" = "PARSE_ERROR" ] || [ "$file_branch" = "PARSE_ERROR" ]; then
-    echo "Warning: malformed .task-id at $task_id_file — skipping." >&2
-    continue
-  fi
-  if [ "$file_remote" = "$CURRENT_REMOTE" ] && [ "$file_branch" = "$CURRENT_BRANCH" ]; then
-    created_at=$(python3 -c "import json; d=json.load(open('$task_id_file')); print(d.get('created_at',''))" 2>/dev/null || echo "")
-    MATCHES+=("$created_at $(dirname "$task_id_file")")
-  fi
-done
-
-TASK_DIR=""
-if [ "${#MATCHES[@]}" -eq 0 ]; then
-  TASK_DIR=""  # No active task
-elif [ "${#MATCHES[@]}" -eq 1 ]; then
-  TASK_DIR="${MATCHES[0]#* }"  # Strip the created_at prefix
-else
-  # Multiple matches: prefer non-DONE, then most recent created_at
-  BEST=""
-  BEST_DATE=""
-  for entry in "${MATCHES[@]}"; do
-    dir="${entry#* }"
-    date="${entry%% *}"
-    spec_status=$(grep -A1 "^## Status" "$dir/SPEC.md" 2>/dev/null | tail -1 | tr -d ' ' || echo "")
-    if [ "$spec_status" != "done" ]; then
-      if [ -z "$BEST" ] || [[ "$date" > "$BEST_DATE" ]]; then
-        BEST="$dir"; BEST_DATE="$date"
-      fi
-    fi
-  done
-  # If all are DONE, pick most recent
-  if [ -z "$BEST" ]; then
-    BEST=$(printf '%s\n' "${MATCHES[@]}" | sort -r | head -1)
-    BEST="${BEST#* }"
-  fi
-  TASK_DIR="$BEST"
-  echo "Multiple tasks found for this repo+branch. Using: $TASK_DIR (most recent non-DONE)." >&2
-fi
+# Soft (returns empty string — for session capture / optional logging):
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
 Find active task: scan `~/.agent/tasks/*/.task-id`, match on `repo_remote_url` + `branch` to find the UUID task directory. `TASK_DIR` is set to the UUID directory (`~/.agent/tasks/<uuid>/`) containing `SPEC.md`, `PROGRESS.md`, etc. If multiple match, prefer non-DONE; if all DONE, pick most recent `created_at`.

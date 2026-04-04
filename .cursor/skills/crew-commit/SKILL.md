@@ -16,10 +16,12 @@ Run `git diff --staged --stat`. If nothing staged, run `git status --short` and 
 Read the full staged diff: `git diff --staged`.
 
 For intent context, find the active SPEC.md:
+
 ```bash
-BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 ```
-Look for `$BRANCH_DIR/*/SPEC.md` (non-DONE specs, most recent first). Fall back to `$BRANCH_DIR/SPEC.md` (old flat layout). If found, read it for intent context.
+
+If `$TASK_DIR` is non-empty, read it for intent context.
 
 ## Commit Message Format
 
@@ -57,12 +59,7 @@ chore(deps): bump @kbn/inference-common to 1.4.0
 
 ### Step 2b: Out-of-scope check
 
-Before proposing the commit message, check for out-of-scope modifications:
-
-```bash
-BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
-TASK_DIR=$(find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
-```
+Before proposing the commit message, check for out-of-scope modifications. `TASK_DIR` was already resolved in Step 2 above.
 
 If `$TASK_DIR/BASELINE.diff` exists:
 
@@ -86,11 +83,9 @@ Only commit after the user approves:
 git commit -m "<the message>"
 ```
 
-After a successful commit, resolve `TASK_DIR` and log the transition:
+After a successful commit, log the transition using the already-resolved `$TASK_DIR`:
 
 ```bash
-BRANCH_DIR=~/.agent/tasks/$(basename $(git rev-parse --show-toplevel))/$(git branch --show-current)
-TASK_DIR=$(find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
 if [ -n "$TASK_DIR" ]; then
   ~/.agent/tools/log-progress.sh "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
 fi

@@ -29,12 +29,10 @@ Two gates. Everything between them auto-advances in autopilot.
 On every conversation start, check for an active task:
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel) 2>/dev/null || echo "unknown")
-BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 ```
 
-Scan `$BRANCH_DIR/*/SPEC.md` for non-done specs. If one exists, derive its pipeline state (see `crew status` logic below) and surface:
+If `$TASK_DIR` is non-empty, read its SPEC.md slug and derive pipeline state (see `crew status` logic below) and surface:
 
 > Active task: **<slug>** (<STATE>). Next step: `<next crew command>`.
 
@@ -47,13 +45,24 @@ Derive pipeline state from git and gh. PROGRESS.md is an audit trail, not the so
 **State derivation (in order):**
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
-TASK_DIR=$(find "$BRANCH_DIR" -maxdepth 2 -name "SPEC.md" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
 ```
 
-1. **No SPEC.md** → "No active task. Run `crew spec` to start one." Skip status validation.
+After resolving `TASK_DIR`, check for old-layout task directories:
+
+```bash
+# Old-layout detection: dirs with no .task-id but containing subdirs with SPEC.md
+for dir in ~/.agent/tasks/*/; do
+  [ -d "$dir" ] || continue
+  [ -f "${dir}.task-id" ] && continue  # skip UUID dirs
+  # Check if any subdirectory contains SPEC.md
+  if find "$dir" -mindepth 2 -maxdepth 2 -name "SPEC.md" 2>/dev/null | grep -q .; then
+    echo "Legacy task state found at ${dir%/}. Run 'crew migrate' to migrate to UUID layout."
+  fi
+done
+```
+
+1. **No SPEC.md** → "No active task for this repo+branch. Run `crew spec` to start one." Skip status validation.
 
 2. **Read SPEC.md Status field** (the line after `## Status`):
 
@@ -146,22 +155,6 @@ Auto-advance from current state to the next gate. Not a mode toggle — means "a
 - Suggest options: retry, skip, or stop
 - User can fix and run `crew autopilot` again to resume
 
-## Optional: Self-review with `crew review`
-
-Between DIFF_CHECK and COMMITTING, the user can optionally run `crew review` to get a multi-lens review of the branch diff before committing. This launches parallel reviewer personas and produces a consolidated findings report.
-
-This is **not a pipeline state** — it's a manual command. The state machine is unchanged. Autopilot skips it. The user invokes it when they want a thorough review of their own changes before opening a PR.
-
-## Task state resolution
-
-```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-BRANCH=$(git branch --show-current)
-BRANCH_DIR=~/.agent/tasks/$REPO/$BRANCH
-```
-
-Find active task: scan `$BRANCH_DIR/*/SPEC.md`, pick the non-done one (where the line after `## Status` is not `done`). If multiple, present a choice. If none, fall back to `$BRANCH_DIR/SPEC.md`.
-
 ## PROGRESS.md
 
 Append-only event log. Never read for state — only write. Format:
@@ -169,13 +162,6 @@ Append-only event log. Never read for state — only write. Format:
 [YYYY-MM-DD HH:MM] TRANSITION: APPROVED → IMPLEMENTING
 [YYYY-MM-DD HH:MM] TRANSITION: IMPLEMENTING → DIFF_CHECK
 ```
-
-## Gate failures
-
-- Spec rejected → revise and re-present (stays in DRAFTING; SPEC.md Status stays DRAFTING)
-- Diff has issues → surface to user, stay in IMPLEMENTING/DIFF_CHECK
-- Commit message rejected → re-propose (stays in COMMITTING)
-- `crew open pr` fails → surface error, stay in COMMITTING
 
 ## Invariants
 
@@ -190,7 +176,7 @@ Append-only event log. Never read for state — only write. Format:
 
 Runs five checks and outputs `[ok]` or `[fail]` for each. Run inline — no skill file.
 
-**Auto-run condition:** When `crew status` is invoked and `find "$BRANCH_DIR" -name "SPEC.md" 2>/dev/null` returns no results, run `crew health` automatically before reporting no active task.
+**Auto-run condition:** When `crew status` is invoked and `TASK_DIR` is empty (no active task resolved), run `crew health` automatically before reporting no active task.
 
 ### Checks
 
@@ -226,10 +212,11 @@ gh auth status >/dev/null 2>&1
 
 **(e) Active SPEC.md**
 ```bash
-find "$BRANCH_DIR" -name "SPEC.md" 2>/dev/null | head -1
+# Run canonical resolution recipe (above) then check if TASK_DIR is set
+[ -n "$TASK_DIR" ] && echo "$TASK_DIR/SPEC.md" || echo ""
 ```
 - Returns a path → `[ok] spec: active task found at <path>`
-- Returns nothing → `[fail] spec: no active SPEC.md under $BRANCH_DIR — run crew spec to start one`
+- Returns nothing → `[fail] spec: no active SPEC.md for this repo+branch — run crew spec to start one`
 
 **(f) Version check (informational)**
 ```bash
@@ -247,7 +234,7 @@ crew health
 [ok]      hooks: found
 [ok]      jq: found
 [ok]      gh: authenticated
-[fail]    spec: no active SPEC.md under ~/.agent/tasks/repo/branch — run crew spec to start one
+[fail]    spec: no active SPEC.md for this repo+branch — run crew spec to start one
 [unknown] version: no tags found
 ───────────
 ```

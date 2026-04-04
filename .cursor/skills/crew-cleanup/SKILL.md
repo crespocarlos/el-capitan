@@ -31,7 +31,6 @@ For each non-main worktree, determine its status:
 
 ```bash
 DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
-REPO=$(basename $(git rev-parse --show-toplevel))
 ```
 
 ### Step 4: Present the table
@@ -59,10 +58,33 @@ git worktree remove <path>
 git branch -D <branch>
 ```
 
-Also remove the task directory if it exists:
+Also remove associated task directories. Multiple tasks can share the same branch (the spec says "Multiple specs can coexist per branch"), so collect all matches and confirm each individually before removing:
 
 ```bash
-rm -rf ~/.agent/tasks/$REPO/<branch>/
+WORKTREE_REMOTE=$(git -C <worktree-path> remote get-url origin 2>/dev/null || echo "")
+WORKTREE_BRANCH=<branch>
+
+# Collect all task dirs for this worktree's remote+branch using the resolve script
+MATCHING_DIRS=()
+while IFS= read -r dir; do
+  [ -n "$dir" ] && MATCHING_DIRS+=("$dir")
+done < <(~/.agent/tools/resolve-task-dir.sh   --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all 2>/dev/null || true)
+
+if [ "${#MATCHING_DIRS[@]}" -eq 0 ]; then
+  echo "No task directories found for branch '$WORKTREE_BRANCH'."
+elif [ "${#MATCHING_DIRS[@]}" -eq 1 ]; then
+  rm -rf "${MATCHING_DIRS[0]}"
+  echo "Removed task directory: ${MATCHING_DIRS[0]}"
+else
+  # Multiple tasks for the same branch — present each and ask which to remove
+  echo "Found ${#MATCHING_DIRS[@]} task directories for branch '$WORKTREE_BRANCH':"
+  for i in "${!MATCHING_DIRS[@]}"; do
+    slug=$(python3 -c "import json; d=json.load(open('${MATCHING_DIRS[$i]}/.task-id')); print(d.get('slug','unknown'))" 2>/dev/null || echo "unknown")
+    echo "  $((i+1)). ${MATCHING_DIRS[$i]} (slug: $slug)"
+  done
+  # Ask: "Remove which task directories? (all / none / comma-separated numbers)"
+  # Remove only those the user confirms
+fi
 ```
 
 ### Step 7: Summary
