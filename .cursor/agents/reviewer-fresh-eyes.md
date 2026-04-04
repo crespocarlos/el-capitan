@@ -4,7 +4,7 @@ description: "Day-one engineer reviewer for clarity and comprehensibility. Dispa
 model: inherit
 readonly: true
 tools: Read, Grep, Glob
-maxTurns: 5
+maxTurns: 10
 ---
 
 # Fresh Eyes Reviewer

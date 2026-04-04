@@ -81,3 +81,15 @@ After reporting findings, append to `$TASK_DIR/PROGRESS.md` (resolve TASK_DIR th
 # If clean:
 ~/.agent/tools/log-progress.sh "$TASK_DIR" "DIFF_CHECK → COMMITTING"
 ```
+## Classification
+
+Based on findings above, determine verdict:
+- **PASS**: no issues found
+- **WARN**: issues found but none require fixing before commit (style, suggestions, minor improvements)
+- **BLOCK**: at least one issue that must be addressed before committing (bug, security flaw, missing required change)
+
+Output: `Verdict: PASS` / `Verdict: WARN` / `Verdict: BLOCK`
+
+**Conclusion:**
+- If PASS or WARN: "Run `crew commit` to proceed."
+- If BLOCK: "Address the issues above before committing."

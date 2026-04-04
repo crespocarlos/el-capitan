@@ -13,10 +13,16 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 [ -z "$FILE_PATH" ] && exit 0
 
 WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-[ -z "$WORKTREE_ROOT" ] && exit 0
+if [ -z "$WORKTREE_ROOT" ]; then
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Write blocked: cannot determine worktree root."}}'
+  exit 0
+fi
 
 RESOLVED=$(cd "$(dirname "$FILE_PATH")" 2>/dev/null && pwd)/$(basename "$FILE_PATH") 2>/dev/null
-[ -z "$RESOLVED" ] && exit 0
+if [ -z "$RESOLVED" ]; then
+  echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Write blocked: cannot resolve file path for $FILE_PATH.\"}}"
+  exit 0
+fi
 
 case "$RESOLVED" in
   "$WORKTREE_ROOT"/*) exit 0 ;;

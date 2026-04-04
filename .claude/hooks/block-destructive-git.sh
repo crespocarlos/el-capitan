@@ -7,9 +7,11 @@ exec 2>/dev/null
 
 INPUT=$(cat) || exit 0
 
-if ! command -v jq >/dev/null 2>&1; then exit 0; fi
-
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+if command -v jq >/dev/null 2>&1; then
+  CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+else
+  CMD=$(echo "$INPUT" | grep -o '"command":"[^"]*"' | head -1 | sed 's/"command":"//;s/"//')
+fi
 [ -z "$CMD" ] && exit 0
 
 NORMALIZED=$(echo "$CMD" | tr '[:upper:]' '[:lower:]' | tr -s ' ')
