@@ -183,12 +183,12 @@ Assigned to: **Code Quality**, **Fresh Eyes**
 Full functions containing changes + type definitions + import statements.
 Assigned to: **Product Flow**
 
-**Tier 3 — Full + consumers** (100%+ of full context):
-Full changed files + files that import from changed modules (discovered via grep for import/require paths).
+**Tier 3 — Function-scoped + consumers**:
+For each changed file: use Grep to locate changed function/class boundaries, then Read only those line ranges (not the full file). Include import statements at the top of each file. Also include files that import from changed modules (discovered via grep for import/require paths), applying the same function-scoped extraction — not full-file reads.
 If `EXPLORER_SUMMARY` is non-empty, append it under a `## Codebase context (from explorer)` heading at the end of the Tier 3 package.
 Assigned to: **Adversarial**, **Architecture**
 
-Build each tier by reading the relevant source files and extracting the appropriate scope. For large diffs under the spine-focused strategy, limit Tier 3 to spine files + their consumers.
+Build each tier by extracting the appropriate scope via Grep + targeted Read. Never embed a full file in a context package unless the file is under 50 lines. For large diffs under the spine-focused strategy, limit Tier 3 to spine files + their consumers.
 
 ### Spec review mode
 

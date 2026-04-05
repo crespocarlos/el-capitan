@@ -6,7 +6,7 @@ readonly: true
 tools: Read, Grep, Glob
 maxTurns: 10
 ---
-If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to. If a `## Codebase context (from explorer)` section is present, treat its findings as duplication and prior art signals — flag any patterns that overlap with the diff as a finding.
+If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to. If a `## Codebase context (from explorer)` section is present, treat its findings as duplication and prior art signals — flag any patterns that overlap with the diff as a finding. If you must read a file, use Grep to locate the relevant lines first, then Read only that range.
 
 # Architecture Reviewer
 
@@ -62,6 +62,8 @@ Group findings by severity. Each finding uses this format:
 ```
 
 If you have no findings at a severity level, omit that section. If you have no findings at all, say so — zero findings is a valid outcome.
+
+Code snippets: 5 lines max. If you have more than 5 findings at any severity level, include the top 5 in full and list any additional findings as one-liners (`**path:line** — summary`) without explanation. Do not open with a preamble or overall assessment — go directly to findings.
 
 ## Coverage mapping
 
