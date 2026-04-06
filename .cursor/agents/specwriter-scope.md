@@ -49,9 +49,9 @@ Group findings by severity. Each finding uses this format:
 ```
 **Task <ID>** — <one-line summary>
 
-<explanation of the scoping issue and why it matters>
+<explanation: 2 sentences max — the scoping issue and why it matters>
 
-<suggested fix: split, reorder, or restructure>
+<fix: 1 sentence — split, reorder, or restructure>
 ```
 
-If you have no findings at a severity level, omit that section. If the spec is well-scoped, say so — zero findings is a valid outcome.
+If you have no findings at a severity level, omit that section. If the spec is well-scoped, say so — zero findings is a valid outcome. **Hard cap: 5 findings total across all severity levels.** Surface only the scope issues that would cause scope creep, missed deliverables, or broken task ordering — drop minor concerns. Never append one-liners for cut findings.

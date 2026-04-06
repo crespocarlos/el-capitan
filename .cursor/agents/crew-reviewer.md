@@ -282,7 +282,7 @@ Collect all reviewer outputs. Consolidation operates **exclusively on the text o
 
 ### Deduplication
 
-When two or more reviewers flag the same `file:line` location:
+Deduplicate aggressively — same concept flagged at different locations still counts as one finding if the root cause is the same. When two or more reviewers flag the same issue:
 1. Keep the finding with the highest severity
 2. Note which reviewers flagged it: `(also flagged by: Adversarial, Code Quality)`
 3. Merge any complementary details from lower-severity findings into the kept finding
@@ -319,6 +319,14 @@ Structure the consolidated report:
 ```
 
 If a severity section has no findings, omit it. If there are no findings at all across all reviewers, state that clearly — zero findings is a valid outcome.
+
+### Output constraints
+
+- **No extra sections.** The only allowed headings are the ones in the template above — no "What looks good", no "Summary", no thematic groupings, no preamble.
+- **Per-finding length:** keep each consolidated finding to 2 sentences max for the explanation + 1 sentence for the fix. Do not expand beyond what the reviewer provided.
+- **Hard cap: 7 findings total** across all severity sections. After deduplication, keep the highest-severity findings. Drop the rest — do not demote them to one-liners.
+- **Action plan:** max 5 items, one line each. Only the most impactful actions.
+- **Be opinionated.** Surface what matters most, not everything found. A short focused report is better than an exhaustive one.
 
 ## Step 8: Output
 

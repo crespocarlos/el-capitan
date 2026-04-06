@@ -52,4 +52,4 @@ Atomic units of work, organized by architectural boundary (one new function/modu
   - **Acceptance**: [How to verify this task alone]
 
 ## References
-[File paths to canonical examples the implementer should read. Include key patterns inline when the spec must be self-contained.]
+[For each non-trivial implementation decision in this spec, the existing file that already made that decision. Show the specific pattern (10-15 lines max). Only include what the implementer would otherwise get wrong by guessing — if a decision has only one reasonable answer, skip it.]

@@ -41,9 +41,9 @@ Generate 3-5 ideas. For each:
 
 **What:** <1-2 sentence description of what to build or try>
 
-**Why it's interesting:** <what makes this worth doing — the non-obvious value>
+**Why it's interesting:** <2 sentences max — the non-obvious value>
 
-**First step:** <the smallest concrete action to start — something doable in one session>
+**First step:** <1 sentence — the smallest concrete action doable in one session>
 ```
 
 Bold the single most promising idea's title. If you genuinely can't generate 3 ideas, say so — don't pad with weak ones.

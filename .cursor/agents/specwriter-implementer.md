@@ -62,9 +62,9 @@ Group findings by severity. Each finding uses this format:
 ```
 **Task <ID>** — <one-line summary>
 
-<explanation of the builder compatibility issue>
+<explanation: 2 sentences max — what the builder compatibility issue is>
 
-<suggested fix: clarify path, add acceptance check, or restructure task>
+<fix: 1 sentence — clarify path, add acceptance check, or restructure task>
 ```
 
-If you have no findings at a severity level, omit that section. If the spec is builder-ready, say so — zero findings is a valid outcome.
+If you have no findings at a severity level, omit that section. If the spec is builder-ready, say so — zero findings is a valid outcome. **Hard cap: 5 findings total across all severity levels.** Surface only the blockers that would cause a builder to stall or guess — drop cosmetic and low-stakes issues. Never append one-liners for cut findings.

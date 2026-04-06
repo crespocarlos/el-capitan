@@ -52,9 +52,9 @@ Group findings by severity. Each finding uses this format:
 ```
 **<Section/Criterion reference>** — <one-line summary>
 
-<explanation of what's missing, ambiguous, or untestable>
+<explanation: 2 sentences max — what's missing, ambiguous, or untestable>
 
-<suggested fix: add criterion, clarify language, or document assumption>
+<fix: 1 sentence — add criterion, clarify language, or document assumption>
 ```
 
-If you have no findings at a severity level, omit that section. If the spec is solid, say so — zero findings is a valid outcome.
+If you have no findings at a severity level, omit that section. If the spec is solid, say so — zero findings is a valid outcome. **Hard cap: 5 findings total across all severity levels.** Surface only the gaps that would cause a real implementation problem — drop style preferences and theoretical edge cases. Never append one-liners for cut findings.

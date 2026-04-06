@@ -42,11 +42,11 @@ Generate 3-5 challenges. For each:
 ```
 ### <Challenge title>
 
-**The assumption:** <the specific assumption being challenged>
+**The assumption:** <1 sentence — the specific assumption being challenged>
 
-**Why it might be wrong:** <evidence or reasoning that undermines the assumption>
+**Why it might be wrong:** <2 sentences max — evidence or reasoning that undermines the assumption>
 
-**What to watch for:** <the signal that would confirm or disprove this concern>
+**What to watch for:** <1 sentence — the signal that would confirm or disprove this concern>
 ```
 
 If you genuinely find no significant challenges, say so — but that should be rare. There are always assumptions worth questioning.

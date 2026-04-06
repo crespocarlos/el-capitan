@@ -40,7 +40,7 @@ Force one unexpected combination. Pick two things from the journal (or one journ
 ```
 ## Connections
 
-<2-4 connections, each with explicit source references to journal entries or past sessions>
+<2-4 connections — 1-2 sentences each, with explicit source references to journal entries or past sessions>
 
 ## Pattern alerts
 
@@ -52,9 +52,9 @@ If no patterns have 3+ occurrences, omit this section.
 
 **Collision:** <entry/idea A> + <entry/idea B>
 
-**What if:** <the unexpected idea from combining them>
+**What if:** <1 sentence — the unexpected idea from combining them>
 
-**Why it might actually work:** <one concrete reason this isn't just noise>
+**Why it might actually work:** <1 sentence — one concrete reason this isn't just noise>
 ```
 
 Reference specific journal entries by date and summary when available. If journal context is thin, bridge to external domains instead — name the domain you're borrowing from.

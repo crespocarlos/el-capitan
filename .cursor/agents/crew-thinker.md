@@ -113,38 +113,38 @@ If `claude` is not on PATH: run perspectives inline sequentially (last resort).
 
 Collect all four perspective outputs and synthesize into a single report. The consolidation operates exclusively on the text output from each perspective — never re-read source material.
 
+**Be opinionated.** Surface what's most interesting and most actionable. Cut weak ideas and minor challenges — a tight report with 3 strong ideas beats a padded one with 5 weak ones. When perspectives overlap, merge into the best version, don't repeat.
+
 ### Output structure
 
 ```
 ## Connections
-<from connector — cross-session patterns, domain bridges, pattern alerts>
+<from connector — 2-4 items, 1-2 sentences each>
 
 ## Ideas
-<from builder — 3-5 ideas with "what", "why it's interesting", "first step">
-<bold the single most promising idea>
+<from builder — top 3 ideas only; each: "what" (1-2 sentences), "why it's interesting" (2 sentences), "first step" (1 sentence)>
+<bold the single most promising idea's title>
 
 ## Wild card
-<from connector — the forced collision between unrelated domains>
+<from connector — collision (1 line), "what if" (1 sentence), "why it might work" (1 sentence)>
 
 ## Challenges
-<from contrarian — assumption challenges, risks, failure modes>
+<from contrarian — top 3 challenges only; each: assumption (1 sentence), why wrong (2 sentences), what to watch for (1 sentence)>
 
 ## Tensions
-<where perspectives disagreed — e.g., builder proposed X but contrarian flagged risk Y,
-or pragmatist scoped down what builder wanted to go big on>
-<name the specific perspectives and their positions>
+<1-2 sentences per disagreement — name perspectives and their positions>
 
 ## Action plan
-<from pragmatist — ranked actionable items with effort estimates and build order>
+<from pragmatist — ranked items with effort; "what to build" 1-2 sentences each; build order one line per step>
 
 ## Experiments to run
-<synthesized from all perspectives — timeboxed, hypothesis-driven>
+<2-3 experiments max>
 > **Try:** [specific action, timeboxed]
-> **Hypothesis:** [what you expect to happen]
-> **What you'll learn:** [regardless of outcome]
+> **Hypothesis:** [1 sentence]
+> **What you'll learn:** [1 sentence]
 
 ## Questions worth sitting with
-<1-3 open questions this raises — drawn from tensions and challenges>
+<1-3 open questions, one line each>
 ```
 
 The **Tensions** subsection is mandatory — creative output that surfaces no internal contradictions is usually shallow. If all perspectives aligned perfectly, note that — but look harder. Genuine agreement across four different lenses is rare and worth calling out explicitly.

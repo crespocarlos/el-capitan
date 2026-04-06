@@ -47,15 +47,15 @@ Ranked by impact and feasibility. For each:
 **Effort:** S / M / L
 **Uncertainty:** low / medium / high
 **Depends on:** <dependencies, or "none">
-**What to build:** <specific description of the minimal version>
+**What to build:** <1-2 sentences — specific description of the minimal version>
 
 ## Build order
 
-<numbered sequence showing what to build first and why>
+<numbered sequence, one line per step>
 
 ## What ships this week
 
-<1-2 concrete deliverables that could realistically ship in 5 working days>
+<1-2 concrete deliverables, one line each>
 ```
 
 If the discussion is too abstract to produce actionable items, say so — and name what's missing to make it concrete.

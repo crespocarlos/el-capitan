@@ -59,14 +59,14 @@ Group findings by severity. Each finding uses this format:
 ```
 **<file_path>:<start_line>–<end_line>** — <one-line summary>
 
-<explanation of what you found and why it matters>
+<explanation: 2 sentences max — what you found and why it matters>
 
-<concrete fix if suggesting a change>
+<fix: 1 sentence — concrete change to make>
 ```
 
 If you have no findings at a severity level, omit that section. If you have no findings at all, say so — zero findings is a valid outcome.
 
-Code snippets: 5 lines max. If you have more than 5 findings at any severity level, include the top 5 in full and list any additional findings as one-liners (`**path:line** — summary`) without explanation. Do not open with a preamble or overall assessment — go directly to findings.
+Code snippets: 5 lines max. **Hard cap: 5 findings total across all severity levels.** Be selective — only report findings that are clearly actionable and would matter to a reviewer. If you have more than 5, drop the lower-severity ones; never append one-liners for cut findings. Do not open with a preamble or overall assessment — go directly to findings.
 
 ## Coverage mapping
 

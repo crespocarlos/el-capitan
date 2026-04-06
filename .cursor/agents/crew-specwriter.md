@@ -122,8 +122,9 @@ Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
      2. **API surface** — what does the public return type look like? Minimize fields. One array per consumer.
      3. **Patterns** — what patterns does the existing code use (return values vs mutation, pure vs stateful)? New code must match.
      4. **Deduplication** — if two outputs need the same derived data, name the single function that computes it.
-   - **Tasks**: break the work into atomic units organized by **architectural boundary** (one new function/module per task), not by modification type. Each task has **Change** (what to do), **Files** (which files), **Acceptance** (how to verify that task alone). If a task says "modify X to also do Y," split it — X stays focused, Y gets its own task.
-   - **References**: file paths to canonical examples. Embed key patterns inline so the spec is self-contained — the agent shouldn't need to read 5 extra files to understand what pattern to follow.
+   - **Tasks**: break the work into atomic units organized by **architectural boundary** (one new function/module per task), not by modification type. Each task has **Change** (what to do — 2-3 sentences max, WHAT not HOW, no numbered step lists), **Files** (which files), **Acceptance** (how to verify that task alone). If a task says "modify X to also do Y," split it — X stays focused, Y gets its own task.
+   - **References**: file paths to canonical examples. Embed key patterns inline (10-15 lines max per excerpt) — max 4 patterns total. The goal is to anchor the implementer to the established pattern, not to reproduce API docs. Do not embed full type definitions — describe the shape in the task or acceptance criteria instead.
+   - **Sections**: only use sections from the spec template. Do not add `## Types`, `## Design`, `## Additional Context`, or any other sections not in the template. Types belong in Acceptance criteria or References; design decisions belong in Design Constraints.
 
 ### Step 4: Self-critique
 
@@ -202,7 +203,7 @@ After the user answers the questions, incorporate their answers into the SPEC.md
 - **Requirements AC** must be inferred from the ticket, not invented. If the ticket says "convert X to use Y", the AC is "X uses Y", not "type-check passes".
 - **Non-regression AC** can be verified by inspection. Not everything needs a CLI command. "Return type shape is unchanged" is a valid criterion verified by reading the diff.
 - **Tasks** must be small enough that each one touches 1-2 files and can be verified independently.
-- The spec must be **self-contained**: include every detail an autonomous agent needs (constraints, exact outputs, file locations, canonical patterns). An agent reading only the spec should be able to implement without exploring.
+- The spec must be **self-contained**: an agent reading only the spec should be able to implement without exploring the codebase. Self-contained means the WHAT is unambiguous — not that every type definition is embedded. Keep specs lean: if it's not needed to implement correctly, leave it out.
 
 ## Output
 
