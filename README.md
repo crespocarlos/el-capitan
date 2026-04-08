@@ -296,10 +296,10 @@ Fetches a URL, GitHub PR, or concept name — distills what matters and writes a
 ### 💡 crew-thinker
 
 Two modes:
-- **Pipeline** — dispatches 4 thinking personas in parallel (builder, contrarian, connector, pragmatist), consolidates tensions and opportunities into a report
-- **Brainstorm** — interactive back-and-forth, unlimited turns; can offer to draft a SPEC when an idea solidifies
+- **Pipeline** — generates a draft, dispatches a single critic for diverse evaluation (quality, gaps, actionability, coherence, challenge), then revises based on findings. 3-round loop: generate → critique → revise
+- **Brainstorm** — interactive back-and-forth, unlimited turns; proactively surfaces journal connections from past sessions; can offer to draft a SPEC when an idea solidifies
 
-**Persona subagents:** `thinker-builder`, `thinker-contrarian`, `thinker-connector`, `thinker-pragmatist`
+**Persona subagents:** `thinker-critic`
 
 **Skills:** `crew-log`, `crew-recall`
 

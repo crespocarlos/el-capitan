@@ -17,7 +17,7 @@ All agents and personas are registered at `~/.claude/agents/`. Personas have YAM
 
 **Orchestrator agents** (crew-reviewer, crew-specwriter, crew-thinker, crew-researcher, crew-pr-resolver) run **inline in the main session** — read their protocol from `~/.claude/agents/crew-<name>.md` and execute it directly. Do NOT dispatch them via Agent tool. Claude Code does not support nested Agent tool calls (subagents cannot spawn subagents), so orchestrators must run in the main session to be able to dispatch persona subagents.
 
-**Persona subagents** (reviewer-adversarial, specwriter-scope, thinker-builder, etc.) are dispatched BY the orchestrator via the Agent tool from the main session — each gets its own context window.
+**Persona subagents** (reviewer-adversarial, specwriter-scope, thinker-critic, etc.) are dispatched BY the orchestrator via the Agent tool from the main session — each gets its own context window.
 
 Dispatch fallback priority (when Agent tool is unavailable):
 1. **`claude -p` file-based dispatch** — parallel CLI processes
