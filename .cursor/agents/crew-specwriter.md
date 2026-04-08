@@ -70,7 +70,6 @@ Delegate exploration to the `specwriter-explorer` subagent to preserve context. 
 ```
 Task/Agent tool call:
   subagent_type: specwriter-explorer
-  model: fast
   prompt: |
     ## Task
     <issue title and description, or user's plain description>
@@ -93,9 +92,11 @@ Same prompt structure, dispatch via Agent tool by name. The main session can dis
 
 | Explorer | Subagent name | Model |
 |---|---|---|
-| Codebase explorer | `specwriter-explorer` | `haiku` |
+| Codebase explorer | `specwriter-explorer` | default |
 
-The explorer returns: files involved, canonical pattern examples (with inline excerpts), test locations + commands, and build config. Use this summary as the foundation for the spec — do not re-read the files yourself.
+The explorer returns: files involved, canonical pattern examples (with inline excerpts), test locations + commands, and build config. Use this summary as the foundation for the spec.
+
+**Thin summary recovery:** If the explorer summary is missing a section (e.g., no patterns found, no tests located) or covers fewer than 2 files, do targeted supplementary reads — up to 3 file reads or SemanticSearch calls to fill gaps. Don't re-explore broadly; fill the specific holes.
 
 **Fallback (no subagent dispatch):** Use SemanticSearch directly. Read at most 2 full files (config files or small utilities only). Prefer SemanticSearch scoped to the relevant package.
 
@@ -164,20 +165,18 @@ Run three critic personas in parallel against the draft spec. This phase is invi
    |---|---|---|
    | Scope | `specwriter-scope` | `fast` |
    | Adversarial | `specwriter-adversarial` | default |
-   | Implementer | `specwriter-implementer` | `fast` |
+   | Implementer | `specwriter-implementer` | default |
 
 3. **Collect findings** from all three critics. If a critic dispatch fails (timeout, error), proceed with the available findings — do not block on a single failure.
 
-4. **Write raw critique** to `$TASK_DIR/CRITIQUE.md` — concatenate all critic outputs with headers. This file is an audit artifact (like PROGRESS.md) — always written, never surfaced in conversation, not consumed by downstream agents. Overwritten on re-runs of `crew spec` with the same slug.
-
-5. **Apply improvements** to the draft SPEC.md:
+4. **Apply improvements** to the draft SPEC.md:
    - **Critical findings are blocking.** Every Critical finding must be addressed before the spec is presented. If a Critical finding requires a user decision that cannot be inferred, surface it as a question — do not present a spec with known Critical issues unresolved.
    - **Important findings should be addressed** unless doing so contradicts a Critical finding or requires user input not yet available. If skipping an Important finding, note the reason in the spec or in your questions.
    - **Consider findings** are noted but not necessarily acted on.
-   - After applying fixes, verify: re-read CRITIQUE.md's Critical list. If any remain unaddressed, fix them. **Do not present a spec with open Critical findings.**
+   - After applying fixes, verify each Critical finding is addressed. **Do not present a spec with open Critical findings.**
    - If critics disagree, prefer the scope critic on boundaries and the implementer on task granularity.
 
-6. Proceed to Step 5 with the improved spec.
+5. Proceed to Step 5 with the improved spec.
 
 ### Degraded fallback (no Task tool, no Agent tool)
 
