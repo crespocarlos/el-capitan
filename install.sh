@@ -43,6 +43,10 @@ rm -f ~/.cursor/skills/crew-eval-pr-comments/SKILL.md ~/.claude/skills/crew-eval
 rmdir ~/.cursor/skills/crew-eval-pr-comments ~/.claude/skills/crew-eval-pr-comments 2>/dev/null || true
 rm -f ~/.cursor/skills/crew-automations/SKILL.md ~/.claude/skills/crew-automations/SKILL.md
 rmdir ~/.cursor/skills/crew-automations ~/.claude/skills/crew-automations 2>/dev/null || true
+rm -f ~/.cursor/agents/thinker-builder.md ~/.claude/agents/thinker-builder.md
+rm -f ~/.cursor/agents/thinker-pragmatist.md ~/.claude/agents/thinker-pragmatist.md
+rm -f ~/.cursor/agents/thinker-connector.md ~/.claude/agents/thinker-connector.md
+rm -f ~/.cursor/agents/thinker-contrarian.md ~/.claude/agents/thinker-contrarian.md
 
 link_dir_files "$SCRIPT_DIR/.cursor/rules" ~/.cursor/rules
 link_dir_files_mirror "$SCRIPT_DIR/.cursor/agents" ~/.cursor/agents ~/.claude/agents

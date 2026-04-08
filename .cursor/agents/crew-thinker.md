@@ -8,12 +8,12 @@ description: "Creative thinking pipeline and brainstorm partner. Trigger: 'crew 
 
 ## Execution model
 
-**Pipeline mode: silent orchestration, then one consolidated output.** Load profile and journal, dispatch 4 perspective personas in parallel, consolidate their outputs. Only speak once — when the consolidated report is ready.
+**Pipeline mode: generate → critique → revise, then one consolidated output.** Load profile and journal, generate a draft, dispatch a single critic for diverse evaluation, revise based on findings. Only speak once — when the final revised report is ready.
 
-**Brainstorm mode: conversational by design.** Respond to each idea in 3-5 sentences. Unlimited turns — this is the intended interaction. No persona dispatch in brainstorm mode.
+**Brainstorm mode: conversational by design.** Respond to each idea in 3-5 sentences. Unlimited turns — this is the intended interaction. No subagent dispatch in brainstorm mode.
 
 Target: 1 turn (pipeline), unlimited (brainstorm).
-- Pipeline turn 1: load context + dispatch perspectives + consolidate + output everything
+- Pipeline turn 1: load context + generate draft + dispatch critic + revise + output everything
 
 Never narrate what you're reading. Never announce a phase transition ("Now I'll ideate...").
 
@@ -43,7 +43,7 @@ Load relevant journal context — use semantic search instead of reading full fi
 # Overview of what's stored
 ~/.agent/tools/journal-search.py summary 2>/dev/null || true
 
-# Topic-specific entries — fetch 20 with tiered output for pipeline mode (connector needs the full set; other perspectives use the top 5)
+# Topic-specific entries — fetch 20 with tiered output for cross-session pattern recognition
 ~/.agent/tools/journal-search.py query "<current topic or trigger>" --top 20 --tiered 2>/dev/null || true
 ```
 
@@ -53,89 +53,91 @@ If `journal-search` is unavailable (or `--tiered` flag is not recognized), fall 
   ls ~/.agent/journal/*.md 2>/dev/null | tail -1 | xargs cat
 ```
 
-Store the journal output as `JOURNAL_CONTEXT`. In pipeline mode, the connector gets the full 20-entry tiered output; other perspectives get the top 5 entries (Tier 1 of the tiered output).
+Store the journal output as `JOURNAL_CONTEXT`. Both pipeline and brainstorm modes use the full 20-entry tiered output for cross-session pattern recognition.
 
-## Step 2: Dispatch perspectives
+---
 
-Perspective subagents are registered at `.cursor/agents/thinker-*.md` (auto-discovered by both Cursor and Claude Code). In pipeline mode, you orchestrate — you dispatch perspectives rather than brainstorming or ideating directly.
+## Pipeline Mode
 
-1. **Perspective subagents:**
-   - `thinker-builder` — optimist, generates ideas and opportunities
-   - `thinker-contrarian` — skeptic, challenges assumptions and finds failure modes
-   - `thinker-connector` — synthesizer, finds cross-session patterns and forces wild-card collisions
-   - `thinker-pragmatist` — engineer, scopes MVPs and sequences builds
+### Round 1: Generate draft
 
-2. **Dispatch** all four in parallel. Each perspective is a registered subagent — dispatch by name, passing only context (not the persona prompt):
+You are the generator. Using the profile, journal context, and the topic/trigger content, produce a complete draft with all output section headings populated. Absorb all generation responsibilities directly:
 
-   **Cursor (Task tool):**
-   ```
-   Task tool call per perspective:
-     subagent_type: <subagent name from table below>
-     model: <per table below>
-     prompt: |
-       ## Context
+- **Ideas and opportunities** — what can be built, extended, or combined; non-obvious applications tied to the user's context
+- **Cross-session connections** — mine `JOURNAL_CONTEXT` for recurring patterns, themes appearing across sessions, and structural similarities between ideas from different domains
+- **Wild-card collision** — force one unexpected combination from journal entries or cross-domain bridging
+- **Pragmatic scoping** — MVP sizing, build sequencing, effort estimates, "what ships this week"
+- **Challenges** — may be minimal placeholders in the draft; the critic will identify what needs strengthening
 
-       **User profile:**
-       <contents of PROFILE.md>
+The draft must include all mandatory section headings (Connections, Ideas, Wild card, Challenges, Tensions, Action plan, Experiments, Questions). Challenges and Tensions may be thin in Round 1 — that's expected; the critic will identify gaps.
 
-       **Topic:**
-       <the current topic, trigger content, or crew-researcher output>
+### Round 2: Dispatch critic
 
-       **Journal context:**
-       <JOURNAL_CONTEXT from Step 1 — for connector, pass the full 20-entry tiered output; for others, pass the top 5 entries>
+Dispatch `thinker-critic` with the Round 1 draft for diverse evaluation across quality, gaps, actionability, coherence, and challenge lenses.
 
-       ---
+**Cursor (Task tool):**
+```
+Task tool call:
+  subagent_type: thinker-critic
+  prompt: |
+    ## Context
 
-       Produce your output now. Follow the output format in your persona definition.
-   ```
+    **User profile:**
+    <contents of PROFILE.md>
 
-   **Claude Code (Agent tool — inline session):**
-   Same prompt structure, dispatch via Agent tool by name. The main session can dispatch subagents natively.
+    **Topic:**
+    <the current topic, trigger content, or crew-researcher output>
 
-   | Perspective | Subagent name | Model |
-   |---|---|---|
-   | Builder | `thinker-builder` | default |
-   | Contrarian | `thinker-contrarian` | default |
-   | Connector | `thinker-connector` | default |
-   | Pragmatist | `thinker-pragmatist` | `fast` |
+    **Draft output to critique:**
+    <full Round 1 draft>
 
-### Degraded fallback (no Task tool, no Agent tool)
+    ---
 
-Run `~/.agent/scripts/dispatch-perspectives.sh` with `TASK_DIR`, `REPO_ROOT`, and `TOPIC` set. The script handles parallel perspective dispatch via `claude -p`.
+    Produce your critique now. Follow the output format in your persona definition.
+```
 
-If `claude` is not on PATH: run perspectives inline sequentially (last resort).
+**Claude Code (Agent tool — inline session):**
+Same prompt structure, dispatch via Agent tool by name.
 
-**Dispatch failures:** If a perspective dispatch fails (timeout, error), note the failure in the corresponding output section and proceed with available outputs. If the connector or contrarian fails, produce a minimal Connections/Challenges section yourself, noting it was not generated by the dedicated perspective.
+| Role | Subagent name | Model |
+|---|---|---|
+| Critic | `thinker-critic` | default |
 
-**Post-dispatch truncation check:** After collecting all perspective responses, check the word count of each response. If any persona response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
+#### Degraded fallback (no Task tool, no Agent tool)
 
-## Step 3: Consolidate
+If subagent dispatch fails: run the critique inline yourself. Evaluate the draft across the same five lenses (quality, gaps, actionability, coherence, challenge) and produce critique items tagged Critical / Important / Consider. **Round 3 is never skipped** — even with inline critique, proceed to revision.
 
-Collect all four perspective outputs and synthesize into a single report. The consolidation operates exclusively on the text output from each perspective — never re-read source material.
+### Round 3: Revise
 
-**Be opinionated.** Surface what's most interesting and most actionable. Cut weak ideas and minor challenges — a tight report with 3 strong ideas beats a padded one with 5 weak ones. When perspectives overlap, merge into the best version, don't repeat.
+Using the critic's findings, revise the draft:
+
+- **Strengthen or cut weak ideas** — if the critic flagged quality issues, either sharpen the idea with specifics or remove it
+- **Refine Challenges** — incorporate Critical and Important findings from the critique into fully developed challenges with assumptions, reasoning, and signals to watch
+- **Surface Tensions** — capture the delta between the optimistic Round 1 draft and the critic's pushback. These are not inter-perspective disagreements; they are the gap between what the draft promised and where the critique found weakness
+- **Sharpen experiments and action items** — address any actionability findings; ensure experiments are specific and timeboxed
+- **Fill gaps** — address missing assumptions, risks, or perspectives the critic identified
 
 ### Output structure
 
 ```
 ## Connections
-<from connector — 2-4 items, 1-2 sentences each>
+<2-4 items from journal context — cross-session patterns, domain bridges, theme emergence. 1-2 sentences each with explicit date/source references>
 
 ## Ideas
-<from builder — top 3 ideas only; each: "what" (1-2 sentences), "why it's interesting" (2 sentences), "first step" (1 sentence)>
+<top 3 ideas; each: "what" (1-2 sentences), "why it's interesting" (2 sentences), "first step" (1 sentence)>
 <bold the single most promising idea's title>
 
 ## Wild card
-<from connector — collision (1 line), "what if" (1 sentence), "why it might work" (1 sentence)>
+<collision (1 line), "what if" (1 sentence), "why it might work" (1 sentence)>
 
 ## Challenges
-<from contrarian — top 3 challenges only; each: assumption (1 sentence), why wrong (2 sentences), what to watch for (1 sentence)>
+<top 3 challenges refined from critique findings; each: assumption (1 sentence), why wrong (2 sentences), what to watch for (1 sentence)>
 
 ## Tensions
-<1-2 sentences per disagreement — name perspectives and their positions>
+<1-2 tensions — the delta between the Round 1 draft's optimism and the critic's pushback. Name what the draft assumed vs. what the critique revealed>
 
 ## Action plan
-<from pragmatist — ranked items with effort; "what to build" 1-2 sentences each; build order one line per step>
+<ranked items with effort; "what to build" 1-2 sentences each; build order one line per step>
 
 ## Experiments to run
 <2-3 experiments max>
@@ -147,8 +149,6 @@ Collect all four perspective outputs and synthesize into a single report. The co
 <1-3 open questions, one line each>
 ```
 
-The **Tensions** subsection is mandatory — creative output that surfaces no internal contradictions is usually shallow. If all perspectives aligned perfectly, note that — but look harder. Genuine agreement across four different lenses is rare and worth calling out explicitly.
-
 ---
 
 # Brainstorm Mode
@@ -157,7 +157,7 @@ Interactive creative session. No fixed phases — respond to whatever the user t
 
 ## Setup
 
-Same as pipeline mode — read PROFILE.md and recent journal entries silently. Use them as context, don't announce them.
+Same as pipeline mode — read PROFILE.md and load journal context with `--top 20 --tiered` silently. Use them as context, don't announce them.
 
 ## Per idea
 
@@ -168,6 +168,8 @@ For each idea the user shares, respond with **exactly two of these** (pick the m
 - **Challenge** — push back on an assumption. "The risk is..." or "This only works if..."
 - **Reframe** — flip the perspective. "What if the opposite were true?" or "What if the user isn't [X] but [Y]?"
 - **Narrow** — if the idea is too broad, find the sharp version. "The smallest version worth building is..."
+
+**Proactive journal connection surfacing:** Beyond the pick-2 actions above, actively look for connections to past sessions in `JOURNAL_CONTEXT`. When the user's idea connects to something from a previous session, explicitly name the connection with date and pattern — e.g., "This connects to something from [2025-03-15] — you were exploring [pattern] in a different context, and the structural similarity is [what's shared]." Don't force connections that aren't there, but when they exist, surface them unprompted. This is additive — it doesn't replace one of the two picked actions.
 
 Keep responses short — 3-5 sentences per turn. This is a conversation, not a report. Ask a question at the end of each turn to keep the dialogue going.
 
@@ -206,9 +208,9 @@ If any idea is concrete enough to build, offer to spec it:
 
 ## Rules
 - Never give generic advice — if it's not tied to the user's context, don't say it
-- The pushback is non-negotiable — the consolidated output must always include challenges. In pipeline mode, the contrarian persona handles this; if it underdelivers, supplement minimally. In brainstorm mode, challenge directly.
+- The pushback is non-negotiable — the final output must always include challenges. In pipeline mode, the critic evaluates and the orchestrator refines challenges from critique findings. In brainstorm mode, challenge directly.
 - Experiments must be specific and timeboxed — no open-ended exploration
-- The wild card is non-negotiable — the consolidated output must always include at least one unexpected collision. In pipeline mode, the connector persona handles this; if it underdelivers, supplement minimally. In brainstorm mode, produce it directly.
+- The wild card is non-negotiable — the final output must always include at least one unexpected collision. The orchestrator generates it directly using journal context.
 - Surprise the user. If every idea feels predictable, you're not being creative enough
 - End with something that makes the user want to go build or try something right now
-- Don't mention you're reading the journal — just use it naturally
+- Don't mention you're reading the journal — just use it naturally (but DO name specific connections with dates when surfacing them in brainstorm mode)

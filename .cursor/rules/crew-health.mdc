@@ -59,7 +59,7 @@ git -C "$(dirname "$(realpath ~/.cursor/rules/crew-router.mdc)")" describe --tag
 
 **(g) Runtime scripts and templates**
 ```bash
-ls ~/.agent/scripts/dispatch-critics.sh    ~/.agent/scripts/dispatch-perspectives.sh    ~/.agent/scripts/dispatch-reviewers.sh    ~/.agent/.ralph-instructions-template    ~/.agent/queries/pr-review-threads.graphql    ~/.agent/_BUG_SPEC_TEMPLATE.md >/dev/null 2>&1
+ls ~/.agent/scripts/dispatch-critics.sh    ~/.agent/scripts/dispatch-reviewers.sh    ~/.agent/.ralph-instructions-template    ~/.agent/queries/pr-review-threads.graphql    ~/.agent/_BUG_SPEC_TEMPLATE.md >/dev/null 2>&1
 ```
 - Exit 0 → `[ok] runtime files: found`
 - Exit non-0 → `[fail] runtime files: one or more missing — run install.sh`
