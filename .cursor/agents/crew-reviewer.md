@@ -251,21 +251,26 @@ Task tool call per reviewer:
     ### Questions
     ### Nits
 
-    Finding format — each finding MUST include the relevant code:
+    Finding format — follow this EXACTLY for every finding:
 
       **<file_path>:<start_line>–<end_line>** — <one-line summary>
-      ```<lang>
-      <relevant code, ≤5 lines — the exact lines that back the finding>
+
+      Line numbers are REQUIRED. Use the line numbers from the diff hunk header (the `@@ -X +Y @@` lines). If you can see the code but not its exact line, estimate from the hunk offset. Never omit the `:start–end` part.
+
+      The code block is REQUIRED. Use triple backticks with the language tag:
+      ```ts
+      <exact lines from the diff that back the finding, ≤5 lines>
       ```
-      <explanation: 2 sentences max. For questions: weave the stakes into the explanation — "Is X intentional? If not, this will Y.">
+
+      <explanation: 2 sentences max. For questions: weave the stakes inline — "Is X intentional? If not, this will Y.">
       Fix/Response: <1 sentence>
 
     Rules:
-    - Never cite a finding without the backing code. If you can't quote the code, don't report the finding.
-    - Questions must state the stakes inline — "if not, this will break Z." A question without stakes is a nit.
-    - Hard cap: 5 findings total. Max 2 questions. Drop lower-priority findings if over cap.
+    - Every finding needs: bold file+lines header, fenced code block, explanation, Fix/Response.
+    - Questions must state stakes inline. A question without stakes is a nit.
+    - Hard cap: 5 findings total. Max 2 questions. Drop lower-priority ones if over cap.
     - Omit empty label sections. Zero findings is a valid outcome.
-    - Do not open with a preamble — go directly to findings.
+    - Go directly to findings — no preamble.
 ```
 
 All Task tool calls go in a single message to execute in parallel.
