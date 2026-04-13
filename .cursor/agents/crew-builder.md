@@ -63,10 +63,10 @@ sed -e "s|WORK_DIR|$WORK_DIR|g"     -e "s|NVM_PREAMBLE|$NVM_PREAMBLE|g"     -e "
 Launch ralph:
 
 ```bash
+export CURSOR_AGENT_MODEL="${CURSOR_AGENT_MODEL:-gpt-5.3-codex}"
 ralph run "$TASK_DIR/SPEC.md" \
   --extra-instructions "$TASK_DIR/.ralph-instructions" \
-  --max-runs "$MAX_RUNS" \
-  --model "${CURSOR_AGENT_MODEL:-gpt-5.3-codex}"
+  --max-runs "$MAX_RUNS"
 ```
 
 After ralph exits:
