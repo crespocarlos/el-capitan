@@ -47,6 +47,15 @@ crew-builder reads SPEC.md and should not need to explore the codebase to unders
 - Patterns to follow are described or referenced with inline examples
 - Commands to run are complete (no "run the appropriate test")
 
+### Test section presence
+crew-builder's completion protocol reads `## Tests > Automated > Command` to run tests. If the spec has no `## Tests` section, the builder cannot execute tests and stops the completion protocol prematurely.
+
+**Severity: Critical** — **Spec** — missing ## Tests section
+
+The builder's completion protocol reads `## Tests > Automated > Command` to run tests; without this section, the builder cannot execute tests and stops the protocol prematurely.
+
+Fix: Add a `## Tests` section with `### Automated` and `### Manual` subsections before `## References`.
+
 ## Severity definitions
 
 **Critical** — the builder will get stuck or produce wrong results. Missing acceptance checks, circular task dependencies, ambiguous file paths, or tasks that can't be verified independently.
@@ -67,4 +76,4 @@ Group findings by severity. Each finding uses this format:
 <fix: 1 sentence — clarify path, add acceptance check, or restructure task>
 ```
 
-If you have no findings at a severity level, omit that section. If the spec is builder-ready, say so — zero findings is a valid outcome. **Hard cap: 5 findings total across all severity levels.** Surface only the blockers that would cause a builder to stall or guess — drop cosmetic and low-stakes issues. Never append one-liners for cut findings.
+If you have no findings at a severity level, omit that section. If the spec is builder-ready, say so — zero findings is a valid outcome. **Hard cap: 5 findings total across all severity levels (spec-level findings count against this cap).** Surface only the blockers that would cause a builder to stall or guess — drop cosmetic and low-stakes issues. Never append one-liners for cut findings.

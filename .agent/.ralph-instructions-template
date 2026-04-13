@@ -21,7 +21,8 @@ For each unchecked item under ## Tasks, in order:
 1. Review each requirement under Acceptance Criteria > Requirements — mark [x] if satisfied.
 2. Review each item under Acceptance Criteria > Non-regression — mark [x] if verified.
 3. Review each item under Design Constraints — mark [x] if the implementation conforms.
-4. Set status to done using the two-line format:
+4. If the spec has a ## Tests > ### Automated section with a Command line not equal to 'none', extract the command and run it from WORK_DIR. If it exits 0: write '### Test Results: PASS' to REPORT.md and continue to step 5. If it exits non-zero: write '### Test Results: FAIL' and up to 30 lines of output to REPORT.md, set Status to IMPLEMENTING, and stop — do not proceed to step 5.
+5. Set status to done using the two-line format:
    ## Status
    done
    Do NOT write "## Status: done" inline.

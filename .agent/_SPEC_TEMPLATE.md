@@ -2,7 +2,7 @@
 
 ## Type: [feature | bugfix | refactor | chore | docs]
 ## Status: DRAFTING
-## Phase: spec → crew-implement → diff-check → commit → pr-open → [review cycle] → done
+## Phase: spec → implement → test → diff-check → commit → pr-open → done
 ## Current: spec
 ## Next: implement
 
@@ -50,6 +50,18 @@ Atomic units of work, organized by architectural boundary (one new function/modu
   - **Change**: [What to do]
   - **Files**: [Files to create or modify]
   - **Acceptance**: [How to verify this task alone]
+
+## Tests
+
+### Automated
+- **Command**: `<test command or "none">`
+- **Scenarios**:
+  - [ ] [Scenario 1]
+  - [ ] [Scenario 2]
+
+### Manual
+- [ ] [Manual verification step 1]
+- [ ] [Manual verification step 2]
 
 ## References
 [For each non-trivial implementation decision in this spec, the existing file that already made that decision. Show the specific pattern (10-15 lines max). Only include what the implementer would otherwise get wrong by guessing — if a decision has only one reasonable answer, skip it.]

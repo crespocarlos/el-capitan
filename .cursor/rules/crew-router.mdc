@@ -5,8 +5,6 @@ alwaysApply: true
 
 # el-capitan
 
-> Sync target: ~/.claude/CLAUDE.md — keep routing table entries in sync when adding commands.
-
 Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew` (or `@crew-researcher`), respond normally — no routing.
 
 ## Routing table
@@ -16,6 +14,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew spec` issue/URL/description | crew-specwriter |
 | `crew implement` | crew-implement → @crew-builder |
 | `crew diff` | crew-diff |
+| `crew test` | crew-test skill |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
 | `crew review` [PR #X \| spec \| (self)] | crew-reviewer |
@@ -52,6 +51,7 @@ Heavy commands run as isolated subagents to avoid polluting the orchestrator's c
 | `crew implement` | `crew-builder` | Claude Code: Agent tool; Cursor: Task tool |
 | `crew resolve PR` | `crew-pr-resolver` | Claude Code: Agent tool; Cursor: Task tool |
 | `crew migrate` | `crew-migrate` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew test` | — | Inline |
 | All other commands | — | Inline |
 
 Multi-persona orchestrators dispatch persona subagents in parallel. All agents at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
