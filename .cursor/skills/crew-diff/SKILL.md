@@ -29,7 +29,12 @@ REPO=$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null ||
 Resolve TASK_DIR for progress logging:
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+if [ -n "${CREW_TASK_DIR+x}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"
+else
+  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+  export CREW_TASK_DIR="$TASK_DIR"
+fi
 ```
 
 Add any recalled rules to the pattern violations checklist below. For example, if a recalled pattern says "always use data-test-subj for test selectors", flag new components missing them.

@@ -27,12 +27,7 @@ Never narrate within a task. Never say "now editing file X" or "running command 
 
 Both modes implement the same protocol — the difference is the runtime, not the logic. Ralph is preferred when available (faster iteration, managed loop). Inline is the fallback when ralph isn't installed.
 
-If `RECALLED_PATTERNS` is empty, run auto-recall as a fallback:
-
-```bash
-REPO=$(basename "$WORK_DIR")
-~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
-```
+If `RECALLED_PATTERNS` is empty **or `"none"`**, skip auto-recall — crew-implement already ran it and found nothing. Do not re-run; pass `"none"` to the implementation context.
 
 > **Note on worktrees:** Both modes receive `WORK_DIR` from crew-implement, which is the worktree path created before launching the builder. Neither mode creates worktrees — crew-implement owns that. All file operations must be anchored to `WORK_DIR`.
 

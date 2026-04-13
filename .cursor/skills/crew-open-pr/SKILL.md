@@ -87,7 +87,14 @@ Show the PR URL and a one-line summary.
 After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
+if [ -n "${CREW_TASK_DIR+x}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"
+elif TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null); then
+  export CREW_TASK_DIR="$TASK_DIR"
+else
+  echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
+  TASK_DIR=""
+fi
 ```
 
 ```

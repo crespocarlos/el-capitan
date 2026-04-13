@@ -20,7 +20,12 @@ Never narrate what you're doing. Never say "now running tests".
 ### Step 1: Resolve TASK_DIR
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+if [ -n "${CREW_TASK_DIR+x}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"
+else
+  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+  export CREW_TASK_DIR="$TASK_DIR"
+fi
 ```
 
 ### Step 2: Get changed files
@@ -51,7 +56,12 @@ If no symbols are found, use the basenames of changed files (without extension) 
 
 ### Step 4: Dispatch tester-explorer
 
-Launch `tester-explorer` as a subagent with a structured prompt containing two sections:
+**Pre-check before dispatch** — skip tester-explorer when discovery would be redundant:
+
+1. If `$TASK_DIR/SPEC.md` exists and all typed blocks (`### Unit`, `### Integration`, `### E2E`) that are present have a `**Command**` value that is not `"none"` or empty → the spec already has commands; skip to Step 5 using those commands.
+2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`, `.sh`, `.py` config-only) → no importable symbols exist; skip to Step 7 with WARN verdict.
+
+Otherwise, launch `tester-explorer` as a subagent with a structured prompt:
 
 ```
 ## Changed files

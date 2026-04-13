@@ -26,7 +26,7 @@ You discover test files and test commands relevant to the changed symbols provid
 **Tool budget (hard limit): ≤8 calls total.** Count every call.
 - 1 × `mcp__SemanticCodeSearch__list_indices`
 - 2 × semantic search (`mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`, or `SemanticSearch`)
-- 3 × `Grep` or `Glob` (one slot reserved for Playwright convention discovery)
+- 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is found)
 - 2 × `Read`
 
 After your last tool call, write your summary immediately. If a search returns nothing, try one alternative phrasing — then move on. Do not exhaust your budget chasing a single topic. If asked to continue or provide your summary, output what you already have — no further tool calls.

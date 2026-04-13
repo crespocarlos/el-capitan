@@ -52,7 +52,14 @@ On every conversation start, check for an active task:
 
 ```bash
 # Silent failure: session-start should not interrupt if no task is found
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
+if [ -n "${CREW_TASK_DIR+x}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"
+elif TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null); then
+  export CREW_TASK_DIR="$TASK_DIR"
+else
+  echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
+  TASK_DIR=""
+fi
 ```
 
 If `$TASK_DIR` is non-empty, read its SPEC.md slug and derive pipeline state (see `crew status` logic below) and surface:
@@ -63,95 +70,7 @@ If no active task, say nothing — do not announce the absence of a task.
 
 ## `crew status`
 
-Derive pipeline state from git and gh. PROGRESS.md is an audit trail, not the source of truth.
-
-**State derivation (in order):**
-
-```bash
-# Hard failure: crew status must surface task resolution errors explicitly
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
-```
-
-1. **No SPEC.md** → emit: `No active workflow. Start one: \`crew start build\` | \`crew start review-cycle\` | \`crew brainstorm\`` If you have stale task state from before the UUID migration, run `crew migrate` first. Skip status validation.
-
-2. **Read SPEC.md Status field** (the line after `## Status`):
-
-   Status validation:
-   KNOWN_STATUSES = [DRAFTING, APPROVED, IMPLEMENTING, DONE]
-
-   Note: DIFF_CHECK, COMMITTING, and PR_OPEN are runtime-only pipeline states — they are derived
-   from git/gh signals (staged changes, open PR), not written into SPEC.md. Only the four
-   KNOWN_STATUSES above are valid SPEC.md values.
-
-   If no SPEC.md found → skip validation (no warning).
-   If SPEC.md found and status in KNOWN_STATUSES → proceed normally.
-   If SPEC.md found and status NOT in KNOWN_STATUSES → emit:
-     "Warning: SPEC.md has unknown status '[VALUE]' — expected one of: DRAFTING, APPROVED, IMPLEMENTING, DONE."
-
-   - `DRAFTING` → state = DRAFTING *(git has no signal — spec not yet approved)*
-   - `APPROVED`, no worktree for this branch → state = APPROVED
-
-3. **Check for worktree:**
-   ```bash
-   # Capture root first — if git rev-parse fails (e.g., not in a git repo), the empty
-   # substitution would silently filter ALL worktrees, producing a wrong-state read.
-   REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "Error: not in a git repo"; exit 1; }
-   git worktree list | grep -v "^$REPO_ROOT"
-   ```
-   If a worktree exists for this branch AND no `$TASK_DIR/REPORT.md` → state = IMPLEMENTING
-
-4. **Check for REPORT.md:**
-   ```bash
-   test -f "$TASK_DIR/REPORT.md"
-   ```
-   If REPORT.md exists and no PR yet:
-   - `git diff --cached --quiet` → DIFF_CHECK (nothing staged)
-   - else → COMMITTING (staged changes ready)
-
-5. **Check for PR:**
-   ```bash
-   gh pr list --head "$BRANCH" --json state,url --jq '.[0]' 2>/dev/null
-   ```
-   - PR state = OPEN → PR_OPEN
-   - PR state = MERGED or CLOSED → DONE
-
-**Mismatch handling:** If PROGRESS.md and git state disagree, git wins. Surface:
-> ⚠ State mismatch: PROGRESS.md shows `<X>` but git state indicates `<Y>`. Using git-derived state.
-
-**Output format:**
-```
-Task: <slug> | Repo: <repo> | Branch: <branch>
-State: <STATE> → Next: <next step>
-Workflow: build | Stage: IMPLEMENTING | Next: crew diff
-Changed: <git diff --stat output, or "none yet">
-```
-
-**Workflow detection** (runs after state derivation):
-
-1. Check for open PR with unresolved threads (highest priority):
-
-       gh api graphql \
-         --field owner=OWNER --field repo=REPO --field branch=BRANCH \
-         -f query="$(cat ~/.agent/queries/open-prs-with-threads.graphql)" \
-         --jq '
-           .data.repository.pullRequests.nodes[] |
-           if .reviewThreads.pageInfo.hasNextPage then
-             error("review thread list truncated for PR \(.number) — increase first limit")
-           else . end |
-           select(.reviewThreads.nodes | map(select(.isResolved == false)) | length > 0) |
-           .number' 2>/dev/null
-
-   → If found: `Workflow: respond | Next: crew start review-cycle #<PR>`
-
-2. Else if SPEC.md present (any Type):
-   → `Workflow: build | Stage: <pipeline-state> | Next: <next-command>`
-
-3. Else:
-   → `No active workflow. Start one: \`crew start build\` | \`crew start review-cycle\` | \`crew brainstorm\``
-   (If you have stale pre-migration task state, run `crew migrate` first.)
-
-Precedence: open PR with unresolved threads beats SPEC.md when both are present.
-`explore` has no detectable state — it does not appear in `crew status` output.
+**Full derivation logic**: see `crew-status.mdc` — read it when `crew status` is invoked.
 
 ## `crew autopilot`
 

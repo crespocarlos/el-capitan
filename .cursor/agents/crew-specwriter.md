@@ -133,14 +133,13 @@ Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
 
 ### Step 4: Self-critique
 
-Run three critic personas in parallel against the draft spec. This phase is invisible to the user — they see only the improved spec in the output.
+Run two critic personas in parallel against the draft spec. This phase is invisible to the user — they see only the improved spec in the output.
 
 1. **Critic subagents** are registered at `.cursor/agents/specwriter-*.md` (auto-discovered by both Cursor and Claude Code):
-   - `specwriter-scope` — evaluates PR boundaries, task granularity, split-line identification
+   - `specwriter-scope` — evaluates PR boundaries, task granularity, split-line identification, builder compatibility, path clarity, and verifiability
    - `specwriter-adversarial` — stress-tests acceptance criteria, surfaces missing edge cases
-   - `specwriter-implementer` — evaluates builder compatibility, path clarity, verifiability
 
-2. **Dispatch** all three in parallel. Each critic is a registered subagent — dispatch by name, passing only the draft spec as context (not the persona prompt):
+2. **Dispatch** both in parallel. Each critic is a registered subagent — dispatch by name, passing only the draft spec as context (not the persona prompt):
 
    **Cursor (Task tool):**
    ```
@@ -167,18 +166,17 @@ Run three critic personas in parallel against the draft spec. This phase is invi
 
    | Critic | Subagent name | Model |
    |---|---|---|
-   | Scope | `specwriter-scope` | `fast` |
+   | Scope + Implementer | `specwriter-scope` | default |
    | Adversarial | `specwriter-adversarial` | default |
-   | Implementer | `specwriter-implementer` | default |
 
-3. **Collect findings** from all three critics. If a critic dispatch fails (timeout, error), proceed with the available findings — do not block on a single failure.
+3. **Collect findings** from both critics. If a critic dispatch fails (timeout, error), proceed with the available findings — do not block on a single failure.
 
 4. **Apply improvements** to the draft SPEC.md:
    - **Critical findings are blocking.** Every Critical finding must be addressed before the spec is presented. If a Critical finding requires a user decision that cannot be inferred, surface it as a question — do not present a spec with known Critical issues unresolved.
    - **Important findings should be addressed** unless doing so contradicts a Critical finding or requires user input not yet available. If skipping an Important finding, note the reason in the spec or in your questions.
    - **Consider findings** are noted but not necessarily acted on.
    - After applying fixes, verify each Critical finding is addressed. **Do not present a spec with open Critical findings.**
-   - If critics disagree, prefer the scope critic on boundaries and the implementer on task granularity.
+   - If critics disagree on scope vs verifiability, the scope critic's judgment on task boundaries takes precedence.
 
 5. Proceed to Step 5 with the improved spec.
 

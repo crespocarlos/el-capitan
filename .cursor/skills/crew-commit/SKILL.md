@@ -19,7 +19,12 @@ Read the full staged diff: `git diff --staged`.
 For intent context, find the active SPEC.md:
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+if [ -n "${CREW_TASK_DIR+x}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"
+else
+  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+  export CREW_TASK_DIR="$TASK_DIR"
+fi
 ```
 
 If `$TASK_DIR` is non-empty, read it for intent context.

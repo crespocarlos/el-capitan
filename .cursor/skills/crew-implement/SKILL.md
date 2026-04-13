@@ -9,7 +9,14 @@ Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and use
 ### Step 1: Resolve task state
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
+if [ -n "${CREW_TASK_DIR+x}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"
+elif TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null); then
+  export CREW_TASK_DIR="$TASK_DIR"
+else
+  echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
+  TASK_DIR=""
+fi
 ```
 
 If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs (see Step 2).
@@ -48,10 +55,10 @@ If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel))
-~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+RECALLED_PATTERNS=$(~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true)
 ```
 
-Store the results as `RECALLED_PATTERNS` to pass to the subagent.
+Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no journal entries or search unavailable), set `RECALLED_PATTERNS="none"` — do **not** leave it as an empty string. Passing an empty string causes crew-builder to re-run auto-recall redundantly.
 
 ### Step 4: Create worktree
 
