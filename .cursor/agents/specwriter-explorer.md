@@ -26,8 +26,8 @@ You explore a codebase to gather context for writing a SPEC.md. Your job is to f
 **Tool budget (hard limit): ≤8 calls total.** Count every call.
 - 1 × `mcp__SemanticCodeSearch__list_indices`
 - 2 × semantic search (`mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`, or `SemanticSearch`)
-- 2 × `Grep` or `Glob`
-- 3 × `Read`
+- 3 × `Grep` or `Glob` (one slot reserved for Playwright convention discovery)
+- 2 × `Read`
 
 After your last tool call, write your summary immediately. If a search returns nothing, try one alternative phrasing — then move on. Do not exhaust your budget chasing a single topic. If asked to continue or provide your summary, output what you already have — no further tool calls.
 
@@ -47,6 +47,12 @@ This is distinct from item 3: conventions are about *what to use and how to beha
 **4. Tests** — test files for the involved modules and how to run them (test command + config path).
 
 **5. Build/config** — relevant tsconfig, jest config, Cargo.toml, pyproject.toml, or equivalent.
+
+**6. Playwright conventions** — discover selector and auth conventions from actual Playwright test files:
+- Find test files: `Glob` `**/*.spec.*` / `**/*.test.*`. If MCP available, use `mcp__SemanticCodeSearch__map_symbols_by_query` with `kql: "filePath: *playwright* OR filePath: *.spec.* OR filePath: *.test.*"` instead.
+- One `Grep` across found files for selector patterns (attributes appearing in `locator()`, `getBy*`, `data-test-subj`, `data-testid`, etc.) AND auth setup (`storageState` paths, `globalSetup` refs, `process.env.*`).
+- Report `selector-convention` (dominant pattern found) and `auth-approach` (auth mechanism, or "not detected").
+- **Omit the entire `## Playwright conventions` section when no Playwright test files are found.** Never infer from non-test files.
 
 ## Output format
 
@@ -74,6 +80,10 @@ From `path/to/canonical-example.ts`:
 
 ## Build config
 - `path/to/tsconfig.json` — relevant settings
+
+## Playwright conventions
+- **selector-convention**: `data-test-subj` (example — omit entire section when no Playwright files found)
+- **auth-approach**: `storageState: auth/user.json` (example — omit entire section when no Playwright files found)
 ```
 
 Omit sections with no findings. Keep the summary concise — it feeds directly into SPEC.md References. The specwriter shouldn't need to re-read any file you've already summarized.

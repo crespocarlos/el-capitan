@@ -51,7 +51,20 @@ echo "RESOURCE_ID=$RESOURCE_ID"
 
 ---
 
-## 3. [type: visual — Section Title]
+## 3. [type: playwright — Section Title]
+
+[One sentence: what DOM assertion this section verifies.]
+
+- **Navigate:** $SERVICE_URL/app/path
+- **Auth:** (optional) bearer $API_KEY
+- **Wait:** (optional) [selector to wait for before asserting]
+- **Assert:** [data-test-subj="element"]
+- **Pass:** element is visible on the page
+- **Fail:** selector not found — check that the element renders under the given auth/route
+
+---
+
+## 4. [type: visual — Section Title]
 
 [What to look at in the UI or system output. No executable block — requires human eyes.]
 

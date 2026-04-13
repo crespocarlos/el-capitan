@@ -82,6 +82,12 @@ Atomic units of work, organized by architectural boundary (one new function/modu
 - [ ] type: http — `curl /api/endpoint` returns 200 **Pass:** HTTP 200
 - [ ] type: data — `curl .../index/_count` **Pass:** count > 0
 - [ ] type: script — `npx tsx scripts/check.ts` **Pass:** exit 0
+- [ ] type: playwright
+  - **Navigate:** $SERVICE_URL/app/path
+  - **Auth:** (optional) bearer $API_KEY
+  - **Wait:** (optional) [selector to wait for]
+  - **Assert:** [data-test-subj="element"]
+  - **Pass:** element is visible on the page
 - [ ] type: visual — [what to look at in the UI]
 - [ ] type: judgment — [qualitative/semantic assessment]
 
