@@ -274,22 +274,7 @@ All Task tool calls go in a single message to execute in parallel.
 
 Per CLAUDE.md, the orchestrator runs inline in the main session. The main session CAN dispatch subagents natively via the Agent tool. Dispatch each reviewer by name — the Agent tool finds the registered subagent and uses its system prompt automatically:
 
-```
-Agent tool call per reviewer:
-  agent_type: <subagent name from table above>
-  prompt: |
-    ## Review context
-
-    <mode description>
-
-    ## Source material
-
-    <context package for this reviewer's tier>
-
-    ---
-
-    Produce your review now.
-```
+Use the same prompt structure as the Cursor dispatch above (same output rules block included verbatim). The only difference is the call syntax — `agent_type` instead of `subagent_type`.
 
 All Agent tool calls go in a single message for parallel dispatch. If a reviewer fails, note the failure in the `### Reviewers` section of the consolidated report.
 
@@ -306,11 +291,11 @@ Collect all reviewer outputs. Consolidation operates **exclusively on the text o
 ### Deduplication
 
 Deduplicate aggressively — same concept flagged at different locations still counts as one finding if the root cause is the same. When two or more reviewers flag the same issue:
-1. Keep the finding with the highest severity
+1. Keep the finding with the strongest label (`suggestion (blocking)` > `suggestion` > `question` > `nit`)
 2. Note which reviewers flagged it: `(also flagged by: Adversarial, Code Quality)`
-3. Merge any complementary details from lower-severity findings into the kept finding
+3. Merge any complementary details into the kept finding
 
-Severity ordering: Critical > Important > Consider.
+Label ordering for deduplication: `suggestion (blocking)` > `suggestion` > `question` > `nit`.
 
 ### Grouping
 
@@ -319,14 +304,17 @@ Structure the consolidated report:
 ```
 ## Review: <mode> — <summary>
 
-### Critical
-<findings at Critical severity>
+### Suggestions (blocking)
+<findings labeled suggestion (blocking)>
 
-### Important
-<findings at Important severity>
+### Suggestions
+<findings labeled suggestion>
 
-### Consider
-<findings at Consider severity>
+### Questions
+<findings labeled question>
+
+### Nits
+<findings labeled nit>
 
 ### Action plan
 <numbered list of recommended actions, ordered by priority>
