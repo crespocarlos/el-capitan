@@ -52,9 +52,13 @@ Auth bypass, injection vectors, exposed secrets, PII in logs, insecure defaults.
 
 **Consider** — worth discussing. Defensive checks that would improve robustness, edge cases that are unlikely but not impossible, potential regressions in rarely-exercised paths.
 
-## Finding label
+## Label mapping
 
-Use `<explanation: 2 sentences max — what you found and why it matters>` in the finding format.
+- Confirmed bug → `suggestion (blocking)`
+- Suspected bug (intent unclear) → `question` — state the stakes: "Is X intentional? If not, this will Y."
+- Unlikely edge case → `nit`
+
+You rarely produce nits. A plain question without stated stakes is a nit in disguise — upgrade it or drop it.
 
 ## Coverage mapping
 

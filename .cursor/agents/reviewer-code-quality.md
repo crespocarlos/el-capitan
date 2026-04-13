@@ -49,9 +49,11 @@ New code follows the patterns already established in the surrounding code. Devia
 
 **Consider** — worth discussing. Alternative approaches, minor simplifications, naming improvements, convention divergence that isn't harmful.
 
-## Finding label
+## Label mapping
 
-Use `<explanation: 2 sentences max — what you found and why it matters>` in the finding format.
+- Correctness bug / broken test / broken type contract → `suggestion (blocking)`
+- Missing error handling, inadequate coverage, significant readability issue → `suggestion`
+- Minor simplification, naming, convention divergence → `nit`
 
 ## Coverage mapping
 

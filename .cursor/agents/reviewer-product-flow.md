@@ -46,6 +46,9 @@ Can the change be used with keyboard navigation? Are interactive elements focusa
 
 **Consider** — worth discussing. Polish items — slightly better empty states, more descriptive feedback messages, edge-case flows that are unlikely but confusing.
 
-## Finding label
+## Label mapping
 
-Use `<description: 2 sentences max — what the user sees and why it's a problem>` and `<fix: 1 sentence — concrete suggestion for improvement>` in the finding format.
+- Broken user flow (data loss, trap state, broken critical path) → `suggestion (blocking)`
+- Incomplete flow, unhelpful error, accessibility barrier → `suggestion`
+- Unclear UX intent → `question` — state the stakes: "Is this empty state intentional? If not, the user has no path forward here."
+- Polish item → `nit`

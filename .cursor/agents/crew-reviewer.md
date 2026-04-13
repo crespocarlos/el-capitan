@@ -238,21 +238,34 @@ Task tool call per reviewer:
     Produce your review now. Do not read any files — all source material is provided above.
 
     Output rules (apply to all reviewers):
-    - Group findings by severity (Critical / Important / Consider).
-    - Finding format — each finding MUST include the relevant code:
+
+    Assess findings using your persona's severity definitions, then map to output labels:
+    - Critical   → suggestion (blocking)
+    - Important  → suggestion
+    - Consider + intent unclear → question
+    - Consider + minor/clear   → nit
+
+    Group findings by label in this order:
+    ### Suggestions (blocking)
+    ### Suggestions
+    ### Questions
+    ### Nits
+
+    Finding format — each finding MUST include the relevant code:
 
       **<file_path>:<start_line>–<end_line>** — <one-line summary>
       ```<lang>
       <relevant code, ≤5 lines — the exact lines that back the finding>
       ```
-      <explanation: 2 sentences max>
-      <fix: 1 sentence>
+      <explanation: 2 sentences max. For questions: weave the stakes into the explanation — "Is X intentional? If not, this will Y.">
+      Fix/Response: <1 sentence>
 
+    Rules:
     - Never cite a finding without the backing code. If you can't quote the code, don't report the finding.
-    - Hard cap: 5 findings total across all severity levels. Drop lower-severity ones if over cap; never append one-liners for cut findings.
-    - If no findings at a severity level, omit that section. Zero findings is a valid outcome.
-    - Do not open with a preamble or overall assessment — go directly to findings.
-    - Follow your persona's unique focus areas and severity definitions. Your persona file has your specific identity, scope, and finding label (explanation vs description).
+    - Questions must state the stakes inline — "if not, this will break Z." A question without stakes is a nit.
+    - Hard cap: 5 findings total. Max 2 questions. Drop lower-priority findings if over cap.
+    - Omit empty label sections. Zero findings is a valid outcome.
+    - Do not open with a preamble — go directly to findings.
 ```
 
 All Task tool calls go in a single message to execute in parallel.

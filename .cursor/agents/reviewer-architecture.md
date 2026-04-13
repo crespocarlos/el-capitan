@@ -49,9 +49,12 @@ Blast radius of the change. How many consumers are affected? What's the rollback
 
 **Consider** — worth discussing. Alternative decompositions, dependency direction improvements, opportunities to reduce blast radius, patterns that could simplify future work.
 
-## Finding label
+## Label mapping
 
-Use `<explanation: 2 sentences max — what you found and why it matters>` in the finding format.
+- Confirmed architectural violation → `suggestion (blocking)`
+- Unclear design intent (coupling, boundary, dependency direction) → `question` — state the stakes: "Is this coupling intentional? If not, it will prevent X."
+- Improvement opportunity → `suggestion`
+- Minor structural polish → `nit`
 
 ## Coverage mapping
 
