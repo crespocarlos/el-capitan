@@ -47,7 +47,8 @@ When all tasks are complete:
 1. Review each requirement under **Acceptance Criteria > Requirements** — mark `[x]` if satisfied.
 2. Review each item under **Acceptance Criteria > Non-regression** — mark `[x]` if verified.
 3. Review each item under **Design Constraints** — mark `[x]` if the implementation conforms.
-4. Set the spec status to done. Format MUST be two lines — header then value on the next line:
+4. If the spec has a `## Tests` section with a `### Automated` subsection containing a `**Command**:` line whose value is not `"none"`, extract the command and run: `cd <WORK_DIR> && <command>`. If tests PASS: write `**Test Results: PASS**` under `### Test Results` in REPORT.md and continue to step 5. If tests FAIL: write `**Test Results: FAIL**` and up to 30 lines of output under `### Test Results` in REPORT.md, set Status to `IMPLEMENTING`, and **stop here — do not proceed to step 5**. If no `## Tests` section or Command is `"none"`: skip this step and proceed to step 5.
+5. Set the spec status to done. Format MUST be two lines — header then value on the next line:
    ```
    ## Status
    done
@@ -131,6 +132,9 @@ Write to **`$TASK_DIR/REPORT.md`** and return it:
 
 ### Files Changed
 <output of git diff --name-only>
+
+### Test Results
+N/A
 
 ### Errors (if any)
 <details of what failed and why>
