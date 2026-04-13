@@ -15,7 +15,7 @@ Store the response as `<reason>`.
 ### Step 2: Resolve task directory
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 If `$TASK_DIR` is empty, no active task was found for this repo+branch — proceed without task directory operations.

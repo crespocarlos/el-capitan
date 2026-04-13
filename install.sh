@@ -90,6 +90,7 @@ done
 ln -sf "$SCRIPT_DIR/.agent/.ralph-instructions-template" ~/.agent/.ralph-instructions-template 2>/dev/null
 
 # ~/.agent/{tools,scripts,queries}
+rm -f ~/.agent/tools/resolve-task-dir.sh ~/.agent/tools/log-progress.sh
 link_dir_files "$SCRIPT_DIR/.agent/tools" ~/.agent/tools
 link_dir_files "$SCRIPT_DIR/.agent/scripts" ~/.agent/scripts
 link_dir_files "$SCRIPT_DIR/.agent/queries" ~/.agent/queries

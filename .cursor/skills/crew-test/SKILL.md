@@ -20,7 +20,7 @@ Never narrate what you're doing. Never say "now running tests".
 ### Step 1: Resolve TASK_DIR
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
 ```
 
 ### Step 2: Get changed files

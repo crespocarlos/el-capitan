@@ -17,7 +17,7 @@ JOURNAL_FILE=~/.agent/journal/$MONTH.md
 Resolve `TASK_DIR` via `.task-id` reverse lookup:
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 If `TASK_DIR` is empty, no active task — skip pipeline artifact harvesting.

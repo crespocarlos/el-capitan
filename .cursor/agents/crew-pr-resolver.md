@@ -135,7 +135,7 @@ Edits the user excluded are not applied. Threads the user excluded are left open
 After reporting, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 ```

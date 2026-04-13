@@ -9,7 +9,7 @@ Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and use
 ### Step 1: Resolve task state
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs (see Step 2).
@@ -92,7 +92,7 @@ If skipped (already on feature branch), set `WORK_DIR` to the current directory.
 ### Step 5: Update progress
 
 ```bash
-~/.agent/tools/log-progress.sh "$TASK_DIR" "APPROVED → IMPLEMENTING"
+~/.agent/tools/log-progress.py "$TASK_DIR" "APPROVED → IMPLEMENTING"
 ```
 
 ### Step 5b: Capture baseline diff
@@ -147,7 +147,7 @@ When the Implementation Report is available:
 
 **All tasks passed:**
 1. ```bash
-   ~/.agent/tools/log-progress.sh "$TASK_DIR" "IMPLEMENTING → DIFF_CHECK"
+   ~/.agent/tools/log-progress.py "$TASK_DIR" "IMPLEMENTING → DIFF_CHECK"
    ```
 2. Append to `$TASK_DIR/SESSION.md`:
    ```

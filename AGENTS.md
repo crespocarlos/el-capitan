@@ -1,6 +1,6 @@
 # el-capitan — Agent Guide
 
-This repo is the el-capitan agentic pipeline system itself. All files are markdown and shell scripts — there is no build step and no package manager.
+This repo is the el-capitan agentic pipeline system itself. All files are markdown, shell scripts, and Python utilities — there is no build step and no package manager.
 
 ## Bootstrap
 

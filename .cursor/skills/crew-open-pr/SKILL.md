@@ -87,7 +87,7 @@ Show the PR URL and a one-line summary.
 After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 ```
@@ -97,7 +97,7 @@ TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
 Also log the transition:
 
 ```bash
-~/.agent/tools/log-progress.sh "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
+~/.agent/tools/log-progress.py "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
 ```
 
 Then suggest: "Want to journal this session?"
