@@ -26,8 +26,8 @@ You discover test files and test commands relevant to the changed symbols provid
 **Tool budget (hard limit): ≤8 calls total.** Count every call.
 - 1 × `mcp__SemanticCodeSearch__list_indices`
 - 2 × semantic search (`mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`, or `SemanticSearch`)
-- 2 × `Grep` or `Glob`
-- 3 × `Read`
+- 3 × `Grep` or `Glob` (one slot reserved for Playwright convention discovery)
+- 2 × `Read`
 
 After your last tool call, write your summary immediately. If a search returns nothing, try one alternative phrasing — then move on. Do not exhaust your budget chasing a single topic. If asked to continue or provide your summary, output what you already have — no further tool calls.
 
@@ -43,7 +43,11 @@ You receive two sections in the dispatch prompt: `## Changed files` (one path pe
 **2. Framework discovery** — discover test frameworks and their commands per layer:
 - **unit** (jest/vitest): check `package.json` `scripts` field (prefer `test:unit`, then `test`); jest config: `jest.config.js`, `jest.config.ts`, `jest.config.json`; vitest config: `vitest.config.js`, `vitest.config.ts`. If multiple options exist, return the most specific command scoped to the changed module (e.g., `jest --testPathPattern=<dir>`).
 - **integration** (FTR/integration configs): look for `functional_tests` scripts, FTR config files, or integration test directories.
-- **e2e** (playwright): look for `playwright.config.ts`, `playwright.config.js`, or `npx playwright test` scripts.
+- **e2e** (playwright): look for `playwright.config.ts`, `playwright.config.js`, or `npx playwright test` scripts. When Playwright config is found, discover conventions from actual test files:
+  - Find test files: when MCP available, use `mcp__SemanticCodeSearch__map_symbols_by_query` with `kql: "filePath: *playwright* OR filePath: *.spec.* OR filePath: *.test.*"`; fallback: `Glob` `**/*.spec.*` / `**/*.test.*`.
+  - One `Grep` across found files for selector patterns (attributes appearing in `locator()`, `getBy*`, `data-test-subj`, `data-testid`, etc.) AND auth setup (`storageState` paths, `globalSetup` refs, `process.env.*`).
+  - Report `selector-convention` (dominant pattern found) and `auth-approach` (auth mechanism, or "not detected") as new fields in `### e2e` output.
+  - **Omit both fields when no Playwright test files are found.** Never infer from non-test files.
 
 For each layer found, record the runnable command and the config file path (if any). Omit layers with no findings.
 
@@ -67,6 +71,8 @@ Note: discovery is JS/TS only. Do not attempt to discover test commands for othe
 ### e2e
 - **command**: `npx playwright test <path>`
 - **config**: `playwright.config.ts`
+- **selector-convention**: `data-test-subj` (example — omit when no Playwright files found)
+- **auth-approach**: `storageState: auth/user.json` (example — omit when no Playwright files found)
 ```
 
 Omit entries with no findings. If no test files are found, include `## Test files` with the text "none found". If no frameworks are found, include `## Frameworks` with the text "none found". Do NOT use `## Test command` or `## Test config` headers — use the `## Frameworks` map format above.

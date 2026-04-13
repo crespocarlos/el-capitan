@@ -94,12 +94,23 @@ awk '/^### Manual/{found=1; next} found && /^###/{exit} found{print}' "$TASK_DIR
 - `type: http` — item contains a `curl`/`fetch` command block and an inline `**Pass:**` criterion → run the curl command; compare output against the criterion; report PASS/FAIL.
 - `type: data` — item contains a query/script (ES curl, SQL, Python) and an inline `**Pass:**` criterion → run the command; compare output against the criterion; report PASS/FAIL.
 - `type: script` — item contains a shell or Python block and an inline `**Pass:**` criterion → run the command; compare exit code or output against the criterion; report PASS/FAIL.
+- `type: playwright` — auto-execute when Navigate, Assert, and Pass sub-bullets are all present. Protocol:
+  1. **Probe MCP availability**: attempt `mcp__playwright__navigate` with a dummy URL (e.g. `about:blank`). Any error (tool not found, connection refused, etc.) = MCP unavailable → fall through to human checklist for ALL playwright items.
+  2. **Apply auth** (when MCP available): read `auth-approach` from tester-explorer's `### e2e` summary (NOT the spec item's `Auth` sub-bullet, which is human documentation only):
+     - `storageState: <path>` → apply the storage state file via `mcp__playwright__context_storage_state`.
+     - `process.env.*` / env-var pattern → set the referenced env var credentials before navigating.
+     - `globalSetup` ref or "not detected" → log "no auth applied" and proceed.
+  3. **Navigate**: call `mcp__playwright__navigate` with the item's `Navigate` URL.
+  4. **Wait** (optional): if a `Wait` sub-bullet is present, call `mcp__playwright__wait_for_selector` with that selector before asserting.
+  5. **Assert**: call `mcp__playwright__evaluate` to check that the `Assert` selector is visible on the page (equivalent to `state: 'visible'`). If the element is visible: report `[playwright] PASS — <Pass text>`. If not: report `[playwright] FAIL — selector not found: <Assert selector>`.
+  6. **Fallback conditions**: if MCP unavailable, OR if Navigate, Assert, or Pass sub-bullet is missing → surface as human checklist entry.
 
 **Surface as human checklist** (do not auto-execute):
 - `type: visual` — print the item as a checklist entry.
 - `type: judgment` — print the item as a checklist entry.
 - Untagged items — treat as `type: judgment`; print as checklist entry.
 - Any `type: http`, `type: data`, or `type: script` item that does NOT contain an inline `**Pass:**` criterion → print as checklist entry (never auto-execute without an explicit criterion).
+- Any `type: playwright` item where MCP is unavailable OR Navigate, Assert, or Pass sub-bullet is missing → print as checklist entry.
 
 If no `## Tests` section or `### Manual` subsection exists, skip this step silently.
 
