@@ -44,7 +44,7 @@ Heavy commands run as isolated subagents to avoid polluting the orchestrator's c
 | Command | subagent_type | Dispatch |
 |---|---|---|
 | `crew spec` | `crew-specwriter` | Claude Code: Agent tool; Cursor: Task tool |
-| `crew review` | `crew-reviewer` | Claude Code: Agent tool; Cursor: Task tool |
+| `crew review` | `crew-reviewer` | Claude Code: Agent tool; Cursor: **Inline** (persona subagents need Task tool access) |
 | `crew learn` (researcher path) | `crew-researcher` | Claude Code: Agent tool; Cursor: Task tool |
 | `crew brainstorm` | `crew-thinker` | Claude Code: Agent tool; Cursor: Task tool |
 | `crew implement` | `crew-builder` | Claude Code: Agent tool; Cursor: Task tool |

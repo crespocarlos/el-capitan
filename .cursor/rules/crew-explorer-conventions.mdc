@@ -1,0 +1,21 @@
+---
+description: "Shared tool priority chain and exploration protocol for all explorer subagents. Referenced by specwriter-explorer, tester-explorer, and reviewer-explorer."
+alwaysApply: false
+---
+
+## Explorer tool priority
+
+All explorer subagents follow the same tool priority chain. **Use in this order, fall back when unavailable:**
+
+1. `mcp__SemanticCodeSearch__list_indices` — call once at the start to check if SemanticCodeSearch MCP is available
+2. Semantic search — use whichever is available:
+   - MCP: `mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`
+   - Cursor: `SemanticSearch`
+3. `Grep` / `Glob` — fallback when no semantic search is available, or to find specific identifiers (function names, import strings, package names)
+4. `Read` — targeted line ranges only. Never read a full file unless it's under 50 lines.
+
+**General rules:**
+- Do a single pass and stop. Do not iterate or go deeper after your initial search.
+- If a search returns nothing, try one alternative phrasing — then move on.
+- After your last tool call, write your summary immediately.
+- If asked to continue or provide your summary, output what you already have — no further tool calls.

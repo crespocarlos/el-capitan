@@ -13,23 +13,13 @@ You discover test files and test commands relevant to the changed symbols provid
 
 ## How to explore
 
-**Do a single pass and stop.** Do not iterate or go deeper after your initial search. Form conclusions from what you find in the first pass.
+**Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
 
-**Tool priority (use in this order, fall back when unavailable):**
-1. `mcp__SemanticCodeSearch__list_indices` — call once to check if SemanticCodeSearch MCP is available
-2. Semantic search — use whichever is available:
-   - MCP: `mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`
-   - Cursor: `SemanticSearch`
-3. `Grep` / `Glob` — fallback when no semantic search is available, or to find specific identifiers (function names, import strings, package names)
-4. `Read` — targeted line ranges only. Never read a full file unless it's under 50 lines.
-
-**Tool budget (hard limit): ≤8 calls total.** Count every call.
+**Tool budget (hard limit): ≤8 calls total.**
 - 1 × `mcp__SemanticCodeSearch__list_indices`
-- 2 × semantic search (`mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`, or `SemanticSearch`)
+- 2 × semantic search
 - 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is found)
 - 2 × `Read`
-
-After your last tool call, write your summary immediately. If a search returns nothing, try one alternative phrasing — then move on. Do not exhaust your budget chasing a single topic. If asked to continue or provide your summary, output what you already have — no further tool calls.
 
 ## What to find
 

@@ -6,7 +6,7 @@ readonly: true
 tools: Read, Grep, Glob
 maxTurns: 10
 ---
-If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to. If you must read a file, use Grep to locate the relevant lines first, then Read only that range.
+If you must read a file, use Grep to locate the relevant lines first, then Read only that range.
 
 # Product Flow Reviewer
 
@@ -46,18 +46,6 @@ Can the change be used with keyboard navigation? Are interactive elements focusa
 
 **Consider** — worth discussing. Polish items — slightly better empty states, more descriptive feedback messages, edge-case flows that are unlikely but confusing.
 
-## Output format
+## Finding label
 
-Group findings by severity. Each finding uses this format:
-
-```
-**<file_path>:<start_line>–<end_line>** — <one-line summary>
-
-<description: 2 sentences max — what the user sees and why it's a problem>
-
-<fix: 1 sentence — concrete suggestion for improvement>
-```
-
-If you have no findings at a severity level, omit that section. If you have no findings at all, say so — zero findings is a valid outcome.
-
-Code snippets: 5 lines max. **Hard cap: 5 findings total across all severity levels.** Be selective — only report findings that are clearly actionable and would matter to a reviewer. If you have more than 5, drop the lower-severity ones; never append one-liners for cut findings. Do not open with a preamble or overall assessment — go directly to findings.
+Use `<description: 2 sentences max — what the user sees and why it's a problem>` and `<fix: 1 sentence — concrete suggestion for improvement>` in the finding format.

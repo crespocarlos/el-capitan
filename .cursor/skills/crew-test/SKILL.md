@@ -8,12 +8,7 @@ description: "Discover and run tests scoped to the current git diff. Trigger: 'c
 
 ## Execution model
 
-**Single-shot output.** Load context, discover tests, run them, report results without intermediate narration. Only speak once — when all results are ready.
-
-Target: 1 turn.
-- Turn 1: resolve context + discover tests + run tests + surface manual checklist + verdict
-
-Never narrate what you're doing. Never say "now running tests".
+**Single-shot output, 1 turn.** Resolve context, discover, run, report — without intermediate narration. Never say "now running tests".
 
 ## When Invoked
 

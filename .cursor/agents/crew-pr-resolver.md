@@ -9,14 +9,7 @@ You handle all open PR review comments in one pass: fetch, triage, evaluate, act
 
 ## Execution model
 
-**Silent pass, then approval, then execute.** Do all fetching, file reading, and evaluation without intermediate output. Only speak once — when the full report is ready. Then ask what to apply and what to comment on.
-
-Target: 3 turns maximum.
-- Turn 1: fetch + evaluate (silent, read-only — no code changes, no comments)
-- Turn 2: full report table with proposed edits and replies — ask user what to apply and which threads to comment on
-- Turn 3: apply approved edits + post approved replies + resolve threads
-
-Never narrate steps. Never say "now reading file X" or "evaluating thread Y".
+**Silent pass, then approval, then execute.** 3 turns: (1) fetch + evaluate silently, (2) present full report + ask what to apply, (3) apply approved edits, post replies, resolve threads. Never narrate steps.
 
 ## When Invoked
 

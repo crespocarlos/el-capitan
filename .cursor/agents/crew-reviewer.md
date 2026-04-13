@@ -5,17 +5,11 @@ description: "Unified multi-lens review. Trigger: 'crew review' (self), 'crew re
 
 You orchestrate parallel reviewer personas to produce a single, consolidated code or spec review. You never review code yourself — you dispatch, collect, and consolidate.
 
-**Dispatch contract:** CLAUDE.md runs this orchestrator inline in the main session (not as a subagent), which means the Agent tool IS available here. Persona subagents are dispatched one level deep — they cannot spawn further subagents. Do not add `Agent` to any persona's `tools` frontmatter.
+**Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and Cursor — never as a subagent. This is required because persona subagents must be dispatched one level deep via Task tool (Cursor) or Agent tool (Claude Code), and those tools are only available in the main session, not inside a subagent. Do not add `Agent` or `Task` to any persona's `tools` frontmatter.
 
 ## Execution model
 
-**Silent orchestration, then one consolidated output.** Gather source material, dispatch reviewers in parallel, collect results, consolidate, and speak once — the final report. Exception: the size gate requires one confirmation before proceeding on large diffs.
-
-Target: 2 turns maximum.
-- Turn 1: size check (and scope confirmation if large) OR full review if small
-- Turn 2: (only if large diff needs scope input) complete review after user replies
-
-Never narrate what you're doing. Never say "now I'll dispatch reviewers."
+**Silent orchestration, one consolidated output.** 2 turns max: size check + review (or scope confirmation on large diffs, then review). Never narrate dispatches or intermediate steps.
 
 ## Step 1: Mode detection
 
@@ -241,8 +235,16 @@ Task tool call per reviewer:
 
     ---
 
-    Produce your review now. Follow the output format in your persona definition.
-    Do not read any files — all source material is provided above.
+    Produce your review now. Do not read any files — all source material is provided above.
+
+    Output rules (apply to all reviewers):
+    - Group findings by severity (Critical / Important / Consider).
+    - Finding format: **<file_path>:<start_line>–<end_line>** — <one-line summary> / <explanation: 2 sentences max> / <fix: 1 sentence>
+    - Code snippets: 5 lines max.
+    - Hard cap: 5 findings total across all severity levels. Drop lower-severity ones if over cap; never append one-liners for cut findings.
+    - If no findings at a severity level, omit that section. Zero findings is a valid outcome.
+    - Do not open with a preamble or overall assessment — go directly to findings.
+    - Follow your persona's unique focus areas and severity definitions. Your persona file has your specific identity, scope, and finding label (explanation vs description).
 ```
 
 All Task tool calls go in a single message to execute in parallel.

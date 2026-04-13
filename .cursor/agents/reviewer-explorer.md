@@ -13,21 +13,13 @@ You do a single-pass scan to find context relevant to a code diff: duplicates, p
 
 ## How to explore
 
-**Tool priority (use in this order, fall back when unavailable):**
-1. `mcp__SemanticCodeSearch__list_indices` — call once to check if SemanticCodeSearch MCP is available
-2. Semantic search — use whichever is available:
-   - MCP: `mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`
-   - Cursor: `SemanticSearch`
-3. `Grep` — fallback when no semantic search is available, or to find specific identifiers (function names, import strings, package names)
-4. `Read` — targeted line ranges only. Never read a full file.
+**Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
 
-**Tool budget (hard limit): ≤8 calls total.** Count every call.
+**Tool budget (hard limit): ≤8 calls total.**
 - 1 × `mcp__SemanticCodeSearch__list_indices`
-- 2 × semantic search (`mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`, or `SemanticSearch`)
+- 2 × semantic search
 - 2 × `Grep` or `Glob`
 - 3 × `Read`
-
-After your last tool call, write your summary immediately — no follow-up searches. If a search returns no direct hit, try one alternative phrasing — then move on. If asked to continue or provide your summary, output what you already have — no further tool calls.
 
 ## What to find
 

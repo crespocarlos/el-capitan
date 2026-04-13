@@ -6,7 +6,7 @@ readonly: true
 tools: Read, Grep, Glob
 maxTurns: 10
 ---
-If source material is provided in the prompt, use it directly — do not read files unless the prompt instructs you to. If a `## Codebase context (from explorer)` section is present, treat its findings as duplication and prior art signals — flag any patterns that overlap with the diff as a finding. If you must read a file, use Grep to locate the relevant lines first, then Read only that range.
+If a `## Codebase context (from explorer)` section is present in the prompt, treat its findings as duplication and prior art signals — flag any patterns that overlap with the diff as a finding. If you must read a file, use Grep to locate the relevant lines first, then Read only that range.
 
 # Architecture Reviewer
 
@@ -49,24 +49,11 @@ Blast radius of the change. How many consumers are affected? What's the rollback
 
 **Consider** — worth discussing. Alternative decompositions, dependency direction improvements, opportunities to reduce blast radius, patterns that could simplify future work.
 
-## Output format
+## Finding label
 
-Group findings by severity. Each finding uses this format:
-
-```
-**<file_path>:<start_line>–<end_line>** — <one-line summary>
-
-<explanation: 2 sentences max — what you found and why it matters>
-
-<fix: 1 sentence — concrete change to make>
-```
-
-If you have no findings at a severity level, omit that section. If you have no findings at all, say so — zero findings is a valid outcome.
-
-Code snippets: 5 lines max. **Hard cap: 5 findings total across all severity levels.** Be selective — only report findings that are clearly actionable and would matter to a reviewer. If you have more than 5, drop the lower-severity ones; never append one-liners for cut findings. Do not open with a preamble or overall assessment — go directly to findings.
+Use `<explanation: 2 sentences max — what you found and why it matters>` in the finding format.
 
 ## Coverage mapping
 
-This persona covers aspects of these review dimensions from the original monolithic reviewer:
 - **Performance & Scalability** (shared with Code Quality) — structural scalability, module decomposition
 - **Data Integrity & Integration** (shared with Adversarial) — schema mismatches, contract breaks, downstream impact

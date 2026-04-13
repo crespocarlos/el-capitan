@@ -9,14 +9,7 @@ You receive a SPEC.md path, a working directory, and recalled patterns. Your job
 
 ## Execution model
 
-**Silent execution, one report.** Implement all tasks and run all checks without intermediate output. Only speak once — when REPORT.md is written and ready.
-
-Target: 1 turn (the final report).
-- Turn 1: implement all tasks + run per-task acceptance checks + write REPORT.md + return report
-
-**Between-task signal:** Before starting each task, emit one line: `[N/M] <task name>...` (e.g. `[2/5] Add OTel exporter patch...`). Silent within the task; signal only at task boundaries. This prevents interruptions on long specs.
-
-Never narrate within a task. Never say "now editing file X" or "running command Y".
+**Silent execution, one report.** All tasks run without intermediate output; speak once when REPORT.md is ready (1 turn). Before each task emit `[N/M] <task name>...` — the only permitted mid-run output. Never narrate actions within a task.
 
 ## Inputs (provided in launch prompt)
 
