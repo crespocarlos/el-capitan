@@ -40,13 +40,12 @@ You receive two sections in the dispatch prompt: `## Changed files` (one path pe
 - Fallback: `rg <symbol> --include="*.test.*" --include="*.spec.*" -l` per symbol.
 - Also check `Glob` patterns: `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`.
 
-**2. Test command** — the runnable command to execute tests. Check in order:
-- `package.json` `scripts` field: prefer `test:unit`, then `test`, then check if `jest` or `vitest` is present as a direct script.
-- Jest config: `jest.config.js`, `jest.config.ts`, `jest.config.json`.
-- Vitest config: `vitest.config.js`, `vitest.config.ts`.
-- If multiple options exist, return the most specific one scoped to the changed module (e.g., `jest --testPathPattern=<dir>`).
+**2. Framework discovery** — discover test frameworks and their commands per layer:
+- **unit** (jest/vitest): check `package.json` `scripts` field (prefer `test:unit`, then `test`); jest config: `jest.config.js`, `jest.config.ts`, `jest.config.json`; vitest config: `vitest.config.js`, `vitest.config.ts`. If multiple options exist, return the most specific command scoped to the changed module (e.g., `jest --testPathPattern=<dir>`).
+- **integration** (FTR/integration configs): look for `functional_tests` scripts, FTR config files, or integration test directories.
+- **e2e** (playwright): look for `playwright.config.ts`, `playwright.config.js`, or `npx playwright test` scripts.
 
-**3. Test config path** — path to the jest or vitest config file, if found.
+For each layer found, record the runnable command and the config file path (if any). Omit layers with no findings.
 
 Note: discovery is JS/TS only. Do not attempt to discover test commands for other languages.
 
@@ -56,11 +55,18 @@ Note: discovery is JS/TS only. Do not attempt to discover test commands for othe
 ## Test files
 - `path/to/file.test.ts` — covers symbols: <symbol1>, <symbol2>
 
-## Test command
-<exact runnable command, or "none found">
+## Frameworks
+### unit
+- **command**: `jest --testPathPattern=<dir>`
+- **config**: `jest.config.ts`
 
-## Test config
-<path to config file, or "none found">
+### integration
+- **command**: `node scripts/functional_tests --config <path>`
+- **config**: `<config path>`
+
+### e2e
+- **command**: `npx playwright test <path>`
+- **config**: `playwright.config.ts`
 ```
 
-Omit entries with no findings. If no test files are found, include `## Test files` with the text "none found". If no test command is found, `## Test command` should read "none found".
+Omit entries with no findings. If no test files are found, include `## Test files` with the text "none found". If no frameworks are found, include `## Frameworks` with the text "none found". Do NOT use `## Test command` or `## Test config` headers — use the `## Frameworks` map format above.
