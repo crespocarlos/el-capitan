@@ -315,21 +315,23 @@ One-time utility. Migrates task state from the old `~/.agent/tasks/<repo>/<branc
 
 ```
 el-capitan/
+├── AGENTS.md                # Agent guide — bootstrap, conventions, file layout
+├── CLAUDE.md                # Claude Code project context for editing el-capitan itself
 ├── .cursor/
 │   ├── rules/               # Always-loaded orchestration rules (.mdc)
 │   │   ├── crew-orchestrator.mdc   # Pipeline state machine (always loaded)
 │   │   ├── crew-router.mdc         # Routing table (always loaded)
 │   │   ├── crew-autopilot.mdc      # Autopilot logic (on-demand)
 │   │   └── crew-health.mdc         # Health checks (on-demand)
-│   ├── agents/              # Agent protocols (.md)
+│   ├── agents/              # Agent protocols (.md) — symlink to .claude/agents/
 │   │   ├── crew-*.md               # Orchestrator agents
 │   │   ├── reviewer-*.md           # Reviewer personas
 │   │   ├── specwriter-*.md         # Specwriter personas
 │   │   └── thinker-*.md            # Thinker personas
-│   └── skills/              # Inline skill protocols
+│   └── skills/              # Inline skill protocols — symlink to .claude/skills/
 │       └── crew-<name>/SKILL.md
 ├── .claude/
-│   ├── CLAUDE.md            # Claude Code session instructions (always loaded)
+│   ├── CLAUDE.md            # Claude Code routing instructions (symlinked to ~/.claude/CLAUDE.md)
 │   ├── hooks/               # PostToolUse, Notification, SessionStart hooks
 │   └── settings.json        # Hook configuration
 ├── .agent/
@@ -337,7 +339,8 @@ el-capitan/
 │   ├── scripts/             # Fallback dispatch scripts (bash)
 │   ├── queries/             # GraphQL query files
 │   ├── _SPEC_TEMPLATE.md    # Standard spec template
-│   └── _BUG_SPEC_TEMPLATE.md  # Bug spec template
+│   ├── _BUG_SPEC_TEMPLATE.md  # Bug spec template
+│   └── _RUNBOOK_TEMPLATE.md   # Validation runbook template
 └── install.sh               # Symlink installer
 ```
 
@@ -457,14 +460,9 @@ Without Ollama + ChromaDB, `crew recall` falls back to ripgrep full-text search 
 find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -name '*.md' ! -type l
 ```
 
-### Update routing in both files
+### Update routing
 
-When adding a command, update **both** routing files — they must stay in sync:
-
-- `.cursor/rules/crew-router.mdc` — authoritative routing table
-- `.claude/CLAUDE.md` — Claude Code session copy
-
-`install.sh` has a comment reminding you of this.
+`crew-router.mdc` is the single source of truth for the routing table. `.claude/CLAUDE.md` delegates to it — do not duplicate routing entries there.
 
 ---
 
