@@ -52,7 +52,7 @@ On every conversation start, check for an active task:
 
 ```bash
 # Silent failure: session-start should not interrupt if no task is found
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 If `$TASK_DIR` is non-empty, read its SPEC.md slug and derive pipeline state (see `crew status` logic below) and surface:
@@ -69,7 +69,7 @@ Derive pipeline state from git and gh. PROGRESS.md is an audit trail, not the so
 
 ```bash
 # Hard failure: crew status must surface task resolution errors explicitly
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
 ```
 
 1. **No SPEC.md** → emit: `No active workflow. Start one: \`crew start build\` | \`crew start review-cycle\` | \`crew brainstorm\`` If you have stale task state from before the UUID migration, run `crew migrate` first. Skip status validation.

@@ -19,7 +19,7 @@ Read the full staged diff: `git diff --staged`.
 For intent context, find the active SPEC.md:
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
 ```
 
 If `$TASK_DIR` is non-empty, read it for intent context.
@@ -88,7 +88,7 @@ After a successful commit, log the transition using the already-resolved `$TASK_
 
 ```bash
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/tools/log-progress.sh "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
+  ~/.agent/tools/log-progress.py "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
 fi
 ```
 

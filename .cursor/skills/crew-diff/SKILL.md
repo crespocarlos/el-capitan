@@ -29,7 +29,7 @@ REPO=$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null ||
 Resolve TASK_DIR for progress logging:
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.sh) || exit 1
+TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
 ```
 
 Add any recalled rules to the pattern violations checklist below. For example, if a recalled pattern says "always use data-test-subj for test selectors", flag new components missing them.
@@ -84,9 +84,9 @@ After reporting findings, append to `$TASK_DIR/PROGRESS.md` (TASK_DIR resolved a
 
 ```bash
 # If issues found:
-~/.agent/tools/log-progress.sh "$TASK_DIR" "DIFF_CHECK: issues found — pending fixes"
+~/.agent/tools/log-progress.py "$TASK_DIR" "DIFF_CHECK: issues found — pending fixes"
 # If clean:
-~/.agent/tools/log-progress.sh "$TASK_DIR" "DIFF_CHECK → COMMITTING"
+~/.agent/tools/log-progress.py "$TASK_DIR" "DIFF_CHECK → COMMITTING"
 ```
 ## Classification
 
