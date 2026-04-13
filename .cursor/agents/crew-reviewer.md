@@ -239,8 +239,16 @@ Task tool call per reviewer:
 
     Output rules (apply to all reviewers):
     - Group findings by severity (Critical / Important / Consider).
-    - Finding format: **<file_path>:<start_line>–<end_line>** — <one-line summary> / <explanation: 2 sentences max> / <fix: 1 sentence>
-    - Code snippets: 5 lines max.
+    - Finding format — each finding MUST include the relevant code:
+
+      **<file_path>:<start_line>–<end_line>** — <one-line summary>
+      ```<lang>
+      <relevant code, ≤5 lines — the exact lines that back the finding>
+      ```
+      <explanation: 2 sentences max>
+      <fix: 1 sentence>
+
+    - Never cite a finding without the backing code. If you can't quote the code, don't report the finding.
     - Hard cap: 5 findings total across all severity levels. Drop lower-severity ones if over cap; never append one-liners for cut findings.
     - If no findings at a severity level, omit that section. Zero findings is a valid outcome.
     - Do not open with a preamble or overall assessment — go directly to findings.
