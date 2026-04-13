@@ -13,7 +13,6 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 |---|---|
 | `crew spec` issue/URL/description | crew-specwriter |
 | `crew implement` | crew-implement → @crew-builder |
-| `crew diff` | crew-diff |
 | `crew test` | crew-test skill |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |

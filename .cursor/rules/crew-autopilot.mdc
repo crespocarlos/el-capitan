@@ -22,19 +22,17 @@ Auto-advance from current state to the next gate. Not a mode toggle — means "a
 
 **From APPROVED:**
 1. Read `~/.claude/skills/crew-implement/SKILL.md` and follow its protocol
-2. When done, read `~/.claude/skills/crew-diff/SKILL.md` and follow its protocol
-3. If diff is clean, read `~/.claude/skills/crew-commit/SKILL.md` and follow its protocol → presents message → **stop at Gate 2**
-4. If diff has issues, stop and surface them
+2. When done, read `~/.claude/agents/crew-reviewer.md` and run a self-review (`crew review`) — follow its protocol inline
+3. If review is PASS or WARN, read `~/.claude/skills/crew-commit/SKILL.md` and follow its protocol → presents message → **stop at Gate 2**
+4. If review has Critical findings, stop and surface them
 
 **From IMPLEMENTING (resuming):**
-1. Read `~/.claude/skills/crew-diff/SKILL.md` and follow its protocol
-2. If clean, read `~/.claude/skills/crew-commit/SKILL.md` → presents message → **stop at Gate 2**
-3. If issues, stop and surface them
+1. Read `~/.claude/agents/crew-reviewer.md` and run a self-review (`crew review`) — follow its protocol inline
+2. If PASS or WARN, read `~/.claude/skills/crew-commit/SKILL.md` → presents message → **stop at Gate 2**
+3. If Critical findings, stop and surface them
 
-**From DIFF_CHECK:**
+**From REVIEW:**
 1. Read `~/.claude/skills/crew-commit/SKILL.md` and follow its protocol → presents message → **stop at Gate 2**
-
-> **Optional:** Before proceeding to commit, the user can run `crew review` for a self-review of the branch diff. This is a manual command — autopilot does not run it automatically.
 
 **From COMMITTING (after Gate 2 approval):**
 1. Read `~/.claude/skills/crew-open-pr/SKILL.md` and follow its protocol

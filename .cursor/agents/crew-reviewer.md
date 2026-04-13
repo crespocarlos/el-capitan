@@ -346,6 +346,39 @@ The reviewer roster is extensible. To add a domain-specific reviewer:
 
 For example, an SRE team could add a `reviewer-observability.md` persona that activates on monitoring/alerting files and checks query quality, false positive risk, and alert actionability.
 
+## Pipeline Integration (self-review mode only)
+
+`crew review` (self-review) is the quality gate between implementation and commit. After outputting the consolidated report, log the pipeline transition and provide a commit-ready conclusion.
+
+**Resolve TASK_DIR:**
+
+```bash
+if [ -n "${CREW_TASK_DIR+x}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"
+elif TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null); then
+  export CREW_TASK_DIR="$TASK_DIR"
+else
+  TASK_DIR=""
+fi
+```
+
+**Verdict and transition** (based on consolidated findings):
+
+- **PASS** (zero findings, or only Consider-level): log `REVIEW → COMMITTING` and say: "Review clean. Run `crew commit` to proceed."
+- **WARN** (Important findings only, no Critical): log `REVIEW: issues found — pending fixes` and say: "Review found issues. Address them or run `crew commit` to proceed."
+- **BLOCK** (any Critical finding): log `REVIEW: blocked — critical findings` and say: "Fix the Critical findings above before committing."
+
+```bash
+# If PASS or WARN:
+~/.agent/tools/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
+# If BLOCK:
+~/.agent/tools/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
+```
+
+Skip this section entirely for PR review and spec review modes — pipeline integration only applies to self-review.
+
+> Next: run `crew commit` to continue.
+
 ## Rules
 
 - Never review code yourself. You orchestrate — personas do the reviewing.

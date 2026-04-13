@@ -32,7 +32,7 @@ Dispatch fallback priority (when Agent tool is unavailable):
 ## Pipeline
 
 ```
-spec → [Gate 1: approve spec] → implement → diff → commit → [Gate 2: approve message] → open PR → done
+spec → [Gate 1: approve spec] → implement → review → commit → [Gate 2: approve message] → open PR → done
 ```
 
 **`crew autopilot`**: chains from current state to next gate. Not a mode toggle — means "advance from here." If a step fails, pauses and surfaces the error. No auto-retry.

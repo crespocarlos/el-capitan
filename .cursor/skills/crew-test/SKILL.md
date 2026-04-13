@@ -174,6 +174,6 @@ If verdict is WARN with no command: print `No test command found — skipping au
 Output: `Verdict: PASS` / `Verdict: WARN` / `Verdict: FAIL`
 
 **Conclusion:**
-- If PASS: "Tests passed. Run `crew diff` to continue."
+- If PASS: "Tests passed. Run `crew review` to continue."
 - If WARN: "No tests found or no test command configured. Verify manually using the checklist above."
 - If FAIL: "Tests failed. Fix the failures before proceeding."

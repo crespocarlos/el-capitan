@@ -32,7 +32,7 @@ Note: `crew status` cannot detect an active explore session (no persistent state
 ## State machine
 
 ```
-DRAFTING → [gate: approve spec] → IMPLEMENTING → DIFF_CHECK → COMMITTING → [gate: approve message] → PR_OPEN → DONE
+DRAFTING → [gate: approve spec] → IMPLEMENTING → REVIEW → COMMITTING → [gate: approve message] → PR_OPEN → DONE
 ```
 
 Two gates. Everything between them auto-advances in autopilot.
@@ -41,8 +41,8 @@ Two gates. Everything between them auto-advances in autopilot.
 |---|---|---|---|
 | DRAFTING | APPROVED | **Gate 1** — user approves spec | — |
 | APPROVED | IMPLEMENTING | auto | crew-implement skill |
-| IMPLEMENTING | DIFF_CHECK | auto | crew-diff skill |
-| DIFF_CHECK | COMMITTING | auto | crew-commit skill (presents message) |
+| IMPLEMENTING | REVIEW | auto | crew-reviewer (self-review) |
+| REVIEW | COMMITTING | auto | crew-commit skill (presents message) |
 | COMMITTING | PR_OPEN | **Gate 2** — user approves message | crew-open-pr skill |
 | PR_OPEN | DONE | auto | — |
 
@@ -81,7 +81,7 @@ If no active task, say nothing — do not announce the absence of a task.
 Append-only event log. Never read for state — only write. Format:
 ```
 [YYYY-MM-DD HH:MM] TRANSITION: APPROVED → IMPLEMENTING
-[YYYY-MM-DD HH:MM] TRANSITION: IMPLEMENTING → DIFF_CHECK
+[YYYY-MM-DD HH:MM] TRANSITION: IMPLEMENTING → REVIEW
 ```
 
 ## Invariants

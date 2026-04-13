@@ -26,7 +26,7 @@ fi
    Status validation:
    KNOWN_STATUSES = [DRAFTING, APPROVED, IMPLEMENTING, DONE]
 
-   Note: DIFF_CHECK, COMMITTING, and PR_OPEN are runtime-only pipeline states — they are derived
+   Note: REVIEW, COMMITTING, and PR_OPEN are runtime-only pipeline states — they are derived
    from git/gh signals (staged changes, open PR), not written into SPEC.md. Only the four
    KNOWN_STATUSES above are valid SPEC.md values.
 
@@ -50,7 +50,7 @@ fi
    test -f "$TASK_DIR/REPORT.md"
    ```
    If REPORT.md exists and no PR yet:
-   - `git diff --cached --quiet` → DIFF_CHECK (nothing staged)
+   - `git diff --cached --quiet` → REVIEW (ready for crew review)
    - else → COMMITTING (staged changes ready)
 
 5. **Check for PR:**
@@ -67,7 +67,7 @@ fi
 ```
 Task: <slug> | Repo: <repo> | Branch: <branch>
 State: <STATE> → Next: <next step>
-Workflow: build | Stage: IMPLEMENTING | Next: crew diff
+Workflow: build | Stage: IMPLEMENTING | Next: crew review
 Changed: <git diff --stat output, or "none yet">
 ```
 

@@ -154,17 +154,17 @@ When the Implementation Report is available:
 
 **All tasks passed:**
 1. ```bash
-   ~/.agent/tools/log-progress.py "$TASK_DIR" "IMPLEMENTING → DIFF_CHECK"
+   ~/.agent/tools/log-progress.py "$TASK_DIR" "IMPLEMENTING → REVIEW"
    ```
 2. Append to `$TASK_DIR/SESSION.md`:
    ```
    [TIME] crew-implement: completed N/N tasks, files: <changed files from report>
    ```
 3. Tell the user:
-   > "All tasks done. Ready for `crew diff`."
+   > "All tasks done. Ready for `crew review`."
    > "Working directory: `<WORK_DIR>` — run tests from there."
 
-> Next: run `crew diff` to continue.
+> Next: run `crew review` to continue.
 
 **Some tasks failed:**
 1. Show the user which tasks failed and the error summaries from the report.
