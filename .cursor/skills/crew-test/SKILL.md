@@ -63,36 +63,75 @@ Launch `tester-explorer` as a subagent with a structured prompt containing two s
 
 Wait for tester-explorer to return its discovery summary.
 
-### Step 5: Run the test command
+### Step 5: Run typed automated blocks
 
-Extract the test command from tester-explorer's `## Test command` output.
+Extract test commands from the spec and from tester-explorer results using the following logic:
 
-If the command is "none found", skip to Step 7 with WARN verdict.
+**If `$TASK_DIR/SPEC.md` contains typed blocks** (`### Unit`, `### Integration`, `### E2E`):
+- For each typed block present (in order: Unit → Integration → E2E), extract its `Command` field.
+- Skip blocks whose `Command` is `"none"` or empty.
+- Run each command in sequence:
+  ```bash
+  cd $(git rev-parse --show-toplevel) && <command>
+  ```
+- Capture exit code and up to 30 lines of output per block.
+- A block PASSES if exit code is 0; FAILS otherwise.
 
-Otherwise run:
-
-```bash
-cd $(git rev-parse --show-toplevel) && <test command>
-```
-
-Capture exit code and up to 30 lines of output.
+**Backward-compat fallback (no typed blocks in SPEC.md):**
+- If tester-explorer returned `## Frameworks`, extract the `unit` layer command and run it.
+- If tester-explorer returned the old `## Test command` format, use that command directly.
+- If no command is found from any format, skip to Step 7 with WARN verdict.
 
 ### Step 6: Surface manual checklist
 
-If `$TASK_DIR/SPEC.md` exists, extract and print the `### Manual` subsection under `## Tests`:
+If `$TASK_DIR/SPEC.md` exists and has a `### Manual` subsection under `## Tests`:
 
 ```bash
 awk '/^### Manual/{found=1; next} found && /^###/{exit} found{print}' "$TASK_DIR/SPEC.md"
 ```
 
+**Auto-execute typed manual items** that have an inline **Pass:** criterion:
+- `type: http` — item contains a `curl`/`fetch` command block and an inline `**Pass:**` criterion → run the curl command; compare output against the criterion; report PASS/FAIL.
+- `type: data` — item contains a query/script (ES curl, SQL, Python) and an inline `**Pass:**` criterion → run the command; compare output against the criterion; report PASS/FAIL.
+- `type: script` — item contains a shell or Python block and an inline `**Pass:**` criterion → run the command; compare exit code or output against the criterion; report PASS/FAIL.
+
+**Surface as human checklist** (do not auto-execute):
+- `type: visual` — print the item as a checklist entry.
+- `type: judgment` — print the item as a checklist entry.
+- Untagged items — treat as `type: judgment`; print as checklist entry.
+- Any `type: http`, `type: data`, or `type: script` item that does NOT contain an inline `**Pass:**` criterion → print as checklist entry (never auto-execute without an explicit criterion).
+
 If no `## Tests` section or `### Manual` subsection exists, skip this step silently.
 
-### Step 7: Verdict
+### Step 7: Runbook detection
+
+Check for a runbook alongside the spec:
+
+```bash
+test -f "$TASK_DIR/runbook.md"
+```
+
+If present, print its path and extract all `##`-level section headers:
+
+```bash
+grep "^## " "$TASK_DIR/runbook.md"
+```
+
+Output:
+```
+Runbook: $TASK_DIR/runbook.md
+Sections:
+  ## Prerequisites
+  ## 1. Section Title
+  ## Common Failures and Fixes
+```
+
+### Step 8: Verdict
 
 Determine verdict:
-- **PASS**: test command ran and exited 0
-- **WARN**: no test files found, or no test command found
-- **FAIL**: test command ran and exited non-zero
+- **PASS**: all automated blocks (typed or fallback) ran and exited 0; all auto-executed manual items passed
+- **WARN**: no typed blocks, no extractable command from any format, and no `runbook.md` found; or no test files found
+- **FAIL**: any automated block or auto-executed manual item exited non-zero
 
 Output each test file discovered as:
 
@@ -100,9 +139,16 @@ Output each test file discovered as:
 [TEST] path/to/file.test.ts — covers: <symbols>
 ```
 
-If verdict is FAIL, print up to 30 lines of test output.
+For each typed block run:
+```
+[Unit] PASS/FAIL — <command>
+[Integration] PASS/FAIL — <command>
+[E2E] PASS/FAIL — <command>
+```
 
-If verdict is WARN with no test command: print `No test command found — skipping automated tests.`
+If verdict is FAIL, print up to 30 lines of failing output.
+
+If verdict is WARN with no command: print `No test command found — skipping automated tests.`
 
 Output: `Verdict: PASS` / `Verdict: WARN` / `Verdict: FAIL`
 

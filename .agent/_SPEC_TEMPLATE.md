@@ -52,16 +52,34 @@ Atomic units of work, organized by architectural boundary (one new function/modu
   - **Acceptance**: [How to verify this task alone]
 
 ## Tests
+<!-- Specwriter: include only blocks for discovered frameworks. Omit unused layers.
+     Add runbook.md when change involves agent behavior, workflow orchestration,
+     data pipeline outputs, or cross-service integration. -->
 
-### Automated
+### Unit
+- **Framework**: [jest | vitest | none]
 - **Command**: `<test command or "none">`
 - **Scenarios**:
   - [ ] [Scenario 1]
-  - [ ] [Scenario 2]
+
+### Integration
+- **Framework**: [FTR | none]
+- **Command**: `<test command or "none">`
+- **Scenarios**:
+  - [ ] [Scenario 1]
+
+### E2E
+- **Framework**: [playwright | none]
+- **Command**: `<test command or "none">`
+- **Scenarios**:
+  - [ ] [Scenario 1]
 
 ### Manual
-- [ ] [Manual verification step 1]
-- [ ] [Manual verification step 2]
+- [ ] type: http — `curl /api/endpoint` returns 200 **Pass:** HTTP 200
+- [ ] type: data — `curl .../index/_count` **Pass:** count > 0
+- [ ] type: script — `npx tsx scripts/check.ts` **Pass:** exit 0
+- [ ] type: visual — [what to look at in the UI]
+- [ ] type: judgment — [qualitative/semantic assessment]
 
 ## References
 [For each non-trivial implementation decision in this spec, the existing file that already made that decision. Show the specific pattern (10-15 lines max). Only include what the implementer would otherwise get wrong by guessing — if a decision has only one reasonable answer, skip it.]
