@@ -65,7 +65,8 @@ Launch ralph:
 ```bash
 ralph run "$TASK_DIR/SPEC.md" \
   --extra-instructions "$TASK_DIR/.ralph-instructions" \
-  --max-runs "$MAX_RUNS"
+  --max-runs "$MAX_RUNS" \
+  --model "${CURSOR_AGENT_MODEL:-gpt-5.3-codex}"
 ```
 
 After ralph exits:
