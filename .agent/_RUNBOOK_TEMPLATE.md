@@ -1,8 +1,8 @@
 # [Change Title] — Validation Runbook
 
-> This runbook validates the implementation end-to-end. It is a local agent artifact — not committed to the repo.
-> Run each section in order. Sections with a **Pass:** criterion are auto-executable by `crew test`.
-> Sections marked `type: visual` or `type: judgment` require human verification.
+> This runbook is a **local agent artifact** — not committed to the repo.
+> **Scriptable only:** each numbered section must include a **fenced** shell or Python command and an explicit **`Pass:`** line so `crew test` can auto-run it.
+> **Do not** use this file for long manual QA matrices, human judgment, or UI "does it look right" checks — those belong in **Acceptance Criteria** / task **Acceptance** in SPEC.md.
 
 ## Prerequisites
 
@@ -48,27 +48,6 @@ echo "RESOURCE_ID=$RESOURCE_ID"
 
 **Pass:** [explicit criterion]
 **Fail:** [diagnosis hint]
-
----
-
-## 3. [type: playwright — Section Title]
-
-[One sentence: what DOM assertion this section verifies.]
-
-- **Navigate:** $SERVICE_URL/app/path
-- **Auth:** (optional) bearer $API_KEY
-- **Wait:** (optional) [selector to wait for before asserting]
-- **Assert:** [data-test-subj="element"]
-- **Pass:** element is visible on the page
-- **Fail:** selector not found — check that the element renders under the given auth/route
-
----
-
-## 4. [type: visual — Section Title]
-
-[What to look at in the UI or system output. No executable block — requires human eyes.]
-
-**Pass:** [what "looks correct" means concretely]
 
 ---
 

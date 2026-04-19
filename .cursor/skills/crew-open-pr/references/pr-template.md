@@ -20,12 +20,17 @@ One sentence on what could go wrong. If it's a safe refactor with no contract ch
 
 ### How to test
 
-Steps to verify the change for a reviewer. Derive from the spec's `## Tests` section:
-- `type: visual` and `type: judgment` items from `### Manual` → list these directly as reviewer steps
-- `type: http`, `type: data`, `type: script` items → collapse into one line: "Automated checks run via `crew test`"
-- If `$TASK_DIR/runbook.md` exists → do NOT link the path (it's a local agent artifact, not committed). Instead, extract the **Pass:** criteria from runbook sections that require human judgment and list them as reviewer steps. Script-verifiable Pass criteria can be collapsed into "Automated checks run via `crew test`".
+**Goal:** Only steps a **human reviewer** can perform on this PR without the full operator harness (at most **3–5** bullets). Never paste long integration matrices or internal runbooks.
 
-If no `## Tests` section exists in the spec, keep this section brief or omit it. Never invent steps.
+Derive from, in order:
+1. SPEC **Goal** and **high-signal** bullets under **Acceptance Criteria** (Requirements / Non-regression) — distill to reviewer-sized checks.
+2. **Diff risk** — what changed files or behaviors a reviewer should spot-check (UI path, config knob, API response shape).
+
+**Automated:** Typed commands under SPEC `## Tests` (`### Unit` / `### Integration` / `### E2E` / `### Validation`) are run via **`crew test`** (and CI when applicable). One line in the PR body is enough, e.g. "Automated: `crew test` passes in the worktree."
+
+**Do not:** Pull reviewer steps from `$TASK_DIR/runbook.md` (local artifact, scriptable-only policy). Do not invent steps.
+
+If no SPEC.md exists, keep this section brief or omit it. Never invent steps.
 ```
 
 ## Rules
@@ -33,5 +38,5 @@ If no `## Tests` section exists in the spec, keep this section brief or omit it.
 - `closes <URL_OR_NUMBER>` goes at the top, before the summary. Use the full GitHub issue URL (e.g. `closes https://github.com/org/repo/issues/123`) or `closes #123` if same repo. GitHub auto-closes from the body.
 - Summary tone: direct, for engineers. No fluff, no "This PR aims to..."
 - If SPEC.md exists, derive the summary from its goal — don't paraphrase the diff.
-- "How to test" derives from `## Tests > ### Manual` — `type: visual` and `type: judgment` items are the reviewer steps. If `runbook.md` exists, extract its human-judgment **Pass:** criteria as steps (do NOT link the path — it's a local agent artifact). Automated items (`type: http/data/script`) and script-verifiable Pass criteria collapse to "Automated checks run via `crew test`". Never invent steps.
+- **How to test** = **reviewer-only** manual bullets (capped) from SPEC Goal / Acceptance Criteria / diff risk, plus one **automated** line pointing at `crew test` / CI. Do not use runbook.md as the source for reviewer steps.
 - If the user confirmed LLM assistance, append `---\n🤖` after all content.

@@ -42,10 +42,9 @@ This handles the common case where feature branches are based on other feature b
 
 Read these sources (in order of priority):
 
-1. **SPEC.md** — resolve `TASK_DIR` using the canonical resolution recipe (see Session Capture block below) and read `$TASK_DIR/SPEC.md` for goal, context, acceptance criteria, and `## Tests > ### Manual` section
-2. **Runbook** — check for `$TASK_DIR/runbook.md`; if present, read its `**Pass:**` lines to extract human-judgment verification steps for the "How to test" section (do NOT include the file path — it's a local agent artifact, not committed to the repo)
-3. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
-4. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if the stat is small enough (<30 files)
+1. **SPEC.md** — resolve `TASK_DIR` using the canonical resolution recipe (see Session Capture block below) and read `$TASK_DIR/SPEC.md` for goal, context, and **Acceptance Criteria** (Requirements / Non-regression) to distill **reviewer-sized** "How to test" bullets (max 3–5). Read typed `## Tests` subsection headings only to mention automation (`crew test` / CI) — do not treat runbook or deprecated Manual blocks as PR reviewer steps.
+2. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
+3. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if the stat is small enough (<30 files)
 
 ### Step 2: Generate the description
 

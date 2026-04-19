@@ -54,8 +54,9 @@ Atomic units of work, organized by architectural boundary (one new function/modu
 
 ## Tests
 <!-- Specwriter: include only blocks for discovered frameworks. Omit unused layers.
-     Add runbook.md when change involves agent behavior, workflow orchestration,
-     data pipeline outputs, or cross-service integration. -->
+     ## Tests = invocable commands only (four typed subsections). Harness / human checks
+     belong in Acceptance Criteria and task Acceptance — not here. Optional runbook.md
+     is scriptable only (fenced commands + Pass:); see _RUNBOOK_TEMPLATE.md. -->
 
 ### Unit
 - **Framework**: [jest | vitest | none]
@@ -75,18 +76,16 @@ Atomic units of work, organized by architectural boundary (one new function/modu
 - **Scenarios**:
   - [ ] [Scenario 1]
 
-### Manual
-- [ ] type: http — `curl /api/endpoint` returns 200 **Pass:** HTTP 200
-- [ ] type: data — `curl .../index/_count` **Pass:** count > 0
-- [ ] type: script — `npx tsx scripts/check.ts` **Pass:** exit 0
-- [ ] type: playwright
-  - **Navigate:** $SERVICE_URL/app/path
-  - **Auth:** (optional) bearer $API_KEY
-  - **Wait:** (optional) [selector to wait for]
-  - **Assert:** [data-test-subj="element"]
-  - **Pass:** element is visible on the page
-- [ ] type: visual — [what to look at in the UI]
-- [ ] type: judgment — [qualitative/semantic assessment]
+### Validation
+<!-- One-shot validators / schema gates (agent-builder workflow validate, linters, codegen).
+     Distinct from behavioral E2E. Use "none" when not applicable. -->
+- **Framework**: [agent-builder | shell | none]
+- **Command**: `<one-shot CLI e.g. workflow validate, or "none">`
+- **Scenarios**:
+  - [ ] [Scenario 1]
+
+## Additional Context
+<!-- Optional. Append-only notes during multi-turn implementation (e.g. Ralph). Leave placeholder when unused. -->
 
 ## References
 [For each non-trivial implementation decision in this spec, the existing file that already made that decision. Show the specific pattern (10-15 lines max). Only include what the implementer would otherwise get wrong by guessing — if a decision has only one reasonable answer, skip it.]

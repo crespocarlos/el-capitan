@@ -84,9 +84,26 @@ fi
 link_dir_files "$SCRIPT_DIR/.claude/hooks" ~/.claude/hooks
 
 # ~/.agent templates (dotfile keeps stderr hush if optional upstream omits it)
+# Before ln -sf overwrites: if the target is a pre-existing REGULAR file (not a symlink),
+# back it up to a uniquely-suffixed .bak.<ts> so a second reinstall never destroys the
+# first backup.
+backup_if_regular() {
+  local target="$1"
+  if [ -e "$target" ] && [ ! -L "$target" ]; then
+    local ts backup
+    ts=$(date +%s)
+    backup="${target}.bak.${ts}"
+    while [ -e "$backup" ]; do ts=$((ts+1)); backup="${target}.bak.${ts}"; done
+    mv "$target" "$backup"
+    echo "[install] backed up regular file $(basename "$target") → $(basename "$backup")"
+  fi
+}
+
 for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _PROFILE_TEMPLATE.md; do
+  backup_if_regular ~/.agent/"$f"
   ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
 done
+backup_if_regular ~/.agent/.ralph-instructions-template
 ln -sf "$SCRIPT_DIR/.agent/.ralph-instructions-template" ~/.agent/.ralph-instructions-template 2>/dev/null
 
 # ~/.agent/{tools,scripts,queries}

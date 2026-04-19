@@ -26,24 +26,29 @@ If `RECALLED_PATTERNS` is empty **or `"none"`**, skip auto-recall — crew-imple
 
 ---
 
+<!-- Canonical Completion Protocol mirrored in `.agent/.ralph-instructions-template` between
+     the drift-gate markers below. `crew health` diffs the two — keep them byte-identical. -->
+
+<!-- DRIFT-GATE: completion-protocol-start -->
 ## Completion Protocol
 
-*Canonical definition. Both ralph and inline follow these steps at the end of every run. If you change this, update the embedded copy in the Ralph mode heredoc below.*
+When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 
-When all tasks are complete:
-
-1. Review each requirement under **Acceptance Criteria > Requirements** — mark `[x]` if satisfied.
-2. Review each item under **Acceptance Criteria > Non-regression** — mark `[x]` if verified.
+1. Review each requirement under **Acceptance Criteria > Requirements** — mark `[x]` only if satisfied (each bullet should be **verifiable**: named command, `rg`/`pytest` line, or explicit file inspection stated in the criterion).
+2. Review each item under **Acceptance Criteria > Non-regression** — mark `[x]` if verified the same way.
 3. Review each item under **Design Constraints** — mark `[x]` if the implementation conforms.
-4. If the spec has a `## Tests` section with a `### Automated` subsection containing a `**Command**:` line whose value is not `"none"`, extract the command and run: `cd <WORK_DIR> && <command>`. If tests PASS: write `**Test Results: PASS**` under `### Test Results` in REPORT.md and continue to step 5. If tests FAIL: write `**Test Results: FAIL**` and up to 30 lines of output under `### Test Results` in REPORT.md, set Status to `IMPLEMENTING`, and **stop here — do not proceed to step 5**. If no `## Tests` section or Command is `"none"`: skip this step and proceed to step 5.
-5. Set the spec status to done. Format MUST be two lines — header then value on the next line:
+4. **Typed tests (`## Tests`):** If `## Tests` exists, for each subsection in order **Unit → Integration → E2E → Validation** that is present, read its `**Command**:` (or `Command:`). Skip if the subsection is missing, if Command is `"none"`, or if Command is empty. For each retained command run `cd <WORK_DIR> && <command>`. On **first non-zero exit**: write `**Test Results: FAIL**` under `### Test Results` in REPORT.md with up to 30 lines of output, set `## Status` to `IMPLEMENTING` (two lines), and **stop** — do not set done. If all such commands exit 0: write `**Test Results: PASS**` under `### Test Results` in REPORT.md. If no runnable command exists in any subsection: skip this step and continue.
+5. Set status to **done** (two lines only):
+
    ```
    ## Status
    done
    ```
-   Do NOT write `## Status: done` inline — the ralph parser reads only the next-line format, and inline mode uses the same format for consistency.
 
-**Already-done guard:** If status is already `done` AND all checkboxes are `[x]`, stop — do not re-run anything.
+   Do **not** write `## Status: done` on one line.
+<!-- DRIFT-GATE: completion-protocol-end -->
+
+**Already-done guard:** If status is already `done` AND all checkboxes are `[x]`, stop — do not re-run anything. Accept both the two-line `## Status\ndone` form and the legacy one-line `## Status: done` form when reading pre-existing specs.
 
 ---
 
@@ -54,10 +59,28 @@ Ralph is an external loop runner that manages iteration and state across multipl
 Detect the shell environment and generate `.ralph-instructions` from the template at `~/.agent/.ralph-instructions-template`. The template uses bare placeholder tokens (not `$VAR` syntax). Substitute using `sed` or `envsubst`-style replacement:
 
 ```bash
-TASK_COUNT=$(grep -c '^\- \[ \]' "$TASK_DIR/SPEC.md" || echo 4)
-MAX_RUNS=$(( TASK_COUNT * 2 + 4 ))
+[ -f "$HOME/.agent/.ralph-instructions-template" ] || { echo "[crew-builder] missing .ralph-instructions-template — run install.sh" >&2; exit 1; }
+
+# Unchecked boxes only under ## Tasks (not Acceptance Criteria, Design Constraints, Tests, etc.)
+TASK_UNCHECKED_IN_SECTION=$(awk '
+/^## Tasks$/ { in_tasks=1; next }
+in_tasks && /^## / { exit }
+in_tasks && /^- \[ \]/ { c++ }
+END { print c+0 }
+' "$TASK_DIR/SPEC.md")
+# MAX_RUNS budget: 2 attempts per Task + 10-run headroom for Completion Protocol.
+# Checkboxes outside ## Tasks (AC / Design Constraints / Tests) are intentionally not counted —
+# those are ticked once in a single Completion Protocol pass, not per run.
+MAX_RUNS=$(( TASK_UNCHECKED_IN_SECTION * 2 + 10 ))
+[ "$MAX_RUNS" -lt 12 ] && MAX_RUNS=12
+echo "[crew-builder] MAX_RUNS=$MAX_RUNS (tasks=$TASK_UNCHECKED_IN_SECTION)"
 NVM_PREAMBLE=$([ -f .nvmrc ] && echo 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use' || echo '')
-sed -e "s|WORK_DIR|$WORK_DIR|g"     -e "s|NVM_PREAMBLE|$NVM_PREAMBLE|g"     -e "s|MAX_RUNS|$MAX_RUNS|g"     ~/.agent/.ralph-instructions-template > .ralph-instructions
+sed -e "s|WORK_DIR|$WORK_DIR|g"     -e "s|NVM_PREAMBLE|$NVM_PREAMBLE|g"     ~/.agent/.ralph-instructions-template > "$TASK_DIR/.ralph-instructions"
+
+if rg -nq '\b(WORK_DIR|NVM_PREAMBLE|MAX_RUNS)\b' "$TASK_DIR/.ralph-instructions"; then
+  echo "[crew-builder] residual placeholder in $TASK_DIR/.ralph-instructions — aborting" >&2
+  exit 1
+fi
 ```
 
 Launch ralph:
@@ -65,13 +88,13 @@ Launch ralph:
 ```bash
 export CURSOR_AGENT_MODEL="${CURSOR_AGENT_MODEL:-gpt-5.3-codex}"
 ralph run "$TASK_DIR/SPEC.md" \
-  --extra-instructions "$TASK_DIR/.ralph-instructions" \
+  --protocol "$TASK_DIR/.ralph-instructions" \
   --max-runs "$MAX_RUNS"
 ```
 
 After ralph exits:
-1. Re-read `$TASK_DIR/SPEC.md` and verify all tasks are checked off (`- [x]`).
-2. If any tasks are unchecked, include them in the report as failures.
+1. Re-read `$TASK_DIR/SPEC.md` and verify every top-level checklist line under `## Tasks` is checked off (`- [x]`). Ignore other sections for this check.
+2. If any `## Tasks` items are still `- [ ]`, include them in the report as failures.
 3. Write `$TASK_DIR/REPORT.md` (see Report section below).
 
 ---
@@ -90,7 +113,7 @@ The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
 
 **All file operations use absolute paths rooted at `WORK_DIR`.** If a task says "edit `src/foo.ts`", read and write `<WORK_DIR>/src/foo.ts`.
 
-**Task loop** — for each unchecked task in SPEC.md, in order:
+**Task loop** — for each unchecked `- [ ]` line under the `## Tasks` section only (from `## Tasks` until the next `## ` heading), in order:
 
 1. **Signal** — emit `[N/M] <task name>...`
 2. **Read the task** — understand what to change, which files, the acceptance check.

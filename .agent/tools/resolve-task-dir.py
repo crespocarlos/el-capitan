@@ -35,12 +35,16 @@ def git_output(args):
 
 
 def read_spec_status(spec_path):
+    # Accepts both two-line `## Status\n<value>` and legacy one-line `## Status: <value>`.
     try:
         with open(spec_path) as f:
             lines = f.readlines()
         for i, line in enumerate(lines):
-            if line.strip() == "## Status" and i + 1 < len(lines):
+            stripped = line.strip()
+            if stripped == "## Status" and i + 1 < len(lines):
                 return lines[i + 1].strip()
+            if stripped.startswith("## Status:"):
+                return stripped[len("## Status:") :].strip()
     except OSError:
         pass
     return ""

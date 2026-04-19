@@ -52,6 +52,10 @@ All file paths in tasks must be unambiguous relative to WORK_DIR. Watch for:
 ### Design constraint enforceability
 Can each design constraint be mechanically verified? "Code should be clean" is unenforceable. "No new files outside of X directory" is enforceable. Flag constraints that sound good but can't be checked by reading the diff.
 
+
+### Acceptance Criteria verifiability
+
+Each **Requirements** / **Non-regression** bullet should name **how** crew-builder can mark it `[x]` in Completion Protocol — e.g. a one-line `rg`/`pytest` command, or "read `path` and confirm …". Flag bullets that are purely subjective with no inspection path.
 ### Self-containment
 crew-builder reads SPEC.md and should not need to explore the codebase to understand what to do. Check that:
 - File paths are explicit (no "the relevant config file")
@@ -59,9 +63,9 @@ crew-builder reads SPEC.md and should not need to explore the codebase to unders
 - Commands to run are complete (no "run the appropriate test")
 
 ### Test section presence
-crew-builder's completion protocol reads `## Tests` to run tests. If the spec has no `## Tests` section, the builder cannot execute tests and stops the protocol prematurely.
+crew-builder's completion protocol reads `## Tests` to run typed commands after tasks complete. If the spec has no `## Tests` section, the builder skips automated test execution in Completion Protocol.
 
-**Severity: Critical** — **Spec** — missing `## Tests` section. Fix: add `## Tests` with `### Automated` and `### Manual` subsections before `## References`.
+**Severity: Critical** — **Spec** — missing `## Tests` section when the change needs automated verification. Fix: add `## Tests` with the applicable typed subsections (`### Unit`, `### Integration`, `### E2E`, `### Validation`) before `## References`; use `Command: "none"` only for layers that truly do not apply. Harness/human checks belong in **Acceptance Criteria** / task **Acceptance**, not under `## Tests`.
 
 ## Severity definitions
 

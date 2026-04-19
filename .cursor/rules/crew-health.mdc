@@ -85,6 +85,16 @@ docker inspect simianhacker/semantic-code-search-mcp-server >/dev/null 2>&1
 - Exit 0 → `[ok] SemanticCodeSearch: docker image available`
 - Exit non-0 → `[skip] SemanticCodeSearch: docker image not found — optional, pull with docker pull simianhacker/semantic-code-search-mcp-server`
 
+**(k) Completion Protocol drift gate**
+```bash
+REPO_ROOT=$(git -C "$(dirname "$(realpath ~/.cursor/rules/crew-router.mdc)")" rev-parse --show-toplevel 2>/dev/null)
+a=$(awk '/DRIFT-GATE: completion-protocol-start/,/DRIFT-GATE: completion-protocol-end/' "$REPO_ROOT/.cursor/agents/crew-builder.md" | sed '1d;$d')
+b=$(awk '/DRIFT-GATE: completion-protocol-start/,/DRIFT-GATE: completion-protocol-end/' "$REPO_ROOT/.agent/.ralph-instructions-template" | sed '1d;$d')
+[ -n "$a" ] && [ -n "$b" ] && [ "$a" = "$b" ]
+```
+- Exit 0 → `[ok] completion-protocol drift: synced`
+- Exit non-0 → `[fail] completion-protocol drift: crew-builder.md vs .ralph-instructions-template — diff the DRIFT-GATE blocks and realign`
+
 ### Output format
 
 ```

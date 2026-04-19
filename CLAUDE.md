@@ -18,7 +18,7 @@ The pipeline routing instructions for using crew commands are in `.claude/CLAUDE
 - **Routing table** — `crew-router.mdc` is the single source of truth. `.claude/CLAUDE.md` explicitly says not to duplicate routing entries there.
 - **Symlinks** — `.cursor/agents/` and `.cursor/skills/` are symlinks to `.claude/agents/` and `.claude/skills/`. Edit `.cursor/` paths only; the symlink propagates changes. Do not create files under `.claude/agents/` or `.claude/skills/` directly.
 - **No build, no tests** — this repo has no package manager, no test runner, no type-checker. Verification is grep-based acceptance checks against the edited files.
-- **Both SKILL.md copies** — `crew-test` has copies at both `.cursor/skills/crew-test/SKILL.md` and `.claude/skills/crew-test/SKILL.md`. They are NOT symlinked — keep them byte-identical and verify with `diff`.
+- **`.claude/skills` is a directory symlink to `.cursor/skills`** — files like `.claude/skills/crew-test/SKILL.md` and `.claude/skills/crew-open-pr/references/pr-template.md` auto-mirror via the directory symlink, so editing the `.cursor/skills/...` path propagates automatically. No manual byte-identical sync is needed.
 - **Pipeline-level templates** live in `.agent/` and are read by multiple agents. Changes affect all future specs and runbooks.
 - **Tool budgets** — explorer subagents (`specwriter-explorer.md`, `tester-explorer.md`) have hard ≤8 call budgets. If adding a discovery step that consumes a slot, update the budget breakdown comment in the file.
 

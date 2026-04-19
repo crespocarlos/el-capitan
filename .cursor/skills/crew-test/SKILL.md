@@ -53,7 +53,7 @@ If no symbols are found, use the basenames of changed files (without extension) 
 
 **Pre-check before dispatch** — skip tester-explorer when discovery would be redundant:
 
-1. If `$TASK_DIR/SPEC.md` exists and all typed blocks (`### Unit`, `### Integration`, `### E2E`) that are present have a `**Command**` value that is not `"none"` or empty → the spec already has commands; skip to Step 5 using those commands.
+1. If `$TASK_DIR/SPEC.md` exists and all typed blocks (`### Unit`, `### Integration`, `### E2E`, `### Validation`) that are **present** have a `**Command**` value that is not `"none"` or empty → the spec already has commands; skip to Step 5 using those commands.
 2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`, `.sh`, `.py` config-only) → no importable symbols exist; skip to Step 7 with WARN verdict.
 
 Otherwise, launch `tester-explorer` as a subagent with a structured prompt:
@@ -72,8 +72,8 @@ Wait for tester-explorer to return its discovery summary.
 
 Extract test commands from the spec and from tester-explorer results using the following logic:
 
-**If `$TASK_DIR/SPEC.md` contains typed blocks** (`### Unit`, `### Integration`, `### E2E`):
-- For each typed block present (in order: Unit → Integration → E2E), extract its `Command` field.
+**If `$TASK_DIR/SPEC.md` contains typed blocks** (`### Unit`, `### Integration`, `### E2E`, `### Validation`):
+- For each typed block present (in order: Unit → Integration → E2E → Validation), extract its `Command` field.
 - Skip blocks whose `Command` is `"none"` or empty.
 - Run each command in sequence:
   ```bash
@@ -87,67 +87,37 @@ Extract test commands from the spec and from tester-explorer results using the f
 - If tester-explorer returned the old `## Test command` format, use that command directly.
 - If no command is found from any format, skip to Step 7 with WARN verdict.
 
-### Step 6: Surface manual checklist
+### Step 6: Runbook (scriptable only) + legacy SPEC guard
 
-If `$TASK_DIR/SPEC.md` exists and has a `### Manual` subsection under `## Tests`:
+**Deprecated `### Manual` under `## Tests`:** If `$TASK_DIR/SPEC.md` still contains `### Manual` under `## Tests`, print one line only:
+```
+[crew-test] WARN: SPEC still uses ### Manual under ## Tests — migrate checks to Acceptance Criteria, typed ## Tests, and scriptable runbook.md. Skipping that block.
+```
+Do not execute legacy Manual items.
+
+**`$TASK_DIR/runbook.md`:** If the file exists, process each top-level `## ` section in order, **except** `## Prerequisites` and `## Common Failures and Fixes`:
+
+- **Skip with WARN** (one line per section): section title or body indicates `type: visual`, `type: judgment`, or human-only QA; or the section has **no** fenced shell (bash/sh) code block with a following `**Pass:**` / `Pass:` line suitable for deterministic checks.
+- **Auto-execute** (same spirit as former manual `type: script`): section contains a fenced shell block and an inline `**Pass:**` or `Pass:` criterion → run the extracted command from repo root (`cd $(git rev-parse --show-toplevel) && …`); compare exit code/output to the criterion; report PASS/FAIL.
+
+If no `runbook.md`, skip silently (unless WARN above).
+
+### Step 7: Runbook outline
+
+If `$TASK_DIR/runbook.md` exists:
 
 ```bash
-awk '/^### Manual/{found=1; next} found && /^###/{exit} found{print}' "$TASK_DIR/SPEC.md"
+test -f "$TASK_DIR/runbook.md" && grep "^## " "$TASK_DIR/runbook.md"
 ```
 
-**Auto-execute typed manual items** that have an inline **Pass:** criterion:
-- `type: http` — item contains a `curl`/`fetch` command block and an inline `**Pass:**` criterion → run the curl command; compare output against the criterion; report PASS/FAIL.
-- `type: data` — item contains a query/script (ES curl, SQL, Python) and an inline `**Pass:**` criterion → run the command; compare output against the criterion; report PASS/FAIL.
-- `type: script` — item contains a shell or Python block and an inline `**Pass:**` criterion → run the command; compare exit code or output against the criterion; report PASS/FAIL.
-- `type: playwright` — auto-execute when Navigate, Assert, and Pass sub-bullets are all present. Protocol:
-  1. **Probe MCP availability**: attempt `mcp__playwright__navigate` with a dummy URL (e.g. `about:blank`). Any error (tool not found, connection refused, etc.) = MCP unavailable → fall through to human checklist for ALL playwright items.
-  2. **Apply auth** (when MCP available): read `auth-approach` from tester-explorer's `### e2e` summary (NOT the spec item's `Auth` sub-bullet, which is human documentation only):
-     - `storageState: <path>` → apply the storage state file via `mcp__playwright__context_storage_state`.
-     - `process.env.*` / env-var pattern → set the referenced env var credentials before navigating.
-     - `globalSetup` ref or "not detected" → log "no auth applied" and proceed.
-  3. **Navigate**: call `mcp__playwright__navigate` with the item's `Navigate` URL.
-  4. **Wait** (optional): if a `Wait` sub-bullet is present, call `mcp__playwright__wait_for_selector` with that selector before asserting.
-  5. **Assert**: call `mcp__playwright__evaluate` to check that the `Assert` selector is visible on the page (equivalent to `state: 'visible'`). If the element is visible: report `[playwright] PASS — <Pass text>`. If not: report `[playwright] FAIL — selector not found: <Assert selector>`.
-  6. **Fallback conditions**: if MCP unavailable, OR if Navigate, Assert, or Pass sub-bullet is missing → surface as human checklist entry.
-
-**Surface as human checklist** (do not auto-execute):
-- `type: visual` — print the item as a checklist entry.
-- `type: judgment` — print the item as a checklist entry.
-- Untagged items — treat as `type: judgment`; print as checklist entry.
-- Any `type: http`, `type: data`, or `type: script` item that does NOT contain an inline `**Pass:**` criterion → print as checklist entry (never auto-execute without an explicit criterion).
-- Any `type: playwright` item where MCP is unavailable OR Navigate, Assert, or Pass sub-bullet is missing → print as checklist entry.
-
-If no `## Tests` section or `### Manual` subsection exists, skip this step silently.
-
-### Step 7: Runbook detection
-
-Check for a runbook alongside the spec:
-
-```bash
-test -f "$TASK_DIR/runbook.md"
-```
-
-If present, print its path and extract all `##`-level section headers:
-
-```bash
-grep "^## " "$TASK_DIR/runbook.md"
-```
-
-Output:
-```
-Runbook: $TASK_DIR/runbook.md
-Sections:
-  ## Prerequisites
-  ## 1. Section Title
-  ## Common Failures and Fixes
-```
+Prefix output with `Runbook: $TASK_DIR/runbook.md` and `Sections:` for operator visibility.
 
 ### Step 8: Verdict
 
 Determine verdict:
-- **PASS**: all automated blocks (typed or fallback) ran and exited 0; all auto-executed manual items passed
+- **PASS**: all typed blocks (or fallback) ran and exited 0; all auto-executed runbook scripted steps passed
 - **WARN**: no typed blocks, no extractable command from any format, and no `runbook.md` found; or no test files found
-- **FAIL**: any automated block or auto-executed manual item exited non-zero
+- **FAIL**: any typed block or auto-executed runbook step exited non-zero
 
 Output each test file discovered as:
 
@@ -160,6 +130,7 @@ For each typed block run:
 [Unit] PASS/FAIL — <command>
 [Integration] PASS/FAIL — <command>
 [E2E] PASS/FAIL — <command>
+[Validation] PASS/FAIL — <command>
 ```
 
 If verdict is FAIL, print up to 30 lines of failing output.

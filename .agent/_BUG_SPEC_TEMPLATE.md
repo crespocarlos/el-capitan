@@ -58,8 +58,8 @@ Atomic units of work, organized by architectural boundary (one new function/modu
 
 ## Tests
 <!-- Specwriter: include only blocks for discovered frameworks. Omit unused layers.
-     Add runbook.md when change involves agent behavior, workflow orchestration,
-     data pipeline outputs, or cross-service integration. -->
+     ## Tests = invocable commands only. Harness / human checks → Acceptance Criteria
+     and task Acceptance. Optional runbook.md = scriptable only. -->
 
 ### Unit
 - **Framework**: [jest | vitest | none]
@@ -79,18 +79,16 @@ Atomic units of work, organized by architectural boundary (one new function/modu
 - **Scenarios**:
   - [ ] [Scenario 1]
 
-### Manual
-- [ ] type: http — `curl /api/endpoint` returns 200 **Pass:** HTTP 200
-- [ ] type: data — `curl .../index/_count` **Pass:** count > 0
-- [ ] type: script — `npx tsx scripts/check.ts` **Pass:** exit 0
-- [ ] type: playwright
-  - **Navigate:** $SERVICE_URL/app/path
-  - **Auth:** (optional) bearer $API_KEY
-  - **Wait:** (optional) [selector to wait for]
-  - **Assert:** [data-test-subj="element"]
-  - **Pass:** element is visible on the page
-- [ ] type: visual — [what to look at in the UI]
-- [ ] type: judgment — [qualitative/semantic assessment]
+### Validation
+<!-- One-shot validators / schema gates (agent-builder workflow validate, linters, codegen).
+     Distinct from behavioral E2E. Use "none" when not applicable. -->
+- **Framework**: [agent-builder | shell | none]
+- **Command**: `<one-shot CLI or "none">`
+- **Scenarios**:
+  - [ ] [Scenario 1]
+
+## Additional Context
+<!-- Optional. Append-only session notes during implementation. -->
 
 ## References
 [File paths to canonical examples the implementer should read. Include key patterns inline when the spec must be self-contained.]

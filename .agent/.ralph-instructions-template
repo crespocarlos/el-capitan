@@ -1,31 +1,68 @@
-Do NOT run git commit, git push, or gh pr create.
-Do NOT create or switch branches — the worktree and branch already exist.
-Work directory: WORK_DIR
+# Ralph loop instructions — el-capitan
 
-## Shell environment
-Each iteration starts a fresh shell — nvm state does not persist.
 Before running any repo commands (yarn, node, npx, scripts/), prepend:
   NVM_PREAMBLE cd WORK_DIR &&
 
-## Task loop
-For each unchecked item under ## Tasks, in order:
-1. Emit [N/M] <task name>... before starting.
-2. Read the task — understand what to change, which files, the acceptance check.
-3. Read related code (paths anchored to WORK_DIR).
-4. Implement (all file paths anchored to WORK_DIR).
-5. Verify — run the task's acceptance check from WORK_DIR. Fix and retry up to 3 times on failure. Mark failed after 3 attempts.
-6. Mark [x] in SPEC.md.
+## Non-goals
+- Do not run `git commit`, `git push`, or `gh pr create`.
+- Do not create or switch branches.
 
+## Work directory
+All file reads, edits, and shell commands for the repository under work MUST use the `WORK_DIR` path from these instructions (absolute path).
+
+<!-- DRIFT-GATE: task-loop-start -->
+## Task loop
+
+**Scope:** Only top-level `- [ ]` / `- [x]` lines under the `## Tasks` heading (from that heading until the next `## ` section) are implementation tasks. Checkboxes under **Acceptance Criteria**, **Design Constraints**, **Tests**, or any other section are **not** tasks for `[N/M]` progress; they are handled in the Completion Protocol after every `## Tasks` line is `[x]`.
+
+For each **still-unchecked** `- [ ]` line in `## Tasks` only, in order:
+
+1. Emit `[N/M] <task name>...` where **M** = total task lines in `## Tasks` (count both `[ ]` and `[x]`) and **N** = 1-based index among those lines for the task you are working on.
+2. Read the task — **Change**, **Files**, and **Acceptance**.
+3. Read related code (paths anchored to WORK_DIR).
+4. Implement (paths anchored to WORK_DIR).
+5. **Verify** — run the task's **Acceptance** check from WORK_DIR. Fix and retry up to 3 times on failure. Mark failed after 3 attempts.
+6. Mark **only** that task line `[x]` in SPEC.md (do not check off Acceptance Criteria, Design Constraints, or Tests during this loop).
+
+### Test timing (per task vs completion)
+
+- **Per task:** run only what that task's **Acceptance** requires (commands, greps, etc.). Do **not** run the full repo test suite before every task unless **Acceptance** explicitly says so.
+- **After all `## Tasks` items are `[x]`:** run the Completion Protocol below (including typed `## Tests` commands).
+
+### Session notes (`## Additional Context`)
+
+- If SPEC.md contains `## Additional Context`, append short discoveries or gotchas there (append-only).
+- If that section is absent, add at most one or two bullets under `## References` or omit — do **not** invent other top-level sections.
+
+### Status while working
+
+Use el-capitan's two-line `## Status` format (accept legacy one-line `## Status: <value>` when reading pre-existing specs; always write two-line):
+
+```
+## Status
+IMPLEMENTING
+```
+<!-- DRIFT-GATE: task-loop-end -->
+
+<!-- DRIFT-GATE: completion-protocol-start -->
 ## Completion Protocol
-# Embedded from crew-builder.md ## Completion Protocol — keep in sync if protocol changes.
-1. Review each requirement under Acceptance Criteria > Requirements — mark [x] if satisfied.
-2. Review each item under Acceptance Criteria > Non-regression — mark [x] if verified.
-3. Review each item under Design Constraints — mark [x] if the implementation conforms.
-4. If the spec has a ## Tests > ### Automated section with a Command line not equal to 'none', extract the command and run it from WORK_DIR. If it exits 0: write '### Test Results: PASS' to REPORT.md and continue to step 5. If it exits non-zero: write '### Test Results: FAIL' and up to 30 lines of output to REPORT.md, set Status to IMPLEMENTING, and stop — do not proceed to step 5.
-5. Set status to done using the two-line format:
+
+When every top-level `- [ ]` under `## Tasks` is `- [x]`:
+
+1. Review each requirement under **Acceptance Criteria > Requirements** — mark `[x]` only if satisfied (each bullet should be **verifiable**: named command, `rg`/`pytest` line, or explicit file inspection stated in the criterion).
+2. Review each item under **Acceptance Criteria > Non-regression** — mark `[x]` if verified the same way.
+3. Review each item under **Design Constraints** — mark `[x]` if the implementation conforms.
+4. **Typed tests (`## Tests`):** If `## Tests` exists, for each subsection in order **Unit → Integration → E2E → Validation** that is present, read its `**Command**:` (or `Command:`). Skip if the subsection is missing, if Command is `"none"`, or if Command is empty. For each retained command run `cd <WORK_DIR> && <command>`. On **first non-zero exit**: write `**Test Results: FAIL**` under `### Test Results` in REPORT.md with up to 30 lines of output, set `## Status` to `IMPLEMENTING` (two lines), and **stop** — do not set done. If all such commands exit 0: write `**Test Results: PASS**` under `### Test Results` in REPORT.md. If no runnable command exists in any subsection: skip this step and continue.
+5. Set status to **done** (two lines only):
+
+   ```
    ## Status
    done
-   Do NOT write "## Status: done" inline.
+   ```
+
+   Do **not** write `## Status: done` on one line.
+<!-- DRIFT-GATE: completion-protocol-end -->
 
 ## Already-done guard
-If the line after ## Status is "done" AND all checkboxes in the spec are [x], EXIT immediately.
+
+If the line after `## Status` is `done` **and** every checkbox in the spec is `[x]`, exit immediately without re-running work. Also accept legacy one-line `## Status: done` for backward compatibility.

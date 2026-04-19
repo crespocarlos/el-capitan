@@ -14,7 +14,9 @@ No setup required. Skip the bootstrap step in any worktree.
 
 No automated test runner is configured. `crew test` will return WARN with no test command.
 
-Verification is manual — see `## Tests > ### Manual` in any SPEC.md for the checklist.
+Verification: run **`crew test`** (typed `## Tests` + optional scriptable `runbook.md`) and check **Acceptance Criteria** / per-task **Acceptance** in SPEC.md — not a `### Manual` block under `## Tests` (removed from the template).
+
+Legacy one-line `## Status: <value>` specs remain supported by Status readers; new specs use the two-line `## Status\n<value>` form.
 
 ## File layout
 

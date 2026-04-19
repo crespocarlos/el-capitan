@@ -129,7 +129,7 @@ This check is mandatory. Do not proceed to 6b or 6c without running it.
 
 #### Step 6b — Ralph mode (if ralph found)
 
-Launch crew-builder as a subagent (Cursor: Task tool; Claude Code: `ralph run` directly). Pass `MODE=ralph`. Ralph manages its own iterations — crew-builder waits for it to exit.
+Launch crew-builder as a subagent (Cursor: Task tool; Claude Code: `ralph run` directly). Pass `MODE=ralph`. Ralph manages its own iterations — crew-builder waits for it to exit. crew-builder's `ralph run` passes `--protocol "$TASK_DIR/.ralph-instructions"` — the per-task rendered template (install `.ralph-instructions-template` via repo `install.sh` if missing).
 
 #### Step 6c — Inline mode (only if ralph not found)
 

@@ -21,7 +21,7 @@ fi
 
 1. **No SPEC.md** → emit: `No active workflow. Start one: \`crew start build\` | \`crew start review-cycle\` | \`crew brainstorm\`` If you have stale task state from before the UUID migration, run `crew migrate` first. Skip status validation.
 
-2. **Read SPEC.md Status field** (the line after `## Status`):
+2. **Read SPEC.md Status field** — accept **both** the two-line form (value on the line after `## Status`) and the legacy one-line form `## Status: <value>`:
 
    Status validation:
    KNOWN_STATUSES = [DRAFTING, APPROVED, IMPLEMENTING, DONE]
