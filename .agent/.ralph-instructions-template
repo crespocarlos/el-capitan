@@ -3,6 +3,9 @@
 Before running any repo commands (yarn, node, npx, scripts/), prepend:
   NVM_PREAMBLE cd WORK_DIR &&
 
+## Ralph iteration budget
+Max Ralph loop iterations for this run: **MAX_RUNS** (informational; substituted by crew-builder).
+
 ## Non-goals
 - Do not run `git commit`, `git push`, or `gh pr create`.
 - Do not create or switch branches.
@@ -29,6 +32,11 @@ For each **still-unchecked** `- [ ]` line in `## Tasks` only, in order:
 - **Per task:** run only what that task's **Acceptance** requires (commands, greps, etc.). Do **not** run the full repo test suite before every task unless **Acceptance** explicitly says so.
 - **After all `## Tasks` items are `[x]`:** run the Completion Protocol below (including typed `## Tests` commands).
 
+### Run discipline (tasks)
+
+- **Stop and report:** after **three** failed **Acceptance** runs for the same task, stop iterating and record the failure in REPORT.md.
+- **No surprise full suite:** do **not** run the **full** repository test suite during a single task unless that task's **Acceptance** explicitly names that command.
+
 ### Session notes (`## Additional Context`)
 
 - If SPEC.md contains `## Additional Context`, append short discoveries or gotchas there (append-only).
@@ -52,8 +60,9 @@ When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 1. Review each requirement under **Acceptance Criteria > Requirements** — mark `[x]` only if satisfied (each bullet should be **verifiable**: named command, `rg`/`pytest` line, or explicit file inspection stated in the criterion).
 2. Review each item under **Acceptance Criteria > Non-regression** — mark `[x]` if verified the same way.
 3. Review each item under **Design Constraints** — mark `[x]` if the implementation conforms.
-4. **Typed tests (`## Tests`):** If `## Tests` exists, for each subsection in order **Unit → Integration → E2E → Validation** that is present, read its `**Command**:` (or `Command:`). Skip if the subsection is missing, if Command is `"none"`, or if Command is empty. For each retained command run `cd <WORK_DIR> && <command>`. On **first non-zero exit**: write `**Test Results: FAIL**` under `### Test Results` in REPORT.md with up to 30 lines of output, set `## Status` to `IMPLEMENTING` (two lines), and **stop** — do not set done. If all such commands exit 0: write `**Test Results: PASS**` under `### Test Results` in REPORT.md. If no runnable command exists in any subsection: skip this step and continue.
-5. Set status to **done** (two lines only):
+4. **Typed tests (`## Tests`):** If `## Tests` exists, for each subsection in order **Unit → Integration → E2E → Validation** that is present, read its `**Command**:` (or `Command:`). Skip if the subsection is missing, if Command is `"none"`, or if Command is empty. For each retained command run `cd <WORK_DIR> && <command>` and capture combined stdout/stderr. If the capture exceeds **80 lines**, create `$TASK_DIR/artifacts/` if needed, write the full capture to `$TASK_DIR/artifacts/tests-<subsection>.log`, and in REPORT.md include **at most 40 lines** of excerpt plus one line with the artifact path. On **first non-zero exit**: write `**Test Results: FAIL**` under `### Test Results` in REPORT.md with the excerpt (or full output if ≤80 lines), set `## Status` to `IMPLEMENTING` (two lines), and **stop** — do not set done. If all such commands exit 0: write `**Test Results: PASS**` under `### Test Results` in REPORT.md (following the same excerpt rule when >80 lines). If no runnable command exists in any subsection: skip this step and continue.
+5. **Optional digest (`REPORT.digest.md`):** If environment variable `CREW_REPORT_DIGEST=1` is set, write a **≤25 line** human skim to `$TASK_DIR/REPORT.digest.md` (no secrets, no tokens). Omit when unset. Canonical detail remains in `REPORT.md`.
+6. Set status to **done** (two lines only):
 
    ```
    ## Status

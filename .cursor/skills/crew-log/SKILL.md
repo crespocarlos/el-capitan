@@ -17,7 +17,7 @@ JOURNAL_FILE=~/.agent/journal/$MONTH.md
 Resolve `TASK_DIR` via `.task-id` reverse lookup:
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 If `TASK_DIR` is empty, no active task — skip pipeline artifact harvesting.
@@ -26,93 +26,104 @@ Read `$TASK_DIR/SESSION.md` if it exists — auto-captured context from pipeline
 
 Read `~/.agent/PROFILE.md` for user context.
 
-### Step 2: Pre-populate from pipeline artifacts
+### Step 2: Harvest artifacts
 
-Before asking anything, harvest technical facts:
+Ingest everything available — read and include the full content, not just metadata:
 
 ```bash
-# Implementation report (tasks, files changed, errors)
+# Full implementation report — read as-is
 cat "$TASK_DIR/REPORT.md" 2>/dev/null
 
-# Last commit message (intent and scope)
-git log -1 --format="%B" 2>/dev/null
+# SESSION.md — verbatim notes captured during the pipeline
+cat "$TASK_DIR/SESSION.md" 2>/dev/null
+
+# Commit log — last 5 commits on current branch
+git log -5 --format="%h %s" 2>/dev/null
 
 # Files touched (fallback if REPORT.md unavailable)
 git diff --name-only HEAD~1 2>/dev/null
 ```
 
-Use these to pre-fill:
-- **What I did** — from REPORT.md summary or commit message
-- **Files touched** — from REPORT.md "Files Changed" or `git diff --name-only`
-- **What broke / surprised me** — from REPORT.md "Errors" section if present
+Derive all structured fields from these sources. Do not ask for anything that can be inferred. If SESSION.md is substantial (>200 lines), include it verbatim under a `## Session notes` block rather than summarizing — indexing raw content is cheap and lossless.
 
-Show the pre-filled draft and say: "Here's what I captured automatically. What should I add?"
+After composing the draft, show it and ask a single open question:
 
-### Step 3: Fill in the gaps
+> "Anything to add before I write this?"
 
-Ask only for the human layer — 4 targeted questions:
+If the user says nothing or "no", write immediately. Do not prompt for specific fields.
 
-1. **What did you learn?** — the one transferable insight from this session
-2. **Decisions made?** — key choices and why (not what, why)
-3. **What broke or surprised you?** — if not already captured from REPORT.md
-4. **Anything to promote to rules?** — conventions worth adding to CLAUDE.md or AGENTS.md
-
-Auto-fill from git state what isn't already known:
-- **Repo** and **Branch**: from git
-- **Tags**: suggest based on repo, file paths, and session content
-
-### Step 4: Write the entry
+### Step 3: Write the entry
 
 Append to `$JOURNAL_FILE` (create if it doesn't exist):
 
+Tag entities inline in every bullet using `[type:value]` syntax — `[file:]`, `[repo:]`, `[tool:]`, `[concept:]`, `[url:]`. These are indexed as metadata for entity-filtered recall.
+
 ```markdown
 ---
+
 ## DATE — SUMMARY
 
-**Type:** engineering
 **Tags:** #tag1 #tag2
 **Repo:** repo-name
-**Branch:** branch-name
-**Files touched:** path/to/file.ts, path/to/other.ts
-**What I did:** 1-2 sentences
-**Hypothesis:** (optional) — what you expected before starting
-**Decisions made:** key choices and why
-**What broke / surprised me:** errors, wrong assumptions, corrections
-**What I learned:** transferable insight
-**Outcome:** (optional) — fill after PR merges: did it work? any friction in review?
-**Connections:** links to previous entries or patterns, or "none"
-**Promote to rules:** conventions worth remembering, or "none"
-**Open questions:** unresolved questions, or "none"
+
+### Done
+- [tool:x] or [file:x] entity-tagged bullets derived from git log, commit messages, REPORT.md
+
+### Absorbed
+- (omit section if nothing was read or learned)
+
+### Implemented
+- (omit section if nothing new was created)
+
+### Promoted
+- durable rules/constraints to carry forward permanently (omit section if none)
+
+### Open
+- (omit section if no unresolved items)
+
+### Raw session
+
+<verbatim SESSION.md content if present and substantial>
 ```
 
-Use `$(date +%Y-%m-%d)` for the date. Derive the one-line summary from what the user did.
+Use `$(date +%Y-%m-%d)` for the date. Derive the one-line summary from what happened.
 
-### Step 5: Index the entry
+### Step 4: Index the entry
 
-If `~/.agent/tools/journal-search.py` is available, index the new entry:
+If `~/.agent/bin/journal-search.py` is available, index the new entry:
 
 ```bash
-~/.agent/tools/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
+~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
 ```
 
 The tool verifies the entry was stored and prints what it indexed. If it fails, surface the error to the user.
 
-### Step 6: After writing
+### Step 5: After writing
 
-1. If the user provided "Promote to rules" candidates, offer:
-   > "These look worth persisting: [list]. Want me to add them to CLAUDE.md or AGENTS.md?"
-   If yes, add the rules to the appropriate file (CLAUDE.md for global, AGENTS.md for repo-specific).
+1. If the entry has a `### Promoted` section, append each bullet to `~/.agent/PROFILE.md` under a `## Promoted facts` heading (create the heading if absent). No confirmation needed — the user wrote them explicitly. These are the hot-tier facts that stay in-context permanently.
 
-2. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
+2. If artifacts contain patterns worth promoting (repeated workarounds, discovered constraints, rules that should survive) that weren't already in `### Promoted`, suggest them:
 
-3. Offer the creative handoff:
+   > "These look worth adding to `### Promoted`: [list]"
+   > Only add if user confirms.
+
+3. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
+
+4. Offer the creative handoff:
    > "Want crew-thinker to connect this session to past patterns and generate ideas?"
 
 ## Rules
 
-- Keep entries concise — 2-3 sentences per field max
-- Pre-populate from REPORT.md and git log before asking; don't ask what you can infer
-- Triggerable any time: after implementation, after PR review, after learning, after support investigation, or just at end of day
+- Populate bullets from REPORT.md, SESSION.md, and git log — do not ask for what can be inferred
+- Tag entities inline in bullets: `[file:]`, `[repo:]`, `[tool:]`, `[concept:]`, `[url:]`
+- `### Promoted` bullets are written to PROFILE.md immediately — no confirmation needed
+- Triggerable any time: after implementation, after PR review, after learning, or end of day
 - Never modify existing journal entries — only append
-- Engineering entries use `**Type:** engineering`
-- Hypothesis and Outcome fields are optional — never block on them if the user skips
+
+## Auto-clarity override
+
+Drop to plain language before:
+
+- Presenting the final journal entry draft — show it in full before writing; journal entries are append-only and there is no delete command
+
+This skill is otherwise low-risk (append-only, local files). No other override conditions apply.

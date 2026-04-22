@@ -3,3 +3,7 @@
 .agent/PROFILE.md
 .agent/vectorstore/
 .agent/tools/__pycache__/
+
+# Local-only overrides — never commit
+.claude/settings.local.json
+.claude/worktrees/

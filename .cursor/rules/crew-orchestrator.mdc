@@ -54,7 +54,7 @@ On every conversation start, check for an active task:
 # Silent failure: session-start should not interrupt if no task is found
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
-elif TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null); then
+elif TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null); then
   export CREW_TASK_DIR="$TASK_DIR"
 else
   echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
@@ -84,6 +84,28 @@ Append-only event log. Never read for state — only write. Format:
 [YYYY-MM-DD HH:MM] TRANSITION: IMPLEMENTING → REVIEW
 ```
 
+### `METRIC:` lines (audit / cost / loop forensics)
+
+Optional append-only lines for **offline analysis only**. `crew status`, `resolve-task-dir.py`, and autopilot **must not** parse `METRIC:` for gates or transitions — **git/gh + SPEC.md remain the source of truth.**
+
+**Format** (same timestamp style as `TRANSITION`; seconds recommended for ordering):
+
+```
+[YYYY-MM-DD HH:MM:SS] METRIC: <event> [<key=value> ...]
+```
+
+**Suggested `event` names** (keep `a-z0-9_` for easy `rg`; other text is fine):
+
+| Event | Example | When |
+|--------|---------|------|
+| `implement_start` | `METRIC: implement_start mode=inline` | After `APPROVED → IMPLEMENTING`, before builder runs |
+| `implement_complete` | `METRIC: implement_complete tasks_passed=8 tasks_failed=0` | After builder success, before `IMPLEMENTING → REVIEW` |
+| `ralph_budget` | `METRIC: ralph_budget max_runs=24` | Optional, when recording Ralph `MAX_RUNS` |
+| `completion_protocol` | `METRIC: completion_protocol phase=typed_tests` | Optional milestone inside Completion Protocol |
+| `session` | `METRIC: session tool_calls=42` | Optional coarse counters from hooks or notes |
+
+**How to write:** `~/.agent/bin/log-metric.py "$TASK_DIR" <words...>` (shipped under `.agent/bin/`; symlinked to `~/.agent/bin/` via `install.sh`).
+
 ## Invariants
 
 - Never start implementation without an approved SPEC.md
@@ -97,4 +119,4 @@ Append-only event log. Never read for state — only write. Format:
 
 **Health check logic**: see `crew-health.mdc` — read it when `crew health` is invoked.
 
-Runs five checks inline: symlinks, hooks, jq availability, gh auth, and active SPEC.md presence. Auto-runs when `crew status` finds no active task.
+Runs health checks inline (see `crew-health.mdc`): symlinks, hooks, jq availability, gh auth, and active SPEC.md presence. Auto-runs when `crew status` finds no active task.

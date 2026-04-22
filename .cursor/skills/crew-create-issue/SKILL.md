@@ -20,10 +20,11 @@ Ask: **"Which repo should this be filed in?"** Accept `OWNER/REPO` format. If th
 ### Step 2: Auto-classify issue type
 
 Read the user's description and classify as **bug** or **feature**:
+
 - Bug: something broken, an error, unexpected behavior, regression, crash
 - Feature: something new — a capability, workflow, integration, enhancement
 
-Default to **bug** if ambiguous. Tell the user the classification: *"This reads as a **bug** (or **feature**). I'll use the bug/feature template."*
+Default to **bug** if ambiguous. Tell the user the classification: _"This reads as a **bug** (or **feature**). I'll use the bug/feature template."_
 
 ### Step 3: Check for repo templates
 
@@ -89,3 +90,12 @@ Next: `crew spec OWNER/REPO#N`
 - **Gap-filling is selective.** Don't ask about information the user already provided. Frame missing-info questions around what crew-specwriter needs.
 - **Pipeline handoff uses full reference**: `crew spec OWNER/REPO#N`, not just `#N`.
 - **No SESSION.md logging.**
+
+## Auto-clarity override
+
+Drop to plain language before:
+
+- Calling `gh issue create` — show the complete title, body, and target repo in plain language; GitHub issues are public and permanent
+- Any label or milestone assignment — confirm these are intentional, not inferred defaults
+
+Resume compressed mode after the issue URL is returned.

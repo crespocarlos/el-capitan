@@ -41,6 +41,7 @@ Structural rules the implementation must follow. Each constraint is verifiable b
 - [ ] [Constraint about API surface / return types — minimize fields, one array per consumer]
 - [ ] [Constraint about consistency with existing patterns — return values vs mutation, pure vs stateful]
 - [ ] [Constraint about deduplication — if two outputs share derived data, name the single function]
+- [ ] **Run discipline (optional):** After **three** failed verify attempts on the same task **Acceptance** command, **stop and report** in REPORT.md. Do **not** run the **full** repository test suite under one task unless **Acceptance** explicitly names that command. Prose-only **MAX_TOOL_ROUNDS** in Acceptance is allowed (not auto-enforced in v1).
 
 ## Tasks
 <!-- Fix tasks are scoped to the reproduction path. If a task touches a file not in the repro, split it or justify it. -->
@@ -49,7 +50,7 @@ Atomic units of work, organized by architectural boundary (one new function/modu
 - [ ] 1) [Task name]
   - **Change**: [What to do]
   - **Files**: [Files to create or modify]
-  - **Acceptance**: [How to verify this task alone]
+  - **Acceptance**: **Dry-run:** `[safe repro or dry-run]` passes. **Live:** `[narrow fix command]` passes after approval.
 
 - [ ] 2) [Task name]
   - **Change**: [What to do]

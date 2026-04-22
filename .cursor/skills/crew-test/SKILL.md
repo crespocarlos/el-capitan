@@ -2,6 +2,7 @@
 name: crew-test
 description: "Discover and run tests scoped to the current git diff. Trigger: 'crew test'."
 ---
+
 **Workflow**: build | **Stage**: test
 
 # Test Runner
@@ -18,7 +19,7 @@ description: "Discover and run tests scoped to the current git diff. Trigger: 'c
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
 else
-  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py) || exit 1
   export CREW_TASK_DIR="$TASK_DIR"
 fi
 ```
@@ -26,7 +27,7 @@ fi
 ### Step 2: Get changed files
 
 ```bash
-source ~/.agent/scripts/get-diff.sh --full
+source ~/.agent/bin/get-diff.sh --full
 ```
 
 If that exits 1 (no committed changes on branch), fall back:
@@ -73,6 +74,7 @@ Wait for tester-explorer to return its discovery summary.
 Extract test commands from the spec and from tester-explorer results using the following logic:
 
 **If `$TASK_DIR/SPEC.md` contains typed blocks** (`### Unit`, `### Integration`, `### E2E`, `### Validation`):
+
 - For each typed block present (in order: Unit → Integration → E2E → Validation), extract its `Command` field.
 - Skip blocks whose `Command` is `"none"` or empty.
 - Run each command in sequence:
@@ -83,6 +85,7 @@ Extract test commands from the spec and from tester-explorer results using the f
 - A block PASSES if exit code is 0; FAILS otherwise.
 
 **Backward-compat fallback (no typed blocks in SPEC.md):**
+
 - If tester-explorer returned `## Frameworks`, extract the `unit` layer command and run it.
 - If tester-explorer returned the old `## Test command` format, use that command directly.
 - If no command is found from any format, skip to Step 7 with WARN verdict.
@@ -90,9 +93,11 @@ Extract test commands from the spec and from tester-explorer results using the f
 ### Step 6: Runbook (scriptable only) + legacy SPEC guard
 
 **Deprecated `### Manual` under `## Tests`:** If `$TASK_DIR/SPEC.md` still contains `### Manual` under `## Tests`, print one line only:
+
 ```
 [crew-test] WARN: SPEC still uses ### Manual under ## Tests — migrate checks to Acceptance Criteria, typed ## Tests, and scriptable runbook.md. Skipping that block.
 ```
+
 Do not execute legacy Manual items.
 
 **`$TASK_DIR/runbook.md`:** If the file exists, process each top-level `## ` section in order, **except** `## Prerequisites` and `## Common Failures and Fixes`:
@@ -101,6 +106,8 @@ Do not execute legacy Manual items.
 - **Auto-execute** (same spirit as former manual `type: script`): section contains a fenced shell block and an inline `**Pass:**` or `Pass:` criterion → run the extracted command from repo root (`cd $(git rev-parse --show-toplevel) && …`); compare exit code/output to the criterion; report PASS/FAIL.
 
 If no `runbook.md`, skip silently (unless WARN above).
+
+Large transcripts attached to REPORT under `$TASK_DIR/artifacts/` are not re-ingested here — follow the paths cited in REPORT when debugging.
 
 ### Step 7: Runbook outline
 
@@ -115,6 +122,7 @@ Prefix output with `Runbook: $TASK_DIR/runbook.md` and `Sections:` for operator 
 ### Step 8: Verdict
 
 Determine verdict:
+
 - **PASS**: all typed blocks (or fallback) ran and exited 0; all auto-executed runbook scripted steps passed
 - **WARN**: no typed blocks, no extractable command from any format, and no `runbook.md` found; or no test files found
 - **FAIL**: any typed block or auto-executed runbook step exited non-zero
@@ -126,6 +134,7 @@ Output each test file discovered as:
 ```
 
 For each typed block run:
+
 ```
 [Unit] PASS/FAIL — <command>
 [Integration] PASS/FAIL — <command>
@@ -140,6 +149,13 @@ If verdict is WARN with no command: print `No test command found — skipping au
 Output: `Verdict: PASS` / `Verdict: WARN` / `Verdict: FAIL`
 
 **Conclusion:**
+
 - If PASS: "Tests passed. Run `crew review` to continue."
 - If WARN: "No tests found or no test command configured. Verify manually using the checklist above."
 - If FAIL: "Tests failed. Fix the failures before proceeding."
+
+## Auto-clarity override
+
+This skill only runs read-only test discovery and test execution commands. No irreversible operations — override not applicable.
+
+Exception: if a test command modifies shared state (e.g. writes to a production database) — surface this plainly before running and ask for confirmation.

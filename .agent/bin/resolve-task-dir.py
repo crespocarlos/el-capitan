@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """resolve-task-dir.py — resolve TASK_DIR for a repo+branch via .task-id reverse lookup.
 
+PROGRESS.md may contain optional `[ts] METRIC: ...` audit lines; they are never read here.
+
 By default reads remote + branch from the current git context.
 Use --remote / --branch to override (e.g. crew-cleanup resolving a different worktree's tasks).
 Use --all to return every matching dir (one per line) instead of the single best match.
@@ -9,13 +11,13 @@ Outputs the absolute TASK_DIR path to stdout, or empty string if no active task.
 Exits 1 if git state is unresolvable (no remote configured, not on a branch).
 
 Usage (hard — abort caller if git state is broken):
-  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py) || exit 1
 
 Usage (soft — skip session capture / optional logging):
-  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
+  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
 
 Usage (crew-cleanup — all matches for a specific worktree's remote+branch):
-  mapfile -t DIRS < <(~/.agent/tools/resolve-task-dir.py \\
+  mapfile -t DIRS < <(~/.agent/bin/resolve-task-dir.py \\
     --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all 2>/dev/null || true)
 """
 import argparse
@@ -119,7 +121,7 @@ def main():
         spec_status = read_spec_status(spec_path)
         if spec_status.lower() != "done":
             try:
-                date = created_at.strip('"')
+                date = created_at
             except Exception:
                 date = ""
             if best is None or date > best_date:
@@ -129,10 +131,7 @@ def main():
     if best is None:
         # All are DONE — pick most recent by created_at
         def sort_key(entry):
-            try:
-                return entry[0].strip('"')
-            except Exception:
-                return ""
+            return entry[0] or ""
 
         matches_sorted = sorted(matches, key=sort_key, reverse=True)
         best = matches_sorted[0][1]

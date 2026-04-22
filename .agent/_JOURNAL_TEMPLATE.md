@@ -2,50 +2,63 @@
 
 Reference for crew-log, crew-researcher, and crew-thinker. Entries are written to monthly files in `~/.agent/journal/YYYY-MM.md`.
 
-## Unified Schema
+The journal is a memory system. Each entry is indexed at two levels: the full entry (for context queries) and each individual bullet (for entity-filtered retrieval). This means the indexable unit is the bullet, not the entry — write bullets that are self-contained facts.
 
-Every entry has these shared fields:
+Three retrieval axes:
+
+- **Done** — actions taken, changes made, commits shipped
+- **Absorbed** — things read, learned, or understood
+- **Implemented** — concrete artifacts built: features, fixes, scripts, configs
+
+Sections with no content are omitted.
+
+## Entity tags
+
+Tag the entities each bullet mentions using `[type:value]` inline syntax. These are extracted as metadata and enable entity-filtered search alongside semantic search.
+
+| Tag | Example |
+|-----|---------|
+| `repo:` | `[repo:el-capitan]` |
+| `file:` | `[file:.agent/bin/get-diff.sh]` |
+| `dir:` | `[dir:.agent/bin/]` |
+| `tool:` | `[tool:dispatch_subagents.py]` |
+| `concept:` | `[concept:Mem0 memory extraction]` |
+| `branch:` | `[branch:feat/memory-redesign]` |
+| `pr:` | `[pr:42]` |
+
+For source URLs, cite inline in the bullet text: `(https://docs.letta.com/letta-code/memory)`. No fetch is triggered — these are plain strings.
+
+Query with entity filter: `journal-search.py query "..." --entity repo:el-capitan`
+
+## Schema
 
 ```markdown
 ---
 ## DATE — SUMMARY
 
-**Type:** engineering | learning | pattern
 **Tags:** #tag1 #tag2
-**What I learned:** transferable insight
-**Connections:** links to previous entries or patterns, or "none"
-**Open questions:** unresolved questions, or "none"
+**Repo:** repo-name  (omit if not repo-scoped)
+
+### Done
+- consolidated [tool:dispatch_subagents.py] and [tool:manage-worktree.sh] into [dir:.agent/bin/] for [repo:el-capitan]
+- fixed broken path in [file:.claude/hooks/mode-anchor.sh] — was calling [dir:.agent/tools/] which no longer exists
+
+### Absorbed
+- [concept:Mem0 memory extraction] — single-pass ADD-only, atomic fact indexing, entity linking for retrieval boosting
+- [concept:Letta MemFS] — git-backed hot/cold tier split, sleep-time reflection subagent (https://docs.letta.com/letta-code/memory)
+
+### Implemented
+- [file:.agent/bin/get-diff.sh] — resolves base ref (upstream → origin → HEAD~1), exports BASE + DIFF_SOURCE
+- [file:.agent/bin/dispatch_subagents.py] — fixed stderr reading, perspectives returns 0 on partial failure
+
+### Promoted
+- BSD tar ignores `**` glob patterns on macOS — use `--exclude=.env` not `--exclude=**/.env`
+- Gate `git fetch` on FETCH_HEAD age to avoid blocking short sessions
+
+### Open
+- unresolved questions or follow-ups (omit section if empty)
 ```
 
-### Engineering entries (crew-log)
+**`### Promoted`** is the hot tier. Bullets here are appended to `~/.agent/PROFILE.md` as durable facts that persist across months and are always in-context for every agent. Use for constraints, workarounds, and patterns worth carrying forward permanently — not session-specific observations.
 
-```markdown
-**Repo:** repo-name
-**Branch:** branch-name
-**Files touched:** path/to/file.ts, path/to/other.ts
-**What I did:** 1-2 sentences
-**Hypothesis:** (optional) — what you expected before starting
-**Decisions made:** key choices and why
-**What broke / surprised me:** errors, wrong assumptions, corrections
-**Outcome:** (optional) — fill after PR merges: did it work? any friction in review?
-**Promote to rules:** conventions worth remembering, or "none"
-```
-
-### Learning entries (crew-researcher, crew-thinker)
-
-```markdown
-**Source:** URL, PR, repo, or concept
-**Key idea:** single most important thing
-**Hypothesis:** (optional) — what you expected this to teach you before reading/session
-**Experiments queued:** things to build or try
-**Outcome:** (optional) — what it actually taught you vs expectation; fill after experimenting
-**Patterns emerging:** recurring themes across entries
-```
-
-### Pattern entries
-
-```markdown
-**Scope:** repo-name | global
-**Rule:** actionable one-liner
-**Context:** why this matters — what goes wrong without it, or what goes right with it
-```
+`### Raw session` (appended automatically by crew-log if SESSION.md is present) contains verbatim captured notes. Never summarize it; index it as-is.

@@ -160,11 +160,17 @@ The notification hook (`osascript`, iTerm2 focus) is macOS-only. On other system
 ## Installation
 
 ```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/crespocarlos/el-capitan/main/install.sh)"
+```
+
+Or clone first if you prefer to review before running:
+
+```bash
 git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
-`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/tools/` back to `~/el-capitan`. No files are copied — updates to the repo are reflected immediately.
+`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. No files are copied — updates to the repo are reflected immediately.
 
 **To update:**
 
@@ -372,7 +378,7 @@ Always-loaded context is kept minimal on purpose:
 | `crew-autopilot.mdc` | ~51 | Only when `crew autopilot` is invoked |
 | `crew-health.mdc` | ~88 | Only when `crew health` is invoked |
 
-Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Fallback dispatch blocks for degraded environments live in `.agent/scripts/` — not in agent files.
+Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Fallback dispatch blocks for degraded environments live in `.agent/bin/` — not in agent files.
 
 ---
 

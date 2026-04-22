@@ -21,17 +21,17 @@ Resolve the worktree and load repo patterns:
 
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
-cd "$(~/.agent/tools/manage-worktree.sh "$PR_BRANCH")"
+cd "$(~/.agent/bin/manage-worktree.sh "$PR_BRANCH")"
 
 REPO=$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
-~/.agent/tools/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/bin/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
 ```
 
 All subsequent steps happen in this worktree. Apply any recalled rules silently during evaluation.
 
 ### Step 2: Fetch review threads
 
-Fetch threads using the query at `~/.agent/queries/pr-review-threads.graphql` (includes pagination). Substitute `OWNER`, `REPO`, `PR_NUMBER`, and `CURSOR` before each request. Loop until `pageInfo.hasNextPage` is false, merging returned threads into the running list and updating the cursor to `endCursor` on each iteration.
+Fetch threads using the query at `~/.agent/bin/pr-review-threads.graphql` (includes pagination). Substitute `OWNER`, `REPO`, `PR_NUMBER`, and `CURSOR` before each request. Loop until `pageInfo.hasNextPage` is false, merging returned threads into the running list and updating the cursor to `endCursor` on each iteration.
 
 **Mandatory filter — apply before any further processing:**
 
@@ -128,7 +128,7 @@ Edits the user excluded are not applied. Threads the user excluded are left open
 After reporting, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 ```

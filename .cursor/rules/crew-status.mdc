@@ -14,7 +14,7 @@ Derive pipeline state from git and gh. PROGRESS.md is an audit trail, not the so
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
 else
-  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py) || exit 1
   export CREW_TASK_DIR="$TASK_DIR"
 fi
 ```
@@ -77,7 +77,7 @@ Changed: <git diff --stat output, or "none yet">
 
        gh api graphql \
          --field owner=OWNER --field repo=REPO --field branch=BRANCH \
-         -f query="$(cat ~/.agent/queries/open-prs-with-threads.graphql)" \
+         -f query="$(cat ~/.agent/bin/open-prs-with-threads.graphql)" \
          --jq '
            .data.repository.pullRequests.nodes[] |
            if .reviewThreads.pageInfo.hasNextPage then

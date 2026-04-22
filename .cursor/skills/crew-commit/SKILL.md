@@ -2,6 +2,7 @@
 name: crew-commit
 description: "Generate a semantic commit message and commit. Trigger: 'crew commit'."
 ---
+
 **Workflow**: build | **Stage**: commit
 
 # Semantic Commit
@@ -22,7 +23,7 @@ For intent context, find the active SPEC.md:
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
 else
-  TASK_DIR=$(~/.agent/tools/resolve-task-dir.py) || exit 1
+  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py) || exit 1
   export CREW_TASK_DIR="$TASK_DIR"
 fi
 ```
@@ -38,6 +39,7 @@ Single line. [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 
 Examples:
+
 ```
 feat(evals): convert feature duplication evaluators to createPrompt pattern
 fix(streams): handle empty feature array in duplication check
@@ -47,6 +49,7 @@ chore(deps): bump @kbn/inference-common to 1.4.0
 ```
 
 ### Types
+
 - `feat` — new feature or capability
 - `fix` — bug fix
 - `refactor` — code change that neither fixes a bug nor adds a feature
@@ -56,6 +59,7 @@ chore(deps): bump @kbn/inference-common to 1.4.0
 - `perf` — performance improvement
 
 ### Rules
+
 - Imperative mood ("add", not "added" or "adds")
 - No period at the end
 - Max 72 characters total
@@ -93,8 +97,17 @@ After a successful commit, log the transition using the already-resolved `$TASK_
 
 ```bash
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/tools/log-progress.py "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
+  ~/.agent/bin/log-progress.py "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
 fi
 ```
 
 > Next: run `crew open pr` to continue.
+
+## Auto-clarity override
+
+Drop to plain language before:
+
+- Presenting the commit message for confirmation — show the full message verbatim, not compressed; the user is approving the exact text that will be permanent in git history
+- Any `git commit --amend` operation — state clearly it rewrites the last commit
+
+Resume compressed mode after the user approves the message.

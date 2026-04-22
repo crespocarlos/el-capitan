@@ -3,7 +3,7 @@
 # Usage:
 #   gh api graphql \
 #     --field owner=OWNER --field repo=REPO --field branch=BRANCH \
-#     -f query="$(cat ~/.agent/queries/open-prs-with-threads.graphql)" \
+#     -f query="$(cat ~/.agent/bin/open-prs-with-threads.graphql)" \
 #     --jq '
 #       .data.repository.pullRequests.nodes[] |
 #       if .reviewThreads.pageInfo.hasNextPage then

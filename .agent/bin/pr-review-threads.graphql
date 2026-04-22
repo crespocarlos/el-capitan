@@ -2,7 +2,7 @@
 #
 # Usage:
 #   Step 1 (first page, no cursor):
-#     gh api graphql -f query="$(sed '/^#/d; /^$/d' ~/.agent/queries/pr-review-threads.graphql | head -n -10)" #       --field owner=OWNER --field repo=REPO --field pr=PR_NUMBER
+#     gh api graphql -f query="$(sed '/^#/d; /^$/d' ~/.agent/bin/pr-review-threads.graphql | head -n -10)" #       --field owner=OWNER --field repo=REPO --field pr=PR_NUMBER
 #
 #   Step 2+ (subsequent pages, after: CURSOR from previous pageInfo.endCursor):
 #     Same call, add: --field cursor=CURSOR and use the paginated variant below.

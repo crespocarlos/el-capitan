@@ -1,0 +1,85 @@
+name: sync-skills
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".cursor/skills/**"
+      - ".cursor/agents/**"
+      - ".cursor/rules/**"
+      - ".agent/bin/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".cursor/skills/**"
+      - ".cursor/agents/**"
+      - ".cursor/rules/**"
+
+jobs:
+  validate:
+    name: Validate symlinks and skill integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate canonical symlinks
+        run: |
+          ERRORS=0
+
+          # .claude/skills → ../.cursor/skills (cursor/skills is canonical)
+          if [ ! -L .claude/skills ]; then
+            echo "ERROR: .claude/skills is not a symlink"
+            ERRORS=$((ERRORS+1))
+          else
+            TARGET=$(readlink .claude/skills)
+            if [ "$TARGET" != "../.cursor/skills" ]; then
+              echo "ERROR: .claude/skills → $TARGET (expected ../.cursor/skills)"
+              ERRORS=$((ERRORS+1))
+            else
+              echo "✓ .claude/skills → ../.cursor/skills"
+            fi
+          fi
+
+          # .claude/agents → ../.cursor/agents (cursor/agents is canonical)
+          if [ ! -L .claude/agents ]; then
+            echo "ERROR: .claude/agents is not a symlink"
+            ERRORS=$((ERRORS+1))
+          else
+            TARGET=$(readlink .claude/agents)
+            if [ "$TARGET" != "../.cursor/agents" ]; then
+              echo "ERROR: .claude/agents → $TARGET (expected ../.cursor/agents)"
+              ERRORS=$((ERRORS+1))
+            else
+              echo "✓ .claude/agents → ../.cursor/agents"
+            fi
+          fi
+
+          if [ $ERRORS -gt 0 ]; then exit 1; fi
+
+      - name: Verify all skills have SKILL.md
+        run: |
+          ERRORS=0
+          for dir in .cursor/skills/*/; do
+            if [ ! -f "${dir}SKILL.md" ]; then
+              echo "ERROR: Missing SKILL.md in $dir"
+              ERRORS=$((ERRORS+1))
+            else
+              echo "✓ ${dir}SKILL.md"
+            fi
+          done
+          if [ $ERRORS -gt 0 ]; then exit 1; fi
+
+      - name: Verify all agents have frontmatter name field
+        run: |
+          ERRORS=0
+          for f in .cursor/agents/*.md; do
+            [ ! -f "$f" ] && continue
+            # Agents with frontmatter must have a name field
+            if head -1 "$f" | grep -q '^---'; then
+              if ! grep -q '^name:' "$f"; then
+                echo "WARN: $f has frontmatter but no name field"
+              fi
+            fi
+          done
+          # Warnings only — don't fail
+          exit 0

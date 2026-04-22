@@ -56,11 +56,19 @@ Can each design constraint be mechanically verified? "Code should be clean" is u
 ### Acceptance Criteria verifiability
 
 Each **Requirements** / **Non-regression** bullet should name **how** crew-builder can mark it `[x]` in Completion Protocol — e.g. a one-line `rg`/`pytest` command, or "read `path` and confirm …". Flag bullets that are purely subjective with no inspection path.
+
+**Dry-run vs Live in tasks:** If the spec uses **Dry-run:** / **Live:** in per-task **Acceptance**, each side should name a concrete command the builder can run from `WORK_DIR` (or mark Live as human-only and keep it out of Completion Protocol automation).
 ### Self-containment
 crew-builder reads SPEC.md and should not need to explore the codebase to understand what to do. Check that:
 - File paths are explicit (no "the relevant config file")
 - Patterns to follow are described or referenced with inline examples
 - Commands to run are complete (no "run the appropriate test")
+
+### Atomicity declarations
+When two or more consecutive tasks leave the system in a broken intermediate state if only the first is applied, they must be declared atomic in the spec. Check that: (a) atomic groups are explicitly marked with `> Tasks N and N+1 are atomic — commit together`, and (b) a task group that is NOT marked atomic could safely ship alone. Flag any group where the intermediate state would be broken but atomicity is not declared.
+
+### Documentation tasks
+When the spec renames a concept, adds or removes a pipeline stage, changes the ownership of a command, or alters a constraint stated in an existing README or doc file — there should be an explicit documentation task as the final task. Flag if the change is behavioral or structural and no doc task is present. You may waive this if no existing documentation mentions the affected concept.
 
 ### Test section presence
 crew-builder's completion protocol reads `## Tests` to run typed commands after tasks complete. If the spec has no `## Tests` section, the builder skips automated test execution in Completion Protocol.

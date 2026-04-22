@@ -3,6 +3,7 @@
 > This runbook is a **local agent artifact** — not committed to the repo.
 > **Scriptable only:** each numbered section must include a **fenced** shell or Python command and an explicit **`Pass:`** line so `crew test` can auto-run it.
 > **Do not** use this file for long manual QA matrices, human judgment, or UI "does it look right" checks — those belong in **Acceptance Criteria** / task **Acceptance** in SPEC.md.
+> Oversized command logs belong in `$TASK_DIR/artifacts/` with a short excerpt in REPORT.md (see `crew-builder` Completion Protocol).
 
 ## Prerequisites
 

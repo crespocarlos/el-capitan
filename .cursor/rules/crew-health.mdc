@@ -1,17 +1,17 @@
 ---
-description: "crew health — five-check health diagnostic for the el-capitan setup."
+description: "crew health — health diagnostic for the el-capitan setup."
 alwaysApply: false
 ---
 
 ## `crew health`
 
-Runs ten checks and outputs `[ok]` or `[fail]` for each. Run inline — no skill file.
+Runs checks (a–l) and outputs `[ok]` or `[fail]` for each. Run inline — no skill file.
 
 **Auto-run condition:** When `crew status` is invoked and `TASK_DIR` is empty (no active task resolved), run `crew health` automatically before reporting no active task.
 
 ### Checks
 
-Run all five checks sequentially and print each result:
+Run all checks below sequentially and print each result:
 
 **(a) Symlinks present**
 ```bash
@@ -59,7 +59,7 @@ git -C "$(dirname "$(realpath ~/.cursor/rules/crew-router.mdc)")" describe --tag
 
 **(g) Runtime scripts and templates**
 ```bash
-ls ~/.agent/scripts/dispatch-critics.sh    ~/.agent/scripts/dispatch-reviewers.sh    ~/.agent/.ralph-instructions-template    ~/.agent/queries/pr-review-threads.graphql    ~/.agent/_BUG_SPEC_TEMPLATE.md >/dev/null 2>&1
+ls ~/.agent/bin/dispatch_subagents.py    ~/.agent/.ralph-instructions-template    ~/.agent/bin/log-metric.py    ~/.agent/bin/check-spec-typed-tests.py    ~/.agent/bin/task-bundle.py    ~/.agent/bin/pr-review-threads.graphql    ~/.agent/_BUG_SPEC_TEMPLATE.md >/dev/null 2>&1
 ```
 - Exit 0 → `[ok] runtime files: found`
 - Exit non-0 → `[fail] runtime files: one or more missing — run install.sh`
@@ -95,6 +95,19 @@ b=$(awk '/DRIFT-GATE: completion-protocol-start/,/DRIFT-GATE: completion-protoco
 - Exit 0 → `[ok] completion-protocol drift: synced`
 - Exit non-0 → `[fail] completion-protocol drift: crew-builder.md vs .ralph-instructions-template — diff the DRIFT-GATE blocks and realign`
 
+
+**(l) SPEC typed tests — Command present**
+```bash
+REPO_ROOT=$(git -C "$(dirname "$(realpath ~/.cursor/rules/crew-router.mdc)")" rev-parse --show-toplevel 2>/dev/null)
+if [ -z "${TASK_DIR:-}" ] || [ ! -f "$TASK_DIR/SPEC.md" ]; then
+  echo "[skip] spec-typed-tests: no TASK_DIR or SPEC.md — export TASK_DIR or resolve task first"
+  exit 0
+fi
+python3 "$REPO_ROOT/.agent/bin/check-spec-typed-tests.py" "$TASK_DIR/SPEC.md"
+```
+- Exit 0 → `[ok] spec-typed-tests: typed blocks have commands` (or skip message from script)
+- Exit non-0 → `[fail] spec-typed-tests: malformed or empty Command under ## Tests`
+
 ### Output format
 
 ```
@@ -110,5 +123,6 @@ crew health
 [ok]      SemanticCodeSearch: docker image available
 [fail]    spec: no active SPEC.md for this repo+branch — run crew spec to start one
 [unknown] version: no tags found
+[ok]      spec-typed-tests: typed blocks have commands
 ───────────
 ```

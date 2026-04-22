@@ -2,6 +2,7 @@
 name: crew-open-pr
 description: "Push the current branch and open a PR with a generated description. Trigger: 'crew open pr'."
 ---
+
 **Workflow**: build | **Stage**: open-pr
 
 # Open Pull Request
@@ -88,7 +89,7 @@ After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (
 ```bash
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
-elif TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null); then
+elif TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null); then
   export CREW_TASK_DIR="$TASK_DIR"
 else
   echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
@@ -103,7 +104,7 @@ fi
 Also log the transition:
 
 ```bash
-~/.agent/tools/log-progress.py "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
+~/.agent/bin/log-progress.py "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
 ```
 
 Then suggest: "Want to journal this session?"
@@ -113,3 +114,13 @@ Then suggest: "Want to journal this session?"
 - **Derive, don't invent.** The summary comes from SPEC.md and commits, not from re-reading the code.
 - **Always ask before creating.** Show the title + description and wait for "looks good" — same pattern as crew-commit.
 - **Always draft.** PRs are opened as drafts. Mark ready manually.
+
+## Auto-clarity override
+
+Drop to plain language before:
+
+- Running `git push` — state the branch name, remote, and whether this is a force push; force pushes rewrite remote history
+- Running `gh pr create` — show the full PR title, description, base branch, and target repo; PRs are public and trigger CI immediately
+- Any fork workflow where the target repo differs from origin — call out the fork explicitly to avoid misfiling the PR
+
+Resume compressed mode after the PR URL is returned.

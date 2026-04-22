@@ -37,11 +37,11 @@ DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}'
 
 Show all worktrees with their status:
 
-| # | Path | Branch | Status |
-|---|------|--------|--------|
-| 1 | /path/to/worktree-a | feature/xyz | gone |
-| 2 | /path/to/worktree-b | chore/cleanup | merged |
-| 3 | /path/to/worktree-c | feature/active | active |
+| #   | Path                | Branch         | Status |
+| --- | ------------------- | -------------- | ------ |
+| 1   | /path/to/worktree-a | feature/xyz    | gone   |
+| 2   | /path/to/worktree-b | chore/cleanup  | merged |
+| 3   | /path/to/worktree-c | feature/active | active |
 
 If no stale worktrees (gone or merged), say "All worktrees are active. Nothing to clean up." and stop.
 
@@ -68,7 +68,7 @@ WORKTREE_BRANCH=<branch>
 MATCHING_DIRS=()
 while IFS= read -r dir; do
   [ -n "$dir" ] && MATCHING_DIRS+=("$dir")
-done < <(~/.agent/tools/resolve-task-dir.py   --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all 2>/dev/null || true)
+done < <(~/.agent/bin/resolve-task-dir.py   --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all 2>/dev/null || true)
 
 if [ "${#MATCHING_DIRS[@]}" -eq 0 ]; then
   echo "No task directories found for branch '$WORKTREE_BRANCH'."
@@ -102,3 +102,12 @@ List any that failed removal (e.g. uncommitted changes in the worktree — `git 
 - Never remove the main worktree
 - Always confirm before removing — never silent
 - If a worktree has uncommitted changes, warn the user and skip unless they confirm with `--force`
+
+## Auto-clarity override
+
+Drop to plain language before:
+
+- Running `git worktree remove` on any worktree — list all worktrees to be removed plainly (path + branch) before executing; this cannot be undone without re-checking out the branch
+- Any worktree with uncommitted changes — state the files at risk explicitly
+
+Resume compressed mode after confirmation.

@@ -9,6 +9,7 @@ TELEMETRY_DIR="$HOME/.agent/telemetry"
 mkdir -p "$TELEMETRY_DIR" || exit 0
 
 LOG_FILE="$TELEMETRY_DIR/$(date +%Y-%m-%d).jsonl"
+# NOTE: session-start.sh / session-end.sh also write to this directory.
 INPUT=$(cat) || exit 0
 
 if command -v jq >/dev/null 2>&1; then

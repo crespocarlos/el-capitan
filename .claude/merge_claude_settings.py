@@ -28,9 +28,14 @@ def main() -> None:
         if event_type not in dest_hooks:
             dest_hooks[event_type] = entries
         else:
-            existing_matchers = {e.get("matcher", "") for e in dest_hooks[event_type]}
+            # Index by matcher; replace existing entries so re-running install
+            # picks up updated hook commands rather than leaving stale ones.
+            matcher_index = {e.get("matcher", ""): i for i, e in enumerate(dest_hooks[event_type])}
             for entry in entries:
-                if entry.get("matcher", "") not in existing_matchers:
+                matcher = entry.get("matcher", "")
+                if matcher in matcher_index:
+                    dest_hooks[event_type][matcher_index[matcher]] = entry
+                else:
                     dest_hooks[event_type].append(entry)
     dest["hooks"] = dest_hooks
     for k, v in src.items():

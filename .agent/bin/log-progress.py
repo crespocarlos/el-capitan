@@ -25,7 +25,9 @@ def main():
     task_dir = args.task_dir
     transition = args.transition
 
-    os.makedirs(task_dir, exist_ok=True)
+    if not os.path.isdir(task_dir):
+        print(f"log-progress: task_dir does not exist: {task_dir}", file=sys.stderr)
+        sys.exit(1)
 
     wf = os.environ.get("CREW_WORKFLOW", "")
     crew = os.environ.get("CREW_MEMBER", "")
@@ -44,7 +46,7 @@ def main():
     line = f"[{timestamp}] TRANSITION: {transition}{suffix}\n"
 
     progress_path = os.path.join(task_dir, "PROGRESS.md")
-    with open(progress_path, "a") as f:
+    with open(progress_path, "a", encoding="utf-8") as f:
         f.write(line)
 
 

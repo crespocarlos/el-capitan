@@ -32,8 +32,8 @@ Fetch **only metadata** first — file list, sizes, change types. Never load the
 ### Self-review
 
 ```bash
-source ~/.agent/scripts/get-diff.sh --stat        # sets DIFF_SOURCE, BASE; prints stat
-source ~/.agent/scripts/get-diff.sh --name-status # file list for signal detection
+source ~/.agent/bin/get-diff.sh --stat        # sets DIFF_SOURCE, BASE; prints stat
+source ~/.agent/bin/get-diff.sh --name-status # file list for signal detection
 ```
 
 `get-diff.sh` resolves the base ref automatically (`upstream/main` preferred for forks, falls back to `origin/main`). It uses `--fork-point` to find the exact branch-off point, so it won't walk back into upstream changes that were merged after the branch was cut.
@@ -85,12 +85,12 @@ Only now, fetch the diff — and only for files in the review file set:
 
 **Self-review (full):**
 ```bash
-source ~/.agent/scripts/get-diff.sh --full
+source ~/.agent/bin/get-diff.sh --full
 ```
 
 **Self-review (spine-focused, >5000 lines):**
 ```bash
-source ~/.agent/scripts/get-diff.sh --full -- <file1> <file2> ...
+source ~/.agent/bin/get-diff.sh --full -- <file1> <file2> ...
 ```
 
 **PR review (≤1500 lines):**
@@ -285,7 +285,7 @@ All Agent tool calls go in a single message for parallel dispatch. If a reviewer
 
 ### Degraded fallback (no Task tool, no Agent tool)
 
-Run `~/.agent/scripts/dispatch-reviewers.sh` with `TASK_DIR`, `REPO_ROOT`, `REVIEW_MODE`, and `active_reviewers` set. The script handles parallel reviewer dispatch via `claude -p`.
+Run `~/.agent/bin/dispatch_subagents.py --type reviewers` with `TASK_DIR`, `REPO_ROOT`, `REVIEW_MODE`, and `DIFF_CONTENT` set. The script handles parallel reviewer dispatch via `claude -p`.
 
 If `claude` is not on PATH: run reviewers inline sequentially (ordering bias; last resort).
 
@@ -371,7 +371,7 @@ For example, an SRE team could add a `reviewer-observability.md` persona that ac
 ```bash
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
-elif TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null); then
+elif TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null); then
   export CREW_TASK_DIR="$TASK_DIR"
 else
   TASK_DIR=""
@@ -386,9 +386,9 @@ fi
 
 ```bash
 # If PASS or WARN:
-~/.agent/tools/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
+~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
 # If BLOCK:
-~/.agent/tools/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
+~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
 ```
 
 Skip this section entirely for PR review and spec review modes — pipeline integration only applies to self-review.

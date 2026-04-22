@@ -15,7 +15,7 @@ Store the response as `<reason>`.
 ### Step 2: Resolve task directory
 
 ```bash
-TASK_DIR=$(~/.agent/tools/resolve-task-dir.py 2>/dev/null || echo "")
+TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
 ```
 
 If `$TASK_DIR` is empty, no active task was found for this repo+branch — proceed without task directory operations.
@@ -52,7 +52,6 @@ Write `$TASK_DIR/SESSION.md` with the following content:
 **Reason abandoned:** <reason>
 
 ## Notes
-
 ```
 
 Use the current date (`date '+%Y-%m-%d'`) and `git branch --show-current` for the values.
@@ -60,9 +59,19 @@ Use the current date (`date '+%Y-%m-%d'`) and `git branch --show-current` for th
 ### Step 6: Confirm
 
 Output:
+
 ```
 Task abandoned.
 - Reason logged to PROGRESS.md
 - Stash: <stashed / nothing to stash>
 - SESSION.md stub written to <path>
 ```
+
+## Auto-clarity override
+
+Drop to plain language (regardless of active communication mode) before:
+
+- Executing `git stash` — state clearly what will be stashed and that it can be recovered with `git stash pop`
+- Writing `ABANDONED` to PROGRESS.md — this is permanent; confirm the reason is correct before appending
+
+Resume compressed mode after the user acknowledges.

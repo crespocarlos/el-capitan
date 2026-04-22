@@ -41,15 +41,15 @@ If the profile is blank or missing, ask two targeted questions before proceeding
 Load relevant journal context — use semantic search instead of reading full files:
 ```bash
 # Overview of what's stored
-~/.agent/tools/journal-search.py summary 2>/dev/null || true
+~/.agent/bin/journal-search.py summary 2>/dev/null || true
 
 # Topic-specific entries — fetch 20 with tiered output for cross-session pattern recognition
-~/.agent/tools/journal-search.py query "<current topic or trigger>" --top 20 --tiered 2>/dev/null || true
+~/.agent/bin/journal-search.py query "<current topic or trigger>" --top 20 --tiered 2>/dev/null || true
 ```
 
 If `journal-search` is unavailable (or `--tiered` flag is not recognized), fall back:
 ```bash
-~/.agent/tools/journal-search.py query "<current topic or trigger>" --top 5 2>/dev/null || \
+~/.agent/bin/journal-search.py query "<current topic or trigger>" --top 5 2>/dev/null || \
   ls ~/.agent/journal/*.md 2>/dev/null | tail -1 | xargs cat
 ```
 
@@ -105,7 +105,7 @@ Same prompt structure, dispatch via Agent tool by name.
 
 #### Degraded fallback (no Task tool, no Agent tool)
 
-If subagent dispatch fails: run the critique inline yourself. Evaluate the draft across the same five lenses (quality, gaps, actionability, coherence, challenge) and produce critique items tagged Critical / Important / Consider. **Round 3 is never skipped** — even with inline critique, proceed to revision.
+If subagent dispatch fails: first try `dispatch.py --type perspectives` (requires `TOPIC`, `JOURNAL_CONTEXT_FULL`, `JOURNAL_CONTEXT_TOP5` env vars set). If that also fails: run the critique inline yourself. Evaluate the draft across the same five lenses (quality, gaps, actionability, coherence, challenge) and produce critique items tagged Critical / Important / Consider. **Round 3 is never skipped** — even with inline critique, proceed to revision.
 
 ### Round 3: Revise
 
@@ -195,9 +195,9 @@ mkdir -p ~/.agent/journal
 
 Write a learning entry following the schema in `~/.agent/_JOURNAL_TEMPLATE.md` (use the **Learning entries** format). Replace all placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date. Append to `$JOURNAL_FILE`.
 
-After writing, index the entry if `~/.agent/tools/journal-search.py` is available:
+After writing, index the entry if `~/.agent/bin/journal-search.py` is available:
 ```bash
-~/.agent/tools/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
+~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
 ```
 
 If "Patterns emerging" has flagged a theme 3+ times, note it:

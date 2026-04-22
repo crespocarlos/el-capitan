@@ -37,8 +37,9 @@ When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 1. Review each requirement under **Acceptance Criteria > Requirements** — mark `[x]` only if satisfied (each bullet should be **verifiable**: named command, `rg`/`pytest` line, or explicit file inspection stated in the criterion).
 2. Review each item under **Acceptance Criteria > Non-regression** — mark `[x]` if verified the same way.
 3. Review each item under **Design Constraints** — mark `[x]` if the implementation conforms.
-4. **Typed tests (`## Tests`):** If `## Tests` exists, for each subsection in order **Unit → Integration → E2E → Validation** that is present, read its `**Command**:` (or `Command:`). Skip if the subsection is missing, if Command is `"none"`, or if Command is empty. For each retained command run `cd <WORK_DIR> && <command>`. On **first non-zero exit**: write `**Test Results: FAIL**` under `### Test Results` in REPORT.md with up to 30 lines of output, set `## Status` to `IMPLEMENTING` (two lines), and **stop** — do not set done. If all such commands exit 0: write `**Test Results: PASS**` under `### Test Results` in REPORT.md. If no runnable command exists in any subsection: skip this step and continue.
-5. Set status to **done** (two lines only):
+4. **Typed tests (`## Tests`):** If `## Tests` exists, for each subsection in order **Unit → Integration → E2E → Validation** that is present, read its `**Command**:` (or `Command:`). Skip if the subsection is missing, if Command is `"none"`, or if Command is empty. For each retained command run `cd <WORK_DIR> && <command>` and capture combined stdout/stderr. If the capture exceeds **80 lines**, create `$TASK_DIR/artifacts/` if needed, write the full capture to `$TASK_DIR/artifacts/tests-<subsection>.log`, and in REPORT.md include **at most 40 lines** of excerpt plus one line with the artifact path. On **first non-zero exit**: write `**Test Results: FAIL**` under `### Test Results` in REPORT.md with the excerpt (or full output if ≤80 lines), set `## Status` to `IMPLEMENTING` (two lines), and **stop** — do not set done. If all such commands exit 0: write `**Test Results: PASS**` under `### Test Results` in REPORT.md (following the same excerpt rule when >80 lines). If no runnable command exists in any subsection: skip this step and continue.
+5. **Optional digest (`REPORT.digest.md`):** If environment variable `CREW_REPORT_DIGEST=1` is set, write a **≤25 line** human skim to `$TASK_DIR/REPORT.digest.md` (no secrets, no tokens). Omit when unset. Canonical detail remains in `REPORT.md`.
+6. Set status to **done** (two lines only):
 
    ```
    ## Status
@@ -75,7 +76,8 @@ MAX_RUNS=$(( TASK_UNCHECKED_IN_SECTION * 2 + 10 ))
 [ "$MAX_RUNS" -lt 12 ] && MAX_RUNS=12
 echo "[crew-builder] MAX_RUNS=$MAX_RUNS (tasks=$TASK_UNCHECKED_IN_SECTION)"
 NVM_PREAMBLE=$([ -f .nvmrc ] && echo 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use' || echo '')
-sed -e "s|WORK_DIR|$WORK_DIR|g"     -e "s|NVM_PREAMBLE|$NVM_PREAMBLE|g"     ~/.agent/.ralph-instructions-template > "$TASK_DIR/.ralph-instructions"
+sed -e "s|WORK_DIR|$WORK_DIR|g" -e "s|NVM_PREAMBLE|$NVM_PREAMBLE|g" -e "s|MAX_RUNS|$MAX_RUNS|g" \
+  "$HOME/.agent/.ralph-instructions-template" > "$TASK_DIR/.ralph-instructions"
 
 if rg -nq '\b(WORK_DIR|NVM_PREAMBLE|MAX_RUNS)\b' "$TASK_DIR/.ralph-instructions"; then
   echo "[crew-builder] residual placeholder in $TASK_DIR/.ralph-instructions — aborting" >&2
@@ -150,7 +152,12 @@ N/A
 
 ### Errors (if any)
 <details of what failed and why>
+
+### Structural observations (if any)
+<If any task implementation revealed an obvious structural fit problem — a function with 4+ parameters, a file owning 3+ responsibilities, or 30+ lines added to an already-large function — note it here in 1–2 sentences. Do not restructure beyond what Design Constraints authorize; flag it so the spec author can decide. Omit this section entirely if nothing noteworthy was found.>
 ```
+
+**Artifacts / bundle:** Oversized command transcripts (Completion Protocol) go under `$TASK_DIR/artifacts/`. Optional: `~/.agent/bin/task-bundle.py` writes `bundle-manifest.txt`; set `CREW_TASK_BUNDLE_TAR=1` for a small tar (excludes `.env`, `*.pem`, `id_rsa`).
 
 **Always write `REPORT.md` before returning.** It is the durable signal — if the session ends unexpectedly, the orchestrator detects completion from this file. The returned message is a convenience; the file is the contract.
 
@@ -165,3 +172,4 @@ N/A
 - If a recalled pattern conflicts with SPEC.md instructions, SPEC.md wins.
 - **Before running `tsc` or any type-check command, check if `node_modules` is a symlink** (`test -L "$WORK_DIR/node_modules"`). If it is, skip — `tsc` follows the symlink and emits `.d.ts` in the main repo. Note it as skipped in the report.
 - **Between-task signal is mandatory.** `[N/M] <task name>...` before each task. Only permitted mid-execution output.
+- **Run discipline:** After **three** failed **Acceptance** runs for the same task, stop and report. Do **not** run the **full** repository test suite on a single task unless that task's **Acceptance** explicitly names that command.

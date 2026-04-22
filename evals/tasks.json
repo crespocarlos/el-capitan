@@ -1,0 +1,25 @@
+{
+  "description": "Five representative el-capitan feature requests. Each is a realistic task description that should produce a well-structured SPEC.md when processed by crew-specwriter.",
+  "tasks": [
+    {
+      "id": "t1",
+      "description": "Add a `crew status` command that prints the current pipeline state (spec/implement/review/commit/pr-open/done) derived from git and gh state, with a one-line summary of the active task title and branch."
+    },
+    {
+      "id": "t2",
+      "description": "The `resolve-task-dir.py` tool currently scans all task directories on every call. Add an in-process cache that stores the resolved path for the current repo+branch for the lifetime of a shell session, so repeated calls within one session skip the filesystem scan."
+    },
+    {
+      "id": "t3",
+      "description": "When `crew open pr` runs on a fork, it currently fails silently if the upstream repo has branch protection rules that block direct pushes. Add detection of the 403 error from gh pr create and surface a clear message with instructions to fork the branch and re-run."
+    },
+    {
+      "id": "t4",
+      "description": "Add a `crew changelog` command that generates a CHANGELOG entry from the commits between the current branch HEAD and the merge base, grouped by type (feat, fix, chore, docs) and formatted as markdown. Write it to CHANGELOG.md under a new version header."
+    },
+    {
+      "id": "t5",
+      "description": "The dispatch.py script currently times out silently when a claude -p subprocess hangs. Add a per-persona timeout of 120 seconds after which the process is killed and the persona is added to the failures list with a 'timeout' label."
+    }
+  ]
+}

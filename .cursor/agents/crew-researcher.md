@@ -14,9 +14,9 @@ Read the user profile for personalization:
 cat ~/.agent/PROFILE.md
 ```
 
-If `~/.agent/tools/journal-search.py` is available, search for related past learnings:
+If `~/.agent/bin/journal-search.py` is available, search for related past learnings:
 ```bash
-~/.agent/tools/journal-search.py query "<topic being learned>" --top 3 2>/dev/null || true
+~/.agent/bin/journal-search.py query "<topic being learned>" --top 3 2>/dev/null || true
 ```
 
 Use this context to tailor the teaching — skip what the user already knows, go deeper where they have existing knowledge, and connect new content to past learnings.
@@ -91,9 +91,9 @@ mkdir -p ~/.agent/journal
 
 Write a learning entry following the schema in `~/.agent/_JOURNAL_TEMPLATE.md` (use the **Learning entries** format). Replace all placeholders with actual content. Use `$(date +%Y-%m-%d)` for the date. Append to `$JOURNAL_FILE`.
 
-Index the entry if `~/.agent/tools/journal-search.py` is available:
+Index the entry if `~/.agent/bin/journal-search.py` is available:
 ```bash
-~/.agent/tools/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
+~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null || true
 ```
 
 ### Offer creative pipeline

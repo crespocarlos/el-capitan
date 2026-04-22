@@ -8,7 +8,7 @@ All data stays on your machine.
 Usage:
     journal-search index                              # Index all entries
     journal-search add <file> --entry <date>          # Index a single entry
-    journal-search query "<text>" [--top N]           # Search by meaning
+    journal-search query "<text>" [--top N] [--entity type:value]  # Search by meaning
     journal-search summary                            # Overview of what's stored
     journal-search auto-recall <repo> [--top N]       # Recall patterns for a repo
 """
@@ -23,6 +23,7 @@ from pathlib import Path
 JOURNAL_DIR = Path.home() / ".agent" / "journal"
 VECTORSTORE_DIR = Path.home() / ".agent" / "vectorstore"
 COLLECTION_NAME = "journal"
+BULLETS_COLLECTION_NAME = "journal_bullets"
 EMBEDDING_MODEL = os.environ.get("JOURNAL_EMBED_MODEL", "nomic-embed-text")
 
 
@@ -44,21 +45,11 @@ def parse_entries(filepath: Path) -> list[dict]:
         slug = hashlib.md5(summary.encode()).hexdigest()[:8]
         entry_id = f"{filepath.stem}:{date}:{slug}"
 
-        type_match = re.search(r"\*\*Type:\*\*\s*(\w+)", raw)
-        entry_type = type_match.group(1) if type_match else None
-
         repo_match = re.search(r"\*\*Repo:\*\*\s*(\S+)", raw)
         entry_repo = repo_match.group(1) if repo_match else None
 
         entry_tags = re.findall(r"#([\w-]+)", raw)
-
-        connections = []
-        conn_match = re.search(r"\*\*Connections:\*\*(.+?)(?=\n\*\*|\n##|\Z)", raw, re.DOTALL)
-        if conn_match:
-            for line in conn_match.group(1).strip().split("\n"):
-                line = line.strip().lstrip("- ")
-                if line:
-                    connections.append(line)
+        entry_entities = re.findall(r"\[(\w+:[^\]]+)\]", raw)
 
         entries.append({
             "id": entry_id,
@@ -66,12 +57,30 @@ def parse_entries(filepath: Path) -> list[dict]:
             "summary": summary,
             "file": str(filepath),
             "content": raw,
-            "type": entry_type,
             "repo": entry_repo,
             "tags": entry_tags,
-            "connections": connections,
+            "entities": entry_entities,
         })
     return entries
+
+
+def extract_bullets(raw: str) -> list[dict]:
+    """Extract individual bullet facts from Done/Absorbed/Implemented/Promoted sections."""
+    bullets = []
+    section_pattern = re.compile(r"^### (Done|Absorbed|Implemented|Promoted)\s*$", re.MULTILINE)
+    for m in section_pattern.finditer(raw):
+        section = m.group(1)
+        start = m.end()
+        next_m = re.search(r"^### |^## |^---", raw[start:], re.MULTILINE)
+        block_end = start + next_m.start() if next_m else len(raw)
+        block = raw[start:block_end]
+        for line in block.split("\n"):
+            line = line.strip()
+            if line.startswith("- "):
+                text = line[2:].strip()
+                entities = re.findall(r"\[(\w+:[^\]]+)\]", text)
+                bullets.append({"text": text, "section": section, "entities": entities})
+    return bullets
 
 
 def get_collection():
@@ -100,6 +109,29 @@ def get_collection():
     )
 
 
+def get_bullets_collection():
+    """Get or create the ChromaDB bullets collection for entity-filtered retrieval."""
+    try:
+        import chromadb
+    except ImportError:
+        print("chromadb not installed. Run: pip install chromadb", file=sys.stderr)
+        sys.exit(1)
+    try:
+        from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
+    except ImportError:
+        print("chromadb version too old. Run: pip install -U chromadb", file=sys.stderr)
+        sys.exit(1)
+    embedding_fn = OllamaEmbeddingFunction(
+        model_name=EMBEDDING_MODEL,
+        url="http://localhost:11434/api/embeddings",
+    )
+    client = chromadb.PersistentClient(path=str(VECTORSTORE_DIR))
+    return client.get_or_create_collection(
+        name=BULLETS_COLLECTION_NAME,
+        embedding_function=embedding_fn,
+    )
+
+
 def _build_metadata(entry: dict) -> dict:
     """Build ChromaDB metadata dict from a parsed entry."""
     meta = {
@@ -107,12 +139,12 @@ def _build_metadata(entry: dict) -> dict:
         "summary": entry["summary"],
         "file": entry["file"],
     }
-    if entry.get("type"):
-        meta["type"] = entry["type"]
     if entry.get("repo"):
         meta["repo"] = entry["repo"]
     if entry.get("tags"):
         meta["tags"] = ",".join(entry["tags"])
+    if entry.get("entities"):
+        meta["entities"] = ",".join(entry["entities"])
     return meta
 
 
@@ -144,8 +176,23 @@ def cmd_index(args):
     collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
     print(f"Indexed {len(all_entries)} entries from {len(files)} files.")
 
-
-def cmd_add(args):
+    # Index individual bullets for entity-filtered retrieval
+    bullet_ids, bullet_docs, bullet_metas = [], [], []
+    for entry in all_entries:
+        for i, b in enumerate(extract_bullets(entry["content"])):
+            bullet_ids.append(f"{entry['id']}:bullet:{i}")
+            bullet_docs.append(b["text"])
+            bullet_metas.append({
+                "date": entry["date"],
+                "summary": entry["summary"],
+                "file": entry["file"],
+                "section": b["section"],
+                "entities": ",".join(b["entities"]) if b["entities"] else "",
+                "repo": entry.get("repo") or "",
+            })
+    if bullet_ids:
+        get_bullets_collection().upsert(ids=bullet_ids, documents=bullet_docs, metadatas=bullet_metas)
+        print(f"Indexed {len(bullet_ids)} bullets.")
     """Index a single entry from a journal file."""
     filepath = Path(args.file)
     if not filepath.exists():
@@ -176,50 +223,28 @@ def cmd_add(args):
     for entry in entries:
         print(f"Indexed: [{entry['date']}] {entry['summary']}")
 
-
-def expand_connections(top_entries: list[dict], all_entries: list[dict],
-                       max_hops: int = 2, max_additions: int = 10) -> list[dict]:
-    """Follow Connections references from top entries to find related entries.
-
-    Matches connection lines against all_entries by date + summary substring.
-    Returns additional entries not already in top_entries, up to max_additions.
-    """
-    top_ids = {e["id"] for e in top_entries}
-    seen = set(top_ids)
-    additions = []
-
-    frontier = list(top_entries)
-    for hop in range(max_hops):
-        next_frontier = []
-        for entry in frontier:
-            for conn_line in entry.get("connections", []):
-                date_match = re.search(r"(\d{4}-\d{2}-\d{2})", conn_line)
-                if not date_match:
-                    continue
-                conn_date = date_match.group(1)
-                rest = conn_line[date_match.end():].strip().lstrip("—-– ").strip()
-
-                for candidate in all_entries:
-                    if candidate["id"] in seen:
-                        continue
-                    if candidate["date"] != conn_date:
-                        continue
-                    if rest and rest.lower()[:30] in candidate["summary"].lower():
-                        seen.add(candidate["id"])
-                        additions.append(candidate)
-                        next_frontier.append(candidate)
-                        if len(additions) >= max_additions:
-                            return additions
-        frontier = next_frontier
-        if not frontier:
-            break
-    return additions
+    # Index bullets for entity-filtered retrieval
+    bullet_ids, bullet_docs, bullet_metas = [], [], []
+    for entry in entries:
+        for i, b in enumerate(extract_bullets(entry["content"])):
+            bullet_ids.append(f"{entry['id']}:bullet:{i}")
+            bullet_docs.append(b["text"])
+            bullet_metas.append({
+                "date": entry["date"],
+                "summary": entry["summary"],
+                "file": entry["file"],
+                "section": b["section"],
+                "entities": ",".join(b["entities"]) if b["entities"] else "",
+                "repo": entry.get("repo") or "",
+            })
+    if bullet_ids:
+        get_bullets_collection().upsert(ids=bullet_ids, documents=bullet_docs, metadatas=bullet_metas)
 
 
-def boost_results(results: dict, repo: str = None, tags: list = None, entry_type: str = None) -> dict:
+def boost_results(results: dict, repo: str = None, tags: list = None) -> dict:
     """Re-rank vector search results by applying metadata score boosts.
 
-    Boost factors: repo match +0.15, tag overlap +0.05/tag (max +0.15), type match +0.05.
+    Boost factors: repo match +0.15, tag overlap +0.05/tag (max +0.15).
     Modifies distances in-place and re-sorts all parallel arrays.
     """
     if not results["ids"][0]:
@@ -238,8 +263,6 @@ def boost_results(results: dict, repo: str = None, tags: list = None, entry_type
             stored_tags = set(metadata["tags"].split(","))
             overlap = len(stored_tags & set(tags))
             boost += min(overlap * 0.05, 0.15)
-        if entry_type and metadata.get("type", "").lower() == entry_type.lower():
-            boost += 0.05
         distances[i] = max(0, distances[i] - boost)
 
     indices = sorted(range(len(ids)), key=lambda i: distances[i])
@@ -269,13 +292,11 @@ def format_tiered(entries: list[dict], top_full: int = 5, mid_summary: int = 10)
         elif i < top_full + mid_summary:
             lines.append(f"\n--- [{entry['date']}] {entry['summary']}{score_str} ---")
             content = entry["content"]
-            for section_label in ["Key idea", "Connections", "Patterns emerging"]:
-                pattern = rf"\*\*{section_label}:\*\*(.+?)(?=\n\*\*|\n##|\Z)"
-                match = re.search(pattern, content, re.DOTALL)
-                if match:
-                    text = match.group(1).strip()
-                    lines.append(f"  **{section_label}:** {text[:200]}")
-            if not any(re.search(rf"\*\*{s}:\*\*", content) for s in ["Key idea", "Connections", "Patterns emerging"]):
+            for section in ["Done", "Absorbed", "Implemented"]:
+                m = re.search(rf"### {section}\s*\n(- .+)", content)
+                if m:
+                    lines.append(f"  **{section}:** {m.group(1)[:200]}")
+            if not re.search(r"### (Done|Absorbed|Implemented)", content):
                 content_lines = content.strip().split("\n")
                 for line in content_lines[1:4]:
                     lines.append(f"  {line.strip()}")
@@ -286,7 +307,33 @@ def format_tiered(entries: list[dict], top_full: int = 5, mid_summary: int = 10)
 
 
 def cmd_query(args):
-    """Search journal entries by semantic similarity."""
+    """Search journal entries by semantic similarity, with optional entity filtering."""
+    if getattr(args, "entity", None):
+        # Entity-filtered search over the bullets collection
+        try:
+            collection = get_bullets_collection()
+            results = collection.query(
+                query_texts=[args.text],
+                n_results=args.top,
+                where={"entities": {"$contains": args.entity}},
+            )
+        except Exception as e:
+            print(f"Entity search failed: {e}", file=sys.stderr)
+            sys.exit(1)
+        if not results["ids"][0]:
+            print(f"No bullets found with entity tag '{args.entity}'.")
+            return
+        for i, (doc, meta, distance) in enumerate(zip(
+            results["documents"][0],
+            results["metadatas"][0],
+            results["distances"][0],
+        )):
+            score = max(0, 1 - distance)
+            print(f"\n[{i+1}] ({meta['section']}) [{meta['date']}] {meta['summary']}")
+            print(f"    Score: {score:.2f} | Entities: {meta.get('entities', '')}")
+            print(f"    - {doc}")
+        return
+
     collection = get_collection()
 
     results = collection.query(
@@ -352,7 +399,7 @@ def cmd_summary(args):
         print("No entries found.")
         return
 
-    types = {}
+    entity_types = {}
     tags = {}
     repos = {}
     dates = []
@@ -361,10 +408,9 @@ def cmd_summary(args):
         dates.append(entry["date"])
         content = entry["content"]
 
-        type_match = re.search(r"\*\*Type:\*\*\s*(\w+)", content)
-        if type_match:
-            t = type_match.group(1)
-            types[t] = types.get(t, 0) + 1
+        for entity in re.findall(r"\[(\w+:[^\]]+)\]", content):
+            etype = entity.split(":")[0]
+            entity_types[etype] = entity_types.get(etype, 0) + 1
 
         for tag in re.findall(r"#([\w-]+)", content):
             tags[tag] = tags.get(tag, 0) + 1
@@ -378,10 +424,10 @@ def cmd_summary(args):
     print(f"Date range: {min(dates)} to {max(dates)}")
     print()
 
-    if types:
-        print("By type:")
-        for t, count in sorted(types.items(), key=lambda x: -x[1]):
-            print(f"  {t}: {count}")
+    if entity_types:
+        print("Entity types used:")
+        for e, count in sorted(entity_types.items(), key=lambda x: -x[1]):
+            print(f"  [{e}:]: {count}")
         print()
 
     if repos:
@@ -451,38 +497,15 @@ def cmd_auto_recall(args):
                 ):
                     score = max(0, 1 - distance)
                     if score >= 0.3:
-                        entry_data = {
+                        scored_entries.append({
                             "id": doc_id,
                             "date": metadata["date"],
                             "summary": metadata["summary"],
                             "content": doc,
                             "score": score,
-                            "connections": [],
-                        }
-                        conn_match = re.search(
-                            r"\*\*Connections:\*\*(.+?)(?=\n\*\*|\n##|\Z)",
-                            doc, re.DOTALL,
-                        )
-                        if conn_match:
-                            for line in conn_match.group(1).strip().split("\n"):
-                                line = line.strip().lstrip("- ")
-                                if line:
-                                    entry_data["connections"].append(line)
-                        scored_entries.append(entry_data)
-
-                if scored_entries:
-                    hop_additions = expand_connections(
-                        scored_entries, all_entries, max_hops=2, max_additions=10
-                    )
-                    for add_entry in hop_additions:
-                        scored_entries.append({
-                            "date": add_entry["date"],
-                            "summary": add_entry["summary"],
-                            "content": add_entry["content"],
-                            "score": 0.25,
-                            "connections": add_entry.get("connections", []),
                         })
 
+                if scored_entries:
                     print(format_tiered(scored_entries))
                     return
         except Exception:
@@ -518,6 +541,7 @@ def main():
     query_parser.add_argument("text", help="Search query")
     query_parser.add_argument("--top", type=int, default=5, help="Number of results")
     query_parser.add_argument("--tiered", action="store_true", help="Use tiered output format")
+    query_parser.add_argument("--entity", help="Filter by entity tag, e.g. repo:el-capitan or file:.agent/bin/get-diff.sh")
 
     subparsers.add_parser("summary", help="Overview of what's stored in the journal")
 

@@ -9,7 +9,7 @@ El-capitan is a spec-driven agentic engineering pipeline. It contains:
 - **Agent protocols** — `.cursor/agents/crew-*.md`, `specwriter-*.md`, `reviewer-*.md`, `tester-*.md`
 - **Skill files** — `.cursor/skills/<name>/SKILL.md`
 - **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md`, `_RUNBOOK_TEMPLATE.md`
-- **Tools** — `.agent/tools/` (shell scripts, Python utilities)
+- **Tools** — `.agent/bin/` (shell scripts, Python utilities)
 
 The pipeline routing instructions for using crew commands are in `.claude/CLAUDE.md` (loaded globally from `~/.claude/CLAUDE.md`). This file is for project-specific context when editing el-capitan itself.
 

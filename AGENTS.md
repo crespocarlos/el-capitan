@@ -35,26 +35,24 @@ Legacy one-line `## Status: <value>` specs remain supported by Status readers; n
   _BUG_SPEC_TEMPLATE.md
   _RUNBOOK_TEMPLATE.md
   _JOURNAL_TEMPLATE.md
-  tools/        ← shell + Python utilities (symlinked to ~/.agent/tools/)
-  scripts/      ← fallback dispatch scripts
-  queries/      ← GraphQL query files
+  bin/          ← shell scripts, Python utilities, GraphQL queries (symlinked to ~/.agent/bin/)
 install.sh      ← creates symlinks from ~/.cursor/, ~/.claude/, ~/.agent/ → this repo
 ```
 
 ## Symlink rules
 
-`.claude/agents/` is the canonical source. `.cursor/agents/` is a symlink to it — edit only the `.cursor/` path (the symlink follows automatically). Same for `.claude/skills/` ↔ `.cursor/skills/`.
+`.cursor/agents/` and `.cursor/skills/` are the canonical sources. `.claude/agents/` and `.claude/skills/` are symlinks pointing to them — edit only the `.cursor/` paths (symlinks follow automatically).
 
 ```bash
 # Verify symlinks
-ls -la .cursor/agents   # should show → ../.claude/agents
-ls -la .cursor/skills   # should show → ../.claude/skills
+ls -la .claude/agents   # should show → ../.cursor/agents
+ls -la .claude/skills   # should show → ../.cursor/skills
 ```
 
 ## Editing conventions
 
 - **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, `model`, `readonly`, `tools`, `maxTurns`) followed by protocol prose. Follow the existing style in the file you're editing.
-- **Skill files** (`.cursor/skills/<name>/SKILL.md`) — workflow header, execution model, numbered steps. Follow `crew-diff/SKILL.md` as the canonical example.
+- **Skill files** (`.cursor/skills/<name>/SKILL.md`) — workflow header, execution model, numbered steps. Follow `crew-commit/SKILL.md` as the canonical example.
 - **Routing** — `crew-router.mdc` is the single source of truth. `.claude/CLAUDE.md` says "do not duplicate it here" — do not add routing entries to CLAUDE.md.
 - **Templates** (`.agent/_*_TEMPLATE.md`) — pipeline-level templates read by multiple agents. Changes affect all future specs/runbooks/journal entries.
 - **Tool budget in explorers** — `specwriter-explorer.md` and `tester-explorer.md` each have a hard ≤8 tool call budget. If you add a new discovery step that consumes a slot, update the budget breakdown comment.
@@ -66,6 +64,10 @@ Changes to agent/skill files are verified by reading them and checking the accep
 ```bash
 grep "keyword" .cursor/agents/target-file.md   # presence check
 diff .cursor/skills/crew-test/SKILL.md .claude/skills/crew-test/SKILL.md  # identity check
+grep METRIC: .cursor/rules/crew-orchestrator.mdc .cursor/skills/crew-implement/SKILL.md  # METRIC audit docs + implement hooks
+mkdir -p /tmp/el-capitan-metric-selftest && test -x .agent/bin/log-metric.py && python3 .agent/bin/log-metric.py /tmp/el-capitan-metric-selftest selftest=1
+python3 -m py_compile .agent/bin/task-bundle.py
+grep -E "task-bundle|bundle-manifest" AGENTS.md .agent/bin/task-bundle.py
 ```
 
 There is no lint, typecheck, or unit test to run.
