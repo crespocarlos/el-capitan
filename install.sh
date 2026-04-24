@@ -156,7 +156,7 @@ backup_if_regular() {
   fi
 }
 
-for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _PROFILE_TEMPLATE.md; do
+for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md; do
   backup_if_regular ~/.agent/"$f"
   run ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
 done
@@ -166,12 +166,6 @@ run ln -sf "$SCRIPT_DIR/.agent/.ralph-instructions-template" ~/.agent/.ralph-ins
 # ~/.agent/bin
 run rm -f ~/.agent/bin/resolve-task-dir.sh ~/.agent/bin/log-progress.sh
 link_dir_files "$SCRIPT_DIR/.agent/bin" ~/.agent/bin
-
-# Create PROFILE.md from template if it doesn't exist (preserves existing profile on reinstall)
-if [ ! -f ~/.agent/PROFILE.md ]; then
-  run cp "$SCRIPT_DIR/.agent/_PROFILE_TEMPLATE.md" ~/.agent/PROFILE.md
-  [ "$DRY_RUN" -eq 0 ] && echo "  Created ~/.agent/PROFILE.md from template"
-fi
 
 echo ""
 echo "Done. Installed:"

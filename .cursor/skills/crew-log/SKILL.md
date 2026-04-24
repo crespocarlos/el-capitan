@@ -24,8 +24,6 @@ If `TASK_DIR` is empty, no active task — skip pipeline artifact harvesting. In
 
 Read `$TASK_DIR/SESSION.md` if it exists — auto-captured context from pipeline skills.
 
-Read `~/.agent/PROFILE.md` for user context.
-
 ### Step 2: Harvest artifacts
 
 Ingest everything available — read and include the full content, not just metadata:
@@ -107,23 +105,24 @@ The tool verifies the entry was stored and prints what it indexed. If it fails, 
 
 ### Step 5: After writing
 
-1. If the entry has a `### Promoted` section, append each bullet to `~/.agent/PROFILE.md` under a `## Promoted facts` heading (create the heading if absent). No confirmation needed — the user wrote them explicitly. These are the hot-tier facts that stay in-context permanently.
+1. If the entry has a `### Promoted` section, note those facts to the user — they may want to add them to `~/.claude/CLAUDE.md` or `~/.cursor/rules/personal.mdc` for permanent context.
 
 2. If artifacts contain patterns worth promoting (repeated workarounds, discovered constraints, rules that should survive) that weren't already in `### Promoted`, suggest them:
 
    > "These look worth adding to `### Promoted`: [list]"
    > Only add if user confirms.
 
-3. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
+3. Scan the session for preference violations — moments where an agent ignored or contradicted the rules in `~/.claude/CLAUDE.md` or `~/.cursor/rules/personal.mdc`. If any found, surface them:
 
-4. Offer the creative handoff:
-   > "Want crew-thinker to connect this session to past patterns and generate ideas?"
+   > "Preference violations this session: [list]. Worth updating `personal.mdc` to be more explicit?"
+
+4. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
 
 ## Rules
 
 - Populate bullets from REPORT.md, SESSION.md, and git log — do not ask for what can be inferred
 - Tag entities inline in bullets: `[file:]`, `[repo:]`, `[tool:]`, `[concept:]`, `[url:]`
-- `### Promoted` bullets are written to PROFILE.md immediately — no confirmation needed
+- `### Promoted` bullets are surfaced to the user for manual addition to `~/.claude/CLAUDE.md` or `~/.cursor/rules/personal.mdc`
 - Triggerable any time: after implementation, after PR review, after learning, or end of day
 - Never modify existing journal entries — only append
 

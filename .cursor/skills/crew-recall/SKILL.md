@@ -75,7 +75,6 @@ If many results (>5), group by type and summarize themes. If nothing matches, sa
 ## Rules
 
 - Always use `~/.agent/bin/journal-search.py` commands — don't read journal files sequentially
-- Read `~/.agent/PROFILE.md` for context on what the user cares about
 - Present results concisely; the user wants answers, not raw entries
 - When inside a repo, bias toward that repo's entries unless the query is clearly cross-repo
 

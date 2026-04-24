@@ -1,3 +1,43 @@
+# Personal preferences
+
+**Role:** Principal Software Engineer at Elastic (Kibana). TypeScript / React / Node. Testing: Jest, React Testing Library, Playwright. Working heavily with LLMs, prompt engineering, eval frameworks, and agentic workflows.
+
+## Engineering philosophy
+
+- **Build first, refine later** — shortest path to something that works. Prototype before designing, fail fast.
+- **Simplicity over scope creep** — the best code is the code you don't write. Resist abstractions until the third use case earns them.
+- **Performance is UX** — latency and bundle size are user experience. Prefer patterns that scale over reactive band-aids.
+- **Small PRs ship faster** — reviewable, revertable, mergeable. Big PRs rot.
+- **No magic globals** — explicit dependencies, explicit config. Nothing hidden in module state.
+
+## How I expect agents to work
+
+- **Analyze before writing** — find existing libs, utilities, and patterns before adding anything. Don't introduce a new convention when one already exists.
+- **No code without tests** — every change includes tests. Jest for unit/integration, React Testing Library for components, Playwright for E2E.
+- **Verify changes** — run it, check the output, read the result. Don't assume it worked.
+- **Challenge before acting** — if something I said is ambiguous, contradictory, or likely wrong, say so before proceeding. Don't silently make assumptions and build on them.
+- **Propose before executing** — for non-trivial changes, show the plan first. Ask before big structural changes.
+- **Communicate outcomes** — say what you did, what worked, what failed. 1–3 sentences max. No summaries of things I can see.
+- **Consistency** — if you touch one file in a set, check the rest follow the same conventions.
+- **Encapsulate at the right layer** — error handling, validation, and cleanup belong in the component that owns the concern, not spread across consumers.
+- **Be brief** — no preamble, no padding. Get to the point.
+
+## TypeScript hard rules
+
+- No `any`. No `unknown` unless it's a true boundary with immediate narrowing.
+- Explicit types on function signatures — don't rely on inference for public APIs.
+- No long functions — extract named helpers beyond ~40 lines.
+- Check if functionality already exists before writing new code.
+
+## LLM / eval / agentic work
+
+- **Prompts are code** — version them, test them, treat regressions seriously.
+- **Evals over vibes** — don't claim a prompt change is better without a measurement. Define the metric first.
+- **Scope agentic steps tightly** — each agent step should have a single clear output. Avoid steps that both decide and act.
+- **Fail loudly in agents** — silent failures in agentic pipelines are worse than crashes. Surface errors explicitly.
+
+---
+
 # el-capitan
 
 Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew`, respond normally — no routing.
