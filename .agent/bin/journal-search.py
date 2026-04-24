@@ -193,6 +193,9 @@ def cmd_index(args):
     if bullet_ids:
         get_bullets_collection().upsert(ids=bullet_ids, documents=bullet_docs, metadatas=bullet_metas)
         print(f"Indexed {len(bullet_ids)} bullets.")
+
+
+def cmd_add(args):
     """Index a single entry from a journal file."""
     filepath = Path(args.file)
     if not filepath.exists():

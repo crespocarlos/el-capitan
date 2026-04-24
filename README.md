@@ -28,19 +28,11 @@ Works in any git repository. All state lives outside your repos. No cloud sync, 
 
 ```mermaid
 flowchart TB
-    subgraph explore["explore"]
-        direction LR
-        research["🔬 crew-researcher"] -.-> think["💡 crew-thinker"]
-        think -.-> journal[("📓 journal")]
-        research -.-> journal
-    end
-
     subgraph build["build"]
         direction LR
         issue["📝 create-issue"] -.->|"crew spec"| spec["📋 specwriter"]
         spec -->|"Gate 1: approve"| impl["🔨 builder"]
-        impl -->|"auto"| bdiff["diff"]
-        bdiff -->|"auto"| bcommit["commit"]
+        impl -->|"auto"| bcommit["commit"]
         bcommit -->|"Gate 2: approve"| openpr["open-pr"]
         openpr --> done(["PR opened"])
         impl -.->|"auto-recall"| journal2[("📓 journal")]
@@ -48,17 +40,15 @@ flowchart TB
 
     subgraph respond["respond"]
         direction LR
-        resolver["🧩 pr-resolver"] --> rdiff["diff"]
-        rdiff --> rcommit["commit"]
+        resolver["🧩 pr-resolver"] --> rcommit["commit"]
         rcommit --> pushed(["pushed"])
     end
 
-    think -.->|"feeds into"| spec
     done -.->|"crew resolve PR"| resolver
     reviewer["🔍 reviewer"] -.->|"standalone"| impl
 ```
 
-**Three workflows. Two explicit gates in `build`.** Run `crew autopilot` to advance automatically to the next gate, or drive each step manually — your choice.
+**Two workflows. Two explicit gates in `build`.** Run `crew autopilot` to advance automatically to the next gate, or drive each step manually — your choice.
 
 El Capitan has three layers:
 
@@ -82,7 +72,7 @@ crew start build                          # guided entry
 crew spec https://github.com/org/repo/issues/123  # or spec directly from an issue
 ```
 
-Stages: **spec → implement → diff → commit → open-pr**  
+Stages: **spec → implement → review → commit → open-pr**  
 Terminal: PR opened as draft
 
 ### `respond` — respond to review comments
@@ -94,19 +84,8 @@ crew start review-cycle #456
 crew resolve PR #456                      # same thing
 ```
 
-Stages: **address-pr → diff → commit → push**  
+Stages: **address-pr → commit → push**  
 Terminal: all threads resolved and pushed
-
-### `explore` — think before building
-
-Brainstorm, research a concept or a URL, connect ideas across your journal. No gates, no terminal condition. Use it to sharpen your thinking before starting a `build`.
-
-```
-crew brainstorm: what if we cached the API responses?
-crew learn https://martinfowler.com/articles/feature-toggles.html
-```
-
-> **Note:** explore has no persistent state — `crew status` will not detect an active explore session. When you're ready to commit to a direction, run `crew spec` to transition into the build workflow.
 
 ---
 
@@ -202,7 +181,7 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 | `crew spec <issue URL or #N>` | Draft a SPEC.md from a GitHub issue |
 | `crew spec <plain description>` | Draft a SPEC.md from a description |
 | `crew implement` | Select spec, create worktree, build |
-| `crew diff` | Review the diff for issues before committing |
+| `crew review` | Multi-lens review of your changes before committing |
 | `crew commit` | Propose and apply a semantic commit message |
 | `crew open pr` | Push the branch and open a draft PR |
 
@@ -212,14 +191,6 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 |---|---|
 | `crew start review-cycle #456` | Start a respond workflow |
 | `crew resolve PR #456` | Fetch and action all unresolved review threads |
-
-### Explore workflow
-
-| Command | What it does |
-|---|---|
-| `crew brainstorm` | Interactive brainstorm session |
-| `crew brainstorm: <topic>` | Start brainstorm with a specific topic |
-| `crew learn <concept or URL>` | Fetch, distill, and teach a concept — writes to journal |
 
 ### Pipeline & session
 
@@ -234,9 +205,12 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 
 | Command | What it does |
 |---|---|
-| `crew review` | Multi-lens self-review of your branch diff |
+| `crew review` | Multi-lens self-review of your branch diff vs main |
+| `crew review changes` | Multi-lens review of staged changes (pre-commit) |
 | `crew review PR #456` | Multi-lens review of someone else's PR |
 | `crew review spec` | Multi-lens review of the active SPEC.md |
+| `crew review idea` | Multi-lens review of the current session discussion |
+| `crew review idea: <text>` | Multi-lens review of a pasted idea or proposal |
 
 ### Memory & journal
 
@@ -251,7 +225,6 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 |---|---|
 | `crew create issue: <description>` | Structure a rough idea into a GitHub issue and file it |
 | `crew cleanup` | Remove stale worktrees, branches, and task directories |
-| `crew migrate` | Migrate old-layout task state to UUID layout |
 
 > **Aliases:** `crew start build` = `crew spec`. `crew start review-cycle` = `crew resolve PR`.  
 > `crew address PR` still works but is deprecated — use `crew resolve PR`.
@@ -260,7 +233,7 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 
 ## The crew
 
-7 orchestrator agents, 13 persona subagents, 9 skills.
+4 orchestrator agents, 10 persona subagents, 9 skills.
 
 **Orchestrators** dispatch persona subagents in parallel for multi-lens analysis. **Skills** run inline for interactive pipeline steps. All agents are markdown files — readable, editable, version-controlled.
 
@@ -272,9 +245,9 @@ Drafts a `SPEC.md` from a GitHub issue or plain description. Explores the codeba
 - Critiques cover: scope creep, missing edge cases in AC, implementation ambiguity
 - Stops at Gate 1 — waits for your approval before any code is written
 
-**Persona subagents:** `specwriter-scope`, `specwriter-adversarial`, `specwriter-implementer`
+**Persona subagents:** `specwriter-scope`, `specwriter-adversarial`, `specwriter-explorer`
 
-**Skills:** `crew-create-issue`, `crew-implement`, `crew-diff`, `crew-commit`, `crew-open-pr`, `crew-cleanup`, `crew-abandon`
+**Skills:** `crew-implement`, `crew-commit`, `crew-open-pr`, `crew-create-issue`, `crew-cleanup`, `crew-abandon`
 
 ### 🔨 crew-builder
 
@@ -286,32 +259,16 @@ The implementation engine. Reads a SPEC.md, works through each task in order, ru
 
 ### 🔍 crew-reviewer
 
-Multi-lens review of a branch diff, a PR, or a SPEC.md. Dispatches five reviewer personas in parallel and consolidates findings into a single prioritized report.
+Multi-lens review of a branch diff, a PR, a SPEC.md, staged changes, or an idea/proposal. Dispatches reviewer personas in parallel and consolidates findings into a single flat numbered list — each finding labeled inline with `[blocking]`, `[suggestion]`, `[question]`, or `[nit]`.
+
+For idea and spec reviews, the output is evaluative: a verdict (`proceed / revisit / blocked`) followed by findings using `[blocking]` and `[concern]` labels, focused on whether the plan holds up.
 
 **Personas:** Code Quality, Adversarial, Fresh Eyes, Architecture, Product Flow  
-**Modes:** `crew review` (self), `crew review PR #N` (others), `crew review spec`
+**Modes:** `crew review` (self, branch vs main), `crew review changes` (staged), `crew review PR #N` (others), `crew review spec`, `crew review idea`
 
 ### 🧩 crew-pr-resolver
 
 Processes all unresolved review threads on a PR in a single batch: evaluates each thread, proposes edits and reply text, and applies only what you approve. Handles Apply, Adapt, Reject, Defer, and Already Addressed verdicts. Never touches resolved or outdated threads.
-
-### 🔬 crew-researcher
-
-Fetches a URL, GitHub PR, or concept name — distills what matters and writes a journal entry. Feeds naturally into `crew brainstorm` after teaching.
-
-### 💡 crew-thinker
-
-Two modes:
-- **Pipeline** — generates a draft, dispatches a single critic for diverse evaluation (quality, gaps, actionability, coherence, challenge), then revises based on findings. 3-round loop: generate → critique → revise
-- **Brainstorm** — interactive back-and-forth, unlimited turns; proactively surfaces journal connections from past sessions; can offer to draft a SPEC when an idea solidifies
-
-**Persona subagents:** `thinker-critic`
-
-**Skills:** `crew-log`, `crew-recall`
-
-### 🔄 crew-migrate
-
-One-time utility. Migrates task state from the old `~/.agent/tasks/<repo>/<branch>/<slug>/` layout to the current UUID layout (`~/.agent/tasks/<uuid>/`). Run if `crew status` shows no active task but you have pre-UUID task directories. Safe to skip if you set up el-capitan after the UUID migration.
 
 ---
 
@@ -333,7 +290,7 @@ el-capitan/
 │   │   ├── crew-*.md               # Orchestrator agents
 │   │   ├── reviewer-*.md           # Reviewer personas
 │   │   ├── specwriter-*.md         # Specwriter personas
-│   │   └── thinker-*.md            # Thinker personas
+│   │   └── tester-*.md             # Tester personas
 │   └── skills/              # Inline skill protocols — symlink to .claude/skills/
 │       └── crew-<name>/SKILL.md
 ├── .claude/
@@ -386,7 +343,7 @@ Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are l
 
 ### PROFILE.md
 
-`~/.agent/PROFILE.md` is your personal context file. It persists across sessions and machines, is never tracked by git, and is read by `crew brainstorm`, `crew thinker` (pipeline mode), `crew spec` (optional context), and `crew implement` (auto-recall of repo patterns at build start).
+`~/.agent/PROFILE.md` is your personal context file. It persists across sessions and machines, is never tracked by git, and is read by `crew spec` (optional context) and `crew implement` (auto-recall of repo patterns at build start).
 
 Fill it with anything that helps the agents work in your context:
 

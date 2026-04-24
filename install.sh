@@ -57,16 +57,33 @@ for dir in agents skills; do
   run ln -sfn "$HOME/.cursor/$dir" "$target"
 done
 
-# Remove symlinks for deleted source files (idempotent — ~/.cursor only; ~/.claude follows via dir symlink)
-run rm -f ~/.cursor/skills/crew-eval-pr-comments/SKILL.md
-run rmdir ~/.cursor/skills/crew-eval-pr-comments 2>/dev/null || true
-run rm -f ~/.cursor/skills/crew-automations/SKILL.md
-run rmdir ~/.cursor/skills/crew-automations 2>/dev/null || true
-run rm -f ~/.cursor/agents/thinker-builder.md ~/.cursor/agents/thinker-pragmatist.md
-run rm -f ~/.cursor/agents/thinker-connector.md ~/.cursor/agents/thinker-contrarian.md
+# Prune broken symlinks in a directory (symlinks whose target no longer exists).
+# Only removes symlinks that point into SCRIPT_DIR, so hand-placed files are safe.
+prune_broken_symlinks() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  local link target
+  shopt -s nullglob
+  for link in "$dir"/*; do
+    [[ -L "$link" ]] || continue
+    target=$(readlink "$link")
+    # Only manage symlinks that point into this repo
+    [[ "$target" == "$SCRIPT_DIR"* ]] || continue
+    if [ ! -e "$link" ]; then
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "  [dry-run] remove broken symlink: $link → $target"
+      else
+        echo "  Removing stale symlink: $(basename "$link")"
+        rm -f "$link"
+      fi
+    fi
+  done
+  shopt -u nullglob
+}
 
 link_dir_files "$SCRIPT_DIR/.cursor/rules" ~/.cursor/rules
 link_dir_files "$SCRIPT_DIR/.cursor/agents" ~/.cursor/agents
+prune_broken_symlinks ~/.cursor/agents
 
 if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
   shopt -s nullglob
@@ -75,6 +92,24 @@ if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
     run mkdir -p ~/.cursor/skills/$name
     run ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.cursor/skills/$name/SKILL.md
     link_dir_files "$SCRIPT_DIR/.cursor/skills/$name/references" ~/.cursor/skills/$name/references
+  done
+  shopt -u nullglob
+  # Prune skill subdirs whose SKILL.md symlink is broken (skill was deleted from source)
+  shopt -s nullglob
+  for d in ~/.cursor/skills/*/; do
+    skill_md="$d/SKILL.md"
+    [[ -L "$skill_md" ]] || continue
+    target=$(readlink "$skill_md")
+    [[ "$target" == "$SCRIPT_DIR"* ]] || continue
+    if [ ! -e "$skill_md" ]; then
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "  [dry-run] remove stale skill dir: $d"
+      else
+        echo "  Removing stale skill: $(basename "$d")"
+        rm -f "$skill_md"
+        rmdir "$d" 2>/dev/null || true
+      fi
+    fi
   done
   shopt -u nullglob
 fi

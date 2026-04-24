@@ -82,6 +82,8 @@ Show the PR URL and a one-line summary.
 
 > Next: build workflow complete. Watch for review comments — run `crew resolve PR` if they arrive.
 
+> Run `crew log` to record this session.
+
 ## Session Capture
 
 After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):

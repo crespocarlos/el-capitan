@@ -1,3 +1,8 @@
+---
+name: crew-implement
+description: "Orchestrate implementation of an approved SPEC.md. Trigger: 'crew implement'."
+---
+
 **Workflow**: build | **Stage**: implement
 
 # crew-implement
@@ -7,6 +12,10 @@ Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and use
 ## Workflow
 
 ### Step 1: Resolve task state
+
+First, check if the user's message contains a file path ending in `SPEC.md` or `spec.md` (e.g. `here is the spec /some/path/to/spec.md`). If found, attempt to read that file. If the read fails (file not found), stop immediately: 'Cannot read [path] — check the path and try again.' If the file exists but has no `## Status` section or the status value is not `approved`, stop: 'Spec status is [value] — get approval before implementing.' Otherwise, set `TASK_DIR` to its parent directory, export `CREW_TASK_DIR="$TASK_DIR"`, and skip to Step 2.
+
+Otherwise:
 
 ```bash
 if [ -n "${CREW_TASK_DIR+x}" ]; then

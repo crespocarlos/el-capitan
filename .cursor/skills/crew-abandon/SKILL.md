@@ -1,3 +1,8 @@
+---
+name: crew-abandon
+description: "Gracefully abandon the current task — stash changes, log reason, write SESSION.md stub. Trigger: 'crew abandon'."
+---
+
 # crew abandon
 
 Gracefully abandons the current task — records the reason, stashes changes, and writes a SESSION.md stub for later reference.

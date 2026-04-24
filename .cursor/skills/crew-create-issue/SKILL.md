@@ -5,74 +5,73 @@ description: "Structure a rough idea into a well-formed GitHub issue and file it
 
 # Create Issue
 
+**Primary source: the current session conversation.** Synthesize the issue from what has already been discussed — do not ask questions to fill gaps. The session context is the source of truth.
+
 ## When Invoked
-
-### Step 0: Handle bare trigger
-
-If the user said only `crew create issue` with no description, ask: **"What's the issue? Describe the problem or feature you have in mind."** Wait for their response, then continue to Step 1.
-
-If the trigger includes a description (`crew create issue: <description>`), proceed directly to Step 1 with that description.
 
 ### Step 1: Identify the target repo
 
-Ask: **"Which repo should this be filed in?"** Accept `OWNER/REPO` format. If the user gives a short name, resolve it with `gh repo view REPO --json nameWithOwner --jq '.nameWithOwner'`.
+Infer from git context:
 
-### Step 2: Auto-classify issue type
+```bash
+gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
+```
 
-Read the user's description and classify as **bug** or **feature**:
+If that returns a repo, use it. If the current directory is not a git repo and no repo was mentioned in the conversation, ask exactly one question: **"Which repo? (OWNER/REPO)"**
+
+### Step 2: Synthesize issue content from session
+
+Mine the current conversation for:
+
+- **Problem statement** — what is broken or missing
+- **Context** — background, motivation, what was discussed
+- **Acceptance criteria** — what "done" looks like (from any decision, proposal, or agreed outcome in the conversation)
+- **Scope** — what is explicitly in or out of scope
+
+Do not ask for any of these. If the conversation doesn't cover something, leave that section minimal or omit it — do not prompt the user.
+
+### Step 3: Auto-classify issue type
+
+Classify from synthesized content as **bug** or **feature**:
 
 - Bug: something broken, an error, unexpected behavior, regression, crash
 - Feature: something new — a capability, workflow, integration, enhancement
 
-Default to **bug** if ambiguous. Tell the user the classification: _"This reads as a **bug** (or **feature**). I'll use the bug/feature template."_
+Default to **feature** if ambiguous. *(Features are lower-risk to mis-classify — a false bug report creates noise in the bug queue; a false feature is harmless.)* State the classification in the draft — don't ask.
 
-### Step 3: Check for repo templates
+### Step 4: Check for repo templates
 
 ```bash
 gh api repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE --jq '.[].name' 2>/dev/null
 ```
 
-If the repo has its own issue templates, read and use the most relevant one instead of the defaults. Otherwise, use the templates in [issue-templates.md](./references/issue-templates.md).
+If the repo has its own issue templates, use the most relevant one. Otherwise use the templates in [issue-templates.md](./references/issue-templates.md).
 
-### Step 4: Draft the issue
+### Step 5: Draft the issue
 
-Structure the user's description into the selected template. Fill in every section you can from the information provided.
-
-**Gap-filling questions** — check what's missing and ask only about gaps. Frame each question in terms of what crew-specwriter will need downstream:
-
-- **Problem statement** missing → "crew-specwriter will need a clear problem statement for the spec's Context section. Can you describe what's going wrong / what need this addresses?"
-- **Reproduction steps** missing (bugs only) → "To write a good spec, we'll need repro steps. How do you trigger this?"
-- **Affected files/endpoints/UI paths** missing → "crew-specwriter maps these to repo touchpoints. Do you know which files, endpoints, or UI areas are involved?"
-- **Acceptance criteria** missing → "The spec needs testable requirements. What does 'done' look like?"
-- **Scope boundaries** missing → "crew-specwriter uses scope boundaries for non-regression criteria. Anything explicitly out of scope?"
-- **Evidence** missing (bugs only) → "Error logs, API responses, or screenshots help crew-specwriter understand the failure. Do you have any?"
-
-Only ask about information that is actually missing — skip questions the user's description already answers.
-
-Present the draft:
+Fill all sections from synthesized content. Present:
 
 ```
 **Title:** <title>
 
 **Body:**
 <formatted issue body>
+
+---
+File this? (yes / edit / cancel)
 ```
 
-Then ask: **"Want to change anything, or should I file it?"**
+One question only. If the user says "edit", wait for their next message with corrections, apply them, and re-present the draft — do not ask what to change. If the user says "cancel", stop without filing. Do not ask anything else.
 
-### Step 5: File the issue
-
-After the user approves, create the issue:
+### Step 6: File the issue
 
 ```bash
 gh issue create --repo OWNER/REPO --title "TITLE" --body "BODY"
 ```
 
-No labels, projects, or assignees — title and body only.
+No labels, projects, or assignees.
 
-### Step 6: Suggest next step
-
-Print the issue URL and suggest the next pipeline step:
+Print the issue URL and suggest the next step:
 
 ```
 Filed: https://github.com/OWNER/REPO/issues/N
@@ -82,20 +81,14 @@ Next: `crew spec OWNER/REPO#N`
 
 ## Rules
 
-- **2 turns only**: draft (Step 4) + confirm (Step 5). Step 0 is a pre-turn for bare triggers.
-- **No labels, projects, or assignees.** Only title and body.
-- **Prefer repo templates.** If `.github/ISSUE_TEMPLATE/` exists in the target repo, use those templates instead of the built-in defaults.
-- **Always use `--repo OWNER/REPO`** explicitly — never assume the current repo.
-- **Default to bug** when the classification is unclear.
-- **Gap-filling is selective.** Don't ask about information the user already provided. Frame missing-info questions around what crew-specwriter needs.
+- **Session conversation is the primary source.** Never ask about content already present in the session.
+- **One question maximum** — repo disambiguation only, and only when genuinely unresolvable from git context.
+- **No gap-filling prompts.** If information is missing, omit the section or leave it thin.
+- **No labels, projects, or assignees.** Title and body only.
+- **Prefer repo templates** over built-in defaults when `.github/ISSUE_TEMPLATE/` exists.
+- **Always use `--repo OWNER/REPO`** explicitly.
 - **Pipeline handoff uses full reference**: `crew spec OWNER/REPO#N`, not just `#N`.
-- **No SESSION.md logging.**
 
 ## Auto-clarity override
 
-Drop to plain language before:
-
-- Calling `gh issue create` — show the complete title, body, and target repo in plain language; GitHub issues are public and permanent
-- Any label or milestone assignment — confirm these are intentional, not inferred defaults
-
-Resume compressed mode after the issue URL is returned.
+Drop to plain language before calling `gh issue create` — show the complete title, body, and target repo; GitHub issues are public and permanent. Resume after the URL is returned.

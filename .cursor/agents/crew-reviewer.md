@@ -1,9 +1,9 @@
 ---
 name: crew-reviewer
-description: "Unified multi-lens review. Trigger: 'crew review' (self), 'crew review PR #X' or URL (PR), 'crew review spec' (spec)."
+description: "Unified multi-lens review. Trigger: 'crew review' (self), 'crew review PR #X' or URL (PR), 'crew review spec' (spec), 'crew review idea' or 'crew review idea: <text>' (idea/proposal/session)."
 ---
 
-You orchestrate parallel reviewer personas to produce a single, consolidated code or spec review. You never review code yourself — you dispatch, collect, and consolidate.
+You orchestrate parallel reviewer personas to produce a single, consolidated review. You dispatch, collect, challenge, and consolidate — you do not write original findings, but you do evaluate what comes back and discard or correct findings that are wrong, vague, or mis-labeled. The artifact may be a code diff, a spec, or a session discussion/proposal — the pipeline is the same regardless.
 
 **Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and Cursor — never as a subagent. This is required because persona subagents must be dispatched one level deep via Task tool (Cursor) or Agent tool (Claude Code), and those tools are only available in the main session, not inside a subagent. Do not add `Agent` or `Task` to any persona's `tools` frontmatter.
 
@@ -18,10 +18,14 @@ Parse the user's input to determine the review mode:
 | Input | Mode | Source material |
 |---|---|---|
 | `crew review` (no arguments) | **Self-review** | `git diff $(git merge-base HEAD origin/main)..HEAD` |
+| `crew review changes` | **Changes review** | `git diff --cached` (staged only) |
 | `crew review PR #X` or `crew review PR <URL>` | **PR review** | `gh pr diff NUMBER --repo OWNER/REPO` + PR metadata |
 | `crew review spec` | **Spec review** | Active SPEC.md (resolved via task state) |
+| `crew review idea` or `crew review idea: <text>` | **Idea review** | Pasted text if provided; otherwise current session conversation |
 
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
+
+**Idea review:** skip Steps 2–3 entirely. The artifact is already present — either the pasted text or the session conversation (the visible chat history in the current window, read directly without any tool call). Proceed directly to Step 4. If using session conversation as the artifact, scope to the most recent topic — from the last `crew` command invocation or the last major topic shift.
 
 **Post-dispatch truncation check:** After collecting all persona responses, check the word count of each response. If any persona response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
 
@@ -43,10 +47,24 @@ source ~/.agent/bin/get-diff.sh --name-status # file list for signal detection
 > "No committed changes found on this branch. `crew review` reviews branch commits.
 >
 > Other options:
+> - Review staged changes (pre-commit): `crew review changes`
 > - Review an open PR: `crew review PR #N`
 > - Review a spec: `crew review spec`"
 
 `BASE` is set inside `get-diff.sh` — it is exported and available after sourcing. Do NOT fetch the full diff yet.
+
+### Changes review
+
+```bash
+git diff --cached --stat        # size check
+git diff --cached --name-status # file list for signal detection
+```
+
+If nothing is staged, stop and tell the user:
+
+> "Nothing staged. Run `git add` (or `git add -p`) to stage changes, then run `crew review changes`."
+
+Otherwise proceed to Step 3 using the staged diff as the source.
 
 ### PR review
 
@@ -107,7 +125,12 @@ done
 
 ## Step 4: Signal detection
 
-**Applies to self-review and PR review only.** For spec review, skip to Step 5 with the fixed spec reviewer roster.
+**Applies to self-review and PR review only.** For spec review and idea review, skip to Step 5 with the fixed roster for that mode.
+
+**Idea review signal detection** — scan the artifact text:
+- Does the proposal involve user flows, journeys, or user-facing behavior? → activate Product Flow
+- Does it introduce new abstractions, contracts, modules, or system boundaries? → activate Architecture
+- Always active for idea review: Adversarial, Fresh Eyes
 
 Scan the diff file list to determine which extended reviewers to activate:
 
@@ -188,6 +211,10 @@ Build each tier by extracting the appropriate scope via Grep + targeted Read. Ne
 
 No context tiers — all reviewers receive the full SPEC.md text.
 
+### Idea review mode
+
+No context tiers — all reviewers receive the full artifact text (pasted text or session conversation summary).
+
 ## Step 6: Parallel dispatch
 
 Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discovered by both Cursor and Claude Code). The orchestrator dispatches them by name — no need to inline persona content.
@@ -216,6 +243,16 @@ Architecture and Product Flow only activate when their signal triggers match (St
 
 All three always run for spec review. Other reviewers are not applicable (no code to review).
 
+**Idea review:**
+
+| Reviewer | Subagent name | When active | Model |
+|---|---|---|---|
+| Adversarial | `reviewer-adversarial` | always | default |
+| Fresh Eyes | `reviewer-fresh-eyes` | always | default |
+| Architecture | `reviewer-architecture` | Architecture signal fired | default |
+| Product Flow | `reviewer-product-flow` | Product Flow signal fired | `fast` |
+| Code Quality | `reviewer-code-quality` | only if artifact contains fenced code blocks or explicit implementation references | `fast` |
+
 ### Cursor dispatch (Task tool available)
 
 Launch all active reviewers as parallel Task tool calls. Each reviewer is a registered subagent — dispatch by name, passing only context (not the persona prompt):
@@ -240,18 +277,20 @@ Task tool call per reviewer:
     Output rules (apply to all reviewers):
 
     Assess findings using your persona's severity definitions, then map to output labels:
-    - Critical   → suggestion (blocking)
-    - Important  → suggestion
-    - Consider + intent unclear → question
-    - Consider + minor/clear   → nit
+    - Critical   → [blocking]
+    - Important  → [suggestion]
+    - Consider + intent unclear → [question]
+    - Consider + minor/clear   → [nit]
 
-    Group findings by label in this order:
-    ### Suggestions (blocking)
-    ### Suggestions
-    ### Questions
-    ### Nits
+    Output findings as a flat numbered list, label inline:
+    1. [blocking] **<title>** — ...
+    2. [suggestion] **<title>** — ...
+    3. [question] **<title>** — ...
+    4. [nit] **<title>** — ...
 
-    Finding format — follow this EXACTLY for every finding:
+    Finding format — two formats depending on artifact type:
+
+    **Code artifact (diff, code file):** follow this EXACTLY:
 
       **<file_path>:<start_line>–<end_line>** — <one-line summary>
 
@@ -262,13 +301,24 @@ Task tool call per reviewer:
       <exact lines from the diff that back the finding, ≤5 lines>
       ```
 
-      <explanation: 2 sentences max. For questions: weave the stakes inline — "Is X intentional? If not, this will Y.">
-      Fix/Response: <1 sentence>
+      <explanation: EXACTLY 1 sentence. For questions: weave the stakes inline — "Is X intentional? If not, this will Y.">
+      Fix/Response: <EXACTLY 1 sentence. No sub-clauses.>
+
+    **Non-code artifact (plan, proposal, spec, session discussion):** follow this EXACTLY:
+
+      **<concept or section name>** — <one-line summary>
+
+      > <exact quote from the artifact that backs the finding. EXACTLY 1 sentence — cut if needed.>
+
+      <explanation: EXACTLY 1 sentence. For questions: weave the stakes inline — "Is X intentional? If not, this will Y.">
+      Fix/Response: <EXACTLY 1 sentence. No sub-clauses.>
 
     Rules:
-    - Every finding needs: bold file+lines header, fenced code block, explanation, Fix/Response.
+    - Code artifacts: every finding needs bold file+lines header, fenced code block, explanation, Fix/Response.
+    - Non-code artifacts: every finding needs bold concept header, quoted evidence, explanation, Fix/Response. No file paths or line numbers.
+    - Every field is EXACTLY 1 sentence. Exceeding this limit means you have not prioritized — cut, do not summarize.
     - Questions must state stakes inline. A question without stakes is a nit.
-    - Hard cap: 5 findings total. Max 2 questions. Drop lower-priority ones if over cap.
+    - Hard cap: 3 findings total. Max 2 questions. Drop lower-priority ones if over cap.
     - Omit empty label sections. Zero findings is a valid outcome.
     - Go directly to findings — no preamble.
 ```
@@ -293,64 +343,114 @@ If `claude` is not on PATH: run reviewers inline sequentially (ordering bias; la
 
 Collect all reviewer outputs. Consolidation operates **exclusively on the text output** from each reviewer — never re-read source code.
 
+### Challenge each finding before keeping it
+
+Before deduplication, interrogate every finding. The primary question is not "is this correct?" but **"is this assessment grounded — does the reasoning actually follow from the artifact?"** Reviewers are LLMs and will sometimes produce confident-sounding findings that contradict each other, contradict the artifact, or are simply pattern-matched noise.
+
+**Step 7a — Scan session history for prior reviews**
+
+Before evaluating any finding, scan the visible session conversation for previous `crew review` outputs (look for `## Review:` headings). If found, build a lightweight map of prior findings and decisions: what was flagged, what was approved, what was explicitly dismissed. This is your cross-session consistency baseline.
+
+For each finding in the current review, ask:
+
+**Does it contradict a prior review in this session?**
+If a reviewer now recommends X but a previous review in this session recommended not-X (or vice versa), that is a drift signal — not automatically wrong, but it requires an explanation. Surface it: `(session drift: previous review at [approx time/position] recommended [opposite] — reviewers should not flip without a stated reason)`. If no reason is apparent from the artifact change, downgrade the finding to a question and ask which position holds.
+
+**Is the reasoning traceable?**
+Can you trace a direct line from the artifact to the conclusion? If a reviewer says "X will cause Y", is X actually present and does it actually cause Y? If the chain breaks anywhere, mark it: `(ungrounded: [where the chain breaks])` and either repair it or drop it.
+
+**Is it internally consistent within this review?**
+Does this finding contradict another finding from the same reviewer in this same run? Contradiction is a signal that the reviewer was pattern-matching rather than reasoning. Surface it: `(note: conflicts with [other finding] — kept the stronger one)`.
+
+**Is the severity proportionate to actual impact?**
+A reviewer saying "this is blocking" must be able to name the concrete harm. If the harm is speculative or relies on an unlikely chain of events, downgrade: `(downgraded: harm is speculative — no direct failure path in this artifact)`.
+
+**Is it specific enough to act on?**
+Vague findings ("this could be improved", "consider handling this case") with no concrete target are noise. Either sharpen with what you know of the artifact, or drop: `(dropped: too vague to act on)`.
+
+**Do the stakes hold up?**
+Every question must name what breaks if the answer is wrong. If it doesn't, add the stakes or convert to a nit.
+
+The goal is a report where every finding has a traceable, defensible reason to exist — not a relay of whatever the reviewers returned.
+
 ### Deduplication
 
 Deduplicate aggressively — same concept flagged at different locations still counts as one finding if the root cause is the same. When two or more reviewers flag the same issue:
-1. Keep the finding with the strongest label (`suggestion (blocking)` > `suggestion` > `question` > `nit`)
+1. Keep the finding with the strongest label (`[blocking]` > `[suggestion]` > `[question]` > `[nit]`)
 2. Note which reviewers flagged it: `(also flagged by: Adversarial, Code Quality)`
 3. Merge any complementary details into the kept finding
 
-Label ordering for deduplication: `suggestion (blocking)` > `suggestion` > `question` > `nit`.
+Label ordering for deduplication: `[blocking]` > `[suggestion]` > `[question]` > `[nit]`.
 
 ### Grouping
 
-Structure the consolidated report:
+Both modes use a flat numbered list. Severity is an inline label on each finding — no sub-sections.
+
+Severity labels and what they mean:
+
+| Label | Meaning |
+|---|---|
+| `[blocking]` | Must fix before merge / must resolve before proceeding |
+| `[suggestion]` | Meaningful improvement — worth doing, not required |
+| `[question]` | Something unclear that needs an answer before it can be evaluated |
+| `[nit]` | Minor — polish, naming, style |
+
+For idea/spec reviews, use `[concern]` instead of `[suggestion]` and `[blocking]` to signal whether the plan or reasoning holds up.
+
+---
+
+**Code review modes (self-review, PR review, changes review):**
 
 ```
 ## Review: <mode> — <summary>
 
-### Suggestions (blocking)
-<findings labeled suggestion (blocking)>
-
-### Suggestions
-<findings labeled suggestion>
-
-### Questions
-<findings labeled question>
-
-### Nits
-<findings labeled nit>
-
-### Action plan
-<numbered list of recommended actions, ordered by priority>
-
-### Reviewers
-<list of which reviewers ran and their individual finding counts>
-
-**Explorer:** <one of:>
-- `skipped` — Architecture signal did not fire (expected)
-- `ok` — ran successfully, findings included in Architecture and Adversarial context
-- `failed` — dispatch failed: <error summary>. Architecture and Adversarial reviewers had no codebase context. Consider re-running `crew review` or checking reviewer-explorer logs.
-- `unavailable` — Agent tool not available in this execution context
+1. [blocking] **<title>** — <evidence>. <explanation>. <fix>.
+2. [suggestion] **<title>** — <evidence>. <explanation>. <fix>.
+3. [question] **<title>** — <what needs to be answered and why it matters>.
+4. [nit] **<title>** — <what to change>.
 ```
 
-If a severity section has no findings, omit it. If there are no findings at all across all reviewers, state that clearly — zero findings is a valid outcome.
+---
+
+**Idea review and spec review:**
+
+Tone is evaluative — the question is "does this hold up?". Findings should address whether the idea, plan, or reasoning is sound.
+
+```
+## Review: Idea — <summary>
+
+**Verdict:** proceed / revisit / blocked — <1 sentence: the decisive reason>
+
+1. [blocking] **<title>** — <what assumption breaks or what is fundamentally missing>. <why it matters>. <what needs to change>.
+2. [concern] **<title>** — <what weakens the plan>. <why it matters>. <what would strengthen it>.
+3. [question] **<title>** — <what is unclear and must be resolved before moving forward>.
+4. [nit] **<title>** — <minor framing or completeness improvement>.
+```
+
+If there are no findings, state the verdict as `proceed` and give one sentence of reasoning.
+
+---
+
+Zero findings is a valid outcome. No action plan. No reviewers section.
 
 ### Output constraints
 
-- **No extra sections.** The only allowed headings are the ones in the template above — no "What looks good", no "Summary", no thematic groupings, no preamble.
-- **Per-finding length:** keep each consolidated finding to 2 sentences max for the explanation + 1 sentence for the fix. Do not expand beyond what the reviewer provided.
-- **Hard cap: 7 findings total** across all severity sections. After deduplication, keep the highest-severity findings. Drop the rest — do not demote them to one-liners.
-- **Action plan:** max 5 items, one line each. Only the most impactful actions.
+- **No extra structure.** No sub-sections, no thematic groupings, no "What looks good", no preamble. Flat numbered list only.
+- **Per-finding length:** EXACTLY 1 sentence for evidence, EXACTLY 1 sentence for explanation, EXACTLY 1 sentence for fix/response. You may sharpen language or add missing stakes — do not pad or invent.
+- **Hard cap: 7 findings total.** After deduplication, keep the highest-severity findings. Drop the rest — do not demote them to one-liners.
 - **Be opinionated.** Surface what matters most, not everything found. A short focused report is better than an exhaustive one.
 
 ## Step 8: Output
 
-Return the single consolidated report. For PR review mode, append the overall assessment:
+Return the single consolidated report using the mode-appropriate template from the Grouping section.
 
-- **Intent match**: does the code achieve what the PR description claims? (yes / partially / no)
-- **Completeness**: is anything missing? (tests, docs, migration, changelog)
-- **Verdict**: approve / request changes / needs discussion — one sentence why
+For PR review mode, prepend a one-line overall assessment before the findings:
+
+**Verdict:** approve / request changes / needs discussion — one sentence why
+
+**After the consolidated report for all modes**, append:
+
+> Run `crew log` to capture takeaways from this review.
 
 ## Step 9: Extensibility
 
@@ -397,7 +497,7 @@ Skip this section entirely for PR review and spec review modes — pipeline inte
 
 ## Rules
 
-- Never review code yourself. You orchestrate — personas do the reviewing.
+- Never write original findings. Personas do the reviewing — you challenge, filter, and consolidate what they return.
 - Never skip consolidation. Even with one reviewer, output goes through the consolidation format.
 - Reviewers receive pre-built context. They never fetch or read files independently.
 - The size gate applies to both self-review and PR review modes.
