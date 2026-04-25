@@ -33,6 +33,7 @@ alwaysApply: true
 - Explicit types on function signatures — don't rely on inference for public APIs.
 - No long functions — extract named helpers beyond ~40 lines.
 - Check if functionality already exists before writing new code.
+- No functions with 4+ positional parameters, prefer objects.
 
 ## LLM / eval / agentic work
 

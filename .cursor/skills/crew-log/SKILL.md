@@ -116,7 +116,11 @@ The tool verifies the entry was stored and prints what it indexed. If it fails, 
 
    > "Preference violations this session: [list]. Worth updating `personal.mdc` to be more explicit?"
 
-4. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
+4. **Drift check** — read the first `## How I expect agents to work` block in both `~/.claude/CLAUDE.md` and `~/.cursor/rules/personal.mdc`. If they differ in substance (not just whitespace/formatting), surface:
+
+   > "`CLAUDE.md` and `personal.mdc` preferences have drifted — consider syncing them. Key differences: [list]"
+
+5. Clear `$TASK_DIR/SESSION.md` (the buffer has been flushed to the journal).
 
 ## Rules
 

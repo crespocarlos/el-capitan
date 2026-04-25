@@ -26,8 +26,9 @@
 
 - No `any`. No `unknown` unless it's a true boundary with immediate narrowing.
 - Explicit types on function signatures — don't rely on inference for public APIs.
-- No long functions — extract named helpers beyond ~40 lines.
+- No long functions — extract named helpers beyond ~150 lines.
 - Check if functionality already exists before writing new code.
+- No functions with 4+ positional parameters, prefer objects.
 
 ## LLM / eval / agentic work
 
@@ -63,8 +64,6 @@ Dispatch fallback priority (when Agent tool is unavailable):
 1. **`claude -p` file-based dispatch** — parallel CLI processes
 2. **Inline sequential** — degraded; ordering bias; only when no other option
 
-`crew autopilot` and `crew status` are handled inline — see Pipeline section below.
-
 **This routing is authoritative.** Read the file, follow its instructions. Do not override with judgment calls.
 
 **Task state**: resolve via `~/.agent/bin/resolve-task-dir.py`. Scans `~/.agent/tasks/*/.task-id`, matches `repo_remote_url` + `branch`.
@@ -75,19 +74,11 @@ Dispatch fallback priority (when Agent tool is unavailable):
 spec → [Gate 1: approve spec] → implement → review → commit → [Gate 2: approve message] → open PR → done
 ```
 
-**`crew autopilot`**: chains from current state to next gate. Not a mode toggle — means "advance from here." If a step fails, pauses and surfaces the error. No auto-retry.
-
-**`crew status`**: prints current pipeline state derived from git/gh state. See crew-orchestrator.mdc for the full logic.
-
-**`crew health`**: runs five health checks inline (symlinks, hooks, jq, gh auth, active SPEC.md). Auto-runs when `crew status` finds no active task.
-
-**`crew abandon`**: gracefully abandons the current task — stashes changes, writes SESSION.md stub, appends ABANDONED to PROGRESS.md.
-
-`crew start build` → crew-specwriter. `crew start review-cycle <PR#>` → crew-pr-resolver. (Alias layer — no new state.)
+Drive each step manually: `crew spec` → `crew implement` → `crew review` → `crew commit` → `crew open pr`.
 
 ## PROGRESS.md
 
-Append-only. Format: `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. `crew status` reads git/gh, not this file.
+Append-only. Format: `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. Pipeline state is derived from git/gh — not this file.
 
 ## Memory
 

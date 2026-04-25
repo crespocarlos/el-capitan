@@ -22,6 +22,9 @@ Parse the user's input to determine the review mode:
 | `crew review PR #X` or `crew review PR <URL>` | **PR review** | `gh pr diff NUMBER --repo OWNER/REPO` + PR metadata |
 | `crew review spec` | **Spec review** | Active SPEC.md (resolved via task state) |
 | `crew review idea` or `crew review idea: <text>` | **Idea review** | Pasted text if provided; otherwise current session conversation |
+| `crew review address` | **Delegated** | Handled by `crew-address-review` skill — do not enter review pipeline |
+
+**`crew review address`:** immediately delegate to the `crew-address-review` skill. Do not fetch a diff or dispatch reviewers.
 
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
 
@@ -447,6 +450,23 @@ Return the single consolidated report using the mode-appropriate template from t
 For PR review mode, prepend a one-line overall assessment before the findings:
 
 **Verdict:** approve / request changes / needs discussion — one sentence why
+
+After printing the report, persist it:
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel))
+BRANCH=$(git branch --show-current)
+TASK_DIR=$(python3 ~/.agent/bin/resolve-task-dir.py 2>/dev/null)
+# Fall back to a temp location if no task dir
+OUTPUT_DIR=${TASK_DIR:-/tmp/crew-review-$REPO}
+mkdir -p "$OUTPUT_DIR"
+cat > "$OUTPUT_DIR/REVIEW.md" << 'EOF'
+<consolidated report verbatim>
+EOF
+[ $? -ne 0 ] && echo "Warning: could not persist REVIEW.md to $OUTPUT_DIR" >&2
+```
+
+Do not announce the write to the user.
 
 **After the consolidated report for all modes**, append:
 

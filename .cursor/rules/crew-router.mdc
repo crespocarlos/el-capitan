@@ -16,25 +16,14 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew test` | crew-test skill |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
-| `crew review` [PR #X \| spec \| idea \| changes \| (self)] | crew-reviewer (no args = full branch diff vs main; for staged-only use `crew review changes`) |
-| `crew review changes` | crew-reviewer (staged changes, pre-commit review) |
-| `crew review idea` [: text] | crew-reviewer (idea/proposal/session review) |
-| `crew resolve PR` #X or URL | crew-pr-resolver (formerly `crew address PR`) |
-| `crew address PR` #X or URL | crew-pr-resolver *(deprecated — use `crew resolve PR`)* |
+| `crew review` [PR #X \| spec \| idea \| changes \| address \| (self)] | crew-reviewer — `changes`: staged only; `idea`: session/proposal; `address`: work through last review findings |
+| `crew resolve PR` #X or URL | crew-pr-resolver |
 | `crew log` | crew-log |
 | `crew recall`: question | crew-recall |
 | `crew create issue` description | crew-create-issue |
 | `crew cleanup` | crew-cleanup |
-| `crew autopilot` | crew-orchestrator (auto-advance to next gate) |
-| `crew status` | crew-orchestrator (print pipeline state) |
-| `crew health` | crew-orchestrator (run health checks inline) |
-| `crew abandon` | crew-abandon skill |
-| `crew start build` | crew-specwriter (same as `crew spec`) |
-| `crew start review-cycle <PR#>` | crew-pr-resolver (same as `crew resolve PR`) |
 
 **This table is authoritative.** Do not override it with judgment calls.
-
-> Note: `crew start` is an alias layer — routes to existing handlers, introduces no new state or pipeline logic.
 
 ## Subagent dispatch
 

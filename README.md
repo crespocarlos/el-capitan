@@ -48,14 +48,14 @@ flowchart TB
     reviewer["🔍 reviewer"] -.->|"standalone"| impl
 ```
 
-**Two workflows. Two explicit gates in `build`.** Run `crew autopilot` to advance automatically to the next gate, or drive each step manually — your choice.
+**Two workflows. Two explicit gates in `build`.** Drive each step manually — `crew implement` → `crew review` → `crew commit` → `crew open pr` — or let the pipeline guide you.
 
 El Capitan has three layers:
 
 | Layer | File | Job |
 |---|---|---|
 | **Router** | `.cursor/rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
-| **Orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state, session awareness, autopilot |
+| **Orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
 | **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
 | **Runtime** | ralph, hooks, journal tools | Execution engines |
 
@@ -68,8 +68,8 @@ El Capitan has three layers:
 Feature, bug fix, refactor, chore — the pipeline is the same. Crew-specwriter infers whether to use the standard or bug template from the content of your request.
 
 ```
-crew start build                          # guided entry
-crew spec https://github.com/org/repo/issues/123  # or spec directly from an issue
+crew spec https://github.com/org/repo/issues/123  # spec from an issue
+crew spec <plain description>                      # or from a description
 ```
 
 Stages: **spec → implement → review → commit → open-pr**  
@@ -80,8 +80,7 @@ Terminal: PR opened as draft
 Fetches all unresolved review threads on an open PR, evaluates each one, proposes edits and replies, and resolves threads after your approval — in a single batch.
 
 ```
-crew start review-cycle #456
-crew resolve PR #456                      # same thing
+crew resolve PR #456
 ```
 
 Stages: **address-pr → commit → push**  
@@ -99,7 +98,7 @@ bash ~/el-capitan/install.sh
 Then open any repository in Cursor or Claude Code and type:
 
 ```
-crew start build
+crew spec <issue URL or description>
 ```
 
 > All `crew` commands are typed into the AI chat, not the terminal.
@@ -177,11 +176,11 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 
 | Command | What it does |
 |---|---|
-| `crew start build` | Start a new build workflow (guided) |
 | `crew spec <issue URL or #N>` | Draft a SPEC.md from a GitHub issue |
 | `crew spec <plain description>` | Draft a SPEC.md from a description |
 | `crew implement` | Select spec, create worktree, build |
-| `crew review` | Multi-lens review of your changes before committing |
+| `crew review` | Multi-lens review of your changes |
+| `crew review address` | Work through last review findings inline |
 | `crew commit` | Propose and apply a semantic commit message |
 | `crew open pr` | Push the branch and open a draft PR |
 
@@ -189,17 +188,7 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 
 | Command | What it does |
 |---|---|
-| `crew start review-cycle #456` | Start a respond workflow |
 | `crew resolve PR #456` | Fetch and action all unresolved review threads |
-
-### Pipeline & session
-
-| Command | What it does |
-|---|---|
-| `crew autopilot` | Auto-advance from current state to next gate |
-| `crew status` | Print current pipeline state and active workflow |
-| `crew health` | Run setup health checks (symlinks, tools, auth) |
-| `crew abandon` | Gracefully abandon the current task |
 
 ### Review & quality
 
@@ -211,6 +200,7 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 | `crew review spec` | Multi-lens review of the active SPEC.md |
 | `crew review idea` | Multi-lens review of the current session discussion |
 | `crew review idea: <text>` | Multi-lens review of a pasted idea or proposal |
+| `crew review address` | Work through last review findings inline |
 
 ### Memory & journal
 
@@ -225,9 +215,7 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 |---|---|
 | `crew create issue: <description>` | Structure a rough idea into a GitHub issue and file it |
 | `crew cleanup` | Remove stale worktrees, branches, and task directories |
-
-> **Aliases:** `crew start build` = `crew spec`. `crew start review-cycle` = `crew resolve PR`.  
-> `crew address PR` still works but is deprecated — use `crew resolve PR`.
+| `crew test` | Discover and run tests scoped to the current diff |
 
 ---
 
@@ -247,7 +235,7 @@ Drafts a `SPEC.md` from a GitHub issue or plain description. Explores the codeba
 
 **Persona subagents:** `specwriter-scope`, `specwriter-adversarial`, `specwriter-explorer`
 
-**Skills:** `crew-implement`, `crew-commit`, `crew-open-pr`, `crew-create-issue`, `crew-cleanup`, `crew-abandon`
+**Skills:** `crew-implement`, `crew-commit`, `crew-open-pr`, `crew-create-issue`, `crew-cleanup`, `crew-address-review`
 
 ### 🔨 crew-builder
 
@@ -264,7 +252,7 @@ Multi-lens review of a branch diff, a PR, a SPEC.md, staged changes, or an idea/
 For idea and spec reviews, the output is evaluative: a verdict (`proceed / revisit / blocked`) followed by findings using `[blocking]` and `[concern]` labels, focused on whether the plan holds up.
 
 **Personas:** Code Quality, Adversarial, Fresh Eyes, Architecture, Product Flow  
-**Modes:** `crew review` (self, branch vs main), `crew review changes` (staged), `crew review PR #N` (others), `crew review spec`, `crew review idea`
+**Modes:** `crew review` (self), `crew review changes` (staged), `crew review PR #N`, `crew review spec`, `crew review idea`, `crew review address`
 
 ### 🧩 crew-pr-resolver
 
@@ -284,8 +272,8 @@ el-capitan/
 │   ├── rules/               # Always-loaded orchestration rules (.mdc)
 │   │   ├── crew-orchestrator.mdc   # Pipeline state machine (always loaded)
 │   │   ├── crew-router.mdc         # Routing table (always loaded)
-│   │   ├── crew-autopilot.mdc      # Autopilot logic (on-demand)
-│   │   └── crew-health.mdc         # Health checks (on-demand)
+│   │   ├── crew-explorer-conventions.mdc  # Shared tool protocol for explorer subagents
+│   │   └── personal.mdc            # Personal engineering preferences (always loaded)
 │   ├── agents/              # Agent protocols (.md) — symlink to .claude/agents/
 │   │   ├── crew-*.md               # Orchestrator agents
 │   │   ├── reviewer-*.md           # Reviewer personas
@@ -311,7 +299,6 @@ el-capitan/
 
 ```
 ~/.agent/
-├── PROFILE.md               # Your personal context (never tracked by git)
 ├── journal/                 # Monthly engineering journal entries
 ├── vectorstore/             # ChromaDB embeddings (auto-created)
 ├── tools/                   # Symlinked from el-capitan
@@ -329,11 +316,10 @@ Always-loaded context is kept minimal on purpose:
 
 | File | Lines | Loaded |
 |---|---|---|
-| `crew-orchestrator.mdc` | ~161 | Every session |
-| `crew-router.mdc` | ~59 | Every session |
-| `CLAUDE.md` | ~63 | Every session |
-| `crew-autopilot.mdc` | ~51 | Only when `crew autopilot` is invoked |
-| `crew-health.mdc` | ~88 | Only when `crew health` is invoked |
+| `crew-orchestrator.mdc` | ~90 | Every session |
+| `crew-router.mdc` | ~50 | Every session |
+| `personal.mdc` | ~40 | Every session |
+| `CLAUDE.md` | ~90 | Every session (Claude Code) |
 
 Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Fallback dispatch blocks for degraded environments live in `.agent/bin/` — not in agent files.
 
@@ -341,23 +327,11 @@ Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are l
 
 ## Configuration
 
-### PROFILE.md
+### Personal preferences
 
-`~/.agent/PROFILE.md` is your personal context file. It persists across sessions and machines, is never tracked by git, and is read by `crew spec` (optional context) and `crew implement` (auto-recall of repo patterns at build start).
+`~/.cursor/rules/personal.mdc` (symlinked to `el-capitan/.cursor/rules/personal.mdc`) is your always-loaded personal preferences file. It's read every Cursor and Claude Code session — no crew command needed.
 
-Fill it with anything that helps the agents work in your context:
-
-```markdown
-# Profile
-
-**Role:** Senior engineer, platform team
-**Current project:** Event pipeline for real-time analytics
-**Stack:** TypeScript, Node.js, Kafka, PostgreSQL
-**Preferences:** Explicit error types, no magic globals, prefer composition over inheritance
-**Recurring context:** All new behavior must be behind a feature flag (LaunchDarkly)
-```
-
-A starter template is created at `~/.agent/PROFILE.md` on first install.
+Edit it directly to set engineering philosophy, agent expectations, TypeScript rules, or any context that should always be in scope.
 
 ### Claude Code hooks
 
@@ -371,15 +345,6 @@ Project-level hooks in `.claude/settings.json` run automatically:
 
 Hooks exit 0 on error — they never block the agent. Telemetry is local-only.
 
-### Autopilot
-
-`crew autopilot` chains from the current pipeline state to the next gate:
-
-- From **APPROVED**: implement → diff → commit *(stops at Gate 2)*
-- From **IMPLEMENTING**: diff → commit *(stops at Gate 2)*
-- From **COMMITTING** (after Gate 2 approval): open PR → done
-
-Autopilot never skips a gate and never auto-retries on failure. If a step fails, it stops and surfaces the error.
 
 ### Semantic journal search
 

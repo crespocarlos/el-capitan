@@ -12,22 +12,23 @@ Manages the pipeline state machine. Derives state from git/gh, surfaces status o
 Three workflows. Build something, respond to review, or explore before committing.
 
 ### build
-Entry: `crew start build` or `crew spec <issue>`
-Stages: spec → implement → diff → commit → open-pr
+Entry: `crew spec <issue>`
+Stages: spec → implement → review → commit → open-pr
 Terminal: PR opened as draft
 Note: crew-specwriter infers the spec template (standard or bug) from the request content.
 No `crew start bug` command — template selection is automatic.
 
 ### respond
-Entry: `crew start review-cycle <PR>` or `crew resolve PR <PR>`
-Stages: address-pr → diff → commit → push
+Entry: `crew resolve PR <PR>`
+Stages: address-pr → commit → push
 Terminal: all review threads resolved and pushed; reviewer approval is external
 
 ### explore
-Entry: `crew brainstorm` or `crew learn`
+Entry: `crew brainstorm`
 Open-ended — no stages, no gates, no terminal condition.
 Optionally feeds into `build` when you're ready to spec something.
-Note: `crew status` cannot detect an active explore session (no persistent state).
+
+> **Lightweight path (no spec needed):** For changes touching ≤3 files with no new exports or API surface — implement inline → `crew review changes` → `crew commit`. Skip the spec, worktree, and task state entirely. Use full `build` when the change crosses that threshold.
 
 ## State machine
 
@@ -51,30 +52,30 @@ Two gates. Everything between them auto-advances in autopilot.
 On every conversation start, check for an active task:
 
 ```bash
-# Silent failure: session-start should not interrupt if no task is found
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
-elif TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null); then
-  export CREW_TASK_DIR="$TASK_DIR"
 else
-  echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
-  TASK_DIR=""
+  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/tmp/resolve-task-dir-err)
+  EXIT_CODE=$?
+  if [ $EXIT_CODE -ne 0 ]; then
+    # Script ran but failed (git error, malformed .task-id, etc.) — surface it
+    TASK_DIR=""
+    echo "Warning: resolve-task-dir failed (exit $EXIT_CODE): $(cat /tmp/resolve-task-dir-err)" >&2
+  else
+    export CREW_TASK_DIR="$TASK_DIR"
+  fi
 fi
 ```
 
-If `$TASK_DIR` is non-empty, read its SPEC.md slug and derive pipeline state (see `crew status` logic below) and surface:
+- If `$TASK_DIR` is non-empty: read SPEC.md slug, derive state, surface: `Active task: **<slug>** (<STATE>). Next: \`<next crew command>\`.`
+- If `$TASK_DIR` is empty and exit was 0: no active task — say nothing.
+- If exit was non-zero: surface the warning above and say nothing further.
 
-> Active task: **<slug>** (<STATE>). Next step: `<next crew command>`.
+> **Known limitation:** `CREW_TASK_DIR` is session-scoped. If you switch branches mid-session (`git checkout`), the cached value points to the old task. Unset it manually — `unset CREW_TASK_DIR` — before running crew commands on the new branch.
 
-If no active task, say nothing — do not announce the absence of a task.
+## `crew status` / `crew autopilot`
 
-## `crew status`
-
-**Full derivation logic**: see `crew-status.mdc` — read it when `crew status` is invoked.
-
-## `crew autopilot`
-
-**Full autopilot logic**: see `crew-autopilot.mdc` — read it when `crew autopilot` is invoked.
+Removed — drive each step manually: `crew implement` → `crew review` → `crew commit` → `crew open pr`.
 
 ## PROGRESS.md
 
