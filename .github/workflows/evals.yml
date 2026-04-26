@@ -8,12 +8,14 @@ on:
       model:
         description: "OpenRouter model ID"
         required: false
-        default: "google/gemma-3-12b:free"
+        default: "google/gemma-4-31b-it:free"
         type: choice
         options:
+          - google/gemma-4-31b-it:free
+          - google/gemma-3-27b-it:free
+          - google/gemma-3-12b-it:free
+          - google/gemma-3-4b-it:free
           - nousresearch/hermes-3-llama-3.1-405b:free
-          - google/gemma-3-12b:free
-          - google/gemma-3-4b:free
           - meta-llama/llama-3.2-3b-instruct:free
 
 jobs:
@@ -32,5 +34,5 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          MODEL="${{ github.event.inputs.model || 'google/gemma-3-12b:free' }}"
+          MODEL="${{ github.event.inputs.model || 'google/gemma-4-31b-it:free' }}"
           uv run python reviewer/run.py --compare --model "$MODEL"
