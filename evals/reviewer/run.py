@@ -237,14 +237,24 @@ def run_fixture(
         )
 
     t_start = time.monotonic()
-    response = client.chat.completions.create(
-        model=client._model,  # type: ignore[attr-defined]
-        max_tokens=2048,
-        messages=[
-            {"role": "system", "content": persona_prompt},
-            {"role": "user", "content": dispatch_prompt},
-        ],
-    )
+    max_retries = 4
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=client._model,  # type: ignore[attr-defined]
+                max_tokens=2048,
+                messages=[
+                    {"role": "system", "content": persona_prompt},
+                    {"role": "user", "content": dispatch_prompt},
+                ],
+            )
+            break
+        except openai.RateLimitError as e:
+            if attempt == max_retries - 1:
+                raise
+            wait = 60 * (attempt + 1)
+            print(f" [429 rate limit, waiting {wait}s before retry {attempt + 1}/{max_retries - 1}]", flush=True)
+            time.sleep(wait)
     elapsed = time.monotonic() - t_start
 
     raw_output = response.choices[0].message.content or "" if response.choices else ""
@@ -573,7 +583,7 @@ def main() -> None:
         )
         return result
 
-    with ThreadPoolExecutor(max_workers=min(6, total)) as executor:
+    with ThreadPoolExecutor(max_workers=min(2, total)) as executor:
         futures = {executor.submit(_run_one, item): item for item in work_items}
         for future in as_completed(futures):
             try:
@@ -583,6 +593,10 @@ def main() -> None:
             except Exception as exc:
                 fixture, persona_name = futures[future]
                 print(f"  ERROR [{fixture['id']}] {persona_name}: {exc}", file=sys.stderr)
+
+    if not all_results:
+        print("\nFAIL: no results produced — all fixtures errored", file=sys.stderr)
+        sys.exit(1)
 
     write_manifest(run_dir, all_fixture_ids, sorted(all_personas), all_results)
     print(f"\nResults written to: {run_dir}")
