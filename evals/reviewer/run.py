@@ -76,6 +76,10 @@ OUTPUT_PRICE_PER_MTOK = 0
 DEFAULT_MODEL = "nousresearch/hermes-3-llama-3.1-405b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+# Rate-limit pacing: free tier = 8 req/min → wait 8s between requests
+# Requests run serially (max_workers=1) so this keeps us under the cap.
+_INTER_REQUEST_DELAY = 8.0
+
 # ---------------------------------------------------------------------------
 # Prompt loading
 # ---------------------------------------------------------------------------
@@ -252,9 +256,11 @@ def run_fixture(
         except openai.RateLimitError as e:
             if attempt == max_retries - 1:
                 raise
-            wait = 60 * (attempt + 1)
+            wait = 65  # flat: just past the 1-min reset window
             print(f" [429 rate limit, waiting {wait}s before retry {attempt + 1}/{max_retries - 1}]", flush=True)
             time.sleep(wait)
+    # Pace requests to stay under the 8 req/min free-tier limit.
+    time.sleep(_INTER_REQUEST_DELAY)
     elapsed = time.monotonic() - t_start
 
     raw_output = response.choices[0].message.content or "" if response.choices else ""
@@ -583,7 +589,7 @@ def main() -> None:
         )
         return result
 
-    with ThreadPoolExecutor(max_workers=min(2, total)) as executor:
+    with ThreadPoolExecutor(max_workers=1) as executor:
         futures = {executor.submit(_run_one, item): item for item in work_items}
         for future in as_completed(futures):
             try:
