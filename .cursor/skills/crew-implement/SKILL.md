@@ -177,11 +177,10 @@ When the Implementation Report is available:
    ```
    [TIME] crew-implement: completed N/N tasks, files: <changed files from report>
    ```
-3. Tell the user:
+3. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Ready for `crew review`."
    > "Working directory: `<WORK_DIR>` — run tests from there."
-
-> Next: run `crew review` to continue.
+   > **Next: run `crew review` to continue.**
 
 **Some tasks failed:**
 
@@ -197,7 +196,7 @@ When the Implementation Report is available:
 - Always create the worktree before launching the worker
 - The skill handles ALL user interaction — the worker is non-interactive
 - If the worker returns failures, always surface them to the user with options
-- **Stop after all tasks pass.** Never commit, push, or create a PR.
+- **Stop after all tasks pass.** Never commit, push, or create a PR. Always output the handoff message (Step 7) before stopping.
 - **ALWAYS follow crew-builder's protocol for implementation.** The orchestrator handles setup and gates. Code changes follow crew-builder's instructions — either via a subagent (Cursor Task tool), ralph, or by reading and following crew-builder's inline protocol directly. Never skip crew-builder's protocol and implement ad-hoc.
 
 ## Auto-clarity override
