@@ -519,7 +519,9 @@ fi
 
 Skip this section entirely for PR review and spec review modes — pipeline integration only applies to self-review and changes review.
 
-> Next: run `crew review address` to address findings, or `crew commit` to proceed (PASS/WARN only).
+**After logging, output the next-step hint — this is mandatory, do not skip:**
+- PASS/WARN: `> Next: run \`crew commit\` to continue.`
+- BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
 
 ## Rules
 
