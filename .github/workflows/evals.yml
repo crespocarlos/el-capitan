@@ -1,0 +1,36 @@
+name: Reviewer Evals
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "OpenRouter model ID"
+        required: false
+        default: "nousresearch/hermes-3-llama-3.1-405b:free"
+        type: choice
+        options:
+          - nousresearch/hermes-3-llama-3.1-405b:free
+          - google/gemma-3-12b:free
+          - google/gemma-3-4b:free
+          - meta-llama/llama-3.2-3b-instruct:free
+
+jobs:
+  reviewer-evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Run reviewer evals
+        working-directory: evals
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          MODEL="${{ github.event.inputs.model || 'nousresearch/hermes-3-llama-3.1-405b:free' }}"
+          uv run python reviewer/run.py --compare --model "$MODEL"

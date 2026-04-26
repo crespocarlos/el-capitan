@@ -1,0 +1,51 @@
+{
+  "model": "claude-opus-4-5",
+  "run_at": "2026-04-26T19:18:05.009214+00:00",
+  "personas": {
+    "reviewer-adversarial": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 2,
+      "precision": 0.5
+    },
+    "reviewer-code-quality": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 2,
+      "precision": 0.5833
+    },
+    "specwriter-scope": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 1
+    },
+    "reviewer-prompt-quality": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 1,
+      "precision": 0.3333
+    },
+    "reviewer-architecture": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 1,
+      "precision": 0.5
+    },
+    "reviewer-fresh-eyes": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 1
+    },
+    "reviewer-product-flow": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 1,
+      "precision": 1.0
+    },
+    "specwriter-adversarial": {
+      "recall": 1.0,
+      "scope_violations": 0,
+      "fixtures_scored": 1
+    }
+  }
+}

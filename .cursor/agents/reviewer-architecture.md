@@ -65,9 +65,9 @@ Does the design earn its complexity? New abstractions, layers, or indirection mu
 ## Label mapping
 
 - Confirmed architectural violation → `[blocking]`
-- Unclear design intent (coupling, boundary, dependency direction) → `question` — state the stakes: "Is this coupling intentional? If not, it will prevent X."
-- Improvement opportunity → `suggestion`
-- Minor structural polish → `nit`
+- Unclear design intent (coupling, boundary, dependency direction) → `[needs more info]` — state the stakes: "Is this coupling intentional? If not, it will prevent X."
+- Improvement opportunity → `[attention]`
+- Minor structural polish → `[nit]`
 
 ## Coverage mapping
 

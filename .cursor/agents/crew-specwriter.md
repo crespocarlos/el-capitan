@@ -199,7 +199,9 @@ Surface 2-3 questions for the user to confirm before implementation starts. Comm
 
 After the user answers the questions, incorporate their answers into the SPEC.md, present a summary of what changed, and wait for the user to explicitly approve ("approved", "looks good", "go"). Never mark PROGRESS.md as IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval — approving the updated spec is.
 
-> Next: run `crew implement` or `crew autopilot` to continue.
+> Before approving, optionally run `crew review spec` for architectural and product review of this plan (dispatches Architecture, Adversarial, Product Flow, and conditionally Prompt Quality reviewers).
+>
+> Next: run `crew implement` to continue.
 
 ## Quality Bar
 

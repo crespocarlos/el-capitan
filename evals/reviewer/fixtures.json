@@ -1,0 +1,131 @@
+{
+  "fixtures": [
+    {
+      "id": "r1",
+      "description": "Behavioral regression — email fallback removed for active users, and inactive users always get email regardless of display_name",
+      "diff": "--- a/src/user/profile.py\n+++ b/src/user/profile.py\n@@ -12,6 +12,10 @@ def get_user_display_name(user_id: str) -> str:\n     user = db.fetch_user(user_id)\n-    return user.display_name or user.email\n+    if user.is_active:\n+        return user.display_name\n+    return user.email\n \n \n def get_user_avatar_url(user_id: str) -> str:\n     user = db.fetch_user(user_id)\n     return f\"/avatars/{user.id}.png\"",
+      "expected_findings": [
+        {
+          "persona": "reviewer-adversarial",
+          "severity": "blocking",
+          "match_hint": "falling back"
+        }
+      ]
+    },
+    {
+      "id": "r2",
+      "description": "Silent failure — exception caught and logged but function returns True regardless, hiding delivery failures from callers",
+      "diff": "--- a/src/notifications/sender.py\n+++ b/src/notifications/sender.py\n@@ -8,7 +8,13 @@ async def send_notification(user_id: str, message: str) -> bool:\n     try:\n         await email_client.send(user_id, message)\n-        return True\n+    except EmailDeliveryError as e:\n+        logger.warning(\"email delivery failed: %s\", e)\n+    return True\n \n \n async def send_bulk_notifications(user_ids: list[str], message: str) -> dict:\n     results = {}\n     for uid in user_ids:\n         results[uid] = await send_notification(uid, message)\n     return results",
+      "expected_findings": [
+        {
+          "persona": "reviewer-adversarial",
+          "severity": "blocking",
+          "match_hint": "True"
+        }
+      ]
+    },
+    {
+      "id": "r3",
+      "description": "Timezone corruption bug — replace(tzinfo=...) overwrites existing offset instead of converting, plus no tests for new functions",
+      "diff": "--- a/src/utils/date_utils.py\n+++ b/src/utils/date_utils.py\n@@ -1,5 +1,25 @@\n from datetime import datetime, timezone\n \n \n+def parse_iso_timestamp(raw: str) -> datetime:\n+    \"\"\"Parse an ISO 8601 timestamp string into a timezone-aware datetime.\n+\n+    Handles both Z-suffix and +00:00 offset forms. Raises ValueError on\n+    malformed input.\n+    \"\"\"\n+    if raw.endswith(\"Z\"):\n+        raw = raw[:-1] + \"+00:00\"\n+    return datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)\n+\n+\n+def format_relative(dt: datetime) -> str:\n+    \"\"\"Return a human-readable relative time string (e.g. '3 hours ago').\"\"\"\n+    delta = datetime.now(timezone.utc) - dt\n+    seconds = int(delta.total_seconds())\n+    if seconds < 60:\n+        return f\"{seconds} seconds ago\"\n+    elif seconds < 3600:\n+        return f\"{seconds // 60} minutes ago\"\n+    else:\n+        return f\"{seconds // 3600} hours ago\"\n+\n \n def utc_now() -> datetime:\n     return datetime.now(timezone.utc)",
+      "expected_findings": [
+        {
+          "persona": "reviewer-code-quality",
+          "severity": "blocking",
+          "match_hint": "replace"
+        },
+        {
+          "persona": "reviewer-code-quality",
+          "severity": "attention",
+          "match_hint": "format_relative"
+        }
+      ]
+    },
+    {
+      "id": "r4",
+      "description": "New module boundary introduced — scope discipline fixture for Code Quality persona (must NOT produce architecture/coupling findings)",
+      "diff": "--- /dev/null\n+++ b/src/billing/invoice.py\n@@ -0,0 +1,35 @@\n+\"\"\"Invoice generation module.\n+\n+Responsible for composing line items and computing totals. Does not\n+send invoices — that is handled by billing.sender.\n+\"\"\"\n+from dataclasses import dataclass, field\n+from decimal import Decimal\n+from typing import Sequence\n+\n+\n+@dataclass\n+class LineItem:\n+    description: str\n+    quantity: int\n+    unit_price: Decimal\n+\n+    @property\n+    def subtotal(self) -> Decimal:\n+        return self.quantity * self.unit_price\n+\n+\n+@dataclass\n+class Invoice:\n+    id: str\n+    customer_id: str\n+    line_items: list[LineItem] = field(default_factory=list)\n+\n+    @property\n+    def total(self) -> Decimal:\n+        return sum(item.subtotal for item in self.line_items, Decimal(\"0\"))\n+\n+\n+def compute_tax(invoice: Invoice, rate: Decimal) -> Decimal:\n+    \"\"\"Return tax amount for the invoice at the given rate.\"\"\"\n+    return invoice.total * rate",
+      "expected_findings": [
+        {
+          "persona": "reviewer-code-quality",
+          "severity": "blocking",
+          "match_hint": "sum("
+        }
+      ]
+    },
+    {
+      "id": "r5",
+      "description": "Prompt file verbosity regression — agent instruction file updated with redundant restatements and buried critical instructions",
+      "diff": "--- a/.cursor/agents/crew-specwriter.md\n+++ b/.cursor/agents/crew-specwriter.md\n@@ -1,8 +1,28 @@\n ---\n name: crew-specwriter\n description: \"Draft a SPEC.md from a GitHub issue or task description.\"\n model: inherit\n ---\n \n-# crew-specwriter\n+# crew-specwriter\n+\n+This agent is responsible for drafting SPEC.md files. It should be used when\n+the user wants to create a spec. The specwriter agent drafts specs. When you\n+need a spec, use this agent. The specwriter's job is spec drafting.\n+\n+## Important\n+\n+Always remember to be thorough. Being thorough is important. Make sure to be\n+thorough in your spec drafting. Thoroughness is a key quality of good specs.\n+Don't forget to be thorough — this is very important for good spec quality.\n+\n+## Critical instruction (read carefully)\n+\n+Never mark a spec as APPROVED. The user must approve it.\n+\n+## Also important\n+\n+Write acceptance criteria. Acceptance criteria are important. Good specs have\n+acceptance criteria. Remember to include acceptance criteria in every spec.\n \n ## Step 1: Auto-recall",
+      "expected_findings": [
+        {
+          "persona": "reviewer-prompt-quality",
+          "severity": "blocking",
+          "match_hint": "redundan"
+        }
+      ]
+    },
+    {
+      "id": "r6",
+      "description": "API backward compat break — exported function loses the include_deleted parameter with no deprecation path",
+      "diff": "--- a/src/api/user.py\n+++ b/src/api/user.py\n@@ -1,9 +1,8 @@\n from typing import Optional\n \n \n-def get_user(user_id: str, include_deleted: bool = False) -> Optional[\"User\"]:\n+def get_user(user_id: str) -> Optional[\"User\"]:\n     \"\"\"Fetch a user by ID. Returns None if not found.\"\"\"\n-    return _db.fetch(user_id, include_deleted=include_deleted)\n+    return _db.fetch(user_id)\n \n \n def list_users(page: int = 0, page_size: int = 20) -> list[\"User\"]:\n     return _db.list(page=page, page_size=page_size)",
+      "expected_findings": [
+        {
+          "persona": "reviewer-architecture",
+          "severity": "blocking",
+          "match_hint": "breaking change"
+        }
+      ]
+    },
+    {
+      "id": "r7",
+      "description": "Magic numbers — session TTL (86400) and refresh threshold (300) hardcoded without explanation",
+      "diff": "--- a/src/cache/session.py\n+++ b/src/cache/session.py\n@@ -1,6 +1,13 @@\n def create_session(user_id: str) -> str:\n     token = _generate_token()\n-    _store.set(f\"session:{token}\", user_id)\n+    _store.set(f\"session:{token}\", user_id, ex=86400)\n     return token\n+\n+\n+def is_valid_session(token: str) -> bool:\n+    ttl = _store.ttl(f\"session:{token}\")\n+    return ttl > 300",
+      "expected_findings": [
+        {
+          "persona": "reviewer-fresh-eyes",
+          "severity": null,
+          "match_hint": "300"
+        }
+      ]
+    },
+    {
+      "id": "r8",
+      "description": "Incomplete error state — payment failure returns no message, user gets no actionable feedback",
+      "diff": "--- /dev/null\n+++ b/src/checkout/payment.py\n@@ -0,0 +1,12 @@\n+from decimal import Decimal\n+\n+\n+async def process_payment(order_id: str, amount: Decimal) -> dict:\n+    \"\"\"Charge the customer and return result dict.\"\"\"\n+    try:\n+        result = await _gateway.charge(order_id, amount)\n+        return {\"success\": True, \"transaction_id\": result[\"id\"]}\n+    except PaymentError:\n+        return {\"success\": False}",
+      "expected_findings": [
+        {
+          "persona": "reviewer-product-flow",
+          "severity": "attention",
+          "match_hint": "error"
+        }
+      ]
+    },
+    {
+      "id": "r9",
+      "input_type": "spec",
+      "description": "Spec with untestable acceptance criterion — 'The response is fast' has no measurable threshold",
+      "content": "# Add user search endpoint\n\n## Goal\nAdd a search endpoint so users can find each other by name or email.\n\n## Tasks\n1. Add `GET /api/users/search?q=<query>` route in `src/api/user.py`\n2. Implement search logic in `src/services/user_search.py`\n\n## Acceptance Criteria\n- The endpoint returns a list of matching users\n- Search is case-insensitive\n- The response is fast\n- Users can search by name or email\n",
+      "expected_findings": [
+        {
+          "persona": "specwriter-adversarial",
+          "severity": null,
+          "match_hint": "testable"
+        }
+      ]
+    },
+    {
+      "id": "r10",
+      "input_type": "spec",
+      "description": "Task granularity violation — single task touches 5 files, well over the 1-2 file limit",
+      "content": "# Unified notification service\n\n## Goal\nReplace ad-hoc notification calls with a centralized NotificationService.\n\n## Tasks\n1. Create `NotificationService` in `src/notifications/service.py` and update `src/notifications/sender.py`, `src/api/user.py`, `src/api/orders.py`, and `src/workers/email_worker.py` to use it\n2. Add tests in `tests/notifications/test_service.py`\n\n## Acceptance Criteria\n- All notification sending routes through NotificationService\n- Existing notification behavior is preserved\n",
+      "expected_findings": [
+        {
+          "persona": "specwriter-scope",
+          "severity": null,
+          "match_hint": "files"
+        }
+      ]
+    }
+  ]
+}

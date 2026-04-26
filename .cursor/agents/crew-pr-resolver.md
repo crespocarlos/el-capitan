@@ -137,7 +137,7 @@ TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
 
 Changes applied.
 
-> Next: run `crew commit` to push resolved changes.
+> Next: run `crew commit` to commit resolved changes.
 
 ## Notes
 

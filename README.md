@@ -247,7 +247,7 @@ The implementation engine. Reads a SPEC.md, works through each task in order, ru
 
 ### 🔍 crew-reviewer
 
-Multi-lens review of a branch diff, a PR, a SPEC.md, staged changes, or an idea/proposal. Dispatches reviewer personas in parallel and consolidates findings into a single flat numbered list — each finding labeled inline with `[blocking]`, `[suggestion]`, `[question]`, or `[nit]`.
+Multi-lens review of a branch diff, a PR, a SPEC.md, staged changes, or an idea/proposal. Dispatches reviewer personas in parallel and consolidates findings into a single flat numbered list — each finding labeled inline with `[blocking]`, `[attention]`, `[needs more info]`, or `[nit]`.
 
 For idea and spec reviews, the output is evaluative: a verdict (`proceed / revisit / blocked`) followed by findings using `[blocking]` and `[concern]` labels, focused on whether the plan holds up.
 

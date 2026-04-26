@@ -1,5 +1,5 @@
 {
-  "description": "Five representative el-capitan feature requests. Each is a realistic task description that should produce a well-structured SPEC.md when processed by crew-specwriter.",
+  "description": "Representative el-capitan feature requests spanning CLI, UI, agent/prompt, and bug fix categories. Each should produce a well-structured SPEC.md when processed by crew-specwriter.",
   "tasks": [
     {
       "id": "t1",
@@ -20,6 +20,26 @@
     {
       "id": "t5",
       "description": "The dispatch.py script currently times out silently when a claude -p subprocess hangs. Add a per-persona timeout of 120 seconds after which the process is killed and the persona is added to the failures list with a 'timeout' label."
+    },
+    {
+      "id": "t6",
+      "description": "Add a `crew review idea` command that accepts a pasted proposal or uses the current session conversation as the artifact, dispatches Adversarial and Fresh Eyes reviewers always, and conditionally dispatches Architecture/Product Flow/Prompt Quality based on text signals in the artifact."
+    },
+    {
+      "id": "t7",
+      "description": "The reviewer-product-flow persona currently has no access to the SPEC.md when reviewing a code diff. Pass the active SPEC.md as additional context in the Tier 2 context package so the reviewer can evaluate whether the implementation meets the acceptance criteria."
+    },
+    {
+      "id": "t8",
+      "description": "Bug: `crew review changes` on a repository with no staged changes prints nothing and exits 0. It should detect the empty diff and print a clear message telling the user to stage changes first."
+    },
+    {
+      "id": "t9",
+      "description": "Add a `crew recall` command that searches the journal for past sessions by keyword or topic, returns the top 3 matching entries ranked by semantic similarity, and prints a summary of each with the file path."
+    },
+    {
+      "id": "t10",
+      "description": "The reviewer-prompt-quality persona's `maxTurns` is currently set to 10 but it is a readonly persona that never needs more than one read pass. Reduce it to 5 and document why in the persona's frontmatter comment."
     }
   ]
 }

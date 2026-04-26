@@ -7,6 +7,10 @@ description: "Work through findings from the most recent crew review inline. Tri
 
 # Address Review
 
+## Execution model
+
+**Silent evaluation, then approval, then execute.** 3 turns: (1) locate + evaluate findings silently, (2) present full verdict table + ask what to apply, (3) apply approved fixes. Never narrate steps or start editing during evaluation.
+
 ## When Invoked
 
 ### Step 1: Locate findings
@@ -26,49 +30,50 @@ If `$REVIEW_FILE` exists, read it. If neither source is available, stop:
 
 > "No review found. Run `crew review` first, then `crew review address`."
 
-### Step 2: Triage findings
+### Step 2: Evaluate findings (silent pass)
 
-Parse the findings list. Categorize:
+For each finding, **before preparing any edits**:
 
-- **Must address**: all `[blocking]` findings
-- **Should address**: all `[suggestion]` and `[concern]` findings
-- **Optional**: `[question]` and `[nit]` findings
+1. **Read the relevant file** (if a specific file/line is cited) — check the current state of the code
+2. **Check if already addressed**: if the finding's fix is already present in the working tree, classify as **Already Addressed** — no edit needed
+3. **Assess validity**: is the finding grounded? Does the reasoning follow from the actual code/artifact?
+   - If the finding contradicts the current file state, classify as **Reject** — state the specific reason
+   - If the fix is correct and actionable, classify as **Apply**
+   - If the finding is valid but the right fix is different from what the reviewer suggested, classify as **Adapt** — draft the better fix
+   - If the finding is valid but touches scope outside this change, classify as **Defer**
+4. For `[needs more info]` findings: answer the question inline if you can determine the answer from the code; otherwise surface it for user input
 
-Print a triage summary before starting:
+Never apply any change during this step. Collect all verdicts first.
 
-```
-Findings to address:
-  [blocking]   N  — must fix
-  [suggestion] N  — should fix
-  [question]   N  — needs answer
-  [nit]        N  — optional
+### Step 3: Report and ask for approval
 
-Starting with [blocking] findings.
-```
+Present the full verdict table:
 
-### Step 3: Work through findings in priority order
+| #   | Label             | Finding | Verdict  | Proposed Fix                     |
+| --- | ----------------- | ------- | -------- | -------------------------------- |
+| 1   | [blocking]        | Title   | Apply    | Change X to Y in file.ts:42      |
+| 2   | [attention]       | Title   | Reject   | Already uses the correct pattern |
+| 3   | [needs more info] | Title   | Answered | Intent is X — no change needed   |
+| 4   | [nit]             | Title   | Apply    | Rename variable                  |
 
-For each finding, starting with `[blocking]`:
+Summary counts: N apply / N adapt / N reject / N defer / N already addressed
 
-1. State the finding title and label
-2. Explain what you'll change and why
-3. Make the edit (read the relevant file first if needed)
-4. Confirm the change in one sentence
+Then ask:
 
-Work through `[blocking]` findings first, then `[suggestion]`/`[concern]`, then ask the user whether to continue to `[question]` and `[nit]` items:
+> **"Which fixes should I apply? (`all` = all Apply/Adapt rows; `none` = skip all; numbers = cherry-pick, including to override a Reject)"**
 
-> "Blocking and suggestion findings addressed. Continue with questions and nits? (Y/n)"
+### Step 4: Execute approved fixes
 
-### Step 4: Summary
+Only after the user responds — apply each approved edit. Read the file immediately before editing if it wasn't already loaded.
 
-After all selected findings are addressed, print:
+After all edits are applied, print:
 
 ```
 Review addressed:
-  ✓ [blocking]   N fixed
-  ✓ [suggestion] N fixed
-  — [question]   N (skipped / answered inline)
-  — [nit]        N (skipped)
+  ✓ [blocking]        N fixed (N rejected, N already addressed)
+  ✓ [attention]       N fixed (N rejected, N deferred)
+  — [needs more info] N answered inline / N need user input
+  — [nit]             N fixed / N skipped
 
-Run `crew review` to verify, or `crew commit` if satisfied.
+> Next: run `crew review` to verify, or `crew commit` if satisfied.
 ```

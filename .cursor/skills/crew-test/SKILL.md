@@ -146,13 +146,11 @@ If verdict is FAIL, print up to 30 lines of failing output.
 
 If verdict is WARN with no command: print `No test command found — skipping automated tests.`
 
-Output: `Verdict: PASS` / `Verdict: WARN` / `Verdict: FAIL`
-
 **Conclusion:**
 
-- If PASS: "Tests passed. Run `crew review` to continue."
-- If WARN: "No tests found or no test command configured. Verify manually using the checklist above."
-- If FAIL: "Tests failed. Fix the failures before proceeding."
+- If PASS: print `Verdict: PASS` then `> Next: run \`crew review\` to continue.`
+- If WARN: print `Verdict: WARN` then `> Next: no test command found — verify manually using the checklist above, then run \`crew review\`.`
+- If FAIL: print `Verdict: FAIL` then `> Fix the test failures before proceeding.`
 
 ## Auto-clarity override
 

@@ -37,7 +37,7 @@ Classify from synthesized content as **bug** or **feature**:
 - Bug: something broken, an error, unexpected behavior, regression, crash
 - Feature: something new — a capability, workflow, integration, enhancement
 
-Default to **feature** if ambiguous. *(Features are lower-risk to mis-classify — a false bug report creates noise in the bug queue; a false feature is harmless.)* State the classification in the draft — don't ask.
+Default to **feature** if ambiguous. _(Features are lower-risk to mis-classify — a false bug report creates noise in the bug queue; a false feature is harmless.)_ State the classification in the draft — don't ask.
 
 ### Step 4: Check for repo templates
 
@@ -75,9 +75,9 @@ Print the issue URL and suggest the next step:
 
 ```
 Filed: https://github.com/OWNER/REPO/issues/N
-
-Next: `crew spec OWNER/REPO#N`
 ```
+
+> Next: run `crew spec OWNER/REPO#N` to draft a spec for this issue.
 
 ## Rules
 

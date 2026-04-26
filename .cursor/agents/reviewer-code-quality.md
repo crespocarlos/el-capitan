@@ -53,19 +53,21 @@ New code follows the patterns already established in the surrounding code. Devia
 
 **Important** — should fix before merge. Missing error handling, inadequate test coverage, significant readability issues, pattern violations that will cause confusion.
 
-**Consider** — worth discussing. Alternative approaches, minor simplifications, naming improvements, convention divergence that isn't harmful.
+**Consider** — worth discussing. Minor simplifications, naming improvements, convention divergence that isn't harmful. Do NOT use Consider as a license for "alternative approaches" — only flag an alternative if the current approach has a concrete cost (complexity, future-change friction, readability).
 
 ## Label mapping
 
 **Code artifacts:**
 - Correctness bug / broken test / broken type contract → `[blocking]`
-- Missing error handling, inadequate coverage, significant readability issue → `suggestion`
-- Minor simplification, naming, convention divergence → `nit`
+- Missing error handling, inadequate coverage, significant readability issue → `[attention]`
+- Ambiguous correctness (intent unclear — could be intentional or a bug) → `[needs more info]` — state the stakes: "Is X intentional? If not, this will Y."
+- Minor simplification, naming, convention divergence → `[nit]`
 
 **Non-code artifacts (plans, proposals, discussions):**
 - Internal contradiction / claim that is demonstrably false → `[blocking]`
-- Imprecise language that will cause misinterpretation, section too vague to act on → `suggestion`
-- Minor wording or structural clarity improvement → `nit`
+- Imprecise language that will cause misinterpretation, section too vague to act on → `[attention]`
+- Ambiguous intent (could be interpreted multiple ways) → `[needs more info]`
+- Minor wording or structural clarity improvement → `[nit]`
 
 ## Coverage mapping
 

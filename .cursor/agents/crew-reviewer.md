@@ -9,7 +9,7 @@ You orchestrate parallel reviewer personas to produce a single, consolidated rev
 
 ## Execution model
 
-**Silent orchestration, one consolidated output.** 2 turns max: size check + review (or scope confirmation on large diffs, then review). Never narrate dispatches or intermediate steps.
+**Silent orchestration, one consolidated output.** Never narrate dispatches or intermediate steps. Turns consumed: metadata fetch (Step 2) → optional Explorer dispatch (Step 4.5, when new files or new exports detected) → parallel reviewer dispatch + consolidation (Steps 5–7) → output (Step 8). The user sees one message: the consolidated report.
 
 ## Step 1: Mode detection
 
@@ -29,8 +29,6 @@ Parse the user's input to determine the review mode:
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
 
 **Idea review:** skip Steps 2–3 entirely. The artifact is already present — either the pasted text or the session conversation (the visible chat history in the current window, read directly without any tool call). Proceed directly to Step 4. If using session conversation as the artifact, scope to the most recent topic — from the last `crew` command invocation or the last major topic shift.
-
-**Post-dispatch truncation check:** After collecting all persona responses, check the word count of each response. If any persona response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
 
 ## Step 2: Lightweight metadata (no full diff yet)
 
@@ -96,9 +94,11 @@ Read `$TASK_DIR/SPEC.md`. No diff needed — skip directly to Step 4.
 
 Derive total size from the metadata gathered in Step 2 (sum of additions + deletions from `--stat` or the JSON response). Do NOT fetch the full diff to measure size.
 
-If >5000 lines: automatically use spine-focused strategy — top 10 changed files by line count + all new files. Do not ask the user. Note the strategy in the final report: `(spine-focused: ~N lines across M files — reviewing top 10 + new files)`.
+**Self-review:** If >5000 lines, use spine-focused strategy — top 10 changed files by line count + all new files. Do not ask the user. Note the strategy in the final report: `(spine-focused: ~N lines across M files — reviewing top 10 + new files)`. If ≤5000 lines, review all changed files.
 
-If ≤5000 lines: review all changed files. Proceed to Step 4.
+**PR review:** If >1500 lines, use spine-focused strategy (same approach). If ≤1500 lines, review all changed files.
+
+Proceed to Step 4.
 
 ### Fetching the diff (after size gate passes)
 
@@ -133,30 +133,31 @@ done
 **Idea review signal detection** — scan the artifact text:
 - Does the proposal involve user flows, journeys, or user-facing behavior? → activate Product Flow
 - Does it introduce new abstractions, contracts, modules, or system boundaries? → activate Architecture
+- Does it discuss LLM prompts, agent instructions, or prompt file changes? → activate Prompt Quality
 - Always active for idea review: Adversarial, Fresh Eyes
 
 Scan the diff file list to determine which extended reviewers to activate:
 
 | Signal | Extended reviewer |
 |---|---|
-| New files OR new exports (`export` added in existing files) | Architecture |
-| Files matching `**/components/**`, `**/pages/**`, `**/routes/**` | Product Flow |
+| Files matching `**/agents/**/*.md`, `**/skills/**/*.md`, `**/prompts/**`, `**/*instructions*.md`, `**/*.prompt.md` | Prompt Quality |
 
 Build the reviewer roster:
-- **Core** (always active for code reviews): Code Quality, Adversarial, Fresh Eyes
-- **Extended** (signal-triggered): Architecture, Product Flow
+- **Core** (always active for code reviews): Code Quality, Architecture, Product Flow, Fresh Eyes
+- **Adversarial** (Core, size-gated): active if total diff size ≥100 lines; skip for smaller diffs where Tier 3 context cost exceeds yield. When skipped, note it in the consolidated report: `(Adversarial skipped — diff below 100-line threshold)`
+- **Extended** (signal-triggered): Prompt Quality
 
 ## Step 4.5: Explorer dispatch (conditional)
 
 **Applies to self-review and PR review only. Skip for spec review.**
 
-Trigger condition: the Architecture signal fired in Step 4 (new files detected, OR `export` added in existing files).
+Trigger condition: new files are present in the diff (file status = A/added), OR new exports are detected in existing files (a diff line matching `^+.*\bexport\b` added in an existing file).
 
-If the Architecture signal did **not** fire, set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=skipped`, and proceed to Step 5.
+If neither condition is met, set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=skipped`, and proceed to Step 5.
 
-If the Architecture signal **did** fire:
+If the trigger fires:
 
-1. Collect the Architecture-signal files: new files + existing files where `export` was added. **Cap at 5 files** — if more than 5 triggered the signal, take the 5 with the most diff lines and note the count in the prompt.
+1. Collect triggering files: new files + existing files where a new export was added. **Cap at 5** — if more than 5, take the 5 with the most diff lines and note the count in the prompt.
 2. Extract diff hunks for those files only (not the full diff).
 3. Dispatch `reviewer-explorer` via Agent tool. **Note:** this step requires the Agent tool — it is available when crew-reviewer runs inline in the main session (Claude Code) or as a Task tool call (Cursor). If neither is available, set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=unavailable`, and proceed to Step 5.
 
@@ -166,12 +167,12 @@ Agent tool call:
   prompt: |
     ## Diff context
 
-    The following files triggered the Architecture signal (new files or new exports).
+    The following new files were added in this diff.
     Do a single-pass scan for patterns in the codebase that are similar to, duplicate,
     or conflict with these changes. Return a structured summary under 400 words and stop.
     Do not iterate or go deeper after your initial pass.
 
-    ## Architecture-signal files (<N> of <total> — largest by diff size)
+    ## New files (<N> of <total> — largest by diff size)
 
     <list of up to 5 architecture-signal files>
 
@@ -199,8 +200,8 @@ Build context packages for each reviewer before dispatching. Reviewers receive p
 Diff hunks + 15 surrounding lines + function/class signatures of changed functions.
 Assigned to: **Code Quality**, **Fresh Eyes**
 
-**Tier 2 — Function scope** (~40–50% of full context):
-Full functions containing changes + type definitions + import statements.
+**Tier 2 — Function scope + spec** (~40–50% of full context):
+Full functions containing changes + type definitions + import statements. If a SPEC.md is present in the task dir, append it under a `## Spec` heading.
 Assigned to: **Product Flow**
 
 **Tier 3 — Function-scoped + consumers**:
@@ -233,18 +234,20 @@ Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discove
 | Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) | default |
 | Architecture | `reviewer-architecture` | Tier 3 (Full+) | default |
 | Product Flow | `reviewer-product-flow` | Tier 2 (Function) | `fast` |
+| Prompt Quality | `reviewer-prompt-quality` | Tier 1 (Hunks+) | default |
 
-Architecture and Product Flow only activate when their signal triggers match (Step 4).
+Architecture and Product Flow always run. Prompt Quality only activates when its signal triggers match (Step 4). Adversarial only activates when total diff size ≥100 lines (Step 4).
 
 **Spec review:**
 
-| Reviewer | Subagent name | Model |
-|---|---|---|
-| Architecture | `reviewer-architecture` | default |
-| Adversarial | `reviewer-adversarial` | default |
-| Product Flow | `reviewer-product-flow` | `fast` |
+| Reviewer | Subagent name | When active | Model |
+|---|---|---|---|
+| Architecture | `reviewer-architecture` | always | default |
+| Adversarial | `reviewer-adversarial` | always | default |
+| Product Flow | `reviewer-product-flow` | always | `fast` |
+| Prompt Quality | `reviewer-prompt-quality` | prompt/agent files in spec (Step 4 patterns) | default |
 
-All three always run for spec review. Other reviewers are not applicable (no code to review).
+Architecture, Adversarial, and Product Flow always run for spec review. Prompt Quality activates when any spec task's **Files** field references paths matching the Prompt Quality signal patterns defined in Step 4. Other reviewers are not applicable (no code to review).
 
 **Idea review:**
 
@@ -252,8 +255,9 @@ All three always run for spec review. Other reviewers are not applicable (no cod
 |---|---|---|---|
 | Adversarial | `reviewer-adversarial` | always | default |
 | Fresh Eyes | `reviewer-fresh-eyes` | always | default |
-| Architecture | `reviewer-architecture` | Architecture signal fired | default |
-| Product Flow | `reviewer-product-flow` | Product Flow signal fired | `fast` |
+| Architecture | `reviewer-architecture` | always | default |
+| Product Flow | `reviewer-product-flow` | always | `fast` |
+| Prompt Quality | `reviewer-prompt-quality` | Prompt Quality signal fired | default |
 | Code Quality | `reviewer-code-quality` | only if artifact contains fenced code blocks or explicit implementation references | `fast` |
 
 ### Cursor dispatch (Task tool available)
@@ -281,14 +285,14 @@ Task tool call per reviewer:
 
     Assess findings using your persona's severity definitions, then map to output labels:
     - Critical   → [blocking]
-    - Important  → [suggestion]
-    - Consider + intent unclear → [question]
+    - Important  → [attention]
+    - Consider + intent unclear → [needs more info]
     - Consider + minor/clear   → [nit]
 
     Output findings as a flat numbered list, label inline:
     1. [blocking] **<title>** — ...
-    2. [suggestion] **<title>** — ...
-    3. [question] **<title>** — ...
+    2. [attention] **<title>** — ...
+    3. [needs more info] **<title>** — ...
     4. [nit] **<title>** — ...
 
     Finding format — two formats depending on artifact type:
@@ -346,6 +350,8 @@ If `claude` is not on PATH: run reviewers inline sequentially (ordering bias; la
 
 Collect all reviewer outputs. Consolidation operates **exclusively on the text output** from each reviewer — never re-read source code.
 
+**Truncation check:** Before evaluating any finding, check the word count of each persona response. If any response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
+
 ### Challenge each finding before keeping it
 
 Before deduplication, interrogate every finding. The primary question is not "is this correct?" but **"is this assessment grounded — does the reasoning actually follow from the artifact?"** Reviewers are LLMs and will sometimes produce confident-sounding findings that contradict each other, contradict the artifact, or are simply pattern-matched noise.
@@ -379,11 +385,11 @@ The goal is a report where every finding has a traceable, defensible reason to e
 ### Deduplication
 
 Deduplicate aggressively — same concept flagged at different locations still counts as one finding if the root cause is the same. When two or more reviewers flag the same issue:
-1. Keep the finding with the strongest label (`[blocking]` > `[suggestion]` > `[question]` > `[nit]`)
+1. Keep the finding with the strongest label (`[blocking]` > `[attention]` > `[needs more info]` > `[nit]`)
 2. Note which reviewers flagged it: `(also flagged by: Adversarial, Code Quality)`
 3. Merge any complementary details into the kept finding
 
-Label ordering for deduplication: `[blocking]` > `[suggestion]` > `[question]` > `[nit]`.
+Label ordering for deduplication: `[blocking]` > `[attention]` > `[needs more info]` > `[nit]`.
 
 ### Grouping
 
@@ -394,11 +400,11 @@ Severity labels and what they mean:
 | Label | Meaning |
 |---|---|
 | `[blocking]` | Must fix before merge / must resolve before proceeding |
-| `[suggestion]` | Meaningful improvement — worth doing, not required |
-| `[question]` | Something unclear that needs an answer before it can be evaluated |
+| `[attention]` | Meaningful improvement — worth doing, not required |
+| `[needs more info]` | Something unclear that needs an answer before it can be evaluated |
 | `[nit]` | Minor — polish, naming, style |
 
-For idea/spec reviews, use `[concern]` instead of `[suggestion]` and `[blocking]` to signal whether the plan or reasoning holds up.
+For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]` to signal whether the plan or reasoning holds up.
 
 ---
 
@@ -408,8 +414,8 @@ For idea/spec reviews, use `[concern]` instead of `[suggestion]` and `[blocking]
 ## Review: <mode> — <summary>
 
 1. [blocking] **<title>** — <evidence>. <explanation>. <fix>.
-2. [suggestion] **<title>** — <evidence>. <explanation>. <fix>.
-3. [question] **<title>** — <what needs to be answered and why it matters>.
+2. [attention] **<title>** — <evidence>. <explanation>. <fix>.
+3. [needs more info] **<title>** — <what needs to be answered and why it matters>.
 4. [nit] **<title>** — <what to change>.
 ```
 
@@ -426,7 +432,7 @@ Tone is evaluative — the question is "does this hold up?". Findings should add
 
 1. [blocking] **<title>** — <what assumption breaks or what is fundamentally missing>. <why it matters>. <what needs to change>.
 2. [concern] **<title>** — <what weakens the plan>. <why it matters>. <what would strengthen it>.
-3. [question] **<title>** — <what is unclear and must be resolved before moving forward>.
+3. [needs more info] **<title>** — <what is unclear and must be resolved before moving forward>.
 4. [nit] **<title>** — <minor framing or completeness improvement>.
 ```
 
@@ -500,9 +506,9 @@ fi
 
 **Verdict and transition** (based on consolidated findings):
 
-- **PASS** (zero findings, or only Consider-level): log `REVIEW → COMMITTING` and say: "Review clean. Run `crew commit` to proceed."
-- **WARN** (Important findings only, no Critical): log `REVIEW: issues found — pending fixes` and say: "Review found issues. Address them or run `crew commit` to proceed."
-- **BLOCK** (any Critical finding): log `REVIEW: blocked — critical findings` and say: "Fix the Critical findings above before committing."
+- **PASS** (zero findings, or only `[nit]` / `[needs more info]`): log `REVIEW → COMMITTING` and say: "Review clean. Run `crew commit` to proceed."
+- **WARN** (`[attention]` findings only, no `[blocking]`): log `REVIEW: issues found — pending fixes` and say: "Review found issues. Run `crew review address` to work through them, then `crew commit`."
+- **BLOCK** (any `[blocking]` finding): log `REVIEW: blocked — critical findings` and say: "Blocking findings above must be fixed. Run `crew review address` to work through them."
 
 ```bash
 # If PASS or WARN:
@@ -511,9 +517,9 @@ fi
 ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
 ```
 
-Skip this section entirely for PR review and spec review modes — pipeline integration only applies to self-review.
+Skip this section entirely for PR review and spec review modes — pipeline integration only applies to self-review and changes review.
 
-> Next: run `crew commit` to continue.
+> Next: run `crew review address` to address findings, or `crew commit` to proceed (PASS/WARN only).
 
 ## Rules
 

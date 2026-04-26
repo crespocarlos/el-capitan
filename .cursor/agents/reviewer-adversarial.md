@@ -58,9 +58,10 @@ Auth bypass, injection vectors, exposed secrets, PII in logs, insecure defaults.
 
 ## Label mapping
 
-- Confirmed bug → `[blocking]`
-- Suspected bug (intent unclear) → `question` — state the stakes: "Is X intentional? If not, this will Y."
-- Unlikely edge case → `nit`
+- Confirmed bug with direct failure path → `[blocking]`
+- Confirmed risk on a non-critical path (missing guard, swallowed error in a background flow) → `[attention]`
+- Suspected bug (intent unclear) → `[needs more info]` — state the stakes: "Is X intentional? If not, this will Y."
+- Unlikely edge case → `[nit]`
 
 You rarely produce nits. A plain question without stated stakes is a nit in disguise — upgrade it or drop it.
 
