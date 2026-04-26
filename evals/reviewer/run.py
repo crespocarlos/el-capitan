@@ -255,6 +255,16 @@ def run_fixture(
             )
             break
         except openai.RateLimitError as e:
+            # Daily quota exhausted — retrying won't help until tomorrow's reset.
+            # Fail immediately with an actionable message.
+            err_body = str(e)
+            if "free-models-per-day" in err_body:
+                sys.exit(
+                    "\nFAIL: OpenRouter free-tier daily quota exhausted (50 req/day).\n"
+                    "Fix: add $10 credits at https://openrouter.ai/settings/billing\n"
+                    "     to unlock 1000 free model requests/day.\n"
+                    "     Quota resets at midnight UTC if you prefer to wait."
+                )
             if attempt == max_retries - 1:
                 raise
             wait = 65  # flat: just past the 1-min reset window
