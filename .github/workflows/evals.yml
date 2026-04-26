@@ -8,9 +8,10 @@ on:
       model:
         description: "OpenRouter model ID"
         required: false
-        default: "google/gemma-4-31b-it:free"
+        default: "nvidia/nemotron-3-super-120b-a12b:free"
         type: choice
         options:
+          - nvidia/nemotron-3-super-120b-a12b:free
           - google/gemma-4-31b-it:free
           - google/gemma-3-27b-it:free
           - google/gemma-3-12b-it:free
@@ -34,5 +35,5 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          MODEL="${{ github.event.inputs.model || 'google/gemma-4-31b-it:free' }}"
+          MODEL="${{ github.event.inputs.model || 'nvidia/nemotron-3-super-120b-a12b:free' }}"
           uv run python reviewer/run.py --compare --model "$MODEL"

@@ -73,8 +73,8 @@ INPUT_PRICE_PER_MTOK = 0
 OUTPUT_PRICE_PER_MTOK = 0
 
 # Default model: free tier on OpenRouter
-# gemma-4-31b-it is less congested than hermes-3-405b on the free tier.
-DEFAULT_MODEL = "google/gemma-4-31b-it:free"
+# nemotron-3-super is #4 in programming weekly, 725B tokens/week, less congested than Google/Venice.
+DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Rate-limit pacing: free tier = 8 req/min → wait 8s between requests
