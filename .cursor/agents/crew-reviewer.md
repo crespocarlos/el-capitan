@@ -474,9 +474,16 @@ EOF
 
 Do not announce the write to the user.
 
-**After the consolidated report for all modes**, append:
+**After the consolidated report for all modes**, append two lines — both are required, do not skip either:**
 
 > Run `crew log` to capture takeaways from this review.
+
+Then the next-step handoff (select the matching line — do not omit):
+- Self-review / changes review — PASS/WARN: `> Next: run \`crew commit\` to continue.`
+- Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
+- PR review: `> Next: address findings in the PR, or run \`crew review address\` to work through them inline.`
+- Spec review: `> Next: run \`crew review address\` to work through findings, or approve the spec to proceed.`
+- Idea review: `> Next: run \`crew review address\` to work through findings and produce a revised idea.`
 
 ## Step 9: Extensibility
 
@@ -519,12 +526,7 @@ For **self-review and changes review only** (skip for PR review and spec review)
 ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
 ```
 
-**After all output, emit the next-step handoff — this is a required final line, do not skip, do not replace with "No next steps":**
-- Self-review / changes review — PASS/WARN: `> Next: run \`crew commit\` to continue.`
-- Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
-- PR review: `> Next: address findings in the PR, or run \`crew review address\` to work through them inline.`
-- Spec review: `> Next: run \`crew review address\` to work through findings, or approve the spec to proceed.`
-- Idea review: `> Next: run \`crew review address\` to work through findings and produce a revised idea.`
+_(Next-step handoff is emitted in Step 8 above for all modes.)_
 
 ## Rules
 
