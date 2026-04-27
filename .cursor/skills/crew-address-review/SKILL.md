@@ -9,7 +9,12 @@ description: "Work through findings from the most recent crew review inline. Tri
 
 ## Execution model
 
-**Silent evaluation, then approval, then execute.** 3 turns: (1) locate + evaluate findings silently, (2) present full verdict table + ask what to apply, (3) apply approved fixes. Never narrate steps or start editing during evaluation.
+**Two modes — detect before starting:**
+
+- **Code mode** (self-review, changes review, PR review): silent file-check → verdict table → apply edits. 3 turns.
+- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): no files to edit — findings are conceptual. Evaluate inline → present acceptance table → synthesize revised idea if approved. 3 turns.
+
+Never mix modes. If the review heading contains "Idea" or "Spec" (case-insensitive), use idea mode throughout.
 
 ## When Invoked
 
@@ -32,7 +37,7 @@ If `$REVIEW_FILE` exists, read it. If neither source is available, stop:
 
 ### Step 2: Evaluate findings (silent pass)
 
-For each finding, **before preparing any edits**:
+**Code mode:** For each finding, before preparing any edits:
 
 1. **Read the relevant file** (if a specific file/line is cited) — check the current state of the code
 2. **Check if already addressed**: if the finding's fix is already present in the working tree, classify as **Already Addressed** — no edit needed
@@ -43,11 +48,20 @@ For each finding, **before preparing any edits**:
    - If the finding is valid but touches scope outside this change, classify as **Defer**
 4. For `[needs more info]` findings: answer the question inline if you can determine the answer from the code; otherwise surface it for user input
 
+**Idea mode:** No files to read. For each finding:
+
+1. **Assess whether the critique holds**: does the reviewer's concern actually apply to the idea as stated?
+   - If the concern is valid and actionable, classify as **Accept** — note what change to the idea it implies
+   - If the concern is misplaced or based on a misreading, classify as **Reject** — explain why
+   - If the concern is valid but needs the user's input to resolve (e.g. scope decision, missing info), classify as **Needs Input**
+   - If the concern is minor framing or wording, classify as **Nit**
+2. Do not fabricate new direction — only incorporate what the reviewer found plus any clarifications the user provides in the next step
+
 Never apply any change during this step. Collect all verdicts first.
 
 ### Step 3: Report and ask for approval
 
-Present the full verdict table:
+**Code mode** — present the verdict table:
 
 | #   | Label             | Finding | Verdict  | Proposed Fix                     |
 | --- | ----------------- | ------- | -------- | -------------------------------- |
@@ -62,12 +76,40 @@ Then ask:
 
 > **"Which fixes should I apply? (`all` = all Apply/Adapt rows; `none` = skip all; numbers = cherry-pick, including to override a Reject)"**
 
+**Idea mode** — present the acceptance table:
+
+| #   | Label      | Finding | Verdict      | What changes in the idea                        |
+| --- | ---------- | ------- | ------------ | ----------------------------------------------- |
+| 1   | [blocking] | Title   | Accept       | Reframe caching layer as opt-in, not mandatory  |
+| 2   | [concern]  | Title   | Reject       | Reviewer misread — proposal already handles it  |
+| 3   | [concern]  | Title   | Needs Input  | Scope unclear — does this cover async flows?    |
+| 4   | [nit]      | Title   | Nit          | Rename "pipeline" → "workflow" for clarity      |
+
+Summary counts: N accept / N reject / N needs-input / N nit
+
+Then ask:
+
+> **"Which of these should I incorporate? (`all` = all Accept/Nit rows; `none` = skip; numbers = cherry-pick). For any 'Needs Input' rows, answer them here."**
+
 ### Step 4: Execute approved fixes
 
-Only after the user responds — apply each approved edit. Read the file immediately before editing if it wasn't already loaded.
+Only after the user responds.
 
-After all edits are applied, print:
+**Code mode:** Apply each approved edit. Read the file immediately before editing if it wasn't already loaded.
 
+After all edits are applied, print the summary and the mode-aware next step (see below).
+
+**Idea mode:** Do not edit any files. Instead:
+
+1. Collect all accepted/nit items plus any user answers to Needs Input items
+2. Locate the original idea text — it is in the session conversation (the pasted text or the output of the prior `crew review idea` turn). Use that as the base.
+3. Produce a **revised idea** that incorporates all accepted changes. Match the original structure and heading levels. Do not add new sections; do not remove content unless a finding specifically called it out. Present it inline as a clean proposal under a heading like `## Revised Idea`.
+
+After revision (or if the user chose `none`), print the summary.
+
+**Summary (both modes):**
+
+Code mode:
 ```
 Review addressed:
   ✓ [blocking]        N fixed (N rejected, N already addressed)
@@ -76,10 +118,18 @@ Review addressed:
   — [nit]             N fixed / N skipped
 ```
 
-**Then output the next step based on the review mode — this is mandatory, do not skip.**
+Idea mode:
+```
+Idea updated:
+  ✓ [blocking]  N incorporated (N rejected)
+  ✓ [concern]   N incorporated (N rejected, N deferred to user)
+  — [nit]       N incorporated / N skipped
+```
 
-Detect the review mode from the `## Review: <mode>` heading in context:
+**Then output the next step — this is mandatory, do not skip.**
 
-- **`## Review: Idea`**: ask "Want me to revise the idea with these fixes applied? I can produce an updated version." If the user says yes, synthesize a revised version of the idea incorporating all applied fixes. Present it as a clean updated proposal, not a diff.
-- **`## Review: changes`** (or `## Review: Changes`): output `> Next: run \`crew review\` to verify the fixes are clean.`
-- **Self-review / anything else** (`## Review: self`, `## Review: PR`, etc.): output `> Next: run \`crew review\` to verify, or \`crew commit\` if satisfied.`
+Detect the review mode from the `## Review: <mode>` heading in context (case-insensitive match):
+
+- **Idea** (heading contains "idea" or "spec"): if revision was produced, say `> Revised idea above. Run \`crew review idea\` again to re-evaluate, or \`crew spec\` to turn it into a spec.` If the user chose none, say `> No changes applied. Run \`crew review idea\` again or proceed with the original idea.`
+- **Changes** (heading contains "changes"): `> Next: run \`crew review\` to verify the fixes are clean.`
+- **Self-review / anything else**: `> Next: run \`crew review\` to verify, or \`crew commit\` if satisfied.`
