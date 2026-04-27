@@ -18,7 +18,13 @@ Never mix modes. If the review heading contains "Idea" or "Spec" (case-insensiti
 
 ## When Invoked
 
-### Step 1: Locate findings
+### Step 1: Locate findings and detect mode
+
+**Detect mode now, before any other step.** Check the `## Review: <mode>` heading in context (case-insensitive):
+- Contains "idea" or "spec" → **Idea mode**
+- Anything else (self, changes, PR, etc.) → **Code mode**
+
+Carry this mode through Steps 2–4 without re-detecting.
 
 Check if a `## Review:` heading is visible in the current session conversation. If yes, use those findings directly — do not read any file.
 
@@ -101,9 +107,10 @@ After all edits are applied, print the summary and the mode-aware next step (see
 
 **Idea mode:** Do not edit any files. Instead:
 
-1. Collect all accepted/nit items plus any user answers to Needs Input items
-2. Locate the original idea text — it is in the session conversation (the pasted text or the output of the prior `crew review idea` turn). Use that as the base.
-3. Produce a **revised idea** that incorporates all accepted changes. Match the original structure and heading levels. Do not add new sections; do not remove content unless a finding specifically called it out. Present it inline as a clean proposal under a heading like `## Revised Idea`.
+1. If the user chose `none`, skip synthesis entirely — go straight to the summary.
+2. Collect all accepted/nit items plus any user answers to Needs Input items.
+3. Locate the original idea text — it is in the session conversation (the pasted text or the output of the prior `crew review idea` turn). If the original idea is not recoverable from context (scrolled out or session reset), ask: `"I can't locate the original idea text in context — please paste it and I'll produce the revised version."` Then wait.
+4. Produce a **revised idea** that incorporates all accepted changes. Match the original structure and heading levels. Do not add new sections; do not remove content unless a finding specifically called it out. Present it inline as a clean proposal under a heading like `## Revised Idea`.
 
 After revision (or if the user chose `none`), print the summary.
 
