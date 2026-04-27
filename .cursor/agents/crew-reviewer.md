@@ -524,6 +524,7 @@ For **self-review and changes review only** (skip for PR review and spec review)
 - Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
 - PR review: `> Next: address findings in the PR, or run \`crew review address\` to work through them inline.`
 - Spec review: `> Next: run \`crew review address\` to work through findings, or approve the spec to proceed.`
+- Idea review: `> Next: run \`crew review address\` to work through findings and produce a revised idea.`
 
 ## Rules
 
