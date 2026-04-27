@@ -74,6 +74,12 @@ Review addressed:
   ✓ [attention]       N fixed (N rejected, N deferred)
   — [needs more info] N answered inline / N need user input
   — [nit]             N fixed / N skipped
-
-> Next: run `crew review` to verify, or `crew commit` if satisfied.
 ```
+
+**Then output the next step based on the review mode — this is mandatory, do not skip.**
+
+Detect the review mode from the `## Review: <mode>` heading in context:
+
+- **`## Review: Idea`**: ask "Want me to revise the idea with these fixes applied? I can produce an updated version." If the user says yes, synthesize a revised version of the idea incorporating all applied fixes. Present it as a clean updated proposal, not a diff.
+- **`## Review: changes`** (or `## Review: Changes`): output `> Next: run \`crew review\` to verify the fixes are clean.`
+- **Self-review / anything else** (`## Review: self`, `## Review: PR`, etc.): output `> Next: run \`crew review\` to verify, or \`crew commit\` if satisfied.`
