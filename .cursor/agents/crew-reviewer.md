@@ -506,10 +506,12 @@ fi
 
 **Verdict and transition** (based on consolidated findings):
 
-- **PASS** (zero findings, or only `[nit]` / `[needs more info]`): log `REVIEW → COMMITTING` and say: "Review clean. Run `crew commit` to proceed."
-- **WARN** (`[attention]` findings only, no `[blocking]`): log `REVIEW: issues found — pending fixes` and say: "Review found issues. Run `crew review address` to work through them, then `crew commit`."
-- **BLOCK** (any `[blocking]` finding): log `REVIEW: blocked — critical findings` and say: "Blocking findings above must be fixed. Run `crew review address` to work through them."
+Determine verdict first:
+- **PASS** — zero findings, or only `[nit]` / `[needs more info]`
+- **WARN** — `[attention]` findings only, no `[blocking]`
+- **BLOCK** — any `[blocking]` finding present. `Verdict: revisit` from reviewers always maps to BLOCK.
 
+For **self-review and changes review only** (skip for PR review and spec review): run pipeline logging.
 ```bash
 # If PASS or WARN:
 ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
@@ -517,11 +519,11 @@ fi
 ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
 ```
 
-Skip this section entirely for PR review and spec review modes — pipeline integration only applies to self-review and changes review.
-
-**After logging, output the next-step hint — this is mandatory, do not skip:**
-- PASS/WARN: `> Next: run \`crew commit\` to continue.`
-- BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
+**After all output, emit the next-step handoff — this is a required final line, do not skip, do not replace with "No next steps":**
+- Self-review / changes review — PASS/WARN: `> Next: run \`crew commit\` to continue.`
+- Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
+- PR review: `> Next: address findings in the PR, or run \`crew review address\` to work through them inline.`
+- Spec review: `> Next: run \`crew review address\` to work through findings, or approve the spec to proceed.`
 
 ## Rules
 
