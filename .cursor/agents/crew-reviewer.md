@@ -155,7 +155,18 @@ Trigger condition: new files are present in the diff (file status = A/added), OR
 
 If neither condition is met, set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=skipped`, and proceed to Step 5.
 
-If the trigger fires:
+If the trigger fires, check for a trivial-only diff: if ALL new files match the trivial-file set below, skip Explorer — these files have no behavioral surface worth cross-codebase comparison. Set `EXPLORER_SUMMARY` to empty, `EXPLORER_STATUS=skipped-trivial`, and proceed to Step 5.
+
+Trivial-file set (all new files must match for this skip to apply):
+Match patterns against the file's relative path from repo root; `*.ext` patterns match the basename only.
+```
+*.lock  *.lockb  package-lock.json  yarn.lock  pnpm-lock.yaml
+.npmrc  .yarnrc*  .env  .env.*
+*.snap  **/__fixtures__/**
+*.test.*  *.spec.*
+```
+
+Otherwise:
 
 1. Collect triggering files: new files + existing files where a new export was added. **Cap at 5** — if more than 5, take the 5 with the most diff lines and note the count in the prompt.
 2. Extract diff hunks for those files only (not the full diff).
@@ -223,6 +234,8 @@ No context tiers — all reviewers receive the full artifact text (pasted text o
 
 Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discovered by both Cursor and Claude Code). The orchestrator dispatches them by name — no need to inline persona content.
 
+Package all context tiers (Step 5) before dispatching any reviewer — do not interleave packaging and dispatch.
+
 ### Reviewer roster by mode
 
 **Self-review and PR review:**
@@ -231,7 +244,7 @@ Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discove
 |---|---|---|---|
 | Code Quality | `reviewer-code-quality` | Tier 1 (Hunks+) | `fast` |
 | Adversarial | `reviewer-adversarial` | Tier 3 (Full+) | default |
-| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) | default |
+| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) | `fast` |
 | Architecture | `reviewer-architecture` | Tier 3 (Full+) | default |
 | Product Flow | `reviewer-product-flow` | Tier 2 (Function) | `fast` |
 | Prompt Quality | `reviewer-prompt-quality` | Tier 1 (Hunks+) | default |
@@ -358,7 +371,7 @@ Before deduplication, interrogate every finding. The primary question is not "is
 
 **Step 7a — Scan session history for prior reviews**
 
-Before evaluating any finding, scan the visible session conversation for previous `crew review` outputs (look for `## Review:` headings). If found, build a lightweight map of prior findings and decisions: what was flagged, what was approved, what was explicitly dismissed. This is your cross-session consistency baseline.
+Scan for `## Review:` headings that mark prior `crew review` invocations. If zero prior invocations are found, skip Step 7a entirely and proceed to deduplication. If one or more are found, build the map **now — before evaluating any individual finding** — scanning only the last 2 invocations (bounded to limit token use). Build a lightweight map of prior findings and decisions: what was flagged, what was approved, what was explicitly dismissed. This is your cross-session consistency baseline.
 
 For each finding in the current review, ask:
 
@@ -412,6 +425,7 @@ For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]`
 
 ```
 ## Review: <mode> — <summary>
+Reviewers: <name> [<model>] · <name> [<model>] · ...
 
 1. [blocking] **<title>** — <evidence>. <explanation>. <fix>.
 2. [attention] **<title>** — <evidence>. <explanation>. <fix>.
@@ -427,6 +441,7 @@ Tone is evaluative — the question is "does this hold up?". Findings should add
 
 ```
 ## Review: Idea — <summary>
+Reviewers: <name> [<model>] · <name> [<model>] · ...
 
 **Verdict:** proceed / revisit / blocked — <1 sentence: the decisive reason>
 
