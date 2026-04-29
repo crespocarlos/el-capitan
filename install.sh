@@ -182,7 +182,7 @@ fi
 
 echo ""
 echo "  Journal:  ~/.agent/journal/ (monthly files, not tracked by git)"
-echo "  Profile:  ~/.agent/PROFILE.md (edit to personalize agent context)"
+
 echo ""
 echo "Add-ons go directly in ~/.cursor/agents/ or ~/.cursor/skills/ as regular files."
 echo "~/.agent/tasks/ is ready for per-repo/branch task state."

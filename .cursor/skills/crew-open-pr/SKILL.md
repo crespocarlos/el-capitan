@@ -14,7 +14,7 @@ description: "Push the current branch and open a PR with a generated description
 **Check for existing PR first:**
 
 ```bash
-EXISTING_PR=$(gh pr view --json url,number,state --jq '"#\(.number) (\(.state)): \(.url)"' 2>/dev/null)
+EXISTING_PR=$(GH_PAGER=cat gh pr view --json url,number,state --jq '"#\(.number) (\(.state)): \(.url)"' 2>/dev/null)
 ```
 
 If `EXISTING_PR` is non-empty, stop and report:
@@ -28,11 +28,13 @@ BRANCH=$(git branch --show-current)
 BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main")
 ```
 
-Detect fork workflow and determine target repo:
+Detect fork workflow using git remotes — **do not use `gh repo view`** (freezes in VS Code terminals):
 
 ```bash
-UPSTREAM_REPO=$(gh repo view --json parent --jq 'if .parent then .parent.owner.login + "/" + .parent.name else empty end' 2>/dev/null)
-ORIGIN_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)
+_parse_repo() { echo "$1" | sed 's|.*github\.com[:/]\(.*\)\.git|\1|; s|.*github\.com[:/]\(.*\)|\1|'; }
+ORIGIN_REPO=$(_parse_repo "$(git remote get-url origin 2>/dev/null)")
+UPSTREAM_URL=$(git remote get-url upstream 2>/dev/null)
+UPSTREAM_REPO=$(_parse_repo "$UPSTREAM_URL")
 ```
 
 If `UPSTREAM_REPO` is non-empty, `origin` is a fork. Check whether the base branch exists on upstream:
@@ -40,7 +42,7 @@ If `UPSTREAM_REPO` is non-empty, `origin` is a fork. Check whether the base bran
 ```bash
 if [ -n "$UPSTREAM_REPO" ]; then
   # Check if base branch exists on upstream
-  if gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null; then
+  if GH_PAGER=cat gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null; then
     TARGET_REPO="$UPSTREAM_REPO"
   else
     # Base branch only exists on the fork — target the fork
@@ -81,7 +83,7 @@ Before creating, ask: **"Did you use LLM assistance for this PR?"** If yes, appe
 After approval:
 
 ```bash
-gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO"
+GH_PAGER=cat gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO"
 ```
 
 **Important:** Always pass `--body` explicitly. If `--body` is omitted or empty, `gh` opens `$EDITOR` which freezes the VS Code terminal. Never rely on interactive input for the body.

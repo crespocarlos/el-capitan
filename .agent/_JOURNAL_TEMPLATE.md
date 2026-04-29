@@ -59,6 +59,6 @@ Query with entity filter: `journal-search.py query "..." --entity repo:el-capita
 - unresolved questions or follow-ups (omit section if empty)
 ```
 
-**`### Promoted`** is the hot tier. Bullets here are appended to `~/.agent/PROFILE.md` as durable facts that persist across months and are always in-context for every agent. Use for constraints, workarounds, and patterns worth carrying forward permanently — not session-specific observations.
+**`### Promoted`** is the hot tier. Bullets here are durable facts worth carrying forward permanently — constraints, workarounds, and patterns that should always be in-context. Use for long-lived insights, not session-specific observations.
 
 `### Raw session` (appended automatically by crew-log if SESSION.md is present) contains verbatim captured notes. Never summarize it; index it as-is.
