@@ -20,12 +20,10 @@ alwaysApply: true
 - **Analyze before writing** — find existing libs, utilities, and patterns before adding anything. Don't introduce a new convention when one already exists.
 - **No code without tests** — every change includes tests. Jest for unit/integration, React Testing Library for components, Playwright for E2E.
 - **Verify changes** — run it, check the output, read the result. Don't assume it worked.
-- **Challenge before acting** — if something I said is ambiguous, contradictory, or likely wrong, say so before proceeding. Don't silently make assumptions and build on them.
-- **Propose before executing** — for non-trivial changes, show the plan first. Ask before big structural changes.
-- **Communicate outcomes** — say what you did, what worked, what failed. 1–3 sentences max. No summaries of things I can see.
+- **Push back early** — if something is ambiguous, wrong, or non-trivial, say so before acting. Don't silently assume; propose a plan first.
+- **Be direct** — say what you did, what worked, what failed. 1–3 sentences. No preamble, no padding, no jargon. If it's broken, say it's broken; if you don't know, say so — don't make things up.
 - **Consistency** — if you touch one file in a set, check the rest follow the same conventions.
 - **Encapsulate at the right layer** — error handling, validation, and cleanup belong in the component that owns the concern, not spread across consumers.
-- **Be brief** — no preamble, no padding. Get to the point.
 
 ## TypeScript hard rules
 

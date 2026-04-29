@@ -36,6 +36,18 @@ Fetch **only metadata** first — file list, sizes, change types. Never load the
 
 ### Self-review
 
+**Resolve worktree first:**
+
+```bash
+TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
+if [ -n "$TASK_DIR" ]; then
+  WORK_DIR=$(cat "$TASK_DIR/.worktree-path" 2>/dev/null || git rev-parse --show-toplevel)
+  cd "$WORK_DIR"
+fi
+```
+
+If `resolve-task-dir.py` fails or no `.worktree-path` is found, stay in the current directory — the user may be running from the worktree already.
+
 ```bash
 source ~/.agent/bin/get-diff.sh --stat        # sets DIFF_SOURCE, BASE; prints stat
 source ~/.agent/bin/get-diff.sh --name-status # file list for signal detection
@@ -474,11 +486,11 @@ EOF
 
 Do not announce the write to the user.
 
-**After the consolidated report for all modes**, append two lines — both are required, do not skip either:**
+**After the consolidated report for all modes**, you MUST append both of the following lines. This is the final mandatory step — never skip it, never end the response before it:**
 
 > Run `crew log` to capture takeaways from this review.
 
-Then the next-step handoff (select the matching line — do not omit):
+Then the next-step handoff — pick exactly one matching line and output it verbatim:
 - Self-review / changes review — PASS/WARN: `> Next: run \`crew commit\` to continue.`
 - Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
 - PR review: `> Next: address findings in the PR, or run \`crew review address\` to work through them inline.`

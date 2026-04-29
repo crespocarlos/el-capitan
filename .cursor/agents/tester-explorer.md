@@ -19,11 +19,13 @@ You discover test files and test commands relevant to the changed symbols provid
 - 1 × `mcp__SemanticCodeSearch__list_indices`
 - 2 × semantic search
 - 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is found)
-- 2 × `Read`
+- 2 × `Read` (1 for AGENTS.md/CLAUDE.md, 1 for framework config or test file)
 
 ## What to find
 
 You receive two sections in the dispatch prompt: `## Changed files` (one path per line) and `## Exported symbols` (one symbol per line). Use these as your search targets.
+
+**0. Project context** — Read `AGENTS.md` at the repo root (fall back to `CLAUDE.md` if that's what exists) **before** probing `package.json` scripts or jest configs. It often contains the canonical test command, saving a Grep/Read elsewhere. Costs 1 Read slot.
 
 **1. Test files** — files that reference the changed symbols. Discovery strategy:
 - When MCP SemanticCodeSearch is available: use `mcp__SemanticCodeSearch__map_symbols_by_query` with KQL `filePath: *test* AND content: "<symbol>"` per symbol.

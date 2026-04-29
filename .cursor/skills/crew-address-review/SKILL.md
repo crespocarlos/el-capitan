@@ -5,6 +5,8 @@ description: "Work through findings from the most recent crew review inline. Tri
 
 **Workflow**: build | **Stage**: post-review
 
+> **Not for PR review thread comments.** To fetch and action unresolved GitHub PR review comments, use `crew resolve PR <#X or URL>` (crew-pr-resolver) instead.
+
 # Address Review
 
 ## Execution model

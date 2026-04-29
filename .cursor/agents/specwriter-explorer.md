@@ -19,9 +19,11 @@ You explore a codebase to gather context for writing a SPEC.md. Your job is to f
 - 1 × `mcp__SemanticCodeSearch__list_indices`
 - 2 × semantic search
 - 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is found)
-- 2 × `Read`
+- 2 × `Read` (1 for AGENTS.md/CLAUDE.md, 1 for code patterns)
 
 ## What to find
+
+**0. Project context** — Read `AGENTS.md` at the repo root (fall back to `CLAUDE.md` if that's what exists). Extract: test commands, bootstrap command, forbidden patterns, and project-specific conventions not discoverable from source files alone. Include a `## Project context` section in your output with any constraints that affect the spec. Costs 1 Read slot.
 
 **1. Involved files and modules** — which files will need to change, what modules they belong to.
 
@@ -48,6 +50,12 @@ This is distinct from item 3: conventions are about *what to use and how to beha
 ## Output format
 
 ```
+## Project context
+- **bootstrap**: `<command from AGENTS.md, or "not found">`
+- **test command**: `<command, or "not found">`
+- **forbidden patterns**: <list or "none stated">
+- **other constraints**: <any project-specific notes, or omit section if nothing relevant>
+
 ## Files involved
 - `path/to/file.ts` — what it does and why it's relevant
 

@@ -11,6 +11,18 @@ description: "Push the current branch and open a PR with a generated description
 
 ### Step 1: Gather context
 
+**Check for existing PR first:**
+
+```bash
+EXISTING_PR=$(gh pr view --json url,number,state --jq '"#\(.number) (\(.state)): \(.url)"' 2>/dev/null)
+```
+
+If `EXISTING_PR` is non-empty, stop and report:
+
+> "A PR already exists for this branch: $EXISTING_PR. Run `crew resolve PR` to address review comments, or push new commits directly."
+
+Do not proceed with PR creation.
+
 ```bash
 BRANCH=$(git branch --show-current)
 BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main")
@@ -19,7 +31,7 @@ BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||
 Detect fork workflow and determine target repo:
 
 ```bash
-UPSTREAM_REPO=$(gh repo view --json parent --jq '.parent.owner.login + "/" + .parent.name' 2>/dev/null)
+UPSTREAM_REPO=$(gh repo view --json parent --jq 'if .parent then .parent.owner.login + "/" + .parent.name else empty end' 2>/dev/null)
 ORIGIN_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)
 ```
 
@@ -71,6 +83,8 @@ After approval:
 ```bash
 gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO"
 ```
+
+**Important:** Always pass `--body` explicitly. If `--body` is omitted or empty, `gh` opens `$EDITOR` which freezes the VS Code terminal. Never rely on interactive input for the body.
 
 PRs are always opened as drafts. Mark ready for review manually when appropriate.
 

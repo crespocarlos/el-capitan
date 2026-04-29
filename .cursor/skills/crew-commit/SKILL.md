@@ -101,7 +101,7 @@ if [ -n "$TASK_DIR" ]; then
 fi
 ```
 
-> Next: run `crew open pr` to continue.
+> Next: run `crew open pr` to push and open a PR (if one doesn't exist yet), or push directly if a PR is already open.
 
 ## Auto-clarity override
 

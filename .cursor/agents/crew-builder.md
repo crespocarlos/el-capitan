@@ -115,6 +115,8 @@ The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
 
 **All file operations use absolute paths rooted at `WORK_DIR`.** If a task says "edit `src/foo.ts`", read and write `<WORK_DIR>/src/foo.ts`.
 
+**Read project context before starting.** Read `<WORK_DIR>/AGENTS.md` (or `<WORK_DIR>/CLAUDE.md` if that's what exists) to pick up project-specific conventions, forbidden patterns, build commands, and constraints that may not appear in the spec. Apply these silently throughout the task loop — do not re-read on each iteration. Specifically: if AGENTS.md defines a test command, use it as the default verify command in step 5 when the task's own Acceptance check does not specify one; if it defines forbidden patterns (e.g. no `any`, no direct DB writes), treat violations as task failures.
+
 **Task loop** — for each unchecked `- [ ]` line under the `## Tasks` section only (from `## Tasks` until the next `## ` heading), in order:
 
 1. **Signal** — emit `[N/M] <task name>...`

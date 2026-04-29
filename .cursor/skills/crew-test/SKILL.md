@@ -150,7 +150,7 @@ If verdict is WARN with no command: print `No test command found — skipping au
 
 - If PASS: print `Verdict: PASS` then `> Next: run \`crew review\` to continue.`
 - If WARN: print `Verdict: WARN` then `> Next: no test command found — verify manually using the checklist above, then run \`crew review\`.`
-- If FAIL: print `Verdict: FAIL` then `> Fix the test failures before proceeding.`
+- If FAIL: print `Verdict: FAIL` then `> Next: fix the test failures, then re-run \`crew test\`.`
 
 ## Auto-clarity override
 

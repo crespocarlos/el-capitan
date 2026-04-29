@@ -113,12 +113,8 @@ Only after the user responds:
 
 2. **Resolve** the thread using the GraphQL node `id` from the thread:
    ```bash
-   gh api graphql -f query='
-   mutation {
-     resolveReviewThread(input: {threadId: "THREAD_NODE_ID"}) {
-       thread { isResolved }
-     }
-   }'
+   printf 'mutation { resolveReviewThread(input: {threadId: "%s"}) { thread { isResolved } } }' "THREAD_NODE_ID" \
+     | gh api graphql --input -
    ```
 
 Edits the user excluded are not applied. Threads the user excluded are left open and unresolved — no comment, no resolution.
@@ -140,6 +136,8 @@ Changes applied.
 > Next: run `crew commit` to commit resolved changes.
 
 ## Notes
+
+- **Always use `--json` with `gh` commands** — `gh pr view`, `gh pr list`, etc. without `--json` open a pager that freezes the VS Code terminal. Every `gh` call must either use `--json` or pipe through `| cat`.
 
 - `isOutdated: true` means the code has changed since the comment — these are surfaced in the Outdated Threads section of the report, not actioned
 - Multiple comments in a thread = read all for context before deciding (first is the suggestion, later are follow-ups and discussion)
