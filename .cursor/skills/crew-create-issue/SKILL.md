@@ -14,10 +14,13 @@ description: "Structure a rough idea into a well-formed GitHub issue and file it
 Infer from git context:
 
 ```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null
+git remote get-url origin 2>/dev/null \
+  | sed 's|.*github\.com[:/]\(.*\)\.git|\1|; s|.*github\.com[:/]\(.*\)|\1|'
 ```
 
-If that returns a repo, use it. If the current directory is not a git repo and no repo was mentioned in the conversation, ask exactly one question: **"Which repo? (OWNER/REPO)"**
+If that returns `OWNER/REPO`, use it. If the current directory is not a git repo and no repo was mentioned in the conversation, ask exactly one question: **"Which repo? (OWNER/REPO)"**
+
+> **Do not use `gh repo view`** â€” it opens a pager / freezes in some environments.
 
 ### Step 2: Synthesize issue content from session
 
@@ -42,7 +45,7 @@ Default to **feature** if ambiguous. _(Features are lower-risk to mis-classify â
 ### Step 4: Check for repo templates
 
 ```bash
-gh api repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE --jq '.[].name' 2>/dev/null
+GH_PAGER=cat gh api repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE --jq '.[].name' 2>/dev/null
 ```
 
 If the repo has its own issue templates, use the most relevant one. Otherwise use the templates in [issue-templates.md](./references/issue-templates.md).
@@ -66,7 +69,7 @@ One question only. If the user says "edit", wait for their next message with cor
 ### Step 6: File the issue
 
 ```bash
-gh issue create --repo OWNER/REPO --title "TITLE" --body "BODY"
+GH_PAGER=cat gh issue create --repo OWNER/REPO --title "TITLE" --body "BODY"
 ```
 
 No labels, projects, or assignees.
