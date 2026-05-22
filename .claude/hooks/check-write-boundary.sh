@@ -24,14 +24,15 @@ case "$RESOLVED" in
 esac
 
 # Allow writes to the current worktree
-WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+FILE_DIR=$(dirname "$RESOLVED")
+WORKTREE_ROOT=$(git -C "$FILE_DIR" rev-parse --show-toplevel 2>/dev/null)
 [ -n "$WORKTREE_ROOT" ] && case "$RESOLVED" in "$WORKTREE_ROOT"/*) exit 0 ;; esac
 
 # Allow writes to any worktree of this repo
 if [ -n "$WORKTREE_ROOT" ]; then
   while IFS= read -r wt_path; do
     case "$RESOLVED" in "$wt_path"/*) exit 0 ;; esac
-  done < <(git worktree list --porcelain 2>/dev/null | grep '^worktree ' | sed 's/^worktree //')
+  done < <(git -C "$FILE_DIR" worktree list --porcelain 2>/dev/null | grep '^worktree ' | sed 's/^worktree //')
 fi
 
 # Allow writes to the common worktrees directory

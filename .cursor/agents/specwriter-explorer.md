@@ -23,7 +23,11 @@ You explore a codebase to gather context for writing a SPEC.md. Your job is to f
 
 ## What to find
 
-**0. Project context** — Read `AGENTS.md` at the repo root (fall back to `CLAUDE.md` if that's what exists). Extract: test commands, bootstrap command, forbidden patterns, and project-specific conventions not discoverable from source files alone. Include a `## Project context` section in your output with any constraints that affect the spec. Costs 1 Read slot.
+**0. Project context** — Find and read the `AGENTS.md` (or `CLAUDE.md`) closest to the task files:
+1. `Glob` `**/AGENTS.md` to list all candidates (falls back to `**/CLAUDE.md` if none found).
+2. Pick the candidate with the most path segments in common with the deepest involved file — i.e., the longest shared prefix. If two candidates tie, prefer the deeper one.
+3. Read that file. Extract: bootstrap command, test commands, deploy/validate commands, quality gates (pre-commit validation steps), forbidden patterns, and project-specific conventions.
+4. Include a `## Project context` section in your output. Quality gates are **must-propagate** — flag them clearly so the spec writer puts them in `### Validation`. Costs 1 Glob + 1 Read slot.
 
 **1. Involved files and modules** — which files will need to change, what modules they belong to.
 
@@ -53,6 +57,7 @@ This is distinct from item 3: conventions are about *what to use and how to beha
 ## Project context
 - **bootstrap**: `<command from AGENTS.md, or "not found">`
 - **test command**: `<command, or "not found">`
+- **quality gates** ⚑ MUST PROPAGATE TO SPEC `### Validation`: <ordered list of pre-commit gate commands from AGENTS.md, or "none stated">
 - **forbidden patterns**: <list or "none stated">
 - **other constraints**: <any project-specific notes, or omit section if nothing relevant>
 

@@ -43,7 +43,22 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 ## Routing
 
-**Command list is in `crew-router.mdc`** — that file is the single source of truth. Do not duplicate it here.
+| Trigger | Crew member |
+|---|---|
+| `crew spec` issue/URL/description | crew-specwriter |
+| `crew implement` | crew-implement → crew-builder |
+| `crew test` | crew-test skill |
+| `crew commit` | crew-commit |
+| `crew open pr` | crew-open-pr |
+| `crew review address` | crew-address-review skill (inline) — do not route through crew-reviewer |
+| `crew review` [PR #X \| spec \| idea \| idea --auto \| idea --auto --loop \| changes \| changes --auto \| changes --auto --loop \| (self)] | crew-reviewer — `changes`: staged only; `idea`: session/proposal; `--auto`: review + apply fixes in one pass; `--auto --loop`: repeat until convergence (max 3 iterations) |
+| `crew resolve PR` #X or URL | crew-pr-resolver |
+| `crew log` | crew-log |
+| `crew recall`: question | crew-recall |
+| `crew create issue` description | crew-create-issue |
+| `crew cleanup` | crew-cleanup |
+
+**This table is authoritative.** Do not override it with judgment calls.
 
 File path convention:
 - Orchestrator agents: `~/.claude/agents/crew-<name>.md` (e.g., `crew-reviewer.md`)

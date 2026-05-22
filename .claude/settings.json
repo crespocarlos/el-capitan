@@ -1,4 +1,46 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(curl *)",
+      "Bash(jq *)",
+      "Bash(source *)",
+      "Bash(cd *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(python3 *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(echo *)",
+      "Bash(printf *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(diff *)",
+      "Bash(which *)",
+      "Bash(test *)",
+      "Bash(chmod *)",
+      "Bash(uuidgen)",
+      "Bash(date *)",
+      "Bash(basename *)",
+      "Bash(dirname *)",
+      "Bash(realpath *)",
+      "Bash(~/.agent/bin/*)",
+      "Bash(agent-builder *)",
+      "WebFetch(domain:github.com)",
+      "WebSearch"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {

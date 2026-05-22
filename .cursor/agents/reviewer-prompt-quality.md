@@ -78,4 +78,4 @@ Follow the non-code artifact format (prompts are text, not code):
 <explanation: EXACTLY 1 sentence. For questions: weave the stakes inline.>
 Fix/Response: <EXACTLY 1 sentence. No sub-clauses.>
 
-Hard cap: 3 findings total. Max 2 questions. Drop lower-priority findings if over cap. Zero findings is a valid outcome. Go directly to findings — no preamble.
+Zero findings is a valid outcome. Only raise findings you are confident in — do not pad. Go directly to findings — no preamble.

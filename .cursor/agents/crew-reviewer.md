@@ -19,16 +19,24 @@ Parse the user's input to determine the review mode:
 |---|---|---|
 | `crew review` (no arguments) | **Self-review** | `git diff $(git merge-base HEAD origin/main)..HEAD` |
 | `crew review changes` | **Changes review** | `git diff --cached` (staged only) |
+| `crew review changes --auto` | **Changes review (auto)** | Same as changes review, but auto-applies all code fixes inline — stops only on `[needs more info]` |
+| `crew review changes --auto --loop` | **Changes review (auto-loop)** | Same as changes auto, but re-reviews after each apply cycle until convergence or 3 iterations |
 | `crew review PR #X` or `crew review PR <URL>` | **PR review** | `gh pr diff NUMBER --repo OWNER/REPO` + PR metadata |
 | `crew review spec` | **Spec review** | Active SPEC.md (resolved via task state) |
 | `crew review idea` or `crew review idea: <text>` | **Idea review** | Pasted text if provided; otherwise current session conversation |
-| `crew review address` | **Delegated** | Handled by `crew-address-review` skill — do not enter review pipeline |
-
-**`crew review address`:** immediately delegate to the `crew-address-review` skill. Do not fetch a diff or dispatch reviewers.
-
+| `crew review idea --auto` or `crew review idea: <text> --auto` | **Idea review (auto)** | Same as idea review, but auto-applies all fixes inline — stops only on `[needs more info]` |
+| `crew review idea --auto --loop` or `crew review idea: <text> --auto --loop` | **Idea review (auto-loop)** | Same as auto, but repeats review+apply cycles until convergence criterion is met or 3 iterations, whichever comes first |
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
 
 **Idea review:** skip Steps 2–3 entirely. The artifact is already present — either the pasted text or the session conversation (the visible chat history in the current window, read directly without any tool call). Proceed directly to Step 4. If using session conversation as the artifact, scope to the most recent topic — from the last `crew` command invocation or the last major topic shift.
+
+**Changes review `--auto` mode:** same as changes review, but at Step 8 output — auto-apply all code fixes; see Changes auto-apply path below.
+
+**Changes review `--auto --loop` mode:** same as changes `--auto`, but re-runs `git diff --cached` and reviews again after each apply cycle. Repeat until convergence (≤2 findings, all `[nit]`) or 3 total iterations. See Loop extension in Changes auto-apply path below.
+
+**Idea review `--auto` mode:** same as idea review, with one difference at Step 8 output — see Idea auto-apply path below.
+
+**Idea review `--auto --loop` mode:** same as `--auto`, but after outputting `## Revised Idea`, immediately start a new review cycle on the revised idea (no user input needed). Repeat until the convergence criterion is met or 3 total iterations — whichever comes first. See Loop extension in Idea auto-apply path below.
 
 ## Step 2: Lightweight metadata (no full diff yet)
 
@@ -167,18 +175,7 @@ Trigger condition: new files are present in the diff (file status = A/added), OR
 
 If neither condition is met, set `EXPLORER_SUMMARY` to empty, set `EXPLORER_STATUS=skipped`, and proceed to Step 5.
 
-If the trigger fires, check for a trivial-only diff: if ALL new files match the trivial-file set below, skip Explorer — these files have no behavioral surface worth cross-codebase comparison. Set `EXPLORER_SUMMARY` to empty, `EXPLORER_STATUS=skipped-trivial`, and proceed to Step 5.
-
-Trivial-file set (all new files must match for this skip to apply):
-Match patterns against the file's relative path from repo root; `*.ext` patterns match the basename only.
-```
-*.lock  *.lockb  package-lock.json  yarn.lock  pnpm-lock.yaml
-.npmrc  .yarnrc*  .env  .env.*
-*.snap  **/__fixtures__/**
-*.test.*  *.spec.*
-```
-
-Otherwise:
+If the trigger fires:
 
 1. Collect triggering files: new files + existing files where a new export was added. **Cap at 5** — if more than 5, take the 5 with the most diff lines and note the count in the prompt.
 2. Extract diff hunks for those files only (not the full diff).
@@ -246,8 +243,6 @@ No context tiers — all reviewers receive the full artifact text (pasted text o
 
 Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discovered by both Cursor and Claude Code). The orchestrator dispatches them by name — no need to inline persona content.
 
-Package all context tiers (Step 5) before dispatching any reviewer — do not interleave packaging and dispatch.
-
 ### Reviewer roster by mode
 
 **Self-review and PR review:**
@@ -256,7 +251,7 @@ Package all context tiers (Step 5) before dispatching any reviewer — do not in
 |---|---|---|---|
 | Code Quality | `reviewer-code-quality` | Tier 1 (Hunks+) | `fast` |
 | Adversarial | `reviewer-adversarial` | Tier 3 (Full+) | default |
-| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) | `fast` |
+| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) | default |
 | Architecture | `reviewer-architecture` | Tier 3 (Full+) | default |
 | Product Flow | `reviewer-product-flow` | Tier 2 (Function) | `fast` |
 | Prompt Quality | `reviewer-prompt-quality` | Tier 1 (Hunks+) | default |
@@ -350,8 +345,9 @@ Task tool call per reviewer:
     - Non-code artifacts: every finding needs bold concept header, quoted evidence, explanation, Fix/Response. No file paths or line numbers.
     - Every field is EXACTLY 1 sentence. Exceeding this limit means you have not prioritized — cut, do not summarize.
     - Questions must state stakes inline. A question without stakes is a nit.
-    - Hard cap: 3 findings total. Max 2 questions. Drop lower-priority ones if over cap.
-    - Omit empty label sections. Zero findings is a valid outcome.
+    - Zero findings is a valid outcome. Only raise findings you are confident in — do not pad to fill a quota.
+    - Omit empty label sections.
+    - **If a `## Decisions` section is present in the artifact:** check it before raising any finding. Do not re-raise a `[rejected]` entry unless you have specific new evidence the rejection was wrong — state that evidence explicitly. A `[deferred]` entry may be raised only if it is now clearly in scope.
     - Go directly to findings — no preamble.
 ```
 
@@ -369,7 +365,12 @@ All Agent tool calls go in a single message for parallel dispatch. If a reviewer
 
 Run `~/.agent/bin/dispatch_subagents.py --type reviewers` with `TASK_DIR`, `REPO_ROOT`, `REVIEW_MODE`, and `DIFF_CONTENT` set. The script handles parallel reviewer dispatch via `claude -p`.
 
-If `claude` is not on PATH: run reviewers inline sequentially (ordering bias; last resort).
+If `claude` is not on PATH: use **batch reasoning** — do not run reviewers sequentially (prior outputs anchor later ones). Instead, reason as all active reviewers simultaneously in a single internal pass:
+
+1. For each active reviewer, produce a findings list in memory — applying that persona's scope, severity definitions, and output format — without emitting intermediate output.
+2. After all personas have been mentally evaluated, proceed directly to Step 7 (consolidation) using those internal findings.
+
+This preserves independent-lens evaluation even in a single context window. Never emit per-reviewer output before consolidation in this mode.
 
 ## Step 7: Consolidation
 
@@ -383,7 +384,9 @@ Before deduplication, interrogate every finding. The primary question is not "is
 
 **Step 7a — Scan session history for prior reviews**
 
-Scan for `## Review:` headings that mark prior `crew review` invocations. If zero prior invocations are found, skip Step 7a entirely and proceed to deduplication. If one or more are found, build the map **now — before evaluating any individual finding** — scanning only the last 2 invocations (bounded to limit token use). Build a lightweight map of prior findings and decisions: what was flagged, what was approved, what was explicitly dismissed. This is your cross-session consistency baseline.
+Before evaluating any finding, scan the visible session conversation for previous `crew review` outputs (look for `## Review:` headings). If found, build a lightweight map of prior findings and decisions: what was flagged, what was approved, what was explicitly dismissed. This is your cross-session consistency baseline.
+
+**For idea review:** also check the artifact itself for a `## Decisions` section. If present, treat every entry there as already-decided: do not re-raise a `[rejected]` finding unless you have specific new evidence the rejection was wrong (state that evidence explicitly). A `[deferred]` finding may be raised again only if it is now clearly in-scope for the current revision.
 
 For each finding in the current review, ask:
 
@@ -437,7 +440,6 @@ For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]`
 
 ```
 ## Review: <mode> — <summary>
-Reviewers: <name> [<model>] · <name> [<model>] · ...
 
 1. [blocking] **<title>** — <evidence>. <explanation>. <fix>.
 2. [attention] **<title>** — <evidence>. <explanation>. <fix>.
@@ -453,15 +455,18 @@ Tone is evaluative — the question is "does this hold up?". Findings should add
 
 ```
 ## Review: Idea — <summary>
-Reviewers: <name> [<model>] · <name> [<model>] · ...
 
 **Verdict:** proceed / revisit / blocked — <1 sentence: the decisive reason>
 
-1. [blocking] **<title>** — <what assumption breaks or what is fundamentally missing>. <why it matters>. <what needs to change>.
-2. [concern] **<title>** — <what weakens the plan>. <why it matters>. <what would strengthen it>.
+1. [blocking] **<title>** — <what assumption breaks or what is fundamentally missing>. <why it matters>.
+   **Fix:** <exact change to the idea — what sentence/section to add, remove, or reframe. Be specific enough that address can apply it without re-interpreting.>
+2. [concern] **<title>** — <what weakens the plan>. <why it matters>.
+   **Fix:** <what would strengthen it — specific framing or addition to the idea text.>
 3. [needs more info] **<title>** — <what is unclear and must be resolved before moving forward>.
 4. [nit] **<title>** — <minor framing or completeness improvement>.
 ```
+
+**The `Fix:` field is required on every `[blocking]` and `[concern]` finding.** It must be actionable enough that `crew review address` can apply it mechanically — not "reconsider X" but "add a sentence to the Prerequisites section stating X" or "remove the claim that Y and replace it with Z".
 
 If there are no findings, state the verdict as `proceed` and give one sentence of reasoning.
 
@@ -473,7 +478,7 @@ Zero findings is a valid outcome. No action plan. No reviewers section.
 
 - **No extra structure.** No sub-sections, no thematic groupings, no "What looks good", no preamble. Flat numbered list only.
 - **Per-finding length:** EXACTLY 1 sentence for evidence, EXACTLY 1 sentence for explanation, EXACTLY 1 sentence for fix/response. You may sharpen language or add missing stakes — do not pad or invent.
-- **Hard cap: 7 findings total.** After deduplication, keep the highest-severity findings. Drop the rest — do not demote them to one-liners.
+- **Hard cap: 7 findings total.** After deduplication, keep the highest-severity findings. Drop the rest — do not demote them to one-liners. **For idea review: zero findings is the goal on a converged artifact — do not fill the cap.**
 - **Be opinionated.** Surface what matters most, not everything found. A short focused report is better than an exhaustive one.
 
 ## Step 8: Output
@@ -501,16 +506,93 @@ EOF
 
 Do not announce the write to the user.
 
-**After the consolidated report for all modes**, you MUST append both of the following lines. This is the final mandatory step — never skip it, never end the response before it:**
+**MANDATORY FINAL OUTPUT — do not end the response without both of these lines:**
 
+Step 1 — always output this line verbatim:
 > Run `crew log` to capture takeaways from this review.
 
-Then the next-step handoff — pick exactly one matching line and output it verbatim:
+Step 2 — pick exactly one matching line based on mode and verdict, output it verbatim:
 - Self-review / changes review — PASS/WARN: `> Next: run \`crew commit\` to continue.`
 - Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
-- PR review: `> Next: address findings in the PR, or run \`crew review address\` to work through them inline.`
-- Spec review: `> Next: run \`crew review address\` to work through findings, or approve the spec to proceed.`
-- Idea review: `> Next: run \`crew review address\` to work through findings and produce a revised idea.`
+- Changes review **`--auto`** / **`--auto --loop`** — see Changes auto-apply path below; do not output a next-step handoff line from this list.
+- PR review — PASS/WARN: `> Next: merge the PR, or run \`crew review address\` to work through findings inline.`
+- PR review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before merging.`
+- Spec review — PASS/WARN: `> Next: run \`crew implement\` to start implementation, or run \`crew review address\` to revise first.`
+- Spec review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before implementing.`
+- Idea review — PASS/WARN: `> Next: run \`crew spec\` to turn this into a spec, or run \`crew review address\` to revise first.`
+- Idea review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings and produce a revised idea.`
+- Idea review **`--auto`** / **`--auto --loop`** — see Idea auto-apply path below; do not output a next-step handoff line from this list.
+
+**Idea convergence criterion:** after consolidating idea review findings, if total findings are ≤2 and all are `[nit]` or `[needs more info]`, append:
+> **Idea is stable.** Proceed to `crew spec` — further idea review rounds have diminishing returns. If any open `[needs more info]` requires user input, answer it inline or address it in the spec.
+If any `[blocking]` finding has persisted for 3+ rounds (visible in the session `## Review:` history), append:
+> **Persistent blocker after 3+ rounds.** Consider moving to `crew spec` and treating this as an open question in the spec's Design Constraints.
+
+### Changes auto-apply path (`changes --auto` mode only)
+
+After outputting the consolidated report, check:
+
+**Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
+
+- **Yes (gate fails):** output the consolidated report normally. Then output:
+  > **Auto-apply paused.** N finding(s) need input before applying: [list titles]. Answer them and run `crew review address` to apply the rest.
+  Then output the standard `crew log` + next-step handoff lines for changes review BLOCK.
+
+- **No (gate passes):** do not ask for approval — apply all code fixes inline now:
+  1. Collect all findings and their `Fix:` fields.
+  2. For each finding: read the affected file(s), apply the fix, write the file.
+  3. **Sibling-check:** for every fix that addresses a pattern (e.g. missing null check, wrong variable name convention), scan all other staged files for structurally identical instances and apply the same fix.
+  4. Run `git add -u` to re-stage the modified files.
+  5. Output a compact summary:
+     ```
+     Auto-applied: N fixes (N blocking, N concern, N nit) across M file(s)
+     Sibling fixes: N additional instances fixed
+     ```
+  6. Then output `crew log` line and:
+     > Next: run `crew commit` to continue, or run `crew review changes --auto` for another pass.
+
+**Loop extension (`changes --auto --loop` only):** after the summary above, instead of stopping:
+
+- Run `git diff --cached --stat` to get the updated staged diff.
+- Check convergence: does a fresh review of the updated staged diff produce ≤2 findings, all `[nit]` or `[needs more info]`?
+  - **Yes (converged):** stop. Output: `Loop complete: converged after N iteration(s).` Then output `crew log` + `crew commit` handoff.
+  - **Gate fails on next pass (any `[needs more info]`):** stop. Output: `Loop paused at iteration N: N finding(s) need input.` Then surface the questions.
+  - **Hard cap reached (3 iterations):** stop regardless. Output: `Loop stopped: 3 iterations reached without full convergence. N finding(s) remain.` Then output `crew log` + next-step handoff.
+  - **Otherwise:** increment iteration counter, run the full review+apply cycle again on the updated staged diff, prepending each cycle's output with `--- Iteration N ---`.
+
+### Idea auto-apply path (`idea --auto` mode only)
+
+After outputting the consolidated report, check:
+
+**Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
+
+- **Yes (gate fails):** output the consolidated report normally. Then output:
+  > **Auto-apply paused.** N finding(s) need input before applying: [list titles]. Answer them and run `crew review address` to apply the rest.
+  Then output the standard `crew log` + next-step handoff lines for idea review BLOCK.
+
+- **No (gate passes):** do not ask for approval — apply all fixes inline now:
+  1. Collect all findings and their `Fix:` fields.
+  2. Locate the original idea text in context (pasted text or most recent `## Revised Idea` section).
+  3. Apply each fix mechanically per its `Fix:` field.
+  4. **Sibling-check:** for every fix that addresses a pattern, scan the full idea text for structurally identical instances and apply the same fix to each.
+  5. **Self-review pass** (internal, no tool calls): adversarial + product-flow lenses — did the revision introduce any new gap or break any flow? Fix inline if found; note as `(self-review: fixed inline)`.
+  6. Append a `## Decisions` section listing any rejected/deferred findings with one-line reasons.
+  7. Output the revised idea under `## Revised Idea`.
+  8. Output a compact summary:
+     ```
+     Auto-applied: N fixes (N blocking, N concern, N nit)
+     Self-review: clean  ← or: N fixed inline
+     ```
+  9. Then output the convergence check, `crew log` line, and:
+     > Next: run `crew spec` to turn this into a spec, or run `crew review idea --auto` for another pass.
+
+**Loop extension (`idea --auto --loop` only):** after step 9 above, instead of stopping:
+
+- Check the convergence criterion: is the revised idea stable (total findings ≤2, all `[nit]` or `[needs more info]`)?
+  - **Yes (converged):** stop. Output: `Loop complete: converged after N iteration(s).` Then output the `crew log` + `crew spec` handoff.
+  - **Gate fails on next pass (any `[needs more info]`):** stop. Output: `Loop paused at iteration N: N finding(s) need input.` Then surface the questions.
+  - **Hard cap reached (3 iterations):** stop regardless. Output: `Loop stopped: 3 iterations reached without full convergence. N finding(s) remain.` Then output `crew log` + next-step handoff.
+  - **Otherwise:** increment iteration counter, run the full review+apply cycle again on the `## Revised Idea` from the previous iteration, prepending each cycle's output with `--- Iteration N ---`.
 
 ## Step 9: Extensibility
 

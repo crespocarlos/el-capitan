@@ -180,7 +180,7 @@ When the Implementation Report is available:
 3. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Ready for `crew review`."
    > "Working directory: `<WORK_DIR>` — run tests from there."
-   > **Next: run `crew review` to continue.**
+   > Next: run `crew review` to continue.
 
 **Some tasks failed:**
 

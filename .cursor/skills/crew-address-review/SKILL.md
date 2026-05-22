@@ -112,7 +112,19 @@ After all edits are applied, print the summary and the mode-aware next step (see
 1. If the user chose `none`, skip synthesis entirely — go straight to the summary.
 2. Collect all accepted/nit items plus any user answers to Needs Input items.
 3. Locate the original idea text — it is in the session conversation (the pasted text or the output of the prior `crew review idea` turn). If the original idea is not recoverable from context (scrolled out or session reset), ask: `"I can't locate the original idea text in context — please paste it and I'll produce the revised version."` Then wait.
-4. Produce a **revised idea** that incorporates all accepted changes. Match the original structure and heading levels. Do not add new sections; do not remove content unless a finding specifically called it out. Present it inline as a clean proposal under a heading like `## Revised Idea`.
+4. Produce a **revised idea** that incorporates all accepted changes. Match the original structure and heading levels. Do not add new sections; do not remove content unless a finding specifically called it out.
+5. **Verify before presenting** — internal pass, no tool calls:
+   - Each accepted finding is reflected in the revision. Use the finding's `Fix:` field as the check: if the fix was "add X to section Y", confirm X is present in section Y. If not, add it now.
+   - **Sibling-check:** for every accepted fix that addresses a specific pattern (a condition, a field, a step, a flow branch), scan the full idea text for structurally identical instances of the same pattern — same type of condition in a different branch, same field missing in a parallel step, same gap in a sibling flow. If found, apply the same fix to each sibling. Do not require a separate finding per sibling.
+   - No new structural contradiction was introduced by the revision — if one is obvious, fix it inline.
+   - Rejected findings are NOT present in the revision (don't silently re-introduce what was explicitly dismissed).
+6. Append a `## Decisions` section at the end of the revised idea listing every Rejected or Deferred finding with a one-line reason. Use the format: `- [rejected] <finding title>: <reason>` or `- [deferred] <finding title>: <reason>`. This section is a prior-decisions log for the next reviewer — do not omit it when any findings were rejected or deferred.
+7. **Self-review pass** — before presenting, re-evaluate the revised idea using the same adversarial and product-flow lenses (internal reasoning only, no subagent dispatch, no tool calls). Cap at 1 pass. For each lens ask:
+   - *Adversarial*: does the revision introduce any new assumption, gap, or failure mode that wasn't in the original?
+   - *Product Flow*: does any accepted fix break a user journey or leave a new empty/error state unaddressed?
+   If a new `[blocking]` or `[concern]` is found: fix it inline and note it in the summary as `(self-review: fixed inline)`. If a new `[needs more info]` is found that requires user input: surface it as a question before presenting the revision — do not present a revision with an open blocker.
+   If nothing new is found: proceed.
+8. Present the revised idea inline under a heading like `## Revised Idea`.
 
 After revision (or if the user chose `none`), print the summary.
 
@@ -133,12 +145,13 @@ Idea updated:
   ✓ [blocking]  N incorporated (N rejected)
   ✓ [concern]   N incorporated (N rejected, N deferred to user)
   — [nit]       N incorporated / N skipped
+  (self-review: N fixed inline)     ← include only if self-review found and fixed anything
 ```
 
 **Then output the next step — this is mandatory, do not skip.**
 
 Detect the review mode from the `## Review: <mode>` heading in context (case-insensitive match):
 
-- **Idea** (heading contains "idea" or "spec"): if revision was produced, say `> Revised idea above. Run \`crew review idea\` again to re-evaluate, or \`crew spec\` to turn it into a spec.` If the user chose none, say `> No changes applied. Run \`crew review idea\` again or proceed with the original idea.`
+- **Idea** (heading contains "idea" or "spec"): if revision was produced and self-review found nothing new, say `> Next: run \`crew spec\` to turn this into a spec, or run \`crew review idea\` for a full multi-reviewer pass first.` If the user chose none, say `> Next: run \`crew review idea\` again, or proceed with the original idea.`
 - **Changes** (heading contains "changes"): `> Next: run \`crew review\` to verify the fixes are clean.`
 - **Self-review / anything else**: `> Next: run \`crew review\` to verify, or \`crew commit\` if satisfied.`
