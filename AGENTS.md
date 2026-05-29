@@ -45,7 +45,6 @@ Legacy one-line `## Status: <value>` specs remain supported by Status readers; n
   _BUG_SPEC_TEMPLATE.md
   _RUNBOOK_TEMPLATE.md
   _JOURNAL_TEMPLATE.md
-  .ralph-instructions-template  ← Ralph loop instructions (keep in sync with crew-builder.md)
   bin/          ← shell scripts, Python utilities, GraphQL queries (symlinked to ~/.agent/bin/)
 install.sh      ← creates symlinks from ~/.cursor/, ~/.claude/, ~/.agent/ → this repo
 ```
@@ -97,7 +96,6 @@ The worktree will be created at `~/worktrees/el-capitan-<branch>/`. No bootstrap
 | `.agent/_SPEC_TEMPLATE.md` | Standard spec template |
 | `.agent/_BUG_SPEC_TEMPLATE.md` | Bug spec template |
 | `.agent/_RUNBOOK_TEMPLATE.md` | Validation runbook template |
-| `.agent/.ralph-instructions-template` | Ralph loop instructions (keep in sync with crew-builder.md Completion Protocol) |
 
 ## Verification pattern
 

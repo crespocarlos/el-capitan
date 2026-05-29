@@ -57,7 +57,7 @@ El Capitan has three layers:
 | **Router** | `.cursor/rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
 | **Orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
 | **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
-| **Runtime** | ralph, hooks, journal tools | Execution engines |
+| **Runtime** | hooks, journal tools | Execution engines |
 
 ---
 
@@ -120,12 +120,10 @@ crew spec <issue URL or description>
 
 | Dependency | Purpose | Install |
 |---|---|---|
-| [ralph](https://github.com/simianhacker/ralph-loop) | Autonomous implementation loop — runs `crew implement` without holding a conversation open | See repo |
 | [Ollama](https://ollama.ai) + `nomic-embed-text` | Local semantic search over your journal | `brew install ollama && ollama pull nomic-embed-text` |
 | ChromaDB | Vector store for journal embeddings | `pip install chromadb ollama` |
 | SemanticCodeSearch MCP | Semantic code search across the codebase inside Claude Code | `claude mcp add --scope user SemanticCodeSearch -- npx @elastic/semantic-code-search-mcp-server` |
 
-> **Without ralph:** `crew implement` falls back to inline implementation — same tasks and checks, conversational rather than autonomous.  
 > **Without Ollama + ChromaDB:** `crew recall` falls back to ripgrep full-text search.  
 > **Without SemanticCodeSearch:** crew-specwriter uses file reads and grep for codebase exploration.
 
@@ -241,7 +239,7 @@ Drafts a `SPEC.md` from a GitHub issue or plain description. Explores the codeba
 
 The implementation engine. Reads a SPEC.md, works through each task in order, runs per-task acceptance checks, and writes a REPORT.md. Launched by `crew implement`, which handles worktree setup, spec selection, and pattern auto-recall.
 
-- Supports two modes: **ralph** (autonomous loop) or **inline** (conversational, same protocol)
+- Runs as a subagent launched by `crew implement`
 - Per-task acceptance checks run before marking each task done
 - Hands back a REPORT.md — all pass/fail results, changed files
 

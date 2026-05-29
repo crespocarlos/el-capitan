@@ -104,4 +104,4 @@ Two systems, keep them partitioned. Journal (`~/.agent/journal/`) — long-term,
 - Done = acceptance criteria pass, not "looks right"
 - Explicit handoffs: every skill step that hands off must name the next step and say "proceed immediately"
 - **Before running `tsc` or type-check, check if `node_modules` is a symlink** (`test -L node_modules`). If symlinked, skip — `tsc` follows the symlink and emits `.d.ts` files in the main repo. If `node_modules` is a real directory, type-check is safe.
-- **`crew implement` always follows crew-builder's protocol.** Code changes go through crew-builder — via ralph, subagent (Cursor Task tool), or by following crew-builder's inline protocol directly. Never skip the protocol and implement ad-hoc.
+- **`crew implement` always follows crew-builder's protocol.** Code changes go through crew-builder — via subagent (Cursor Task tool) or by following crew-builder's protocol directly. Never skip the protocol and implement ad-hoc.

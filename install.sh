@@ -160,9 +160,6 @@ for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md; do
   backup_if_regular ~/.agent/"$f"
   run ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
 done
-backup_if_regular ~/.agent/.ralph-instructions-template
-run ln -sf "$SCRIPT_DIR/.agent/.ralph-instructions-template" ~/.agent/.ralph-instructions-template 2>/dev/null || true
-
 # ~/.agent/bin
 run rm -f ~/.agent/bin/resolve-task-dir.sh ~/.agent/bin/log-progress.sh
 link_dir_files "$SCRIPT_DIR/.agent/bin" ~/.agent/bin

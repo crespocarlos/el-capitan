@@ -111,8 +111,7 @@ If skipped (already on feature branch), set `WORK_DIR` to the current directory.
 
 ```bash
 ~/.agent/bin/log-progress.py "$TASK_DIR" "APPROVED → IMPLEMENTING"
-# Optional audit line (ignored by state derivation — see crew-orchestrator.mdc § METRIC)
-~/.agent/bin/log-metric.py "$TASK_DIR" implement_start mode="${MODE:-inline}" 2>/dev/null || true
+~/.agent/bin/log-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
 ```
 
 ### Step 5b: Capture baseline diff
@@ -132,35 +131,16 @@ This snapshot is used by `crew commit` to detect out-of-scope modifications.
 
 **Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists).
 
-#### Step 6a — Ralph check (required, do not skip)
-
-```bash
-which ralph 2>/dev/null || which ralph.sh 2>/dev/null
-```
-
-This check is mandatory. Do not proceed to 6b or 6c without running it.
-
-#### Step 6b — Ralph mode (if ralph found)
-
-Launch crew-builder as a subagent (Cursor: Task tool; Claude Code: `ralph run` directly). Pass `MODE=ralph`. Ralph manages its own iterations — crew-builder waits for it to exit. crew-builder's `ralph run` passes `--protocol "$TASK_DIR/.ralph-instructions"` — the per-task rendered template (install `.ralph-instructions-template` via repo `install.sh` if missing).
-
-#### Step 6c — Inline mode (only if ralph not found)
-
-Launch crew-builder as a subagent if possible (Cursor: Task tool). If subagents are not available (Claude Code), follow crew-builder's inline protocol directly. Pass `MODE=inline`.
-
-When ralph is unavailable, crew-builder's protocol is executed inline. Claude handles the build steps directly in the current session — reads each task from SPEC.md, implements it, runs the acceptance check, and marks it done. The same tasks and checks run; the difference is conversational (inline) rather than autonomous (ralph).
-
-Pass these inputs to crew-builder (or use them when following its protocol):
+Launch crew-builder as a subagent (Cursor: Task tool; Claude Code: follow crew-builder's protocol directly). Pass these inputs:
 
 - `TASK_DIR` — the resolved task directory path (absolute)
 - `WORK_DIR` — the worktree or repo directory (absolute path, e.g. `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and shell commands must run. It is not a shell variable — pass the literal path.
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
-- `MODE` — `ralph` or `inline`
 - The full contents of `SPEC.md` (so the worker has it without needing to re-read)
 
 ### Step 7: Handle results
 
-Read `$TASK_DIR/REPORT.md`. If the worker returned a message, use that. If the worker exited without returning (ralph mode, session timeout), fall back to `REPORT.md`. If neither exists, tell the user:
+Read `$TASK_DIR/REPORT.md`. If the worker returned a message, use that. If neither exists, tell the user:
 
 > "The worker finished but didn't produce a report. Check `$TASK_DIR/` for SPEC.md task status, or re-run `crew implement` to resume."
 
@@ -197,7 +177,7 @@ When the Implementation Report is available:
 - The skill handles ALL user interaction — the worker is non-interactive
 - If the worker returns failures, always surface them to the user with options
 - **Stop after all tasks pass.** Never commit, push, or create a PR. Always output the handoff message (Step 7) before stopping.
-- **ALWAYS follow crew-builder's protocol for implementation.** The orchestrator handles setup and gates. Code changes follow crew-builder's instructions — either via a subagent (Cursor Task tool), ralph, or by reading and following crew-builder's inline protocol directly. Never skip crew-builder's protocol and implement ad-hoc.
+- **ALWAYS follow crew-builder's protocol for implementation.** The orchestrator handles setup and gates. Code changes follow crew-builder's instructions — either via a subagent (Cursor Task tool) or by reading and following crew-builder's protocol directly. Never skip crew-builder's protocol and implement ad-hoc.
 
 ## Auto-clarity override
 
@@ -205,6 +185,6 @@ Drop to plain language at each gate checkpoint:
 
 - Before presenting the SPEC.md for approval (Gate 1) — summarize what will be built and list acceptance criteria in plain language
 - Before surfacing worker failures — state what failed and what the user's options are plainly; do not compress error messages or file paths
-- When a task's **Acceptance** command fails three times — report the failure in full detail without compression (three-failure stop rule)
+- When a task's verify command fails three times — report the failure in full detail without compression (three-failure stop rule)
 
 Resume compressed mode once the user provides direction.

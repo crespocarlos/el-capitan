@@ -101,8 +101,7 @@ Optional append-only lines for **offline analysis only**. `crew status`, `resolv
 |--------|---------|------|
 | `implement_start` | `METRIC: implement_start mode=inline` | After `APPROVED → IMPLEMENTING`, before builder runs |
 | `implement_complete` | `METRIC: implement_complete tasks_passed=8 tasks_failed=0` | After builder success, before `IMPLEMENTING → REVIEW` |
-| `ralph_budget` | `METRIC: ralph_budget max_runs=24` | Optional, when recording Ralph `MAX_RUNS` |
-| `completion_protocol` | `METRIC: completion_protocol phase=typed_tests` | Optional milestone inside Completion Protocol |
+| `completion_protocol` | `METRIC: completion_protocol phase=ac_check` | Optional milestone inside Completion Protocol |
 | `session` | `METRIC: session tool_calls=42` | Optional coarse counters from hooks or notes |
 
 **How to write:** `~/.agent/bin/log-metric.py "$TASK_DIR" <words...>` (shipped under `.agent/bin/`; symlinked to `~/.agent/bin/` via `install.sh`).

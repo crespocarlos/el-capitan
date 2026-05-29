@@ -106,40 +106,23 @@ If `$TASK_DIR/SPEC.md` exists (any status, including DRAFTING):
   If yes → proceed; write new spec with Status: DRAFTING.
 
 Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
-   - **Context**: problem statement, scope (in/out), repo touchpoints (files that will change). In the out-of-scope list: explicitly name obvious adjacent features that a reader might expect to be included, with a one-phrase reason why they are excluded (e.g., "retry logic — separate spec", "auth layer — prerequisite for production, not this PR"). A bare "out of scope: N/A" is not acceptable unless the task is genuinely isolated with no plausible adjacencies.
-   - **Goal**: one sentence
-   - **Acceptance Criteria** in two layers:
-     - **Requirements**: infer from the ticket — what the change must achieve. State positive, observable outcomes. **Each bullet must be verifiable** for crew-builder's Completion Protocol: prefer an explicit command (`rg`/`pytest`/curl one-liner) or a named file + what to read there; avoid vague "works correctly" with no check.
-     - **Non-regression**: existing behavior that must not break. Same rule — inspection is OK only when the criterion names **which** files/patterns to read or diff. Mention specific APIs, types, consumers, or behaviors that must be preserved.
-   - **Design Constraints**: structural rules that prevent locally-correct but globally-incoherent decisions. Derive them by reading the existing code at every repo touchpoint and answering:
-     1. **Boundaries** — which functions/files should NOT grow? Where should new logic live?
-     2. **API surface** — what does the public return type look like? Minimize fields. One array per consumer.
-     3. **Patterns** — what patterns does the existing code use (return values vs mutation, pure vs stateful)? New code must match.
-     4. **Deduplication** — if two outputs need the same derived data, name the single function that computes it.
-     5. **Structural fit** — scan for stress signals: a function receiving 4+ parameters, a file owning 3+ responsibilities, duplicated logic in two tasks, or 30+ lines being added to an already-large function. If any signal is present, name it in Design Constraints so the builder can flag it in their REPORT rather than silently patching around it.
+   - **Summary**: problem, scope, and goal in prose. 1-2 paragraphs covering what this changes and why. In the out-of-scope statement: explicitly name obvious adjacent features that a reader might expect to be included, with a one-phrase reason why they are excluded (e.g., "retry logic — separate spec", "auth layer — prerequisite for production, not this PR"). A bare "out of scope: N/A" is not acceptable unless the task is genuinely isolated with no plausible adjacencies. Link to the issue/PR if applicable.
+   - **Acceptance criteria**: a flat checkboxed list mixing requirements and non-regression. **Each bullet must be verifiable** for crew-builder's Completion Protocol: prefer an explicit command (`rg`/`pytest`/curl one-liner) or a named file + what to read there; avoid vague "works correctly" with no check. Non-regression items (existing behavior preserved) can be verified by inspection when the criterion names **which** files/patterns to read or diff. Important structural constraints (boundaries, API surface, pattern consistency, deduplication) that would otherwise live in a separate section become AC bullets here.
    - **Tasks**: break the work into atomic units organized by **architectural boundary** (one new function/module per task), not by modification type. Each task has:
-     - **Change**: what to do — WHAT not HOW, no numbered step lists. Default 2-3 sentences. For complex tasks (multiple moving parts, non-obvious sequencing, or 3+ file changes), escalate to named sub-steps: `1. Rename X to Y`, `2. Add field Z`. The rule is clarity over brevity.
-     - **Files**: which files
-     - **Acceptance**: how to verify that task alone
+     - A description: what to change, which files — WHAT not HOW. Default 1-3 sentences. For complex tasks (multiple moving parts, non-obvious sequencing, or 3+ file changes), escalate to named sub-steps.
+     - A verify line: `Verify: <command>` or `Verify: inspect: <what to check>`.
      If a task says "modify X to also do Y," split it — X stays focused, Y gets its own task.
      **Atomic groups:** when two or more consecutive tasks must land together (breaking intermediate state), declare them: `> Tasks N and N+1 are atomic — commit together.`
      **Documentation task:** if the change renames a concept, adds or removes a pipeline stage, changes ownership of a command, or alters a constraint stated in an existing README or doc file — add an explicit documentation task as the final task in the last group. Omit it only if no existing doc mentions the affected concept.
-   - **Per-task Acceptance patterns:** For destructive, network, or deploy-heavy checks, use **Dry-run:** (`plan` / read-only / `--dry-run` CLI) vs **Live:** (mutating command) in task **Acceptance** — not under `## Tests` unless it is a safe one-shot CLI gate.
-   - **Tests**: `## Tests` holds **only** typed automation commands — include whichever apply, omit unused layers:
-     1. **Framework map**: for each layer in the explorer's `## Frameworks` output, map to its typed block — `unit` → `### Unit` (jest/vitest), `integration` → `### Integration` (FTR), `e2e` → `### E2E` (playwright). Include only layers that were discovered; omit unused layers. If `## Frameworks` is sparse or empty but the explorer's `## Project context` specifies a test command, use that as the `### Unit` (or most appropriate) block's `Command` — do not leave `## Tests` empty when a test command is known.
-     2. **`### Validation`**: when the ticket implies one-shot CLI/repo gates (workflow schema validate, linters, codegen scripts not covered by unit/integration/e2e), add `### Validation` with the same `**Framework**` / `**Command**` / `**Scenarios**` shape as other typed blocks. Use `Command: "none"` when not applicable. **If the Project context includes quality gates (from AGENTS.md), they MUST appear here — do not leave them buried in task descriptions or omit them.** Also add each quality gate command as an explicit task Acceptance step on the relevant file-change task.
-     3. **Harness / human / live-env** checks (indices, demos, multi-step data scenarios, subjective UI): do **not** put them under `## Tests` or as a `### Manual` block. Write them as **Acceptance Criteria** and/or per-task **Acceptance** bullets instead.
-     4. **Runbook generation** (optional): generate `$TASK_DIR/runbook.md` **only** when there are **scriptable** fenced commands worth running under `crew test` (see `~/.agent/_RUNBOOK_TEMPLATE.md`). **Do not** put manual QA matrices, `type: visual`, or judgment-only sections in the runbook — those stay in SPEC Acceptance / task Acceptance. Runbook is **not** the source for PR "How to test" reviewer steps.
-   - **References**: file paths to canonical examples. Two sources: (a) patterns found during exploration, (b) novel patterns introduced by this spec. For each, extract the canonical form as a labeled excerpt. Embed inline (10-15 lines max per excerpt) — max 4 patterns total. The goal is to anchor the implementer to the established pattern, not to reproduce API docs. Do not embed full type definitions — describe the shape in the task or acceptance criteria instead.
-   - **Sections**: only use sections from the spec template. Do not add `## Types`, `## Design`, or any other sections **not** listed in `_SPEC_TEMPLATE.md` / `_BUG_SPEC_TEMPLATE.md`. **`## Additional Context`** is in the template (optional, append-only) — use it for non-obvious runtime behaviors, platform footguns, or environment constraints that would otherwise require an implementer to re-investigate. Do not use it to restate tasks or paraphrase acceptance criteria. Leave the placeholder when unused; append session notes there during multi-turn implementation when helpful. Types belong in Acceptance criteria or References; design decisions belong in Design Constraints.
+   - **Hints** (optional): file paths grouped by area. Canonical patterns (5-10 line excerpts) when the implementer would otherwise guess wrong. Embed inline — max 4 patterns total. The goal is to anchor the implementer to the established pattern, not to reproduce API docs. Omit if all paths are obvious from the task descriptions.
 
 ### Step 4: Self-critique
 
 Run two critic personas in parallel against the draft spec. This phase is invisible to the user — they see only the improved spec in the output.
 
 1. **Critic subagents** are registered at `.cursor/agents/specwriter-*.md` (auto-discovered by both Cursor and Claude Code):
-   - `specwriter-scope` — evaluates PR boundaries, task granularity, split-line identification, builder compatibility, path clarity, and verifiability
-   - `specwriter-adversarial` — stress-tests acceptance criteria, surfaces missing edge cases
+   - `specwriter-scope` — evaluates PR boundaries, task granularity, split-line identification, builder compatibility, path clarity, verify lines, and AC verifiability
+   - `specwriter-adversarial` — stress-tests acceptance criteria (including structural constraints embedded as AC bullets), surfaces missing edge cases
 
 2. **Dispatch** both in parallel. Each critic is a registered subagent — dispatch by name, passing only the draft spec as context (not the persona prompt):
 
@@ -205,9 +188,7 @@ After the user answers the questions, incorporate their answers into the SPEC.md
 
 ## Quality Bar
 
-- **Requirements AC** must be inferred from the ticket, not invented. If the ticket says "convert X to use Y", the AC is "X uses Y", not "type-check passes".
-- **Non-regression AC** can be verified by inspection. Not everything needs a CLI command. "Return type shape is unchanged" is a valid criterion verified by reading the diff.
-- **Tasks** must be small enough that each one touches 1-2 files and can be verified independently.
+- **Acceptance criteria** must be inferred from the ticket, not invented. If the ticket says "convert X to use Y", the AC is "X uses Y", not "type-check passes". Non-regression items can be verified by inspection — not everything needs a CLI command. "Return type shape is unchanged" is a valid criterion verified by reading the diff.
 - The spec must be **self-contained**: an agent reading only the spec should be able to implement without exploring the codebase. Self-contained means the WHAT is unambiguous — not that every type definition is embedded. Keep specs lean: if it's not needed to implement correctly, leave it out.
 
 ## Output
