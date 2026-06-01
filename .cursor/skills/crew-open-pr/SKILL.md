@@ -98,8 +98,6 @@ Show the PR URL and a one-line summary.
 
 > Next: build workflow complete. Watch for review comments — run `crew resolve PR` if they arrive.
 
-> Run `crew log` to record this session.
-
 ## Session Capture
 
 After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
@@ -119,13 +117,28 @@ fi
 [TIME] crew-open-pr: PR_URL — PR_TITLE
 ```
 
-Also log the transition:
+If `TASK_DIR` is non-empty, log the transition and auto-journal:
 
 ```bash
-~/.agent/bin/log-progress.py "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
+if [ -n "$TASK_DIR" ]; then
+  ~/.agent/bin/log-progress.py "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
+
+  JOURNAL_FILE=~/.agent/journal/$(date +%Y-%m).md
+  mkdir -p ~/.agent/journal
+fi
 ```
 
-Then suggest: "Want to journal this session?"
+If `TASK_DIR` is non-empty, write a prose entry following `~/.agent/_JOURNAL_TEMPLATE.md` format. Use `$(date +%Y-%m-%d)` for the date. Title prefix: "PR opened:". Write 1-2 paragraphs in plain prose — each paragraph one self-contained idea. Derive from SPEC.md + commit log:
+- What was built and why, plus any key architectural decisions made
+- Anything worth remembering for future similar work (omit if nothing notable)
+
+```bash
+if [ -n "$TASK_DIR" ]; then
+  ~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null \
+    && echo "[journal] Journaled to $JOURNAL_FILE" \
+    || echo "[journal] Warning: index failed — entry written but not searchable"
+fi
+```
 
 ## Rules
 

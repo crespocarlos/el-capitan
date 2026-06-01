@@ -1,64 +1,80 @@
 # Journal Entry Schema
 
-Reference for crew-log, crew-researcher, and crew-thinker. Entries are written to monthly files in `~/.agent/journal/YYYY-MM.md`.
+Entries are written to monthly files in `~/.agent/journal/YYYY-MM.md`.
 
-The journal is a memory system. Each entry is indexed at two levels: the full entry (for context queries) and each individual bullet (for entity-filtered retrieval). This means the indexable unit is the bullet, not the entry — write bullets that are self-contained facts.
-
-Three retrieval axes:
-
-- **Done** — actions taken, changes made, commits shipped
-- **Absorbed** — things read, learned, or understood
-- **Implemented** — concrete artifacts built: features, fixes, scripts, configs
-
-Sections with no content are omitted.
-
-## Entity tags
-
-Tag the entities each bullet mentions using `[type:value]` inline syntax. These are extracted as metadata and enable entity-filtered search alongside semantic search.
-
-| Tag | Example |
-|-----|---------|
-| `repo:` | `[repo:el-capitan]` |
-| `file:` | `[file:.agent/bin/get-diff.sh]` |
-| `dir:` | `[dir:.agent/bin/]` |
-| `tool:` | `[tool:dispatch_subagents.py]` |
-| `concept:` | `[concept:Mem0 memory extraction]` |
-| `branch:` | `[branch:feat/memory-redesign]` |
-| `pr:` | `[pr:42]` |
-
-For source URLs, cite inline in the bullet text: `(https://docs.letta.com/letta-code/memory)`. No fetch is triggered — these are plain strings.
-
-Query with entity filter: `journal-search.py query "..." --entity repo:el-capitan`
-
-## Schema
+## Format
 
 ```markdown
 ---
-## DATE — SUMMARY
+
+## YYYY-MM-DD — Title (one line, what this entry is about)
 
 **Tags:** #tag1 #tag2
 **Repo:** repo-name  (omit if not repo-scoped)
 
-### Done
-- consolidated [tool:dispatch_subagents.py] and [tool:manage-worktree.sh] into [dir:.agent/bin/] for [repo:el-capitan]
-- fixed broken path in [file:.claude/hooks/mode-anchor.sh] — was calling [dir:.agent/tools/] which no longer exists
+One or more paragraphs. Each paragraph is one coherent idea — write it with enough
+context to be self-contained when retrieved in isolation months later. Include the
+"why": not just what happened, but why it matters and when it applies again.
 
-### Absorbed
-- [concept:Mem0 memory extraction] — single-pass ADD-only, atomic fact indexing, entity linking for retrieval boosting
-- [concept:Letta MemFS] — git-backed hot/cold tier split, sleep-time reflection subagent (https://docs.letta.com/letta-code/memory)
+Separate distinct ideas with a blank line. Each paragraph becomes its own searchable
+unit in the vector store.
 
-### Implemented
-- [file:.agent/bin/get-diff.sh] — resolves base ref (upstream → origin → HEAD~1), exports BASE + DIFF_SOURCE
-- [file:.agent/bin/dispatch_subagents.py] — fixed stderr reading, perspectives returns 0 on partial failure
-
-### Promoted
-- BSD tar ignores `**` glob patterns on macOS — use `--exclude=.env` not `--exclude=**/.env`
-- Gate `git fetch` on FETCH_HEAD age to avoid blocking short sessions
-
-### Open
-- unresolved questions or follow-ups (omit section if empty)
+---
 ```
 
-**`### Promoted`** is the hot tier. Bullets here are durable facts worth carrying forward permanently — constraints, workarounds, and patterns that should always be in-context. Use for long-lived insights, not session-specific observations.
+## What makes a good entry
 
-`### Raw session` (appended automatically by crew-log if SESSION.md is present) contains verbatim captured notes. Never summarize it; index it as-is.
+**Self-contained paragraphs.** When this entry surfaces in future recall, you'll only
+see 1-3 paragraphs — not the whole entry. Each paragraph should make sense on its own.
+Don't write "as mentioned above" or rely on surrounding context.
+
+**Write the why.** "Always bump the data stream version when adding mapping fields"
+is less useful than "When adding new mapping fields to a Kibana data stream, bump the
+version or the fields won't be mapped on existing deployments — the install path in
+@kbn/data-streams gates entirely on the version field, so fresh installs work fine
+which makes this easy to miss in dev."
+
+**One idea per paragraph.** Don't pack unrelated observations into one block. A
+5-paragraph entry with 5 distinct insights is more retrievable than a single dense
+paragraph covering everything.
+
+## Tags
+
+Use `**Tags:**` for topic keywords (`#sigevents`, `#el-capitan`, `#mapping`).
+Use `**Repo:**` for repo scoping — entries without it are global.
+
+No other metadata fields are required. Don't add Type, Source, Key idea, Experiments,
+Patterns emerging, etc. — those fields generated noise and placeholder text.
+
+## Examples
+
+```markdown
+---
+
+## 2026-05-30 — Kibana data stream version gating
+
+When adding new mapping fields to a Kibana data stream, the version number must be
+bumped or the new fields won't be mapped on existing deployments. The install path in
+@kbn/data-streams gates entirely on the version field — fresh installs work fine
+which makes this easy to miss in dev. Applied to detections (3→4), discoveries (2→3),
+events (3→4) in the streams plugin.
+
+**Tags:** #kibana #streams #mapping
+**Repo:** kibana
+
+---
+
+## 2026-05-30 — Zod strips unknown keys by default
+
+Zod strips unknown keys from objects by default. This means a schema must explicitly
+declare every field the write path uses, or those fields get silently dropped before
+storage. The failure mode is silent: writes succeed, reads return nothing, no error
+anywhere. Caught when discoverySchema declared closes/grouped_into while the mapping
+and queries used closes_discovery_id and grouped_discovery_ids — writes through the
+route stripped the new field names before they reached ES.
+
+**Tags:** #zod #schema #kibana
+**Repo:** kibana
+
+---
+```

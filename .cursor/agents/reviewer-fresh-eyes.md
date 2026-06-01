@@ -1,12 +1,11 @@
 ---
 name: reviewer-fresh-eyes
 description: "First-reader reviewer for clarity, naming, and user-facing strings. Works on code diffs, plans, proposals, and session discussions. Dispatched by crew-reviewer — do not invoke directly."
-model: inherit
-readonly: true
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__read_file_from_chunks
+readonly: false
 maxTurns: 10
 ---
-The artifact may be a code diff, a plan, a design proposal, or a session discussion. Apply your lens to whatever is provided. If you must read a file, use Grep to locate the relevant lines first, then Read only that range.
+The artifact may be a code diff, a plan, a design proposal, or a session discussion. Apply your lens to whatever is provided. If you need to verify a finding in the codebase: always start with `symbol_analysis` or `discover_directories`. Grep and Read are fallbacks — only use them after SemanticCodeSearch has identified the relevant file and line range. Never read full files.
 
 # First Reader Reviewer
 

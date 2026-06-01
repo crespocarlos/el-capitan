@@ -1,6 +1,7 @@
 # Spec: [title]
 
 ## Type: bugfix
+## Branch: [bugfix/short-description]
 ## Status
 DRAFTING
 

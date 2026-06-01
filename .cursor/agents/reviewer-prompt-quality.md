@@ -1,12 +1,11 @@
 ---
 name: reviewer-prompt-quality
 description: "LLM prompt quality reviewer for token efficiency, context density, instruction clarity, and model compatibility. Works on agent/skill/prompt file diffs. Dispatched by crew-reviewer — do not invoke directly."
-model: inherit  # resolves to the dispatching model from crew-reviewer (default unless overridden in dispatch)
-readonly: true
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__read_file_from_chunks
+readonly: false
 maxTurns: 5
 ---
-The artifact is a diff or content of agent, skill, or prompt files (system prompts, instructions, `*.prompt.md`, `instructions.md`, etc.). Apply your lens to whatever is provided. If you must read a file, use Grep to locate the relevant lines first, then Read only that range.
+The artifact is a diff or content of agent, skill, or prompt files (system prompts, instructions, `*.prompt.md`, `instructions.md`, etc.). Apply your lens to whatever is provided. If you need to verify a finding in the codebase: always start with `symbol_analysis` or `discover_directories`. Grep and Read are fallbacks — only use them after SemanticCodeSearch has identified the relevant file and line range. Never read full files.
 
 # Prompt Quality Reviewer
 

@@ -66,46 +66,50 @@ If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you
 
 ```bash
 REPO=$(basename $(git rev-parse --show-toplevel))
-RECALLED_PATTERNS=$(~/.agent/bin/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true)
+RECALLED_PATTERNS=$(~/.agent/bin/journal-search.py auto-recall "$REPO" --top 10 2>/dev/null || true)
 ```
 
 Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no journal entries or search unavailable), set `RECALLED_PATTERNS="none"` — do **not** leave it as an empty string. Passing an empty string causes crew-builder to re-run auto-recall redundantly.
 
-### Step 4: Create worktree
+### Step 4: Branch setup
 
-If already on a feature branch (not `main` or the default branch), skip this step.
+**If already on a feature branch** (not `main` or the default branch): set `WORK_DIR` to the current directory and proceed to Step 5.
 
-Otherwise, fetch the latest from the default branch and create a worktree:
+**If on the default branch:** ask the user:
 
-```bash
-DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
-git fetch origin "$DEFAULT_BRANCH"
+> "Create a worktree for this implementation, or work directly on this branch? (worktree / here)"
 
-BRANCH_NAME=<type>/<short-description>
-cd "$(~/.agent/bin/manage-worktree.sh -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
-```
+  Read the branch name from SPEC.md:
+  ```bash
+  BRANCH_NAME=$(grep "^## Branch:" "$TASK_DIR/SPEC.md" | sed 's/^## Branch: *//')
+  ```
+  If `## Branch:` is absent or empty, derive it from the SPEC.md type and goal (type-prefix/slug, ≤50 chars), propose it, and confirm before proceeding.
 
-Use a conventional branch prefix based on the SPEC.md type:
+  - **worktree** — fetch the default branch and create a worktree:
 
-| SPEC type             | Prefix      |
-| --------------------- | ----------- |
-| Feature / enhancement | `feature/`  |
-| Bug fix               | `bugfix/`   |
-| Refactor              | `refactor/` |
-| Chore / tooling       | `chore/`    |
-| Docs                  | `docs/`     |
+  ```bash
+  DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
+  git fetch origin "$DEFAULT_BRANCH"
+  cd "$(~/.agent/bin/manage-worktree.sh -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
+  ```
 
-Read the `## Type` field from SPEC.md to pick the prefix. Derive the short description from the issue title or SPEC.md goal (lowercase, hyphen-separated).
+  After the worktree is created: **bootstrap dependencies.** Read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. Set `WORK_DIR` to the worktree directory.
 
-After the worktree is created:
+- **here** — set `WORK_DIR` to the current directory. Ask:
 
-1. **Bootstrap dependencies.** Read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. This ensures the worktree has its own `node_modules` instead of symlinks to the main repo.
+  > "Create a new branch (`$BRANCH_NAME`), or commit directly to `<current-branch>`? (new-branch / here)"
 
-2. Set `WORK_DIR` to the worktree directory (the script outputs the resolved absolute path).
+  - **new-branch** — create and checkout the branch:
 
-The UUID task directory (`$TASK_DIR`) is stable — it does not move when a worktree is created.
+    ```bash
+    DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
+    git fetch origin "$DEFAULT_BRANCH"
+    git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
+    ```
 
-If skipped (already on feature branch), set `WORK_DIR` to the current directory.
+  - **here** — work in the current directory on the current branch as-is.
+
+The UUID task directory (`$TASK_DIR`) is stable — it does not move either way.
 
 ### Step 5: Update progress
 
@@ -157,7 +161,24 @@ When the Implementation Report is available:
    ```
    [TIME] crew-implement: completed N/N tasks, files: <changed files from report>
    ```
-3. **Tell the user — this output is mandatory, do not skip it:**
+3. **Auto-journal** — append a journal entry (no prompt, passive):
+   ```bash
+   JOURNAL_FILE=~/.agent/journal/$(date +%Y-%m).md
+   mkdir -p ~/.agent/journal
+   ```
+   Write a prose entry following `~/.agent/_JOURNAL_TEMPLATE.md` format. Use `$(date +%Y-%m-%d)` for the date. Title prefix: "Implemented:". Write 1-3 paragraphs in plain prose — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:
+   - What was built and why it matters (always)
+   - What broke or surprised during implementation, if REPORT.md has structural observations (omit if nothing notable)
+   - Patterns or constraints discovered worth remembering (omit if nothing new)
+
+   Append with:
+   ```bash
+   ~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null \
+     && echo "[journal] Journaled to $JOURNAL_FILE" \
+     || echo "[journal] Warning: index failed — entry written but not searchable"
+   ```
+
+4. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Ready for `crew review`."
    > "Working directory: `<WORK_DIR>` — run tests from there."
    > Next: run `crew review` to continue.

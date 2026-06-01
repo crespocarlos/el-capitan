@@ -42,7 +42,7 @@ json.dump(data, sys.stdout, indent=2)
 " > "$TASK_DIR/.task-id"
 
 REPO=$(basename $(git rev-parse --show-toplevel))
-~/.agent/bin/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/bin/journal-search.py auto-recall "$REPO" --top 10 2>/dev/null || true
 ```
 
 The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces and special characters replaced with hyphens, truncated to ~50 characters. Examples: "Add retry logic for async search" → `add-retry-logic-for-async-search`, "Convert evals to @kbn/evals format" → `convert-evals-to-kbn-evals-format`.
@@ -105,7 +105,7 @@ If `$TASK_DIR/SPEC.md` exists (any status, including DRAFTING):
   If no → stop, do not write.
   If yes → proceed; write new spec with Status: DRAFTING.
 
-Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base:
+Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base. Populate `## Branch:` with a concise conventional branch name derived from the type and goal — e.g. `feat/sigevents-verdict-rename`. Keep it under 50 characters, lowercase, hyphen-separated. The user reviews and can change it before approving.
    - **Summary**: problem, scope, and goal in prose. 1-2 paragraphs covering what this changes and why. In the out-of-scope statement: explicitly name obvious adjacent features that a reader might expect to be included, with a one-phrase reason why they are excluded (e.g., "retry logic — separate spec", "auth layer — prerequisite for production, not this PR"). A bare "out of scope: N/A" is not acceptable unless the task is genuinely isolated with no plausible adjacencies. Link to the issue/PR if applicable.
    - **Acceptance criteria**: a flat checkboxed list mixing requirements and non-regression. **Each bullet must be verifiable** for crew-builder's Completion Protocol: prefer an explicit command (`rg`/`pytest`/curl one-liner) or a named file + what to read there; avoid vague "works correctly" with no check. Non-regression items (existing behavior preserved) can be verified by inspection when the criterion names **which** files/patterns to read or diff. Important structural constraints (boundaries, API surface, pattern consistency, deduplication) that would otherwise live in a separate section become AC bullets here.
    - **Tasks**: break the work into atomic units organized by **architectural boundary** (one new function/module per task), not by modification type. Each task has:

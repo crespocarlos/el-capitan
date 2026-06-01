@@ -24,7 +24,7 @@ PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.hea
 cd "$(~/.agent/bin/manage-worktree.sh "$PR_BRANCH")"
 
 REPO=$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
-~/.agent/bin/journal-search.py auto-recall "$REPO" --top 5 2>/dev/null || true
+~/.agent/bin/journal-search.py auto-recall "$REPO" --top 10 2>/dev/null || true
 ```
 
 All subsequent steps happen in this worktree. Apply any recalled rules silently during evaluation.
@@ -131,7 +131,28 @@ TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
 [TIME] crew-pr-resolver: N applied / N adapted / N rejected / N deferred
 ```
 
-Changes applied.
+### Auto-journal
+
+If `TASK_DIR` is non-empty, auto-append a journal entry (no prompt — passive):
+
+```bash
+if [ -n "$TASK_DIR" ]; then
+  JOURNAL_FILE=~/.agent/journal/$(date +%Y-%m).md
+  mkdir -p ~/.agent/journal
+fi
+```
+
+If `TASK_DIR` is non-empty, write a prose entry following `~/.agent/_JOURNAL_TEMPLATE.md` format. Use `$(date +%Y-%m-%d)` for the date. Title: "PR review: &lt;PR title&gt;". Write 1-3 paragraphs in plain prose. Focus on what *you* learned from the feedback — not what you applied mechanically:
+- What the reviewer caught that you missed, and why it matters / what pattern it reveals
+- What to watch for next time in similar code (omit if nothing genuinely new)
+
+```bash
+if [ -n "$TASK_DIR" ]; then
+  ~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null \
+    && echo "[journal] Journaled to $JOURNAL_FILE" \
+    || echo "[journal] Warning: index failed — entry written but not searchable"
+fi
+```
 
 > Next: run `crew commit` to commit resolved changes.
 

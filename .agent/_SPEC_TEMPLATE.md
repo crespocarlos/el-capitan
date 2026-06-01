@@ -1,6 +1,7 @@
 # Spec: [title]
 
 ## Type: [feature | bugfix | refactor | chore | docs]
+## Branch: [type/short-description — e.g. feat/sigevents-verdict-rename]
 ## Status
 DRAFTING
 

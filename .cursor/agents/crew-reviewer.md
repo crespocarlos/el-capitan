@@ -18,6 +18,8 @@ Parse the user's input to determine the review mode:
 | Input | Mode | Source material |
 |---|---|---|
 | `crew review` (no arguments) | **Self-review** | `git diff $(git merge-base HEAD origin/main)..HEAD` |
+| `crew review --auto` | **Self-review (auto)** | Same as self-review, but auto-applies all code fixes inline — stops only on `[needs more info]` |
+| `crew review --auto --loop` | **Self-review (auto-loop)** | Same as self-review auto, but re-reviews after each apply cycle until convergence or 3 iterations |
 | `crew review changes` | **Changes review** | `git diff --cached` (staged only) |
 | `crew review changes --auto` | **Changes review (auto)** | Same as changes review, but auto-applies all code fixes inline — stops only on `[needs more info]` |
 | `crew review changes --auto --loop` | **Changes review (auto-loop)** | Same as changes auto, but re-reviews after each apply cycle until convergence or 3 iterations |
@@ -29,6 +31,10 @@ Parse the user's input to determine the review mode:
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
 
 **Idea review:** skip Steps 2–3 entirely. The artifact is already present — either the pasted text or the session conversation (the visible chat history in the current window, read directly without any tool call). Proceed directly to Step 4. If using session conversation as the artifact, scope to the most recent topic — from the last `crew` command invocation or the last major topic shift.
+
+**Self-review `--auto` mode:** same as self-review, but at Step 8 output — auto-apply all code fixes; see Self-review auto-apply path below.
+
+**Self-review `--auto --loop` mode:** same as self-review `--auto`, but re-runs the branch diff and reviews again after each apply cycle. Repeat until convergence (≤2 findings, all `[nit]`) or 3 total iterations. See Loop extension in Self-review auto-apply path below.
 
 **Changes review `--auto` mode:** same as changes review, but at Step 8 output — auto-apply all code fixes; see Changes auto-apply path below.
 
@@ -212,7 +218,7 @@ Dispatch is fire-and-wait — proceed to Step 5 only after the explorer returns 
 
 ## Step 5: Context packaging
 
-Build context packages for each reviewer before dispatching. Reviewers receive pre-built context — they never fetch files independently.
+Build context packages for each reviewer before dispatching. Reviewers receive pre-built context first and should prefer it. They may do up to **8 targeted fetch calls** (Grep + Read + SemanticCodeSearch combined) to ground a finding they cannot verify from the provided context alone — but they must not re-read files already included in their package.
 
 ### Code review modes (self-review and PR review)
 
@@ -247,38 +253,38 @@ Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discove
 
 **Self-review and PR review:**
 
-| Reviewer | Subagent name | Context tier | Model |
-|---|---|---|---|
-| Code Quality | `reviewer-code-quality` | Tier 1 (Hunks+) | `fast` |
-| Adversarial | `reviewer-adversarial` | Tier 3 (Full+) | default |
-| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) | default |
-| Architecture | `reviewer-architecture` | Tier 3 (Full+) | default |
-| Product Flow | `reviewer-product-flow` | Tier 2 (Function) | `fast` |
-| Prompt Quality | `reviewer-prompt-quality` | Tier 1 (Hunks+) | default |
+| Reviewer | Subagent name | Context tier |
+|---|---|---|
+| Code Quality | `reviewer-code-quality` | Tier 1 (Hunks+) |
+| Adversarial | `reviewer-adversarial` | Tier 3 (Full+) |
+| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) |
+| Architecture | `reviewer-architecture` | Tier 3 (Full+) |
+| Product Flow | `reviewer-product-flow` | Tier 2 (Function) |
+| Prompt Quality | `reviewer-prompt-quality` | Tier 1 (Hunks+) |
 
 Architecture and Product Flow always run. Prompt Quality only activates when its signal triggers match (Step 4). Adversarial only activates when total diff size ≥100 lines (Step 4).
 
 **Spec review:**
 
-| Reviewer | Subagent name | When active | Model |
-|---|---|---|---|
-| Architecture | `reviewer-architecture` | always | default |
-| Adversarial | `reviewer-adversarial` | always | default |
-| Product Flow | `reviewer-product-flow` | always | `fast` |
-| Prompt Quality | `reviewer-prompt-quality` | prompt/agent files in spec (Step 4 patterns) | default |
+| Reviewer | Subagent name | When active |
+|---|---|---|
+| Architecture | `reviewer-architecture` | always |
+| Adversarial | `reviewer-adversarial` | always |
+| Product Flow | `reviewer-product-flow` | always |
+| Prompt Quality | `reviewer-prompt-quality` | prompt/agent files in spec (Step 4 patterns) |
 
 Architecture, Adversarial, and Product Flow always run for spec review. Prompt Quality activates when any spec task's **Files** field references paths matching the Prompt Quality signal patterns defined in Step 4. Other reviewers are not applicable (no code to review).
 
 **Idea review:**
 
-| Reviewer | Subagent name | When active | Model |
-|---|---|---|---|
-| Adversarial | `reviewer-adversarial` | always | default |
-| Fresh Eyes | `reviewer-fresh-eyes` | always | default |
-| Architecture | `reviewer-architecture` | always | default |
-| Product Flow | `reviewer-product-flow` | always | `fast` |
-| Prompt Quality | `reviewer-prompt-quality` | Prompt Quality signal fired | default |
-| Code Quality | `reviewer-code-quality` | only if artifact contains fenced code blocks or explicit implementation references | `fast` |
+| Reviewer | Subagent name | When active |
+|---|---|---|
+| Adversarial | `reviewer-adversarial` | always |
+| Fresh Eyes | `reviewer-fresh-eyes` | always |
+| Architecture | `reviewer-architecture` | always |
+| Product Flow | `reviewer-product-flow` | always |
+| Prompt Quality | `reviewer-prompt-quality` | Prompt Quality signal fired |
+| Code Quality | `reviewer-code-quality` | only if artifact contains fenced code blocks or explicit implementation references |
 
 ### Cursor dispatch (Task tool available)
 
@@ -287,7 +293,6 @@ Launch all active reviewers as parallel Task tool calls. Each reviewer is a regi
 ```
 Task tool call per reviewer:
   subagent_type: <subagent name from table above>
-  model: <per reviewer table above>
   prompt: |
     ## Review context
 
@@ -299,7 +304,7 @@ Task tool call per reviewer:
 
     ---
 
-    Produce your review now. Do not read any files — all source material is provided above.
+    Produce your review now. Prefer the source material above — it is your primary context. You may do up to 8 targeted fetches (Grep, Read, or SemanticCodeSearch) to ground a specific finding you cannot verify from the provided material alone. Do not re-read files already included above.
 
     Output rules (apply to all reviewers):
 
@@ -361,16 +366,22 @@ Use the same prompt structure as the Cursor dispatch above (same output rules bl
 
 All Agent tool calls go in a single message for parallel dispatch. If a reviewer fails, note the failure in the `### Reviewers` section of the consolidated report.
 
-### Degraded fallback (no Task tool, no Agent tool)
+<critical_rules>
+
+**Dispatch is mandatory, not optional.** If you have access to the Task tool (Cursor) or Agent tool (Claude Code), you MUST dispatch reviewer subagents. Batch reasoning is NOT an acceptable substitute when dispatch tooling is available — it produces anchored, single-perspective output masquerading as multi-lens review. The entire value of crew-reviewer is independent parallel evaluation. Skipping dispatch to save cost/latency defeats the purpose.
+
+If you cannot dispatch (no Task tool, no Agent tool, no `claude` CLI), say so explicitly:
+> "I cannot dispatch reviewer subagents in this environment. Run `crew review` in Cursor or Claude Code for a proper multi-lens review."
+
+Do not produce a fake review. Stop.
+
+</critical_rules>
+
+### Degraded fallback (no Task tool, no Agent tool — `claude` CLI available)
 
 Run `~/.agent/bin/dispatch_subagents.py --type reviewers` with `TASK_DIR`, `REPO_ROOT`, `REVIEW_MODE`, and `DIFF_CONTENT` set. The script handles parallel reviewer dispatch via `claude -p`.
 
-If `claude` is not on PATH: use **batch reasoning** — do not run reviewers sequentially (prior outputs anchor later ones). Instead, reason as all active reviewers simultaneously in a single internal pass:
-
-1. For each active reviewer, produce a findings list in memory — applying that persona's scope, severity definitions, and output format — without emitting intermediate output.
-2. After all personas have been mentally evaluated, proceed directly to Step 7 (consolidation) using those internal findings.
-
-This preserves independent-lens evaluation even in a single context window. Never emit per-reviewer output before consolidation in this mode.
+If `claude` is not on PATH either: **stop and tell the user.** Do not run batch reasoning as a substitute for independent dispatch.
 
 ## Step 7: Consolidation
 
@@ -434,24 +445,42 @@ Severity labels and what they mean:
 
 For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]` to signal whether the plan or reasoning holds up.
 
----
+<critical_rules>
 
-**Code review modes (self-review, PR review, changes review):**
+1. Every code review finding MUST include a `file:line` reference. Findings without a file anchor are unactionable — drop them or trace the file before emitting.
+2. Code snippets (2-5 lines) are REQUIRED on `[blocking]` findings. Recommended on `[attention]`. Omit on `[nit]` unless the fix is non-obvious.
+3. Hard cap: 7 findings total. After deduplication, keep highest-severity. Drop the rest entirely.
+4. Zero findings is valid. No action plan. No reviewers section. No padding.
+5. Per-finding length: 1 sentence evidence, 1 sentence explanation, 1 sentence fix. A snippet replaces the evidence sentence when code speaks for itself.
+6. For idea/spec review: `Fix:` field required on every `[blocking]` and `[concern]` finding — actionable enough for mechanical application.
+
+</critical_rules>
+
+<output_format mode="code_review">
 
 ```
 ## Review: <mode> — <summary>
 
-1. [blocking] **<title>** — <evidence>. <explanation>. <fix>.
-2. [attention] **<title>** — <evidence>. <explanation>. <fix>.
-3. [needs more info] **<title>** — <what needs to be answered and why it matters>.
-4. [nit] **<title>** — <what to change>.
+1. [blocking] **<title>** `path/to/file.ts:42`
+   <evidence — what the code does wrong>. <explanation — why it matters>. <fix — what to do>.
+   ```<lang>
+   <2-5 lines showing the problem>
+   ```
+2. [attention] **<title>** `path/to/file.ts:108`
+   <evidence>. <explanation>. <fix>.
+   ```<lang>
+   <2-5 lines showing the problem (recommended)>
+   ```
+3. [needs more info] **<title>** `path/to/file.ts:55`
+   <what needs to be answered and why it matters — name the stakes>.
+4. [nit] **<title>** `path/to/file.ts:12` — <what to change>.
 ```
 
----
+</output_format>
 
-**Idea review and spec review:**
+<output_format mode="idea_spec_review">
 
-Tone is evaluative — the question is "does this hold up?". Findings should address whether the idea, plan, or reasoning is sound.
+Tone is evaluative — "does this hold up?". Findings address whether the idea, plan, or reasoning is sound.
 
 ```
 ## Review: Idea — <summary>
@@ -459,27 +488,24 @@ Tone is evaluative — the question is "does this hold up?". Findings should add
 **Verdict:** proceed / revisit / blocked — <1 sentence: the decisive reason>
 
 1. [blocking] **<title>** — <what assumption breaks or what is fundamentally missing>. <why it matters>.
-   **Fix:** <exact change to the idea — what sentence/section to add, remove, or reframe. Be specific enough that address can apply it without re-interpreting.>
+   **Fix:** <exact change — what sentence/section to add, remove, or reframe. Specific enough for mechanical application.>
 2. [concern] **<title>** — <what weakens the plan>. <why it matters>.
-   **Fix:** <what would strengthen it — specific framing or addition to the idea text.>
+   **Fix:** <what would strengthen it — specific framing or addition.>
 3. [needs more info] **<title>** — <what is unclear and must be resolved before moving forward>.
 4. [nit] **<title>** — <minor framing or completeness improvement>.
 ```
 
-**The `Fix:` field is required on every `[blocking]` and `[concern]` finding.** It must be actionable enough that `crew review address` can apply it mechanically — not "reconsider X" but "add a sentence to the Prerequisites section stating X" or "remove the claim that Y and replace it with Z".
-
 If there are no findings, state the verdict as `proceed` and give one sentence of reasoning.
 
----
+</output_format>
 
-Zero findings is a valid outcome. No action plan. No reviewers section.
+<output_discipline>
 
-### Output constraints
+- No extra structure. No sub-sections, no thematic groupings, no "What looks good", no preamble. Flat numbered list only.
+- Be opinionated. Surface what matters most, not everything found. A short focused report beats an exhaustive one.
+- Never emit a finding you cannot anchor to a specific file location (code review) or a specific claim in the artifact (idea review).
 
-- **No extra structure.** No sub-sections, no thematic groupings, no "What looks good", no preamble. Flat numbered list only.
-- **Per-finding length:** EXACTLY 1 sentence for evidence, EXACTLY 1 sentence for explanation, EXACTLY 1 sentence for fix/response. You may sharpen language or add missing stakes — do not pad or invent.
-- **Hard cap: 7 findings total.** After deduplication, keep the highest-severity findings. Drop the rest — do not demote them to one-liners. **For idea review: zero findings is the goal on a converged artifact — do not fill the cap.**
-- **Be opinionated.** Surface what matters most, not everything found. A short focused report is better than an exhaustive one.
+</output_discipline>
 
 ## Step 8: Output
 
@@ -513,7 +539,7 @@ Step 1 — always output this line verbatim:
 
 Step 2 — pick exactly one matching line based on mode and verdict, output it verbatim:
 - Self-review / changes review — PASS/WARN: `> Next: run \`crew commit\` to continue.`
-- Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing.`
+- Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing, or run \`crew review --auto\` to apply them automatically.`
 - Changes review **`--auto`** / **`--auto --loop`** — see Changes auto-apply path below; do not output a next-step handoff line from this list.
 - PR review — PASS/WARN: `> Next: merge the PR, or run \`crew review address\` to work through findings inline.`
 - PR review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before merging.`
@@ -527,6 +553,38 @@ Step 2 — pick exactly one matching line based on mode and verdict, output it v
 > **Idea is stable.** Proceed to `crew spec` — further idea review rounds have diminishing returns. If any open `[needs more info]` requires user input, answer it inline or address it in the spec.
 If any `[blocking]` finding has persisted for 3+ rounds (visible in the session `## Review:` history), append:
 > **Persistent blocker after 3+ rounds.** Consider moving to `crew spec` and treating this as an open question in the spec's Design Constraints.
+
+### Self-review auto-apply path (`--auto` mode only)
+
+After outputting the consolidated report, check:
+
+**Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
+
+- **Yes (gate fails):** output the consolidated report normally. Then output:
+  > **Auto-apply paused.** N finding(s) need input before applying: [list titles]. Answer them and run `crew review address` to apply the rest.
+  Then output the standard `crew log` + next-step handoff lines for self-review BLOCK.
+
+- **No (gate passes):** do not ask for approval — apply all code fixes inline now:
+  1. Collect all findings and their `Fix:` fields.
+  2. For each finding: read the affected file(s), apply the fix, write the file.
+  3. **Sibling-check:** for every fix that addresses a pattern, scan all other changed branch files for structurally identical instances and apply the same fix.
+  4. Run `git add -u` to stage the modified files.
+  5. Output a compact summary:
+     ```
+     Auto-applied: N fixes (N blocking, N attention, N nit) across M file(s)
+     Sibling fixes: N additional instances fixed
+     ```
+  6. Then output `crew log` line and:
+     > Next: run `crew commit` to continue, or run `crew review --auto` for another pass.
+
+**Loop extension (`--auto --loop` only):** after the summary above, instead of stopping:
+
+- Re-run `git diff $(git merge-base HEAD origin/main)..HEAD --stat` to get the updated branch diff.
+- Check convergence: does a fresh review of the updated branch diff produce ≤2 findings, all `[nit]` or `[needs more info]`?
+  - **Yes (converged):** stop. Output: `Loop complete: converged after N iteration(s).` Then output `crew log` + `crew commit` handoff.
+  - **Gate fails on next pass (any `[needs more info]`):** stop. Output: `Loop paused at iteration N: N finding(s) need input.` Then surface the questions.
+  - **Hard cap reached (3 iterations):** stop regardless. Output: `Loop stopped: 3 iterations reached without full convergence. N finding(s) remain.` Then output `crew log` + next-step handoff.
+  - **Otherwise:** increment iteration counter, run the full review+apply cycle again on the updated branch diff, prepending each cycle's output with `--- Iteration N ---`.
 
 ### Changes auto-apply path (`changes --auto` mode only)
 
@@ -598,9 +656,9 @@ After outputting the consolidated report, check:
 
 The reviewer roster is extensible. To add a domain-specific reviewer:
 
-1. Create a new `.cursor/agents/reviewer-<name>.md` file with YAML frontmatter (`name`, `description`, `model: inherit`, `readonly: true`, `tools: Read, Grep, Glob`, `maxTurns: 5`) and a persona prompt (identity, scope boundaries, focus areas, severity definitions, output format)
+1. Create a new `.cursor/agents/reviewer-<name>.md` file with YAML frontmatter (`name`, `description`, `tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__read_file_from_chunks`, `readonly: true`, `maxTurns: 12`) and a persona prompt (identity, scope boundaries, focus areas, severity definitions, output format). Reviewer personas are analysis-only — set `readonly: false` only if the persona genuinely needs to write files (e.g. auto-applying fixes), and document why.
 2. Add a signal rule in Step 4 of this orchestrator to determine when the reviewer activates
-3. Assign a context tier and model in the dispatch table (Step 6)
+3. Assign a context tier in the dispatch table (Step 6)
 
 For example, an SRE team could add a `reviewer-observability.md` persona that activates on monitoring/alerting files and checks query quality, false positive risk, and alert actionability.
 
@@ -641,7 +699,7 @@ _(Next-step handoff is emitted in Step 8 above for all modes.)_
 
 - Never write original findings. Personas do the reviewing — you challenge, filter, and consolidate what they return.
 - Never skip consolidation. Even with one reviewer, output goes through the consolidation format.
-- Reviewers receive pre-built context. They never fetch or read files independently.
+- Reviewers receive pre-built context first. They may do up to 8 targeted fetches to ground findings they cannot verify from the provided context — but they must not re-read files already in their package.
 - The size gate applies to both self-review and PR review modes.
 - For spec review, there is no size gate — specs are always reviewed in full.
 - Acknowledge what's done well. Zero findings is a valid outcome.

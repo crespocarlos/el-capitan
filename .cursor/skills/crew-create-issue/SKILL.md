@@ -5,93 +5,82 @@ description: "Structure a rough idea into a well-formed GitHub issue and file it
 
 # Create Issue
 
-**Primary source: the current session conversation.** Synthesize the issue from what has already been discussed — do not ask questions to fill gaps. The session context is the source of truth.
+Synthesize the issue from the current session conversation. Do not ask questions to fill gaps.
 
-## When Invoked
+## Mode
 
-### Step 1: Identify the target repo
+Scan the conversation for an explicit issue reference (URL or bare `#N`). If found, **update** that issue. Otherwise, **create** a new one. If ambiguous, confirm in one line: `"Fill out existing #N, or open a new issue?"`
 
-Infer from git context:
+## Target repo
 
 ```bash
 git remote get-url origin 2>/dev/null \
   | sed 's|.*github\.com[:/]\(.*\)\.git|\1|; s|.*github\.com[:/]\(.*\)|\1|'
 ```
 
-If that returns `OWNER/REPO`, use it. If the current directory is not a git repo and no repo was mentioned in the conversation, ask exactly one question: **"Which repo? (OWNER/REPO)"**
+If that returns `OWNER/REPO`, use it. If a repo is mentioned in the conversation (via URL or `org/repo`), use that. If genuinely unresolvable, ask exactly one question: **"Which repo? (OWNER/REPO)"**
 
-> **Do not use `gh repo view`** — it opens a pager / freezes in some environments.
+## Format
 
-### Step 2: Synthesize issue content from session
-
-Mine the current conversation for:
-
-- **Problem statement** — what is broken or missing
-- **Context** — background, motivation, what was discussed
-- **Acceptance criteria** — what "done" looks like (from any decision, proposal, or agreed outcome in the conversation)
-- **Scope** — what is explicitly in or out of scope
-
-Do not ask for any of these. If the conversation doesn't cover something, leave that section minimal or omit it — do not prompt the user.
-
-### Step 3: Auto-classify issue type
-
-Classify from synthesized content as **bug** or **feature**:
-
-- Bug: something broken, an error, unexpected behavior, regression, crash
-- Feature: something new — a capability, workflow, integration, enhancement
-
-Default to **feature** if ambiguous. _(Features are lower-risk to mis-classify — a false bug report creates noise in the bug queue; a false feature is harmless.)_ State the classification in the draft — don't ask.
-
-### Step 4: Check for repo templates
+Classify as **bug** or **feature** per Template Selection in [issue-templates.md](./references/issue-templates.md); default to Default (feature) when ambiguous. Check for repo templates first:
 
 ```bash
 GH_PAGER=cat gh api repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE --jq '.[].name' 2>/dev/null
 ```
 
-If the repo has its own issue templates, use the most relevant one. Otherwise use the templates in [issue-templates.md](./references/issue-templates.md).
+If the repo has its own templates, use the most relevant one.
 
-### Step 5: Draft the issue
+## Auth (only when a project URL is in the conversation)
 
-Fill all sections from synthesized content. Present:
+Check scopes before any project work:
 
-```
-**Title:** <title>
-
-**Body:**
-<formatted issue body>
-
----
-File this? (yes / edit / cancel)
+```bash
+gh auth status 2>&1 | grep -i "token scopes"
 ```
 
-One question only. If the user says "edit", wait for their next message with corrections, apply them, and re-present the draft — do not ask what to change. If the user says "cancel", stop without filing. Do not ask anything else.
+If `read:project` or `project` is missing, prompt once:
 
-### Step 6: File the issue
+```
+Run: gh auth refresh -h github.com -s read:project,project
+Then complete device auth at https://github.com/login/device
+```
 
+Continue writing the issue body while waiting. Never hit a scope error mid-session.
+
+## Commands
+
+**Create:**
 ```bash
 GH_PAGER=cat gh issue create --repo OWNER/REPO --title "TITLE" --body "BODY"
 ```
 
-No labels, projects, or assignees.
-
-Print the issue URL and suggest the next step:
-
-```
-Filed: https://github.com/OWNER/REPO/issues/N
+**Update (fetch existing body first, then merge with session content):**
+```bash
+GH_PAGER=cat gh issue view N --repo OWNER/REPO --json title,body
+GH_PAGER=cat gh issue edit N --repo OWNER/REPO --body "NEW_BODY"
 ```
 
-> Next: run `crew spec OWNER/REPO#N` to draft a spec for this issue.
+**Add to project + set Status (optional — only when project URL is in conversation):**
+```bash
+GH_PAGER=cat gh project item-add PROJECT_NUMBER --owner OWNER --url ISSUE_URL
 
-## Rules
+# Get item ID and Status field options, then:
+GH_PAGER=cat gh project item-edit \
+  --project-id PROJECT_ID --id ITEM_ID \
+  --field-id FIELD_ID --single-select-option-id OPTION_ID
+```
 
-- **Session conversation is the primary source.** Never ask about content already present in the session.
-- **One question maximum** — repo disambiguation only, and only when genuinely unresolvable from git context.
-- **No gap-filling prompts.** If information is missing, omit the section or leave it thin.
-- **No labels, projects, or assignees.** Title and body only.
-- **Prefer repo templates** over built-in defaults when `.github/ISSUE_TEMPLATE/` exists.
-- **Always use `--repo OWNER/REPO`** explicitly.
-- **Pipeline handoff uses full reference**: `crew spec OWNER/REPO#N`, not just `#N`.
+Status inference: **"In Review"** for open PRs · **"Ready"** for merged · **"In Progress"** for active work.
 
-## Auto-clarity override
+## Draft and confirm
 
-Drop to plain language before calling `gh issue create` — show the complete title, body, and target repo; GitHub issues are public and permanent. Resume after the URL is returned.
+Show the complete title, body, and target repo before filing. One question: `File this? (yes / edit / cancel)`. If "edit", apply their corrections and re-present — do not ask what to change.
+
+## After filing
+
+```
+Filed/Updated: https://github.com/OWNER/REPO/issues/N
+```
+
+- **Create mode** → `Next: crew spec OWNER/REPO#N`
+- **Update mode** → suggest next step based on context (implement, review, or done)

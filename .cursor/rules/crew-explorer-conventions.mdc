@@ -1,21 +1,143 @@
 ---
-description: "Shared tool priority chain and exploration protocol for all explorer subagents. Referenced by specwriter-explorer, tester-explorer, and reviewer-explorer."
-alwaysApply: false
+description: "SemanticCodeSearch-first protocol for all code research. Use for any investigation,discovery, exploration, or 'how/where/what' question. Grep and Read are fallbacks — only after SemanticCodeSearch has narrowed scope, or when the exact file/line is already known."
+alwaysApply: true
 ---
 
-## Explorer tool priority
+# Codebase Research Protocol
 
-All explorer subagents follow the same tool priority chain. **Use in this order, fall back when unavailable:**
+<critical_rules>
 
-1. `mcp__SemanticCodeSearch__list_indices` — call once at the start to check if SemanticCodeSearch MCP is available
-2. Semantic search — use whichever is available:
-   - MCP: `mcp__SemanticCodeSearch__semantic_code_search`, `mcp__SemanticCodeSearch__map_symbols_by_query`, `mcp__SemanticCodeSearch__document_symbols`
-   - Cursor: `SemanticSearch`
-3. `Grep` / `Glob` — fallback when no semantic search is available, or to find specific identifiers (function names, import strings, package names)
-4. `Read` — targeted line ranges only. Never read a full file unless it's under 50 lines.
+**Before calling Grep, Glob, or Read for any discovery task: STOP.**
+Ask yourself: "Do I already know the exact file and line I need?"
+- **Yes** → Grep or Read is fine.
+- **No** → Use SemanticCodeSearch first. Always.
 
-**General rules:**
-- Do a single pass and stop. Do not iterate or go deeper after your initial search.
-- If a search returns nothing, try one alternative phrasing — then move on.
-- After your last tool call, write your summary immediately.
-- If asked to continue or provide your summary, output what you already have — no further tool calls.
+Defaulting to `rg` or `grep` for code exploration is a protocol violation. SemanticCodeSearch finds across the full codebase with semantic understanding; grep finds only what you already know to search for.
+
+</critical_rules>
+
+**SemanticCodeSearch is always the preferred tool. Grep, Glob, and Read are fallbacks — only use them after SemanticCodeSearch has narrowed the scope, or when you already know the exact file and line.**
+
+| Task | Preferred | Fallback (scope already known) |
+|---|---|---|
+| Explore a concept, find implementations | `discover_directories` then `map_symbols_by_query` | — |
+| Find all usages of a known symbol | `map_symbols_by_query` or `symbol_analysis` | Grep for exact identifier |
+| Trace a symbol's definition, call sites, consumers | `symbol_analysis` | — |
+| Read a file discovered via search | `read_file_from_chunks` | `Read` for short local files |
+| Verify an exact string once you know the file | — | `Grep` |
+| Find files by path pattern once you know the area | — | `Glob` |
+
+**The flow is always: SemanticCodeSearch to discover → Grep/Read/Glob only to drill into what SemanticCodeSearch already found. Never start with Grep.**
+
+## Decision tree
+
+```
+Know symbol names? ──→ map_symbols_by_query or symbol_analysis
+Exploring a concept? ──→ discover_directories → map_symbols_by_query
+Need deep dive on one symbol? ──→ symbol_analysis
+Need full file content? ──→ read_file_from_chunks (or Read for short files)
+Exact string verification? ──→ Grep
+Path-based file find? ──→ Glob
+```
+
+## Tool selection
+
+### discover_directories
+**For finding where things live.**
+- Returns top 20 directories with relevance scores
+- Best for: "Where is the auth layer?", navigating unfamiliar packages
+- Use BEFORE `map_symbols_by_query` when you don't know the directory
+
+### map_symbols_by_query 🎯
+**Primary tool when you know symbol names or directories.**
+- Returns ALL matching files (not limited to 25)
+- Shows symbol density (more symbols = more relevant)
+- Structured output: symbols with line numbers, imports, exports
+- Best for: Finding co-occurrence, understanding how symbols relate across files
+- Use AFTER `discover_directories` or `semantic_code_search`
+
+### symbol_analysis
+**Deep dive on one symbol.**
+- Shows definition, usages, types, imports, call sites, tests, documentation
+- Reveals related symbols for your next search
+- Best for: Understanding a specific symbol completely, tracing impact of changes
+
+### read_file_from_chunks
+**Get full file content from the index.**
+- Reconstructs complete files without needing the file path on disk
+- Best for: Reading files discovered via search
+
+## Workflows
+
+**User mentions specific names** (e.g., "How does onFilter work?"):
+```
+map_symbols_by_query → symbol_analysis (optional) → read_file_from_chunks
+```
+
+**User asks conceptual question** (e.g., "How is auth handled?"):
+```
+discover_directories → map_symbols_by_query → symbol_analysis → read_file_from_chunks
+```
+
+**Tracing cross-file consistency** (e.g., "does the schema match the mapping?"):
+```
+symbol_analysis('fieldName') → see all usages → verify same name everywhere
+map_symbols_by_query(kql: '"fieldName"') → find all files referencing it
+```
+
+**Deep investigation of impact** (e.g., "what breaks if I change X?"):
+```
+symbol_analysis → map_symbols_by_query (with related symbols) → read_file_from_chunks
+```
+
+## KQL quick reference (for map_symbols_by_query)
+
+**Fields:** `content:`, `filePath:`, `kind:`, `language:`
+**Nested:** `symbols: { name: <symbol-name> }`
+**Boolean:** `and`, `or`, `not` with `(parentheses)` — always lowercase
+**Exact match:** `"quoted"`
+**Wildcards:** NO quotes: `filePath: *test*`
+
+**Common kinds:** `function_declaration`, `class_declaration`, `interface_declaration`, `type_alias_declaration`, `method_definition`
+
+### Patterns
+
+```
+# By symbol name
+"discoverySchema" and language: typescript
+
+# By directory
+filePath: *sig_events*
+
+# By kind + content
+kind: "function_declaration" and content: "async" and filePath: *api*
+
+# Exclude tests
+language: typescript and not filePath: *test*
+
+# Co-occurrence (find files using BOTH symbols)
+"schemaField" and "mappingField"
+```
+
+### Common mistakes
+- ❌ Quoting wildcards: `filePath: "*test*"` → ✅ `filePath: *test*`
+- ❌ Uppercase operators: `AND` → ✅ `and`
+- ❌ Missing quotes on kind: `kind: function` → ✅ `kind: "function_declaration"`
+
+## Key rules
+
+✅ **Always start with SemanticCodeSearch** — for any research, discovery, or exploration
+✅ Know symbol names → `map_symbols_by_query`; exploring concepts → `discover_directories`
+✅ Grep/Glob/Read are fallbacks — only after SemanticCodeSearch has narrowed the scope
+✅ Use actual symbol names from analysis, not generic terms
+✅ Files with more symbols = more relevant
+✅ Chain: discovery → mapping → analysis → read
+
+❌ Never start with Grep when you're exploring — SemanticCodeSearch finds it better
+❌ Don't use `discover_directories` when you already know exact symbol names (use `map_symbols_by_query`)
+❌ Don't use generic KQL terms like "handler" or "manager"
+❌ Don't read full files before narrowing with search first
+
+## Why map_symbols > semantic (when you know what you're looking for)
+
+**Rule:** Know names → `map_symbols_by_query`. Exploring concepts → `discover_directories` first.

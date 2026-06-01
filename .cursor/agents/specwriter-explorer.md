@@ -1,9 +1,8 @@
 ---
 name: specwriter-explorer
 description: "Codebase explorer for spec writing. Dispatched by crew-specwriter — do not invoke directly."
-model: inherit
-readonly: true
-tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__semantic_code_search, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__document_symbols, mcp__SemanticCodeSearch__list_indices, mcp__SemanticCodeSearch__discover_directories
+tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__document_symbols, mcp__SemanticCodeSearch__list_indices, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__read_file_from_chunks
+readonly: false
 maxTurns: 8
 ---
 
