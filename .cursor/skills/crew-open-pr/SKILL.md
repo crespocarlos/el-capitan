@@ -65,6 +65,12 @@ Read these sources (in order of priority):
 
 Use the template in [pr-template.md](./references/pr-template.md)
 
+Enforce summary quality:
+- Write `## Summary` as human prose, not a change-log dump.
+- Lead with user-visible behavior and outcome; include implementation detail only if it clarifies risk/scope.
+- Gate length to the change size (see the template) — small changes get a sentence or two; only large, cross-cutting work warrants a second paragraph.
+- Do not group the summary by layer with per-file rename lists.
+
 ### Step 3: Push and create the PR
 
 ```bash
@@ -143,6 +149,7 @@ fi
 ## Rules
 
 - **Derive, don't invent.** The summary comes from SPEC.md and commits, not from re-reading the code.
+- **Narrative over inventory.** Explain behavior and intent in prose; avoid laundry lists of renamed files/fields/steps.
 - **Always ask before creating.** Show the title + description and wait for "looks good" — same pattern as crew-commit.
 - **Always draft.** PRs are opened as drafts. Mark ready manually.
 
