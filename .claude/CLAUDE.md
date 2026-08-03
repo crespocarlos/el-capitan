@@ -57,6 +57,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew recall`: question | crew-recall |
 | `crew create issue` description | crew-create-issue |
 | `crew cleanup` | crew-cleanup |
+| `crew evals` [suite \| experiment-id \| `trace` experiment-id] | crew-evals skill (inline) |
 
 **This table is authoritative.** Do not override it with judgment calls.
 
