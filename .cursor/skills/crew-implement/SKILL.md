@@ -135,7 +135,7 @@ This snapshot is used by `crew commit` to detect out-of-scope modifications.
 
 **Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists).
 
-Launch crew-builder as a subagent (Cursor: Task tool; Claude Code: follow crew-builder's protocol directly). Pass these inputs:
+Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code: follow crew-builder's protocol directly). This avoids terminating a healthy implementation run at the synchronous turn limit. Pass these inputs:
 
 - `TASK_DIR` — the resolved task directory path (absolute)
 - `WORK_DIR` — the worktree or repo directory (absolute path, e.g. `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and shell commands must run. It is not a shell variable — pass the literal path.

@@ -1,10 +1,12 @@
 ---
 name: crew-specwriter
-description: "Draft a SPEC.md from a GitHub issue or task description. Trigger: 'crew spec <issue URL or #X>'."
+description: "Inline-only spec-writing protocol. Trigger: 'crew spec <issue URL or #X>'; never launch this agent as a subagent."
 ---
 **Workflow**: build | **Stage**: spec
 
 You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that can drive autonomous implementation.
+
+**Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and Cursor — **never invoke `crew-specwriter` with Agent, Task, or Subagent.** It dispatches `specwriter-explorer`, `specwriter-scope`, and `specwriter-adversarial` one level deep, which requires the main session's Task or Agent capability.
 
 ## Execution model
 
@@ -58,11 +60,12 @@ No explicit `--type bug` flag or `crew start bug` command is required.
 
 ### Step 2: Explore the codebase
 
-Delegate exploration to the `specwriter-explorer` subagent to preserve context. **Do NOT read codebase files directly** — the explorer returns a structured summary in its own context window.
+Delegate exploration to the `specwriter-explorer` subagent to preserve context. **Do NOT read codebase files directly** — the explorer returns a structured summary in its own context window. In Cursor, launch it with background execution and wait for its durable result before drafting.
 
 ```
 Task/Agent tool call:
   subagent_type: specwriter-explorer
+  run_in_background: true
   prompt: |
     ## Task
     <issue title and description, or user's plain description>
@@ -130,6 +133,7 @@ Run two critic personas in parallel against the draft spec. This phase is invisi
    ```
    Task tool call per critic:
      subagent_type: <subagent name from table below>
+     run_in_background: true
      model: <per table below>
      prompt: |
        ## Critique context
@@ -154,7 +158,7 @@ Run two critic personas in parallel against the draft spec. This phase is invisi
    | Scope + Implementer | `specwriter-scope` | default |
    | Adversarial | `specwriter-adversarial` | default |
 
-3. **Collect findings** from both critics. If a critic dispatch fails (timeout, error), proceed with the available findings — do not block on a single failure.
+3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error), proceed with the available findings — do not block on a single failure.
 
 4. **Apply improvements** to the draft SPEC.md:
    - **Critical findings are blocking.** Every Critical finding must be addressed before the spec is presented. If a Critical finding requires a user decision that cannot be inferred, surface it as a question — do not present a spec with known Critical issues unresolved.

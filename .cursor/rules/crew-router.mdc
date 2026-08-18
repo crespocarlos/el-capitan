@@ -34,19 +34,28 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 **This table is authoritative.** Do not override it with judgment calls.
 
-## Subagent dispatch
+## Dispatch
 
-Heavy commands run as isolated subagents to avoid polluting the orchestrator's context.
+Heavy commands normally run as isolated subagents to avoid polluting the orchestrator's context, except multi-persona orchestrators that must remain in the main session.
 
 | Command | subagent_type | Dispatch |
 |---|---|---|
-| `crew spec` | `crew-specwriter` | Claude Code: Agent tool; Cursor: Task tool |
-| `crew review` / `crew review idea` / `crew review idea --auto` / `crew review idea --auto --loop` / `crew review changes --auto` / `crew review changes --auto --loop` | `crew-reviewer` | Claude Code: Agent tool; Cursor: **Inline** (persona subagents need Task tool access) |
+| `crew spec` | — | **Inline only** — never invoke `crew-specwriter` with Agent, Task, or Subagent; it dispatches its explorer and critics from the main session |
+| `crew review` / `crew review idea` / `crew review idea --auto` / `crew review idea --auto --loop` / `crew review changes --auto` / `crew review changes --auto --loop` | — | **Inline only** — never invoke `crew-reviewer` with Agent, Task, or Subagent; it dispatches personas from the main session |
 | `crew review address` | — | Inline (skill) |
 | `crew implement` | `crew-builder` | Claude Code: Agent tool; Cursor: Task tool |
 | `crew resolve PR` | `crew-pr-resolver` | Claude Code: Agent tool; Cursor: Task tool |
 | `crew test` | — | Inline |
 | All other commands | — | Inline |
+
+### Dispatch reliability
+
+- **`crew spec` and `crew review` have hard inline boundaries.** Run their protocols directly in the main session, then dispatch only their explorer/critic or `reviewer-*` personas. If native persona dispatch is unavailable, use the documented degraded fallback; never move either orchestrator into a subagent.
+- **Preserve model inheritance.** Do not set a model on agent frontmatter; subagents must inherit the invoking model.
+- **Use asynchronous dispatch for heavy worker subagents in Cursor.** Launch `crew-builder` and `crew-pr-resolver` with background execution so a synchronous ~30-second turn limit cannot terminate a healthy run.
+- **Keep orchestration state durable.** Pass the task directory and worktree paths in the launch prompt, then read the agent's durable report (`SPEC.md`, `REPORT.md`, or the resolver result) after completion.
+- **Retry once asynchronously** when a dispatch ends without its durable report; do not restart a task that already produced its report.
+- **Use the documented degraded fallback** (`~/.agent/bin/dispatch_subagents.py`) only when native subagent dispatch is unavailable, not as a model override.
 
 Multi-persona orchestrators dispatch persona subagents in parallel. All agents at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
 
@@ -60,4 +69,5 @@ Example: an agent file `~/.cursor/agents/crew-deploy.md` with frontmatter `descr
 
 - Explicit routing only — `crew` prefix required
 - **`crew implement` always follows crew-builder's protocol.** Code changes go through crew-builder — via subagent or by following the protocol directly. Never skip the protocol and implement ad-hoc.
+- **`crew review` is a pre-PR gate, not a mid-iteration tool.** For a targeted fix mid-iteration, ask an inline question or a single adversarial check — not a full multi-lens review.
 - Pipeline state, task resolution, and gate logic live in `crew-orchestrator.mdc` — the router only dispatches.

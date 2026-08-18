@@ -77,6 +77,8 @@ Enforce summary quality:
 git push -u origin HEAD
 ```
 
+This push is a hard ordering boundary: do not publish review comments, inline findings, or review summaries before it succeeds. After pushing, re-fetch the remote head SHA and use that SHA as the only commit identity for any subsequent PR comment publication.
+
 Present the title and description to the user. Title format: same as the primary commit message, or a summary if there are multiple commits.
 
 Before creating, ask: **"Did you use LLM assistance for this PR?"** If yes, append to the end of the description body:

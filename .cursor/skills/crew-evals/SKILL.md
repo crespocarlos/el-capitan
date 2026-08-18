@@ -22,6 +22,10 @@ The user may pass an experiment ID, a suite name, or nothing. Detect the intent:
 - **`crew evals <experiment-id>`** → drill into that experiment: scores + failing examples + evaluator explanations
 - **`crew evals trace <experiment-id>`** → pull agent output (discoveries/output) for all failing examples in the experiment
 
+**Fast path — known failing metric:** If the user already knows the experiment ID and metric that is failing, skip Steps 1–2 and go directly to Step 3 (failing examples + evaluator explanation), adding a `term` filter for `evaluator.name` with that metric. Treat the explanation in Step 3 as an initial hypothesis and validate it against agent output or a targeted reproduction before declaring the root cause.
+
+**Scope before running:** Never run the full eval suite to check one fix. Ask the user to scope with `--grep <example-id>` or equivalent to run only the failing example. Full suite is a gate check (pre-commit), not a discovery tool.
+
 ---
 
 ## Step 1: Latest runs
