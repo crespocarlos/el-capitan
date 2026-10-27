@@ -19,13 +19,13 @@ A third signal:
 
 ```bash
 # Run all fixtures against all applicable personas
-ANTHROPIC_API_KEY=sk-... uv run python evals/reviewer/run.py
+OPENROUTER_API_KEY=... uv run python evals/reviewer/run.py
 
 # Run only fixtures expected to produce Adversarial findings
-ANTHROPIC_API_KEY=sk-... uv run python evals/reviewer/run.py --persona reviewer-adversarial
+OPENROUTER_API_KEY=... uv run python evals/reviewer/run.py --persona reviewer-adversarial
 
 # Run a single fixture against all applicable personas
-ANTHROPIC_API_KEY=sk-... uv run python evals/reviewer/run.py --fixture r1
+OPENROUTER_API_KEY=... uv run python evals/reviewer/run.py --fixture r1
 
 # Summarize most recent run (no API calls)
 uv run python evals/reviewer/run.py --summarize

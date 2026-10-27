@@ -162,21 +162,12 @@ When the Implementation Report is available:
    ```
    [TIME] crew-implement: completed N/N tasks, files: <changed files from report>
    ```
-3. **Auto-journal** — append a journal entry (no prompt, passive):
-   ```bash
-   JOURNAL_FILE=~/.agent/journal/$(date +%Y-%m).md
-   mkdir -p ~/.agent/journal
-   ```
-   Write a prose entry following `~/.agent/_JOURNAL_TEMPLATE.md` format. Use `$(date +%Y-%m-%d)` for the date. Title prefix: "Implemented:". Write 1-3 paragraphs in plain prose — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:
+3. **Auto-journal** — store an immutable observation (no prompt, passive). Title prefix: "Implemented:". Write 1-3 paragraphs of plain prose on stdin — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:
    - What was built and why it matters (always)
    - What broke or surprised during implementation, if REPORT.md has structural observations (omit if nothing notable)
    - Patterns or constraints discovered worth remembering (omit if nothing new)
 
-   Append with:
-   ```bash
-     && echo "[journal] Journaled to $JOURNAL_FILE" \
-     || echo "[journal] Warning: index failed — entry written but not searchable"
-   ```
+   Store with `~/.agent/bin/mem.py journal add --title "Implemented: <title>" --tags <tags> --repo <scope> <<'EOF'` followed by the prose and `EOF`. Keep the printed observation ID as evidence. On non-zero exit print `warning: memory unavailable` and continue.
 
 4. **Memory candidates** — inspect the completed spec, report, verification output,
    and journal entry. Draft zero to three typed candidates in

@@ -99,19 +99,18 @@ def load_persona_prompt(persona_name: str) -> str:
 
 
 def load_output_rules() -> str:
-    """Extract output rules block from crew-reviewer.md Step 6.
+    """Return the persona-level output contract used by the scorer.
 
-    Extracts from first occurrence of 'Produce your review now.' to the
-    closing ``` of the containing fence.
+    The orchestrator's consolidation.md describes multi-persona merging, not a
+    single persona's output, so the persona contract is defined here. Scores
+    produced before this change are not directly comparable; re-baseline.
     """
-    path = _AGENTS_DIR / "crew-reviewer.md"
-    if not path.exists():
-        raise FileNotFoundError(f"crew-reviewer.md not found at {path}")
-    text = path.read_text()
-    match = re.search(r'(Produce your review now\..*?)^```', text, re.DOTALL | re.MULTILINE)
-    if not match:
-        raise ValueError("Could not extract output rules block from crew-reviewer.md")
-    return match.group(1).strip()
+    return (
+        "Produce your review now. Output a numbered list of findings. Each finding "
+        "starts with a label in brackets — [blocking], [attention], [nit], or "
+        "[needs more info] — then a bold title, the file and line, and the "
+        "evidence. Report zero findings if none are grounded in the artifact."
+    )
 
 
 # ---------------------------------------------------------------------------

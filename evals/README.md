@@ -62,7 +62,7 @@ It measures whether each persona (adversarial, code-quality, prompt-quality, etc
 
 ```bash
 # Run all reviewer fixtures
-ANTHROPIC_API_KEY=sk-... uv run python evals/reviewer/run.py
+OPENROUTER_API_KEY=... uv run python evals/reviewer/run.py
 
 # Summarize most recent reviewer eval run
 uv run python evals/reviewer/run.py --summarize

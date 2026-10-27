@@ -1,6 +1,6 @@
 # Journal Entry Schema
 
-Entries are written to monthly files in `~/.agent/journal/YYYY-MM.md`.
+New entries are stored as immutable observations by `mem.py journal add` (see `crew-log`) under `~/.agent/memory/observations/`. The format below is the legacy monthly-file layout in `~/.agent/journal/YYYY-MM.md`, which is import-only (`mem.py journal import`).
 
 ## Format
 
@@ -13,20 +13,21 @@ Entries are written to monthly files in `~/.agent/journal/YYYY-MM.md`.
 **Repo:** repo-name  (omit if not repo-scoped)
 
 One or more paragraphs. Each paragraph is one coherent idea — write it with enough
-context to be self-contained when retrieved in isolation months later. Include the
-"why": not just what happened, but why it matters and when it applies again.
+context to be useful as evidence months later. Include the "why": not just what
+happened, but why it matters and when it applies again.
 
-Separate distinct ideas with a blank line. Each paragraph becomes its own searchable
-unit in the vector store.
+Separate distinct ideas with a blank line. Journal entries are evidence, not
+retrieved memory units. A later `crew memory seed` or completion workflow may draft
+an approval-gated typed memory candidate that points back to this entry.
 
 ---
 ```
 
 ## What makes a good entry
 
-**Self-contained paragraphs.** When this entry surfaces in future recall, you'll only
-see 1-3 paragraphs — not the whole entry. Each paragraph should make sense on its own.
-Don't write "as mentioned above" or rely on surrounding context.
+**Self-contained paragraphs.** A candidate may cite one paragraph as its evidence, so
+each paragraph should make sense on its own. Don't write "as mentioned above" or rely
+on surrounding context.
 
 **Write the why.** "Always bump the data stream version when adding mapping fields"
 is less useful than "When adding new mapping fields to a Kibana data stream, bump the

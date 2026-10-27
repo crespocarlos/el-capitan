@@ -263,12 +263,13 @@ Processes all unresolved review threads on a PR in a single batch: evaluates eac
 el-capitan/
 ├── AGENTS.md                # Agent guide — bootstrap, conventions, file layout
 ├── CLAUDE.md                # Claude Code project context for editing el-capitan itself
-├── .cursor/
-├── rules/                   # Always-loaded orchestration rules (.mdc)
+├── rules/                   # Canonical always-loaded rules and prompt guidance
 │   │   ├── crew-orchestrator.mdc   # Pipeline state machine (always loaded)
 │   │   ├── crew-router.mdc         # Routing table (always loaded)
 │   │   ├── crew-explorer-conventions.mdc  # Shared tool protocol for explorer subagents
 │   │   └── personal.mdc            # Personal engineering preferences (always loaded)
+│   └── prompt-engineering.md        # Prompt authoring guidance
+├── .cursor/
 │   ├── agents/              # Agent protocols (.md) — symlink to .claude/agents/
 │   │   ├── crew-*.md               # Orchestrator agents
 │   │   ├── reviewer-*.md           # Reviewer personas
@@ -277,16 +278,16 @@ el-capitan/
 │   └── skills/              # Inline skill protocols — symlink to .claude/skills/
 │       └── crew-<name>/SKILL.md
 ├── .claude/
-│   ├── CLAUDE.md            # Claude Code routing instructions (symlinked to ~/.claude/CLAUDE.md)
-│   ├── hooks/               # PostToolUse, Notification, SessionStart hooks
+│   ├── CLAUDE.md            # Claude Code project context and command routing
+│   ├── hooks/               # Guard, telemetry, session, and memory-context hooks
 │   └── settings.json        # Hook configuration
 ├── .agent/
-│   ├── tools/               # Shell scripts and Python utilities
-│   ├── scripts/             # Fallback dispatch scripts (bash)
-│   ├── queries/             # GraphQL query files
+│   ├── bin/                 # Shell scripts, Python utilities, and GraphQL queries
 │   ├── _SPEC_TEMPLATE.md    # Standard spec template
 │   ├── _BUG_SPEC_TEMPLATE.md  # Bug spec template
+│   ├── _MEMORY_TEMPLATE.md  # Typed durable-memory unit template
 │   └── _RUNBOOK_TEMPLATE.md   # Validation runbook template
+├── evals/                   # Deterministic memory and reviewer evaluation fixtures
 └── install.sh               # Symlink installer
 ```
 
@@ -294,10 +295,10 @@ el-capitan/
 
 ```
 ~/.agent/
-├── journal/                 # Monthly engineering journal entries
-├── tools/                   # Symlinked from el-capitan
-├── scripts/                 # Symlinked from el-capitan
-├── queries/                 # Symlinked from el-capitan
+├── bin/                     # Symlinked tools from el-capitan/.agent/bin
+├── journal/                 # Legacy monthly journal files (import-only)
+├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox
+├── telemetry/               # Local hook telemetry JSONL
 └── tasks/<uuid>/            # Per-task state: SPEC.md, PROGRESS.md, SESSION.md, REPORT.md
     └── .task-id             # JSON: uuid, repo_remote_url, branch, slug, created_at
 ```
@@ -315,7 +316,7 @@ Always-loaded context is kept minimal on purpose:
 | `personal.mdc` | ~40 | Every session |
 | `CLAUDE.md` | ~90 | Every session (Claude Code) |
 
-Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Fallback dispatch blocks for degraded environments live in `.agent/bin/` — not in agent files.
+Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/bin/` — not in agent files.
 
 ---
 
@@ -329,28 +330,32 @@ Edit it directly to set engineering philosophy, agent expectations, TypeScript r
 
 ### Claude Code hooks
 
-Project-level hooks in `.claude/settings.json` run automatically:
+`.claude/settings.json` registers Claude Code hooks, while
+`.cursor/hooks.template.json` is merged into the user Cursor hooks file at
+install time:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| `PostToolUse` | Every Bash/Write/Edit call | Logs to `~/.agent/telemetry/` as JSONL |
-| `Notification` | Claude needs input | macOS notification + iTerm2 focus |
-| `SessionStart` | Session begins | Logs session start time |
+| `PreToolUse` / Cursor pre-execution | Bash, Write, Edit | Blocks destructive Git commands and writes outside the active worktree |
+| `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
+| `SessionStart` | Session begins | Loads bounded memory context and records session state (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
+| `SessionEnd` / `Stop` | Session ends | Records session telemetry |
 
-Hooks exit 0 on error — they never block the agent. Telemetry is local-only.
+Guard hooks fail closed and always return explicit JSON allow or deny decisions.
+Telemetry hooks fail open and remain local-only.
 
 
-### Semantic journal search
+### Persistent memory
 
-After indexing, `crew recall` supports natural-language queries:
+`crew recall` searches typed memory units through the SQLite FTS5 index:
 
 ```bash
-# Index your journal
-
-# Then in chat:
 crew recall: how did we handle the retry logic in kibana?
 ```
 
+Journal entries are indexed as `observation` evidence and excluded from default
+retrieval. Use `crew memory seed` to turn durable lessons into approval-gated
+memory candidates.
 
 ---
 
@@ -413,3 +418,8 @@ memory seed` or `mem.py import-inbox`.
 FTS5 only as a rebuildable search index. Verify with `python3
 evals/memory/run.py` and `python3 .agent/bin/crew-lint.py`. Rules live in
 `rules/`.
+
+The same store also holds immutable journal observations. They are indexed as
+evidence but excluded from normal retrieval; import legacy journals with
+`mem.py journal import --dry-run` before `mem.py journal import`, and inspect
+raw evidence only with `mem.py search --include-observations`.

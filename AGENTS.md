@@ -118,6 +118,11 @@ There is no lint, typecheck, or unit test to run.
 truth. Run `bash install.sh` once to initialize the store and install
 harness-neutral read instructions. Agents retrieve memory automatically.
 
+Journal entries are immutable `observation` evidence in the same store and
+are excluded from normal retrieval. Import legacy journals read-only with
+`mem.py journal import`; use `--include-observations` only when investigating
+raw evidence.
+
 Use `crew remember: <lesson>` only for durable, non-derivable information;
 use `crew memory seed` to draft journal candidates for approval, and `crew
 memory doctor` to diagnose the store. `mem.py ingest --source claude|codex

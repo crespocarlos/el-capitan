@@ -1,45 +1,13 @@
-# pr-review-threads.graphql — fetch unresolved PR review threads with pagination.
+# pr-review-threads.graphql — fetch PR review threads with pagination.
 #
-# Usage:
-#   Step 1 (first page, no cursor):
-#     gh api graphql -f query="$(sed '/^#/d; /^$/d' ~/.agent/bin/pr-review-threads.graphql | head -n -10)" #       --field owner=OWNER --field repo=REPO --field pr=PR_NUMBER
+# Usage (first page; omit cursor):
+#   gh api graphql -F query=@$HOME/.agent/bin/pr-review-threads.graphql \
+#     -f owner=OWNER -f repo=REPO -F pr=PR_NUMBER
 #
-#   Step 2+ (subsequent pages, after: CURSOR from previous pageInfo.endCursor):
-#     Same call, add: --field cursor=CURSOR and use the paginated variant below.
-#
-# Note: For the first call, omit the `after` argument (or pass null). Do NOT pass the
-# literal string "CURSOR" — that is a placeholder. Only add `after: $cursor` on page 2+.
-
-# === INITIAL PAGE (no cursor) ===
-query InitialPage($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          isResolved
-          isOutdated
-          comments(first: 10) {
-            nodes {
-              id
-              databaseId
-              author { login }
-              body
-              path
-              line
-              originalLine
-              diffHunk
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-# === PAGINATED (cursor required) ===
-query PaginatedPage($owner: String!, $repo: String!, $pr: Int!, $cursor: String!) {
+# Next pages: add `-f cursor=<pageInfo.endCursor>` until hasNextPage is false.
+# `$cursor` is optional; when omitted it is null and the first page is returned.
+# Use -F (not -f) for `query=@file` and for the integer `pr`.
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
       reviewThreads(first: 100, after: $cursor) {

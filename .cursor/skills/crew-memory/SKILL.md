@@ -1,7 +1,7 @@
 ---
 disable-model-invocation: true
 name: crew-memory
-description: "Manage durable typed memory. Triggers: 'crew remember: <text>' and 'crew memory seed|consolidate|doctor'."
+description: "Manage unified observations and durable memory. Triggers: 'crew remember: <text>' and 'crew memory seed|consolidate|doctor|journal'."
 ---
 
 # Memory
@@ -12,6 +12,6 @@ Follow `~/.cursor/skills/crew-memory/references/contract.md`.
 
 Validate the candidate against the write gate. For an approved candidate, run `mem.py add` with a typed scope and title, reading its claim from stdin. On exit 3, show the duplicate ids and ask whether to supersede, force-add, or skip. On exit 2, print `warning: memory unavailable`.
 
-## Seed, consolidate, doctor
+## Journal, seed, consolidate, doctor
 
-`crew memory seed` follows the seed procedure. `crew memory consolidate` runs `mem.py consolidate`; `crew memory doctor` runs `mem.py doctor`.
+`crew memory journal [import] [--dry-run]` (bare `journal` means `import`) runs `mem.py journal import`, which imports legacy `~/.agent/journal` files as immutable observations without editing them; on exit 2 print `warning: memory unavailable`. New entries use `mem.py journal add` via `crew log`. `crew recall` normally searches durable units only; use `mem.py search --include-observations` for raw evidence. `crew memory seed` follows the seed procedure. `crew memory consolidate` runs `mem.py consolidate`; `crew memory doctor` runs `mem.py doctor`.

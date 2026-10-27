@@ -31,7 +31,7 @@ All subsequent steps happen in this worktree. Apply any recalled rules silently 
 
 ### Step 2: Fetch review threads
 
-Fetch threads using the query at `~/.agent/bin/pr-review-threads.graphql` (includes pagination). Substitute `OWNER`, `REPO`, `PR_NUMBER`, and `CURSOR` before each request. Loop until `pageInfo.hasNextPage` is false, merging returned threads into the running list and updating the cursor to `endCursor` on each iteration.
+Fetch threads with `gh api graphql -F query=@$HOME/.agent/bin/pr-review-threads.graphql -f owner=OWNER -f repo=REPO -F pr=PR_NUMBER` (add `-f cursor=CURSOR` on later pages). Loop until `pageInfo.hasNextPage` is false, merging returned threads into the running list and updating the cursor to `endCursor` on each iteration.
 
 **Mandatory filter — apply before any further processing:**
 
@@ -113,8 +113,10 @@ Only after the user responds:
 
 2. **Resolve** the thread using the GraphQL node `id` from the thread:
    ```bash
-   printf 'mutation { resolveReviewThread(input: {threadId: "%s"}) { thread { isResolved } } }' "THREAD_NODE_ID" \
-     | gh api graphql --input -
+   gh api graphql -F threadId="THREAD_NODE_ID" -f query='
+     mutation($threadId: ID!) {
+       resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } }
+     }'
    ```
 
 Edits the user excluded are not applied. Threads the user excluded are left open and unresolved — no comment, no resolution.
@@ -133,25 +135,11 @@ TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
 
 ### Auto-journal
 
-If `TASK_DIR` is non-empty, auto-append a journal entry (no prompt — passive):
-
-```bash
-if [ -n "$TASK_DIR" ]; then
-  JOURNAL_FILE=~/.agent/journal/$(date +%Y-%m).md
-  mkdir -p ~/.agent/journal
-fi
-```
-
-If `TASK_DIR` is non-empty, write a prose entry following `~/.agent/_JOURNAL_TEMPLATE.md` format. Use `$(date +%Y-%m-%d)` for the date. Title: "PR review: &lt;PR title&gt;". Write 1-3 paragraphs in plain prose. Focus on what *you* learned from the feedback — not what you applied mechanically:
+Regardless of `TASK_DIR` (PRs not built through the pipeline have none), store an immutable observation (no prompt — passive) from the threads and verdicts, via `~/.agent/bin/mem.py journal add --title "PR review: <PR title>" --tags <tags> --repo <scope>` with the prose on stdin (heredoc). Write 1-3 paragraphs in plain prose. Focus on what *you* learned from the feedback — not what you applied mechanically:
 - What the reviewer caught that you missed, and why it matters / what pattern it reveals
 - What to watch for next time in similar code (omit if nothing genuinely new)
 
-```bash
-if [ -n "$TASK_DIR" ]; then
-    && echo "[journal] Journaled to $JOURNAL_FILE" \
-    || echo "[journal] Warning: index failed — entry written but not searchable"
-fi
-```
+Skip writing when no thread yielded a non-derivable lesson. On non-zero exit print `warning: memory unavailable` and continue.
 
 > Next: run `crew commit` to commit resolved changes.
 

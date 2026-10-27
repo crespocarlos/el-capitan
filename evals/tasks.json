@@ -3,7 +3,7 @@
   "tasks": [
     {
       "id": "t1",
-      "description": "Add a `crew status` command that prints the current pipeline state (spec/implement/review/commit/pr-open/done) derived from git and gh state, with a one-line summary of the active task title and branch."
+      "description": "Improve `crew ls` so it reports active task state, branch, review verdict, and age while safely skipping malformed task metadata."
     },
     {
       "id": "t2",
@@ -15,11 +15,11 @@
     },
     {
       "id": "t4",
-      "description": "Add a `crew changelog` command that generates a CHANGELOG entry from the commits between the current branch HEAD and the merge base, grouped by type (feat, fix, chore, docs) and formatted as markdown. Write it to CHANGELOG.md under a new version header."
+      "description": "Improve `crew stats` so telemetry uses timestamps and event names, honors a `--since` window, and distinguishes invalid legacy lines from current records."
     },
     {
       "id": "t5",
-      "description": "The dispatch.py script currently times out silently when a claude -p subprocess hangs. Add a per-persona timeout of 120 seconds after which the process is killed and the persona is added to the failures list with a 'timeout' label."
+      "description": "The `dispatch_subagents.py` degraded fallback currently times out silently when a claude -p subprocess hangs. Add a per-persona timeout of 120 seconds after which the process is killed and the persona is added to the failures list with a 'timeout' label."
     },
     {
       "id": "t6",
@@ -35,7 +35,7 @@
     },
     {
       "id": "t9",
-      "description": "Add a `crew recall` command that searches the journal for past sessions by keyword or topic, returns the top 3 matching entries ranked by semantic similarity, and prints a summary of each with the file path."
+      "description": "Improve `crew recall` so it searches repo-scoped typed memory through SQLite FTS5, returns evidence pointers, and explicitly reports when no relevant memory exists."
     },
     {
       "id": "t10",
