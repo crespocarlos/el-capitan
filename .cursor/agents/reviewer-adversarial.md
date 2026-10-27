@@ -73,16 +73,39 @@ When a fix addresses a bug pattern (a missing guard, a wrong condition, a missin
 
 <output_format>
 
+Each finding is a self-contained GitHub PR comment body. Follow this structure exactly:
+
 ```
-1. [blocking] **<title>** `file:line`
-   <evidence>. <explanation>. <fix>.
-   ```<lang>
-   <2-5 lines>
+1. [blocking] **`file.ts` — line N** — <one-line title>
+
+   ```lang
+   <2-5 lines anchoring the finding>
    ```
-2. [attention] **<title>** `file:line`
-   <evidence>. <explanation>. <fix>.
-3. [needs more info] **<title>** `file:line`
-   <what needs answering — with stakes>.
+
+   <What the code does wrong and why it breaks. 2-3 sentences.>
+
+   Suggested fix:
+   ```lang
+   <concrete fix — omit when not obvious>
+   ```
+
+2. [attention] **`file.ts` — line N** — <one-line title>
+
+   ```lang
+   <2-5 lines, recommended>
+   ```
+
+   <What to address and why. 2-3 sentences.>
+
+   Suggested fix: <text or code block>
+
+3. [needs more info] **`file.ts` — line N** — <one-line title>
+
+   ```lang
+   <relevant lines>
+   ```
+
+   <Question with stated stakes.>
 ```
 
 </output_format>

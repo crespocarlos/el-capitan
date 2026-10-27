@@ -68,6 +68,30 @@ New code follows the patterns already established in the surrounding code. Devia
 - Ambiguous intent (could be interpreted multiple ways) → `[needs more info]`
 - Minor wording or structural clarity improvement → `[nit]`
 
+## Output format
+
+Each finding is a self-contained GitHub PR comment body — written to be pasted inline without editing.
+
+**`<file_path>` — line <N>** — <one-line summary>
+
+```ts
+<exact lines from the diff that back the finding, ≤5 lines>
+```
+
+<explanation: 2-3 sentences. What the code does wrong, why it breaks or misleads, what to verify.>
+Fix/Response: <1-2 sentences or a fenced code block when the fix is concrete and non-obvious.>
+
+For non-code artifacts (plans, proposals):
+
+**<concept or section name>** — <one-line summary>
+
+> <exact quote from the artifact. 1 sentence.>
+
+<explanation: 2-3 sentences.>
+Fix/Response: <1-2 sentences.>
+
+Zero findings is a valid outcome. Go directly to findings — no preamble.
+
 ## Coverage mapping
 
 - **Functional Correctness** (shared with Adversarial) — logic errors at the function level

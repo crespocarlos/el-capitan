@@ -15,19 +15,20 @@ You orchestrate parallel reviewer personas to produce a single, consolidated rev
 
 Parse the user's input to determine the review mode:
 
-| Input | Mode | Source material |
-|---|---|---|
-| `crew review` (no arguments) | **Self-review** | `git diff $(git merge-base HEAD origin/main)..HEAD` |
-| `crew review --auto` | **Self-review (auto)** | Same as self-review, but auto-applies all code fixes inline — stops only on `[needs more info]` |
-| `crew review --auto --loop` | **Self-review (auto-loop)** | Same as self-review auto, but re-reviews after each apply cycle until convergence or 3 iterations |
-| `crew review changes` | **Changes review** | `git diff --cached` (staged only) |
-| `crew review changes --auto` | **Changes review (auto)** | Same as changes review, but auto-applies all code fixes inline — stops only on `[needs more info]` |
-| `crew review changes --auto --loop` | **Changes review (auto-loop)** | Same as changes auto, but re-reviews after each apply cycle until convergence or 3 iterations |
-| `crew review PR #X` or `crew review PR <URL>` | **PR review** | `gh pr diff NUMBER --repo OWNER/REPO` + PR metadata |
-| `crew review spec` | **Spec review** | Active SPEC.md (resolved via task state) |
-| `crew review idea` or `crew review idea: <text>` | **Idea review** | Pasted text if provided; otherwise current session conversation |
-| `crew review idea --auto` or `crew review idea: <text> --auto` | **Idea review (auto)** | Same as idea review, but auto-applies all fixes inline — stops only on `[needs more info]` |
-| `crew review idea --auto --loop` or `crew review idea: <text> --auto --loop` | **Idea review (auto-loop)** | Same as auto, but repeats review+apply cycles until convergence criterion is met or 3 iterations, whichever comes first |
+| Input                                                                        | Mode                           | Source material                                                                                                         |
+| ---------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `crew review` (no arguments)                                                 | **Self-review**                | `git diff $(git merge-base HEAD origin/main)..HEAD`                                                                     |
+| `crew review --auto`                                                         | **Self-review (auto)**         | Same as self-review, but auto-applies all code fixes inline — stops only on `[needs more info]`                         |
+| `crew review --auto --loop`                                                  | **Self-review (auto-loop)**    | Same as self-review auto, but re-reviews after each apply cycle until convergence or 3 iterations                       |
+| `crew review changes`                                                        | **Changes review**             | `git diff --cached` (staged only)                                                                                       |
+| `crew review changes --auto`                                                 | **Changes review (auto)**      | Same as changes review, but auto-applies all code fixes inline — stops only on `[needs more info]`                      |
+| `crew review changes --auto --loop`                                          | **Changes review (auto-loop)** | Same as changes auto, but re-reviews after each apply cycle until convergence or 3 iterations                           |
+| `crew review PR #X` or `crew review PR <URL>`                                | **PR review**                  | `gh pr diff NUMBER --repo OWNER/REPO` + PR metadata                                                                     |
+| `crew review spec`                                                           | **Spec review**                | Active SPEC.md (resolved via task state)                                                                                |
+| `crew review idea` or `crew review idea: <text>`                             | **Idea review**                | Pasted text if provided; otherwise current session conversation                                                         |
+| `crew review idea --auto` or `crew review idea: <text> --auto`               | **Idea review (auto)**         | Same as idea review, but auto-applies all fixes inline — stops only on `[needs more info]`                              |
+| `crew review idea --auto --loop` or `crew review idea: <text> --auto --loop` | **Idea review (auto-loop)**    | Same as auto, but repeats review+apply cycles until convergence criterion is met or 3 iterations, whichever comes first |
+
 For PR review, extract owner, repo, and PR number from the input. Do not fetch anything yet — Step 2 handles all data gathering.
 
 **Idea review:** skip Steps 2–3 entirely. The artifact is already present — either the pasted text or the session conversation (the visible chat history in the current window, read directly without any tool call). Proceed directly to Step 4. If using session conversation as the artifact, scope to the most recent topic — from the last `crew` command invocation or the last major topic shift.
@@ -74,6 +75,7 @@ source ~/.agent/bin/get-diff.sh --name-status # file list for signal detection
 > "No committed changes found on this branch. `crew review` reviews branch commits.
 >
 > Other options:
+>
 > - Review staged changes (pre-commit): `crew review changes`
 > - Review an open PR: `crew review PR #N`
 > - Review a spec: `crew review spec`"
@@ -128,11 +130,11 @@ Read `$TASK_DIR/SPEC.md`. No diff needed — skip directly to Step 4.
 
 Derive total size from the metadata gathered in Step 2 (sum of additions + deletions from `--stat` or the JSON response). Do NOT fetch the full diff to measure size.
 
-**Self-review:** If >5000 lines, use spine-focused strategy — top 10 changed files by line count + all new files. Do not ask the user. Note the strategy in the final report: `(spine-focused: ~N lines across M files — reviewing top 10 + new files)`. If ≤5000 lines, review all changed files.
+**Self-review:** If >10000 lines, use spine-focused strategy — top 10 changed files by line count + all new files. Do not ask the user. Note the strategy in the final report: `(spine-focused: ~N lines across M files — reviewing top 10 + new files)`. If ≤10000 lines, review all changed files.
 
 **Changes review:** review all staged files and use the staged diff size for the adversarial threshold.
 
-**PR review:** If >1500 lines, use spine-focused strategy (same approach). If ≤1500 lines, review all changed files.
+**PR review:** If >2000 lines, use spine-focused strategy (same approach). If ≤2000 lines, review all changed files.
 
 Proceed to Step 4.
 
@@ -141,21 +143,25 @@ Proceed to Step 4.
 Only now, fetch the diff — and only for files in the review file set. For PR review, the reviewed artifact is the remote PR at `headSha`; local unpushed changes are never part of the artifact.
 
 **Self-review (full):**
+
 ```bash
 source ~/.agent/bin/get-diff.sh --full
 ```
 
-**Self-review (spine-focused, >5000 lines):**
+**Self-review (spine-focused, >10000 lines):**
+
 ```bash
 source ~/.agent/bin/get-diff.sh --full -- <file1> <file2> ...
 ```
 
-**PR review (≤1500 lines):**
+**PR review (≤2000 lines):**
+
 ```bash
 gh pr diff NUMBER --repo OWNER/REPO
 ```
 
-**PR review (>1500 lines, spine-focused):**
+**PR review (>2000 lines, spine-focused):**
+
 ```bash
 for file in <spine files>; do
   gh api repos/OWNER/REPO/pulls/NUMBER/files --jq ".[] | select(.filename==\"$file\") | .patch"
@@ -167,6 +173,7 @@ done
 **Applies to self-review, changes review, and PR review only.** For spec review and idea review, skip to Step 5 with the fixed roster for that mode.
 
 **Idea review signal detection** — scan the artifact text:
+
 - Does the proposal involve user flows, journeys, or user-facing behavior? → activate Product Flow
 - Does it introduce new abstractions, contracts, modules, or system boundaries? → activate Architecture
 - Does it discuss LLM prompts, agent instructions, or prompt file changes? → activate Prompt Quality
@@ -174,14 +181,15 @@ done
 
 Scan the diff file list to determine which extended reviewers to activate:
 
-| Signal | Extended reviewer |
-|---|---|
-| Files matching `**/agents/**`, `**/skills/**`, `.cursor/rules/**/*.mdc`, `**/prompts/**`, `**/instructions/**`, `**/*.prompt`, `**/*.prompt.md`, `**/*.md.text`, `**/*.text` | Prompt Quality |
-| Files matching `**/ui/**`, `**/components/**`, `**/*.tsx`, public routes, or files with acceptance criteria/user-journey changes | Product Flow |
-| PR metadata contains linked tickets or explicit acceptance criteria | Product Flow |
-| Files matching user-facing copy, documentation, public API names, or terminology changes | Fresh Eyes |
+| Signal                                                                                                                                                                       | Extended reviewer |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| Files matching `**/agents/**`, `**/skills/**`, `.cursor/rules/**/*.mdc`, `**/prompts/**`, `**/instructions/**`, `**/*.prompt`, `**/*.prompt.md`, `**/*.md.text`, `**/*.text` | Prompt Quality    |
+| Files matching `**/ui/**`, `**/components/**`, `**/*.tsx`, public routes, or files with acceptance criteria/user-journey changes                                             | Product Flow      |
+| PR metadata contains linked tickets or explicit acceptance criteria                                                                                                          | Product Flow      |
+| Files matching user-facing copy, documentation, public API names, or terminology changes                                                                                     | Fresh Eyes        |
 
 Build the reviewer roster:
+
 - **Core** (always active for code reviews): Code Quality, Architecture
 - **Adversarial** (Core, size-gated): active if total diff size ≥100 lines; skip for smaller diffs where Tier 3 context cost exceeds yield. When skipped, note it in the consolidated report: `(Adversarial skipped — diff below 100-line threshold)`
 - **Extended** (signal-triggered): Prompt Quality, Product Flow, Fresh Eyes
@@ -189,6 +197,7 @@ Build the reviewer roster:
 Activate **Product Flow** only when the diff changes a user-facing journey, public API behavior, or acceptance criteria. Activate **Fresh Eyes** only when the diff changes user-facing text, documentation, terminology, or a public API name. Do not dispatch either reviewer for purely internal code, schema, or prompt changes.
 
 Reviewer ownership:
+
 - **Code Quality** owns local implementation correctness, test adequacy, and maintainability.
 - **Adversarial** owns runtime failure paths, security, data loss, and silent degradation.
 - **Architecture** owns contracts, migrations, dependency boundaries, and blast radius.
@@ -284,44 +293,44 @@ Persona subagents are registered at `.cursor/agents/reviewer-*.md` (auto-discove
 
 **Self-review, changes review, and PR review:**
 
-| Reviewer | Subagent name | Context tier |
-|---|---|---|
-| Code Quality | `reviewer-code-quality` | Tier 1 (Hunks+) |
-| Adversarial | `reviewer-adversarial` | Tier 3 (Full+) |
-| Fresh Eyes | `reviewer-fresh-eyes` | Tier 1 (Hunks+) |
-| Architecture | `reviewer-architecture` | Tier 3 (Full+) |
-| Product Flow | `reviewer-product-flow` | Tier 2 (Function) |
+| Reviewer       | Subagent name             | Context tier                                 |
+| -------------- | ------------------------- | -------------------------------------------- |
+| Code Quality   | `reviewer-code-quality`   | Tier 1 (Hunks+)                              |
+| Adversarial    | `reviewer-adversarial`    | Tier 3 (Full+)                               |
+| Fresh Eyes     | `reviewer-fresh-eyes`     | Tier 1 (Hunks+)                              |
+| Architecture   | `reviewer-architecture`   | Tier 3 (Full+)                               |
+| Product Flow   | `reviewer-product-flow`   | Tier 2 (Function)                            |
 | Prompt Quality | `reviewer-prompt-quality` | Prompt tier (Full prompt + direct contracts) |
 
 Architecture always runs. Product Flow and Fresh Eyes are signal-triggered as described in Step 4. Prompt Quality only activates when its signal triggers match. Adversarial only activates when total diff size ≥100 lines.
 
 **Spec review:**
 
-| Reviewer | Subagent name | When active |
-|---|---|---|
-| Architecture | `reviewer-architecture` | always |
-| Adversarial | `reviewer-adversarial` | always |
-| Product Flow | `reviewer-product-flow` | always |
+| Reviewer       | Subagent name             | When active                                  |
+| -------------- | ------------------------- | -------------------------------------------- |
+| Architecture   | `reviewer-architecture`   | always                                       |
+| Adversarial    | `reviewer-adversarial`    | always                                       |
+| Product Flow   | `reviewer-product-flow`   | always                                       |
 | Prompt Quality | `reviewer-prompt-quality` | prompt/agent files in spec (Step 4 patterns) |
 
 Architecture, Adversarial, and Product Flow always run for spec review. Prompt Quality activates when any spec task's **Files** field references paths matching the Prompt Quality signal patterns defined in Step 4. Other reviewers are not applicable (no code to review).
 
 **Idea review:**
 
-| Reviewer | Subagent name | When active |
-|---|---|---|
-| Adversarial | `reviewer-adversarial` | always |
-| Fresh Eyes | `reviewer-fresh-eyes` | always |
-| Architecture | `reviewer-architecture` | always |
-| Product Flow | `reviewer-product-flow` | always |
-| Prompt Quality | `reviewer-prompt-quality` | Prompt Quality signal fired |
-| Code Quality | `reviewer-code-quality` | only if artifact contains fenced code blocks or explicit implementation references |
+| Reviewer       | Subagent name             | When active                                                                        |
+| -------------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| Adversarial    | `reviewer-adversarial`    | always                                                                             |
+| Fresh Eyes     | `reviewer-fresh-eyes`     | always                                                                             |
+| Architecture   | `reviewer-architecture`   | always                                                                             |
+| Product Flow   | `reviewer-product-flow`   | always                                                                             |
+| Prompt Quality | `reviewer-prompt-quality` | Prompt Quality signal fired                                                        |
+| Code Quality   | `reviewer-code-quality`   | only if artifact contains fenced code blocks or explicit implementation references |
 
 ### Cursor dispatch (Task tool available)
 
 Launch all active reviewers as parallel Task tool calls. Each reviewer is a registered subagent — dispatch by name, passing only context (not the persona prompt):
 
-```
+````
 Task tool call per reviewer:
   subagent_type: <subagent name from table above>
   run_in_background: true
@@ -365,8 +374,8 @@ Task tool call per reviewer:
       <exact lines from the diff that back the finding, ≤5 lines>
       ```
 
-      <explanation: EXACTLY 1 sentence. For questions: weave the stakes inline — "Is X intentional? If not, this will Y.">
-      Fix/Response: <EXACTLY 1 sentence. No sub-clauses.>
+      <explanation: 2-3 sentences. What the code does wrong, why it breaks, what to verify.>
+      Fix/Response: <1-2 sentences or a fenced code block when the fix is concrete and non-obvious.>
 
     **Non-code artifact (plan, proposal, spec, session discussion):** follow this EXACTLY:
 
@@ -374,19 +383,19 @@ Task tool call per reviewer:
 
       > <exact quote from the artifact that backs the finding. EXACTLY 1 sentence — cut if needed.>
 
-      <explanation: EXACTLY 1 sentence. For questions: weave the stakes inline — "Is X intentional? If not, this will Y.">
-      Fix/Response: <EXACTLY 1 sentence. No sub-clauses.>
+      <explanation: 2-3 sentences. What breaks, why it matters, what to verify.>
+      Fix/Response: <1-2 sentences.>
 
     Rules:
     - Code artifacts: every finding needs bold file+lines header, fenced code block, explanation, Fix/Response.
     - Non-code artifacts: every finding needs bold concept header, quoted evidence, explanation, Fix/Response. No file paths or line numbers.
-    - Every field is EXACTLY 1 sentence. Exceeding this limit means you have not prioritized — cut, do not summarize.
+    - Explanation is 2-3 sentences. Fix/Response is 1-2 sentences or a code block. Every sentence must add information — do not pad.
     - Questions must state stakes inline. A question without stakes is a nit.
     - Zero findings is a valid outcome. Only raise findings you are confident in — do not pad to fill a quota.
     - Omit empty label sections.
     - **If a `## Decisions` section is present in the artifact:** check it before raising any finding. Do not re-raise a `[rejected]` entry unless you have specific new evidence the rejection was wrong — state that evidence explicitly. A `[deferred]` entry may be raised only if it is now clearly in scope.
     - Go directly to findings — no preamble.
-```
+````
 
 All Task tool calls go in a single message to execute in parallel; wait for every background reviewer result before consolidating.
 
@@ -403,6 +412,7 @@ All Agent tool calls go in a single message for parallel dispatch. If a reviewer
 **Dispatch is mandatory, not optional.** If you have access to the Task tool (Cursor) or Agent tool (Claude Code), you MUST dispatch reviewer subagents. Batch reasoning is NOT an acceptable substitute when dispatch tooling is available — it produces anchored, single-perspective output masquerading as multi-lens review. The entire value of crew-reviewer is independent parallel evaluation. Skipping dispatch to save cost/latency defeats the purpose.
 
 If you cannot dispatch (no Task tool, no Agent tool, no `claude` CLI), say so explicitly:
+
 > "I cannot dispatch reviewer subagents in this environment. Run `crew review` in Cursor or Claude Code for a proper multi-lens review."
 
 Do not produce a fake review. Stop.
@@ -471,6 +481,7 @@ Record the verification result and command or evidence source in the internal fi
 ### Deduplication
 
 Deduplicate aggressively — same concept flagged at different locations still counts as one finding if the root cause is the same. When two or more reviewers flag the same issue:
+
 1. Keep the finding with the strongest label (`[blocking]` > `[attention]` > `[needs more info]` > `[nit]`)
 2. Note which reviewers flagged it: `(also flagged by: Adversarial, Code Quality)`
 3. Merge any complementary details into the kept finding
@@ -483,12 +494,12 @@ Both modes use a flat numbered list. Severity is an inline label on each finding
 
 Severity labels and what they mean:
 
-| Label | Meaning |
-|---|---|
-| `[blocking]` | Must fix before merge / must resolve before proceeding |
-| `[attention]` | Meaningful improvement — worth doing, not required |
+| Label               | Meaning                                                           |
+| ------------------- | ----------------------------------------------------------------- |
+| `[blocking]`        | Must fix before merge / must resolve before proceeding            |
+| `[attention]`       | Meaningful improvement — worth doing, not required                |
 | `[needs more info]` | Something unclear that needs an answer before it can be evaluated |
-| `[nit]` | Minor — polish, naming, style |
+| `[nit]`             | Minor — polish, naming, style                                     |
 
 For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]` to signal whether the plan or reasoning holds up.
 
@@ -498,29 +509,66 @@ For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]`
 2. Code snippets (2-5 lines) are REQUIRED on `[blocking]` findings. Recommended on `[attention]`. Omit on `[nit]` unless the fix is non-obvious.
 3. Hard cap: 7 findings total. After deduplication, keep highest-severity. Drop the rest entirely.
 4. Zero findings is valid. No action plan. No reviewers section. No padding.
-5. Per-finding length: 1 sentence evidence, 1 sentence explanation, 1 sentence fix. A snippet replaces the evidence sentence when code speaks for itself.
+5. Per-finding length: code snippet (2-5 lines) anchoring the finding, explanation (2-3 sentences), fix (1-2 sentences or code block). Every sentence must add information — do not pad.
 6. For idea/spec review: `Fix:` field required on every `[blocking]` and `[concern]` finding — actionable enough for mechanical application.
 
 </critical_rules>
 
 <output_format mode="code_review">
 
-```
+Each finding is a self-contained GitHub PR comment body — written to be pasted inline without editing. Group findings by severity under headers. Omit empty severity sections.
+
+````
 ## Review: <mode> — <summary>
 
-1. [blocking] **<title>** `path/to/file.ts:42`
-   <evidence — what the code does wrong>. <explanation — why it matters>. <fix — what to do>.
-   ```<lang>
-   <2-5 lines showing the problem>
-   ```
-2. [attention] **<title>** `path/to/file.ts:108`
-   <evidence>. <explanation>. <fix>.
-   ```<lang>
-   <2-5 lines showing the problem (recommended)>
-   ```
-3. [needs more info] **<title>** `path/to/file.ts:55`
-   <what needs to be answered and why it matters — name the stakes>.
-4. [nit] **<title>** `path/to/file.ts:12` — <what to change>.
+### [blocking]
+
+**`path/to/file.ts` — line N**
+
+```lang
+<2-5 lines anchoring the finding>
+````
+
+<What the code does wrong and why it breaks. 2-3 sentences.>
+
+Suggested fix:
+
+```lang
+<concrete fix when the fix is unambiguous — omit otherwise>
+```
+
+---
+
+### [attention]
+
+**`path/to/file.ts` — line N**
+
+```lang
+<2-5 lines, recommended>
+```
+
+<What to address and why. 2-3 sentences.>
+
+Suggested fix: <text description, or code block when concrete>
+
+---
+
+### [needs more info]
+
+**`path/to/file.ts` — line N**
+
+```lang
+<relevant lines>
+```
+
+<Question with stated stakes — what you need to know and what breaks if the assumption is wrong.>
+
+---
+
+### [nit]
+
+**`path/to/file.ts` — line N** — <what to change, one line>
+
 ```
 
 </output_format>
@@ -530,6 +578,7 @@ For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]`
 Tone is evaluative — "does this hold up?". Findings address whether the idea, plan, or reasoning is sound.
 
 ```
+
 ## Review: Idea — <summary>
 
 **Verdict:** proceed / revisit / blocked — <1 sentence: the decisive reason>
@@ -540,7 +589,8 @@ Tone is evaluative — "does this hold up?". Findings address whether the idea, 
    **Fix:** <what would strengthen it — specific framing or addition.>
 3. [needs more info] **<title>** — <what is unclear and must be resolved before moving forward>.
 4. [nit] **<title>** — <minor framing or completeness improvement>.
-```
+
+````
 
 If there are no findings, state the verdict as `proceed` and give one sentence of reasoning.
 
@@ -586,16 +636,18 @@ cat > "$OUTPUT_DIR/REVIEW.md" << 'EOF'
 <consolidated report verbatim>
 EOF
 [ $? -ne 0 ] && echo "Warning: could not persist REVIEW.md to $OUTPUT_DIR" >&2
-```
+````
 
 Do not announce the write to the user.
 
 **MANDATORY FINAL OUTPUT — do not end the response without both of these lines:**
 
 Step 1 — always output this line verbatim:
+
 > Run `crew log` to capture takeaways from this review.
 
 Step 2 — pick exactly one matching line based on mode and verdict, output it verbatim:
+
 - Self-review / changes review — PASS/WARN: `> Next: run \`crew commit\` to continue.`
 - Self-review / changes review — BLOCK: `> Next: run \`crew review address\` to fix blocking findings before committing, or run \`crew review --auto\` to apply them automatically.`
 - Changes review **`--auto`** / **`--auto --loop`** — see Changes auto-apply path below; do not output a next-step handoff line from this list.
@@ -608,8 +660,9 @@ Step 2 — pick exactly one matching line based on mode and verdict, output it v
 - Idea review **`--auto`** / **`--auto --loop`** — see Idea auto-apply path below; do not output a next-step handoff line from this list.
 
 **Idea convergence criterion:** after consolidating idea review findings, if total findings are ≤2 and all are `[nit]` or `[needs more info]`, append:
+
 > **Idea is stable.** Proceed to `crew spec` — further idea review rounds have diminishing returns. If any open `[needs more info]` requires user input, answer it inline or address it in the spec.
-If any `[blocking]` finding has persisted for 3+ rounds (visible in the session `## Review:` history), append:
+> If any `[blocking]` finding has persisted for 3+ rounds (visible in the session `## Review:` history), append:
 > **Persistent blocker after 3+ rounds.** Consider moving to `crew spec` and treating this as an open question in the spec's Design Constraints.
 
 ### Self-review auto-apply path (`--auto` mode only)
@@ -619,8 +672,9 @@ After outputting the consolidated report, check:
 **Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
 
 - **Yes (gate fails):** output the consolidated report normally. Then output:
+
   > **Auto-apply paused.** N finding(s) need input before applying: [list titles]. Answer them and run `crew review address` to apply the rest.
-  Then output the standard `crew log` + next-step handoff lines for self-review BLOCK.
+  > Then output the standard `crew log` + next-step handoff lines for self-review BLOCK.
 
 - **No (gate passes):** do not ask for approval — apply all code fixes inline now:
   1. Collect all findings and their `Fix:` fields.
@@ -651,8 +705,9 @@ After outputting the consolidated report, check:
 **Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
 
 - **Yes (gate fails):** output the consolidated report normally. Then output:
+
   > **Auto-apply paused.** N finding(s) need input before applying: [list titles]. Answer them and run `crew review address` to apply the rest.
-  Then output the standard `crew log` + next-step handoff lines for changes review BLOCK.
+  > Then output the standard `crew log` + next-step handoff lines for changes review BLOCK.
 
 - **No (gate passes):** do not ask for approval — apply all code fixes inline now:
   1. Collect all findings and their `Fix:` fields.
@@ -683,8 +738,9 @@ After outputting the consolidated report, check:
 **Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
 
 - **Yes (gate fails):** output the consolidated report normally. Then output:
+
   > **Auto-apply paused.** N finding(s) need input before applying: [list titles]. Answer them and run `crew review address` to apply the rest.
-  Then output the standard `crew log` + next-step handoff lines for idea review BLOCK.
+  > Then output the standard `crew log` + next-step handoff lines for idea review BLOCK.
 
 - **No (gate passes):** do not ask for approval — apply all fixes inline now:
   1. Collect all findings and their `Fix:` fields.
@@ -739,11 +795,13 @@ fi
 **Verdict and transition** (based on consolidated findings):
 
 Determine verdict first:
+
 - **PASS** — zero findings, or only `[nit]` / `[needs more info]`
 - **WARN** — `[attention]` findings only, no `[blocking]`
 - **BLOCK** — any `[blocking]` finding present. `Verdict: revisit` from reviewers always maps to BLOCK.
 
 For **self-review and changes review only** (skip for PR review and spec review): run pipeline logging.
+
 ```bash
 # If PASS or WARN:
 ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
