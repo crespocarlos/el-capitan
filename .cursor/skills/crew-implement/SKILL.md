@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: crew-implement
 description: "Orchestrate implementation of an approved SPEC.md. Trigger: 'crew implement'."
 ---
@@ -65,8 +66,8 @@ If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you
 ### Step 3: Auto-recall
 
 ```bash
-REPO=$(basename $(git rev-parse --show-toplevel))
-RECALLED_PATTERNS=$(~/.agent/bin/journal-search.py auto-recall "$REPO" --top 10 2>/dev/null || true)
+MEM_OUT=$(~/.agent/bin/mem.py context --mode implement --query "$SPEC_TITLE" --paths $SPEC_PATHS 2>&1); MEM_RC=$?
+case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
 ```
 
 Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no journal entries or search unavailable), set `RECALLED_PATTERNS="none"` — do **not** leave it as an empty string. Passing an empty string causes crew-builder to re-run auto-recall redundantly.
@@ -173,7 +174,6 @@ When the Implementation Report is available:
 
    Append with:
    ```bash
-   ~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null \
      && echo "[journal] Journaled to $JOURNAL_FILE" \
      || echo "[journal] Warning: index failed — entry written but not searchable"
    ```

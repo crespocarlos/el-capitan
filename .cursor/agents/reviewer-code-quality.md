@@ -97,3 +97,5 @@ Zero findings is a valid outcome. Go directly to findings — no preamble.
 - **Functional Correctness** (shared with Adversarial) — logic errors at the function level
 - **Performance & Scalability** (shared with Architecture) — inefficient patterns in hot paths
 - **Maintainability** (shared with Fresh Eyes) — code structure, readability, testing
+
+Search-tool selection: follow `~/.cursor/rules/crew-explorer-conventions.mdc`.

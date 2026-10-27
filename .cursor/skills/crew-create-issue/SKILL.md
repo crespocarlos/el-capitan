@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: crew-create-issue
 description: "Structure a rough idea into a well-formed GitHub issue and file it. Trigger: 'crew create issue' or 'crew create issue: <description>'."
 ---

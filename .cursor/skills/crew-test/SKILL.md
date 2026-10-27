@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: crew-test
 description: "Discover and run tests scoped to the current git diff. Trigger: 'crew test'."
 ---
@@ -91,6 +92,10 @@ Extract test commands from the spec and from tester-explorer results using the f
 - If no command is found from any format, skip to Step 7 with WARN verdict.
 
 ### Step 6: Runbook (scriptable only) + legacy SPEC guard
+
+### Evidence
+
+If `## Evidence` is present in SPEC.md, run its named command and report PASS or FAIL against its metric threshold and baseline id before the final verdict.
 
 **Deprecated `### Manual` under `## Tests`:** If `$TASK_DIR/SPEC.md` still contains `### Manual` under `## Tests`, print one line only:
 

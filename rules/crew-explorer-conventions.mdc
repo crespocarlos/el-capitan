@@ -1,6 +1,6 @@
 ---
 description: "SemanticCodeSearch-first protocol for all code research. Use for any investigation,discovery, exploration, or 'how/where/what' question. Grep and Read are fallbacks — only after SemanticCodeSearch has narrowed scope, or when the exact file/line is already known."
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Codebase Research Protocol

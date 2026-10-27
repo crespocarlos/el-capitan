@@ -120,3 +120,5 @@ Each finding is a self-contained GitHub PR comment body. Follow this structure e
 
 - **Performance & Scalability** (shared with Code Quality) — structural scalability, module decomposition
 - **Data Integrity & Integration** (shared with Adversarial) — schema mismatches, contract breaks, downstream impact
+
+Search-tool selection: follow `~/.cursor/rules/crew-explorer-conventions.mdc`.

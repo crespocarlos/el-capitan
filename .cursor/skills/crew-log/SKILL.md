@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: crew-log
 description: "Log an agentic engineering session to the journal. Trigger: 'crew log'."
 ---
@@ -40,15 +41,11 @@ Use `$(date +%Y-%m-%d)`. Never modify existing entries — append only.
 
 ## After writing
 
-Index the entry:
-
-```bash
-~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)"
-```
+Keep the prose journal entry as evidence. Draft zero to three typed memory candidates into `~/.agent/memory/.inbox/`; a no-op is valid. Show candidates with the entry and, only after approval, run `~/.agent/bin/mem.py import-inbox --all`. On exit 2 print `warning: memory unavailable`.
 
 Then:
 - If the entry contains a **durable rule** worth remembering in every future session, surface it: `"Worth adding to ~/.claude/CLAUDE.md?"`
-- **Drift check** — if `~/.claude/CLAUDE.md` and `~/.cursor/rules/personal.mdc` differ in substance, surface: `"Preferences have drifted — consider syncing."`
+- **Drift check** — if `~/.claude/CLAUDE.md` and `rules/personal.mdc` differ in substance, surface: `"Preferences have drifted — consider syncing."`
 - If `TASK_DIR` is non-empty: clear `$TASK_DIR/SESSION.md` (buffer flushed).
 
 ## Auto-clarity override

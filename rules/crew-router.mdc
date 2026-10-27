@@ -12,7 +12,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 - Agent files: `~/.cursor/agents/` — orchestrators: `crew-*.md`, personas: `<orchestrator>-<persona>.md`
 - Skill files: `~/.cursor/skills/<name>/SKILL.md`
 - Bin tools: `~/.agent/bin/`
-- Task state: `~/.agent/tasks/<repo>/<branch>/`
+- Task state: `~/.agent/tasks/<uuid>/` (resolve via `resolve-task-dir.py`)
 - Journal: `~/.agent/journal/`
 
 ## Routing table
@@ -28,9 +28,14 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew review` [PR #X \| spec \| idea \| changes \| (self)] | crew-reviewer — `changes`: staged only; `idea`: session/proposal |
 | `crew resolve PR` #X or URL | crew-pr-resolver |
 | `crew log` | crew-log |
+| `crew remember` text | crew-memory skill |
+| `crew memory` seed\|consolidate\|doctor | crew-memory skill |
 | `crew recall`: question | crew-recall |
 | `crew create issue` description | crew-create-issue |
 | `crew cleanup` | crew-cleanup |
+| `crew evals` | crew-evals skill |
+| `crew idp` | crew-idp skill |
+| `crew diagnose` transcript | crew-diagnose skill |
 
 **This table is authoritative.** Do not override it with judgment calls.
 

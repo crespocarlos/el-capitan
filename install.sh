@@ -41,6 +41,13 @@ else
 fi
 echo "  Source: $SCRIPT_DIR"
 
+# The pre-rules-layout installer created this as a managed directory symlink. Remove
+# it before mkdir -p, otherwise a dangling legacy link makes migration fail.
+legacy_rules="$HOME/.cursor/rules"
+if [ -L "$legacy_rules" ] && [[ "$(readlink "$legacy_rules")" == "$SCRIPT_DIR/.cursor/rules" ]]; then
+  run rm -f "$legacy_rules"
+fi
+
 run mkdir -p ~/.claude ~/.cursor/rules ~/.cursor/skills ~/.cursor/agents ~/.agent/tasks ~/.agent/journal ~/.agent/bin
 
 # ~/.claude/agents and ~/.claude/skills are directory symlinks to their ~/.cursor equivalents.
@@ -81,8 +88,14 @@ prune_broken_symlinks() {
   shopt -u nullglob
 }
 
-link_dir_files "$SCRIPT_DIR/.cursor/rules" ~/.cursor/rules
+link_dir_files "$SCRIPT_DIR/rules" ~/.cursor/rules
+prune_broken_symlinks ~/.cursor/rules
 link_dir_files "$SCRIPT_DIR/.cursor/agents" ~/.cursor/agents
+for agent_dir in crew-reviewer references; do
+  if [ -d "$SCRIPT_DIR/.cursor/agents/$agent_dir" ]; then
+    run ln -sfn "$SCRIPT_DIR/.cursor/agents/$agent_dir" ~/.cursor/agents/$agent_dir
+  fi
+done
 prune_broken_symlinks ~/.cursor/agents
 
 if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
@@ -114,7 +127,29 @@ if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
   shopt -u nullglob
 fi
 
-run ln -sf "$SCRIPT_DIR/.claude/CLAUDE.md" ~/.claude/CLAUDE.md
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "  [dry-run] upsert memory adapters"
+else
+  mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.agent"
+  python3 - "$HOME" <<'PY'
+from pathlib import Path
+import sys
+
+home = Path(sys.argv[1])
+block = """<!-- el-capitan:memory -->
+Run `~/.agent/bin/mem.py context --mode session` at task start and follow `~/.cursor/skills/crew-memory/references/contract.md`.
+<!-- /el-capitan:memory -->
+"""
+for target in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md"):
+    text = target.read_text() if target.exists() else ""
+    start, end = text.find("<!-- el-capitan:memory -->"), text.find("<!-- /el-capitan:memory -->")
+    if start >= 0 and end >= start:
+        text = text[:start] + block + text[end + len("<!-- /el-capitan:memory -->"):]
+    else:
+        text = text.rstrip() + "\n\n" + block
+    target.write_text(text)
+PY
+fi
 
 # Claude Code hooks (settings + hook scripts)
 if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
@@ -135,6 +170,10 @@ if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
   fi
 fi
 link_dir_files "$SCRIPT_DIR/.claude/hooks" ~/.claude/hooks
+if [ "$DRY_RUN" -eq 0 ]; then
+  mkdir -p "$HOME/.cursor"
+  python3 "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json"
+fi
 
 # ~/.agent templates (dotfile keeps stderr hush if optional upstream omits it)
 # Before ln -sf overwrites: if the target is a pre-existing REGULAR file (not a symlink),
@@ -163,6 +202,9 @@ done
 # ~/.agent/bin
 run rm -f ~/.agent/bin/resolve-task-dir.sh ~/.agent/bin/log-progress.sh
 link_dir_files "$SCRIPT_DIR/.agent/bin" ~/.agent/bin
+if [ "$DRY_RUN" -eq 0 ] && [ ! -d "$HOME/.agent/memory/.git" ]; then
+  CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/bin/mem.py" init
+fi
 
 echo ""
 echo "Done. Installed:"
@@ -171,11 +213,6 @@ echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc 
 echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/skills ← ~/.claude/skills)"
 echo ""
 # Check optional dependencies
-if command -v ollama &>/dev/null && python3 -c "import chromadb" 2>/dev/null; then
-  echo "  Semantic search: ready (ollama + chromadb found)"
-else
-  echo "  Semantic search: optional — install ollama + 'pip install chromadb' for journal-search.py"
-fi
 
 echo ""
 echo "  Journal:  ~/.agent/journal/ (monthly files, not tracked by git)"

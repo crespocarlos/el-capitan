@@ -43,30 +43,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 ## Routing
 
-| Trigger | Crew member |
-|---|---|
-| `crew spec` issue/URL/description | crew-specwriter |
-| `crew implement` | crew-implement → crew-builder |
-| `crew test` | crew-test skill |
-| `crew commit` | crew-commit |
-| `crew open pr` | crew-open-pr |
-| `crew review address` | crew-address-review skill (inline) — do not route through crew-reviewer |
-| `crew review` [PR #X \| spec \| idea \| idea --auto \| idea --auto --loop \| changes \| changes --auto \| changes --auto --loop \| (self)] | crew-reviewer — `changes`: staged only; `idea`: session/proposal; `--auto`: review + apply fixes in one pass; `--auto --loop`: repeat until convergence (max 3 iterations) |
-| `crew resolve PR` #X or URL | crew-pr-resolver |
-| `crew log` | crew-log |
-| `crew recall`: question | crew-recall |
-| `crew create issue` description | crew-create-issue |
-| `crew cleanup` | crew-cleanup |
-| `crew evals` [suite \| experiment-id \| `trace` experiment-id] | crew-evals skill (inline) |
-
-**This table is authoritative.** Do not override it with judgment calls.
-
-File path convention:
-- Orchestrator agents: `~/.claude/agents/crew-<name>.md` (e.g., `crew-reviewer.md`)
-- Persona subagents: `~/.claude/agents/<orchestrator>-<persona>.md` (e.g., `reviewer-adversarial.md`)
-- Skills: `~/.claude/skills/<name>/SKILL.md`
-
-All agents and personas are registered at `~/.claude/agents/`. Personas have YAML frontmatter: `name`, `description`, `model`, `tools`, `maxTurns`.
+See `rules/crew-router.mdc`.
 
 ## How to invoke agents (CRITICAL)
 
@@ -106,3 +83,7 @@ Two systems, keep them partitioned. Journal (`~/.agent/journal/`) — long-term,
 - Explicit handoffs: every skill step that hands off must name the next step and say "proceed immediately"
 - **Before running `tsc` or type-check, check if `node_modules` is a symlink** (`test -L node_modules`). If symlinked, skip — `tsc` follows the symlink and emits `.d.ts` files in the main repo. If `node_modules` is a real directory, type-check is safe.
 - **`crew implement` always follows crew-builder's protocol.** Code changes go through crew-builder — via subagent (Cursor Task tool) or by following crew-builder's protocol directly. Never skip the protocol and implement ad-hoc.
+
+<!-- el-capitan:memory -->
+Run `~/.agent/bin/mem.py context --mode session` at task start and follow `~/.cursor/skills/crew-memory/references/contract.md`.
+<!-- /el-capitan:memory -->

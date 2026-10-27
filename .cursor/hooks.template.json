@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [{"command": "bash \"$HOME/.claude/hooks/block-destructive-git.sh\"", "failClosed": true}],
+    "preToolUse": [{"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": true}],
+    "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}]
+  }
+}

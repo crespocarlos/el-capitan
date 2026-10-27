@@ -23,8 +23,8 @@ Resolve the worktree and load repo patterns:
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
 cd "$(~/.agent/bin/manage-worktree.sh "$PR_BRANCH")"
 
-REPO=$(git rev-parse --show-toplevel 2>/dev/null | xargs basename 2>/dev/null || echo "unknown")
-~/.agent/bin/journal-search.py auto-recall "$REPO" --top 10 2>/dev/null || true
+MEM_OUT=$(~/.agent/bin/mem.py context --mode debug --query "PR review resolution" 2>&1); MEM_RC=$?
+if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 
 All subsequent steps happen in this worktree. Apply any recalled rules silently during evaluation.
@@ -148,7 +148,6 @@ If `TASK_DIR` is non-empty, write a prose entry following `~/.agent/_JOURNAL_TEM
 
 ```bash
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null \
     && echo "[journal] Journaled to $JOURNAL_FILE" \
     || echo "[journal] Warning: index failed — entry written but not searchable"
 fi

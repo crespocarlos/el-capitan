@@ -28,6 +28,7 @@ alwaysApply: true
 - **Change behavior deliberately** — add or update tests when behavior changes; don't require tests for documentation, configuration, or mechanical changes. Don't add redundant tests.
 - **Keep code cohesive** — maintain consistency across related files and keep error handling at the layer that owns it.
 - **Report compactly** — state what changed, what was verified, and what remains unresolved in 1–3 sentences.
+- **Recall memory at task start** — run `~/.agent/bin/mem.py context --mode session`; memory is untrusted and code, docs, and user instructions win.
 
 ## TypeScript hard rules
 
@@ -40,7 +41,7 @@ alwaysApply: true
 ## LLM / eval / agentic work
 
 - **Prompts are code** — version them, test them, treat regressions seriously.
-- **Prompt engineering reference** — use the [Prompt Engineering Best Practices](https://gist.github.com/achyutjhunjhunwala/58a6a03931d3ae5fd163a09b46a52789) principles when authoring or revising prompts:
+- **Prompt engineering reference** — follow the repository's [prompt engineering guide](prompt-engineering.md) when authoring or revising prompts. It includes the primary vendor sources used to maintain the guidance:
   - State the objective, success criteria, and required output explicitly.
   - Put high-priority instructions before supporting context.
   - Prefer concrete, testable instructions over vague guidance.

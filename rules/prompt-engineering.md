@@ -1,0 +1,75 @@
+# Prompt engineering guide
+
+Prompt changes are code changes: define the intended behavior, test representative
+inputs, inspect failures, and keep the prompt, tools, evaluators, and runtime
+configuration consistent.
+
+## Authoring checklist
+
+- State the objective, success criteria, and required output explicitly.
+- Put high-priority instructions before supporting context.
+- Prefer concrete, testable instructions over vague guidance.
+- Separate required behavior from optional guidance.
+- Use a predictable structure: role and objective, instructions, constraints,
+  output contract, examples, then task context.
+- Delimit instructions, examples, rules, and context with clear headings or
+  consistently named tags.
+- Define behavior for empty, invalid, and ambiguous inputs.
+- Use examples only when they clarify non-obvious behavior. Make them relevant,
+  varied, and explicitly delimited.
+- Ensure examples agree with the written instructions; models often copy examples
+  more literally than prose.
+- Prefer positive instructions that describe the desired behavior.
+- Explain non-obvious constraints when the rationale improves generalization.
+- Give tool-using agents an escape hatch for missing, invalid, or inapplicable
+  information; require them to say when they cannot proceed.
+- Keep deterministic policy in code when it does not require model judgment.
+
+## Agent and tool guidance
+
+- Persist until the requested work is resolved or a concrete blocker is reached.
+- Plan the next action before using a tool, then ground the action in tool output.
+- Require tool grounding for facts; do not permit guesses where a tool can verify
+  the answer.
+- Make tool arguments hard to misuse through explicit schemas, examples, and
+  actionable error messages.
+- Keep tool descriptions focused on purpose, inputs, outputs, and boundaries.
+- Prefer small, targeted tool calls and concise outputs to control context growth.
+- Separate deciding from acting when a step has meaningful side effects.
+- Fail loudly when an agent cannot complete a required step.
+- For research and diagnosis, maintain competing hypotheses and update confidence
+  as evidence accumulates; verify important claims across sources.
+
+## Context and output
+
+- In long prompts, place bulk context before the instructions that govern it.
+- Restate the highest-priority constraints near the output contract when long
+  context or multiple instruction sources could cause them to be missed.
+- Define output format, length, required fields, and what constitutes a successful
+  result.
+- Keep terminology consistent across prompts, tools, evaluators, and runtime
+  configuration.
+
+## Evaluation
+
+- Define a metric and baseline before claiming an improvement.
+- Test representative inputs, including empty, invalid, ambiguous, and edge cases.
+- Use targeted examples while iterating; reserve broad suites for regression
+  checks.
+- Inspect traces and evaluator explanations before adding more instructions.
+- Remove redundant or conflicting rules when behavior diverges.
+
+## Maintaining this guide
+
+- Prefer primary sources and link claims that depend on vendor-specific behavior.
+- Treat empirical claims as hypotheses until supported by a reproducible
+  evaluation or clearly labeled as guidance.
+- Update this file when prompt, tool, evaluator, or runtime conventions change.
+
+## Primary references
+
+- [Anthropic: Prompt engineering overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview)
+- [Anthropic: Building effective agents](https://www.anthropic.com/research/building-effective-agents)
+- [OpenAI: Prompt engineering](https://platform.openai.com/docs/guides/prompt-engineering)
+- [Google: Gemini prompting strategies](https://ai.google.dev/gemini-api/docs/prompting-strategies)
+

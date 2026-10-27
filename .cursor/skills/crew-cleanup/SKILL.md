@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: crew-cleanup
 description: "Remove stale worktrees interactively. Trigger: 'crew cleanup'."
 ---

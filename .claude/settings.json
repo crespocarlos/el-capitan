@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/block-destructive-git.sh\" 2>/dev/null; exit 0"
+            "command": "bash \"$HOME/.claude/hooks/block-destructive-git.sh\""
           }
         ]
       },
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\" 2>/dev/null; exit 0"
+            "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\""
           }
         ]
       }
@@ -93,6 +93,14 @@
             "command": "bash \"$HOME/.claude/hooks/session-start.sh\" 2>/dev/null; exit 0"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/memory-context.sh\""
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -111,6 +119,16 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/session-logger.sh\" 2>/dev/null; exit 0"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/mode-anchor.sh\""
           }
         ]
       }

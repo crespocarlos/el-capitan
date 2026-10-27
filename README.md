@@ -54,8 +54,8 @@ El Capitan has three layers:
 
 | Layer | File | Job |
 |---|---|---|
-| **Router** | `.cursor/rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
-| **Orchestrator** | `.cursor/rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
+| **Router** | `rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
+| **Orchestrator** | `rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
 | **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
 | **Runtime** | hooks, journal tools | Execution engines |
 
@@ -120,11 +120,8 @@ crew spec <issue URL or description>
 
 | Dependency | Purpose | Install |
 |---|---|---|
-| [Ollama](https://ollama.ai) + `nomic-embed-text` | Local semantic search over your journal | `brew install ollama && ollama pull nomic-embed-text` |
-| ChromaDB | Vector store for journal embeddings | `pip install chromadb ollama` |
 | SemanticCodeSearch MCP | Semantic code search across the codebase inside Claude Code | `claude mcp add --scope user SemanticCodeSearch -- npx @elastic/semantic-code-search-mcp-server` |
 
-> **Without Ollama + ChromaDB:** `crew recall` falls back to ripgrep full-text search.  
 > **Without SemanticCodeSearch:** crew-specwriter uses file reads and grep for codebase exploration.
 
 ### macOS note
@@ -267,7 +264,7 @@ el-capitan/
 ├── AGENTS.md                # Agent guide — bootstrap, conventions, file layout
 ├── CLAUDE.md                # Claude Code project context for editing el-capitan itself
 ├── .cursor/
-│   ├── rules/               # Always-loaded orchestration rules (.mdc)
+├── rules/                   # Always-loaded orchestration rules (.mdc)
 │   │   ├── crew-orchestrator.mdc   # Pipeline state machine (always loaded)
 │   │   ├── crew-router.mdc         # Routing table (always loaded)
 │   │   ├── crew-explorer-conventions.mdc  # Shared tool protocol for explorer subagents
@@ -298,7 +295,6 @@ el-capitan/
 ```
 ~/.agent/
 ├── journal/                 # Monthly engineering journal entries
-├── vectorstore/             # ChromaDB embeddings (auto-created)
 ├── tools/                   # Symlinked from el-capitan
 ├── scripts/                 # Symlinked from el-capitan
 ├── queries/                 # Symlinked from el-capitan
@@ -327,7 +323,7 @@ Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are l
 
 ### Personal preferences
 
-`~/.cursor/rules/personal.mdc` (symlinked to `el-capitan/.cursor/rules/personal.mdc`) is your always-loaded personal preferences file. It's read every Cursor and Claude Code session — no crew command needed.
+`rules/personal.mdc` is installed as an always-loaded personal preferences file. It's read every Cursor and Claude Code session — no crew command needed.
 
 Edit it directly to set engineering philosophy, agent expectations, TypeScript rules, or any context that should always be in scope.
 
@@ -350,13 +346,11 @@ After indexing, `crew recall` supports natural-language queries:
 
 ```bash
 # Index your journal
-journal-search.py index
 
 # Then in chat:
 crew recall: how did we handle the retry logic in kibana?
 ```
 
-Without Ollama + ChromaDB, `crew recall` falls back to ripgrep full-text search — still useful, just not semantic.
 
 ---
 
@@ -365,7 +359,7 @@ Without Ollama + ChromaDB, `crew recall` falls back to ripgrep full-text search 
 ### Add a custom skill
 
 1. Create `~/.cursor/skills/<name>/SKILL.md` with a `## Protocol` section
-2. Add a routing entry to `~/.cursor/rules/crew-router.mdc`
+2. Add a routing entry to `~/el-capitan/rules/crew-router.mdc`
 3. Regular files (not symlinks) are treated as add-ons and never overwritten by `install.sh`
 
 ### Add a custom agent
@@ -377,7 +371,7 @@ Without Ollama + ChromaDB, `crew recall` falls back to ripgrep full-text search 
    description: "What it does and when to trigger it."
    ---
    ```
-2. Add a routing entry to `~/.cursor/rules/crew-router.mdc`
+2. Add a routing entry to `~/el-capitan/rules/crew-router.mdc`
 
 ### Identify add-ons vs core
 
@@ -395,3 +389,7 @@ find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -name '*.md' ! -type l
 ## License
 
 [MIT](LICENSE)
+
+## Memory and validation
+
+Use `.agent/bin/mem.py` for typed persistent memory and `.agent/bin/crew-lint.py` for workflow consistency. Rules live in `rules/`.

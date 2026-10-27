@@ -146,3 +146,5 @@ For a collision between two documents, anchor to the first document and name the
 Zero findings is a valid outcome. Only raise findings you are confident in — do not pad. Go directly to findings — no preamble.
 
 **Fabrication rule:** every non-code finding MUST include an exact verbatim quote copied from the artifact — not paraphrased, not reconstructed from memory, not summarized. If you cannot locate the exact sentence or phrase in the artifact text, do not raise the finding. A fabricated quote that sounds plausible is worse than no finding — it introduces a false anchor that the orchestrator cannot verify.
+
+Search-tool selection: follow `~/.cursor/rules/crew-explorer-conventions.mdc`.

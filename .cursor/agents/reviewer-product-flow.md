@@ -66,3 +66,5 @@ Can the change be used with keyboard navigation? Are interactive elements focusa
 - Incomplete journey, unhelpful error experience, accessibility barrier, unaddressed acceptance criteria → `[attention]`
 - Unclear user intent — does this behavior serve the affected person the way the author thinks? → `[needs more info]` — state the stakes: "Is X intentional? If not, the affected person has no path forward here."
 - Polish item → `[nit]`
+
+Search-tool selection: follow `~/.cursor/rules/crew-explorer-conventions.mdc`.

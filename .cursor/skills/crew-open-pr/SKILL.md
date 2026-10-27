@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: crew-open-pr
 description: "Push the current branch and open a PR with a generated description. Trigger: 'crew open pr'."
 ---
@@ -142,7 +143,6 @@ If `TASK_DIR` is non-empty, write a prose entry following `~/.agent/_JOURNAL_TEM
 
 ```bash
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/journal-search.py add "$JOURNAL_FILE" --entry "$(date +%Y-%m-%d)" 2>/dev/null \
     && echo "[journal] Journaled to $JOURNAL_FILE" \
     || echo "[journal] Warning: index failed — entry written but not searchable"
 fi

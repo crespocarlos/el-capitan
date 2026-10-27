@@ -14,6 +14,9 @@ DRAFTING
 - [ ] [Non-regression: existing behavior X preserved]
 - [ ] [Verification: `<command>` passes]
 
+## Evidence
+[Optional command, metric threshold, and baseline id.]
+
 ## Tasks
 - [ ] 1) [Task name]
   - [What to change, which files. 1-3 sentences.]

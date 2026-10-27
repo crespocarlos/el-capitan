@@ -86,3 +86,5 @@ Zero findings is a valid outcome. Go directly to findings — no preamble.
 ## Coverage mapping
 
 - **Maintainability** (shared with Code Quality) — readability, comprehensibility, documentation adequacy
+
+Search-tool selection: follow `~/.cursor/rules/crew-explorer-conventions.mdc`.

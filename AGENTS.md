@@ -2,7 +2,7 @@
 
 El-capitan is a spec-driven agentic engineering pipeline. All files are markdown, shell scripts, and Python utilities — there is no build step and no package manager. It contains:
 
-- **Orchestration rules** — `.cursor/rules/crew-orchestrator.mdc`, `crew-router.mdc` (always loaded)
+- **Orchestration rules** — `rules/crew-orchestrator.mdc`, `crew-router.mdc` (always loaded)
 - **Agent protocols** — `.cursor/agents/crew-*.md`, `specwriter-*.md`, `reviewer-*.md`, `tester-*.md`
 - **Skill files** — `.cursor/skills/<name>/SKILL.md`
 - **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md`, `_RUNBOOK_TEMPLATE.md`
@@ -83,9 +83,9 @@ The worktree will be created at `~/worktrees/el-capitan-<branch>/`. No bootstrap
 
 | File | What it controls |
 |---|---|
-| `.cursor/rules/crew-router.mdc` | Command routing and subagent dispatch table |
-| `.cursor/rules/crew-orchestrator.mdc` | Pipeline state machine, autopilot logic |
-| `.cursor/rules/crew-explorer-conventions.mdc` | Shared conventions for explorer subagents |
+| `rules/crew-router.mdc` | Command routing and subagent dispatch table |
+| `rules/crew-orchestrator.mdc` | Pipeline state machine, autopilot logic |
+| `rules/crew-explorer-conventions.mdc` | Shared conventions for explorer subagents |
 | `.cursor/agents/crew-specwriter.md` | Spec drafting protocol (Steps 1-6) |
 | `.cursor/agents/crew-builder.md` | Implementation protocol + Completion Protocol |
 | `.cursor/agents/crew-reviewer.md` | Multi-lens review orchestration |
@@ -103,10 +103,14 @@ Changes to agent/skill files are verified by reading them and checking the accep
 
 ```bash
 grep "keyword" .cursor/agents/target-file.md   # presence check
-grep METRIC: .cursor/rules/crew-orchestrator.mdc .cursor/skills/crew-implement/SKILL.md  # METRIC audit docs + implement hooks
+grep METRIC: rules/crew-orchestrator.mdc .cursor/skills/crew-implement/SKILL.md  # METRIC audit docs + implement hooks
 mkdir -p /tmp/el-capitan-metric-selftest && test -x .agent/bin/log-metric.py && python3 .agent/bin/log-metric.py /tmp/el-capitan-metric-selftest selftest=1
 python3 -m py_compile .agent/bin/task-bundle.py
 grep -E "task-bundle|bundle-manifest" AGENTS.md .agent/bin/task-bundle.py
 ```
 
 There is no lint, typecheck, or unit test to run.
+
+## Persistent memory
+
+`mem.py` manages typed, scoped Markdown memories. Verify with `python3 evals/memory/run.py` and `python3 .agent/bin/crew-lint.py`.

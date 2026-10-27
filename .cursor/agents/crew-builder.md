@@ -44,6 +44,7 @@ The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
 3. **Read related code** — `<WORK_DIR>/path/to/file`.
 4. **Implement** — edit `<WORK_DIR>/path/to/file`. Apply recalled patterns silently.
 5. **Verify** — run the verify check: `cd <WORK_DIR> && <command>`. Fix and re-run up to 3 times. Mark failed after 3 attempts.
+5b. **Confirm compliance** — re-read the task and relevant acceptance criteria, verify the diff meets them, and fix or mark failed with the reason.
 6. **Mark done** — check off `- [x]` in SPEC.md.
 
 ---
@@ -82,6 +83,9 @@ Write to **`$TASK_DIR/REPORT.md`** and return it:
 - [x] Task 1 — passed
 - [x] Task 2 — passed
 - [ ] Task 3 — FAILED after 3 attempts: <error summary>
+
+### Memory used
+[mem:id] values cited during implementation, or `none`.
 
 ### Files Changed
 <output of git diff --name-only>

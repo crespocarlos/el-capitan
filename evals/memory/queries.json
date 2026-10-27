@@ -1,0 +1,182 @@
+[
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "alpha search",
+    "expected_ids": [
+      "alpha-search"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "alpha deploy",
+    "expected_ids": [
+      "alpha-deploy"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "alpha review",
+    "expected_ids": [
+      "alpha-review"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "alpha rollback",
+    "expected_ids": [
+      "alpha-rollback"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "alpha api",
+    "expected_ids": [
+      "alpha-api"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "alpha new",
+    "expected_ids": [
+      "alpha-new"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-beta",
+    "query": "beta search",
+    "expected_ids": [
+      "beta-search"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-beta",
+    "query": "beta deploy",
+    "expected_ids": [
+      "beta-deploy"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-beta",
+    "query": "beta review",
+    "expected_ids": [
+      "beta-review"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-beta",
+    "query": "beta rollback",
+    "expected_ids": [
+      "beta-rollback"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-beta",
+    "query": "beta api",
+    "expected_ids": [
+      "beta-api"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "global preference",
+    "expected_ids": [
+      "global-preference"
+    ]
+  },
+  {
+    "kind": "lookalike",
+    "repo": "acme-alpha",
+    "query": "entirely absent phrase",
+    "expected_ids": []
+  },
+  {
+    "kind": "lookalike",
+    "repo": "acme-alpha",
+    "query": "entirely absent phrase",
+    "expected_ids": []
+  },
+  {
+    "kind": "lookalike",
+    "repo": "acme-alpha",
+    "query": "entirely absent phrase",
+    "expected_ids": []
+  },
+  {
+    "kind": "lookalike",
+    "repo": "acme-alpha",
+    "query": "entirely absent phrase",
+    "expected_ids": []
+  },
+  {
+    "kind": "lookalike",
+    "repo": "acme-alpha",
+    "query": "entirely absent phrase",
+    "expected_ids": []
+  },
+  {
+    "kind": "lookalike",
+    "repo": "acme-alpha",
+    "query": "entirely absent phrase",
+    "expected_ids": []
+  },
+  {
+    "kind": "lookalike",
+    "repo": "acme-alpha",
+    "query": "entirely absent phrase",
+    "expected_ids": []
+  },
+  {
+    "kind": "superseded",
+    "repo": "acme-alpha",
+    "query": "alpha legacy migration",
+    "expected_ids": []
+  },
+  {
+    "kind": "superseded",
+    "repo": "acme-alpha",
+    "query": "alpha modern migration",
+    "expected_ids": [
+      "alpha-new"
+    ]
+  },
+  {
+    "kind": "scope",
+    "repo": "acme-alpha",
+    "query": "beta search architecture",
+    "expected_ids": []
+  },
+  {
+    "kind": "scope",
+    "repo": "acme-beta",
+    "query": "alpha search architecture",
+    "expected_ids": []
+  },
+  {
+    "kind": "scope",
+    "repo": "acme-alpha",
+    "query": "shared preference",
+    "expected_ids": [
+      "global-preference"
+    ]
+  },
+  {
+    "kind": "recall",
+    "repo": "acme-alpha",
+    "query": "alpha stale reference",
+    "expected_ids": [
+      "alpha-stale"
+    ]
+  }
+]

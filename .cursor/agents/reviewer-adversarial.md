@@ -116,3 +116,5 @@ Each finding is a self-contained GitHub PR comment body. Follow this structure e
 - **Stability & Availability** — null access, unhandled rejections, resource leaks, exception swallowing
 - **Data Integrity & Integration** (shared with Architecture) — type changes propagating wrong, broken consumers
 - **Security & Privacy** — auth bypass, injection, exposed secrets, PII exposure
+
+Search-tool selection: follow `~/.cursor/rules/crew-explorer-conventions.mdc`.

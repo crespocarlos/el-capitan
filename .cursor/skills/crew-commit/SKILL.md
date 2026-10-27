@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: crew-commit
 description: "Generate a semantic commit message and commit. Trigger: 'crew commit'."
 ---

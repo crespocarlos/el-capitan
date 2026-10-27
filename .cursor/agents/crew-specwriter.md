@@ -43,8 +43,8 @@ data = {
 json.dump(data, sys.stdout, indent=2)
 " > "$TASK_DIR/.task-id"
 
-REPO=$(basename $(git rev-parse --show-toplevel))
-~/.agent/bin/journal-search.py auto-recall "$REPO" --top 10 2>/dev/null || true
+MEM_OUT=$(~/.agent/bin/mem.py context --mode plan --query "$SLUG" 2>&1); MEM_RC=$?
+case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
 ```
 
 The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces and special characters replaced with hyphens, truncated to ~50 characters. Examples: "Add retry logic for async search" → `add-retry-logic-for-async-search`, "Convert evals to @kbn/evals format" → `convert-evals-to-kbn-evals-format`.
@@ -56,7 +56,7 @@ The slug is derived from the issue title (if fetched) or the user's description 
   - The user's description uses words like "broken", "regression", "error", "crash"
 - Otherwise use `_SPEC_TEMPLATE.md` (default)
 
-No explicit `--type bug` flag or `crew start bug` command is required.
+No explicit `--type bug` flag or `start bug` command is required.
 
 ### Step 2: Explore the codebase
 

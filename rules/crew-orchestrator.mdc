@@ -9,24 +9,19 @@ Manages the pipeline state machine. Derives state from git/gh, surfaces status o
 
 ## Workflows
 
-Three workflows. Build something, respond to review, or explore before committing.
+Two workflows. Build something or respond to review.
 
 ### build
 Entry: `crew spec <issue>`
 Stages: spec → implement → review → commit → open-pr
 Terminal: PR opened as draft
 Note: crew-specwriter infers the spec template (standard or bug) from the request content.
-No `crew start bug` command — template selection is automatic.
+No `start bug` command — template selection is automatic.
 
 ### respond
 Entry: `crew resolve PR <PR>`
 Stages: address-pr → commit → push
 Terminal: all review threads resolved and pushed; reviewer approval is external
-
-### explore
-Entry: `crew brainstorm`
-Open-ended — no stages, no gates, no terminal condition.
-Optionally feeds into `build` when you're ready to spec something.
 
 > **Lightweight path (no spec needed):** For changes touching ≤3 files with no new exports or API surface — implement inline → `crew review changes` → `crew commit`. Skip the spec, worktree, and task state entirely. Use full `build` when the change crosses that threshold.
 
@@ -73,10 +68,6 @@ fi
 
 > **Known limitation:** `CREW_TASK_DIR` is session-scoped. If you switch branches mid-session (`git checkout`), the cached value points to the old task. Unset it manually — `unset CREW_TASK_DIR` — before running crew commands on the new branch.
 
-## `crew status` / `crew autopilot`
-
-Removed — drive each step manually: `crew implement` → `crew review` → `crew commit` → `crew open pr`.
-
 ## PROGRESS.md
 
 Append-only event log. Never read for state — only write. Format:
@@ -87,7 +78,7 @@ Append-only event log. Never read for state — only write. Format:
 
 ### `METRIC:` lines (audit / cost / loop forensics)
 
-Optional append-only lines for **offline analysis only**. `crew status`, `resolve-task-dir.py`, and autopilot **must not** parse `METRIC:` for gates or transitions — **git/gh + SPEC.md remain the source of truth.**
+Optional append-only lines for **offline analysis only**. `resolve-task-dir.py` must not parse `METRIC:` for gates or transitions — **git/gh + SPEC.md remain the source of truth.**
 
 **Format** (same timestamp style as `TRANSITION`; seconds recommended for ordering):
 
@@ -114,9 +105,3 @@ Optional append-only lines for **offline analysis only**. `crew status`, `resolv
 - Autopilot never skips a gate — it chains between gates, not through them
 - Autopilot never auto-retries on failure — the user always decides
 - **Autopilot reads skill files directly — never re-triggers through the routing layer**
-
-## `crew health`
-
-**Health check logic**: see `crew-health.mdc` — read it when `crew health` is invoked.
-
-Runs health checks inline (see `crew-health.mdc`): symlinks, hooks, jq availability, gh auth, and active SPEC.md presence. Auto-runs when `crew status` finds no active task.

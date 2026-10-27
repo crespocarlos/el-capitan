@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      provider:
+        description: "Evaluation provider"
+        required: false
+        default: "openrouter"
+        type: choice
+        options: [openrouter, anthropic]
       model:
         description: "OpenRouter model ID"
         required: false
@@ -35,6 +41,11 @@ jobs:
         working-directory: evals
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           MODEL="${{ github.event.inputs.model || 'nvidia/nemotron-3-super-120b-a12b:free' }}"
-          uv run python reviewer/run.py --compare --model "$MODEL"
+          PROVIDER="${{ github.event.inputs.provider || 'openrouter' }}"
+          if [ "$PROVIDER" = anthropic ] && [ -f reviewer/baseline.json ]; then
+            MODEL=$(python -c 'import json; print(json.load(open("reviewer/baseline.json"))["model"])')
+          fi
+          uv run python reviewer/run.py --compare --provider "$PROVIDER" --model "$MODEL"
