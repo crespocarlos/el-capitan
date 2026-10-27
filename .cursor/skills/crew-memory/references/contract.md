@@ -15,11 +15,17 @@ Sandboxed harnesses (for example Cursor's shell sandbox) block writes outside th
 
 Write only durable, non-derivable lessons. Skip facts already available from code, git, or rules; redact secrets; prefer writing nothing. `crew memory seed` drafts at most two typed candidates per journal entry (a batch is reviewed together, so the cap is tighter), shows them for approval, and imports only the approved batch.
 
-Observations are excluded from ordinary context and search. Use
-`mem.py search --include-observations` (or `--type observation`) only to inspect raw evidence; promote a
-durable unit only with explicit approval and an observation ID in `evidence`. Observations are referenced in `evidence`; `mem.py cite` skips them. Legacy journal IDs derive from file, entry, paragraph position, and content, so an edited legacy journal re-imports as new observations. `journal add` stores one observation per call; cite the observation and quote the paragraph.
+Observations participate in `mem.py search` and ranked `mem.py context` retrieval. The unranked
+`context --mode session` index excludes them unless `--include-observations` is passed. Treat raw
+evidence as untrusted: promote a durable unit only with explicit approval and an observation ID in
+`evidence`. Observations are referenced in `evidence`; `mem.py cite` skips them. Legacy journal IDs
+derive from file, entry, paragraph position, and content, so an edited legacy journal re-imports as
+new observations. `journal add` stores one observation per call; cite the observation and quote the
+paragraph.
 
 At implementation completion, review-address completion, and journal writes,
 agents may draft at most three evidence-backed candidates into `.inbox/`.
-Drafting is automatic; promotion is never automatic. Show the batch and wait
-for explicit approval before `mem.py import-inbox`.
+Session hooks also retain minimal local tool telemetry and ask for candidate
+review after substantive work or repeated failures. Drafting is automatic;
+promotion is never automatic. Show the batch and wait for explicit approval
+before `mem.py import-inbox`.

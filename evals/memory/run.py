@@ -104,6 +104,48 @@ approval gate.
             store, 'context', '--repo', 'acme-alpha', '--mode', 'session',
             '--include-observations', '--json',
         )
+        ranked_context_with_observation = run(
+            store, 'context', '--repo', 'acme-alpha', '--mode', 'review',
+            '--query', 'explicit reindex analyzers', '--json',
+        )
+        inbox = store / '.inbox'
+        inbox.joinpath('add.md').write_text("""---
+id: candidate-add
+type: procedure
+scope: acme-alpha
+title: New deployment check
+---
+Check deployment health before announcing completion.
+""")
+        inbox.joinpath('update.md').write_text("""---
+id: candidate-update
+type: procedure
+scope: acme-alpha
+title: Alpha deploy
+---
+Updated deployment guidance for a new release process.
+""")
+        existing_deploy = (
+            store / 'repos' / 'acme-alpha' / 'procedure_alpha-deploy.md'
+        ).read_text().split('---', 2)[2].lstrip('\n')
+        inbox.joinpath('supersede.md').write_text(f"""---
+id: candidate-supersede
+type: procedure
+scope: acme-alpha
+title: Deployment rollout procedure
+---
+{existing_deploy.rstrip()}
+Rollout.
+""")
+        inbox.joinpath('noop.md').write_text(f"""---
+id: candidate-noop
+type: procedure
+scope: acme-alpha
+title: Existing deployment copy
+---
+{existing_deploy}""")
+        consolidation = command(store, 'consolidate', '--dry-run')
+        consolidation_output = consolidation.stdout
         observation_checks = {
             'journal_source_unchanged': source_unchanged_after_import,
             'journal_imported_paragraphs': len(observation_ids) == 3,
@@ -125,10 +167,20 @@ approval gate.
             ),
             'journal_dry_run_writes_nothing': dry_run.returncode == 0 and dry_run.stdout.strip() == '',
             'type_observation_implies_include': len(type_search) >= 1,
-            'search_excludes_observations': not default_search,
+            'search_includes_observations_by_default': len(default_search) == 1 and default_search[0]['type'] == 'observation',
             'search_includes_observations': len(observation_search) == 1 and observation_search[0]['type'] == 'observation',
             'session_excludes_observations': not any(row['type'] == 'observation' for row in session),
             'session_includes_observations': any(row['type'] == 'observation' for row in session_with_observations),
+            'ranked_context_includes_observations': (
+                observation_ids[0] in [row['id'] for row in ranked_context_with_observation]
+            ),
+            'consolidate_classifies_inbox': (
+                consolidation.returncode == 0
+                and 'ADD inbox: add.md' in consolidation_output
+                and 'UPDATE inbox: update.md replaces alpha-deploy' in consolidation_output
+                and 'SUPERSEDE inbox: supersede.md overlaps alpha-deploy' in consolidation_output
+                and 'NOOP inbox: noop.md matches alpha-deploy' in consolidation_output
+            ),
         }
         hits = expected = correct_empty = empty_cases = superseded_leaks = scope_leaks = 0
         details = []

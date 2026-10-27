@@ -4,6 +4,8 @@
     "sessionStart": [{"command": "bash \"$HOME/.claude/hooks/cursor-memory-context.sh\""}],
     "beforeShellExecution": [{"command": "bash \"$HOME/.claude/hooks/block-destructive-git.sh\"", "failClosed": true}],
     "preToolUse": [{"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": true}],
-    "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}]
+    "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
+    "postToolUseFailure": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
+    "stop": [{"command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\"", "loop_limit": 1}]
   }
 }

@@ -58,13 +58,20 @@ def repo_key():
             ["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True,
             check=True
         ).stdout.strip()
-        remote = subprocess.run(
-            ["git", "-C", top, "remote", "get-url", "origin"], text=True,
-            capture_output=True, check=True
-        ).stdout.strip()
-        match = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", remote)
-        if match:
-            return f"{match.group(1)}-{match.group(2)}"
+        remotes = subprocess.run(
+            ["git", "-C", top, "remote"], text=True, capture_output=True,
+            check=True
+        ).stdout.splitlines()
+        for remote_name in ["upstream", "origin", *remotes]:
+            remote = subprocess.run(
+                ["git", "-C", top, "remote", "get-url", remote_name], text=True,
+                capture_output=True,
+            )
+            if remote.returncode:
+                continue
+            match = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", remote.stdout.strip())
+            if match:
+                return match.group(2)
         return Path(top).name
     except (OSError, subprocess.CalledProcessError):
         return Path.cwd().name
@@ -531,7 +538,7 @@ def search(args):
     scopes = selected_scopes(args.repo) if args.repo else None
     rows = fts_rows(
         conn, args.query, scopes, [args.type] if args.type else None,
-        args.include_observations,
+        include_observations=True,
     )[:args.top]
     entries = [dict(row) for row in rows]
     if args.json:
@@ -563,7 +570,7 @@ def context(args):
                 print(f"{row['id']} ({row['type']}): {row['title']}")
         return 0
     query = args.query or ""
-    rows = fts_rows(conn, query, scopes, include_observations=args.include_observations)
+    rows = fts_rows(conn, query, scopes, include_observations=True)
     ranked = rank_context(rows, query, args.paths or [], args.mode)
     chosen, token_total = [], 0
     for item in ranked:
@@ -788,6 +795,30 @@ def consolidate(args):
             if (unit["scope"] == candidate["scope"] and unit["type"] == candidate["type"]
                     and (normalized(unit["title"]) == normalized(candidate["title"]) or overlap >= .6)):
                 report.append(f"near-duplicate: {row['id']} {other['id']}")
+    for source in sorted((memory_root() / ".inbox").glob("*.md")):
+        try:
+            candidate = parse_unit(source, inferred_scope=repo_key())
+        except (OSError, ValueError) as error:
+            report.append(f"inbox error: {source.name}: {error}")
+            continue
+        existing = conn.execute("""
+            SELECT id, title, body FROM units
+            WHERE scope = ? AND type = ? AND status = 'active'
+        """, (candidate["scope"], candidate["type"])).fetchall()
+        exact = next((row for row in existing if row["body"] == candidate["body"]), None)
+        same_title = next(
+            (row for row in existing if normalized(row["title"]) == normalized(candidate["title"])),
+            None,
+        )
+        overlap = duplicate_candidates(conn, candidate)
+        if exact:
+            report.append(f"NOOP inbox: {source.name} matches {exact['id']}")
+        elif same_title:
+            report.append(f"UPDATE inbox: {source.name} replaces {same_title['id']}")
+        elif overlap:
+            report.append(f"SUPERSEDE inbox: {source.name} overlaps {' '.join(overlap)}")
+        else:
+            report.append(f"ADD inbox: {source.name}")
     print("\n".join(report) if report else "no proposals")
     if args.dry_run or not archives:
         return 0

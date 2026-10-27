@@ -117,11 +117,14 @@ There is no lint, typecheck, or unit test to run.
 `~/.agent/memory`; SQLite FTS5 is a rebuildable index, not the source of
 truth. Run `bash install.sh` once to initialize the store and install
 harness-neutral read instructions. Agents retrieve memory automatically.
+Repository scope uses the upstream repository's bare name when available, so
+forks and upstream worktrees share their memory.
 
-Journal entries are immutable `observation` evidence in the same store and
-are excluded from normal retrieval. Import legacy journals read-only with
-`mem.py journal import`; use `--include-observations` only when investigating
-raw evidence.
+Journal entries are immutable `observation` evidence in the same store.
+`mem.py search` and ranked `mem.py context` (plan, implement, review, debug)
+include them; the unranked `--mode session` listing excludes them unless
+`--include-observations` is passed. Import legacy journals read-only with
+`mem.py journal import`.
 
 Use `crew remember: <lesson>` only for durable, non-derivable information;
 use `crew memory seed` to draft journal candidates for approval, and `crew

@@ -353,8 +353,8 @@ Telemetry hooks fail open and remain local-only.
 crew recall: how did we handle the retry logic in kibana?
 ```
 
-Journal entries are indexed as `observation` evidence and excluded from default
-retrieval. Use `crew memory seed` to turn durable lessons into approval-gated
+Journal entries are indexed as `observation` evidence and included in `search`
+and ranked `context` retrieval. Use `crew memory seed` to turn durable lessons into approval-gated
 memory candidates.
 
 ---
@@ -410,9 +410,11 @@ the store. Existing Claude or Codex memory can be imported read-only with
 modifies the source directory.
 
 Implementation completion, review-address completion, and `crew log` draft up
-to three evidence-backed candidates into the inbox automatically. They are
-never imported automatically: review the batch and approve it with `crew
-memory seed` or `mem.py import-inbox`.
+to three evidence-backed candidates into the inbox automatically. Lightweight
+session telemetry records only tool categories and outcomes; after substantive
+work or repeated failures, the stop hook asks for one user-approved candidate
+review. Candidates are never imported automatically: review the batch and
+approve it with `crew memory seed` or `mem.py import-inbox`.
 
 `mem.py` stores typed Markdown units under `~/.agent/memory` and uses SQLite
 FTS5 only as a rebuildable search index. Verify with `python3
@@ -420,6 +422,7 @@ evals/memory/run.py` and `python3 .agent/bin/crew-lint.py`. Rules live in
 `rules/`.
 
 The same store also holds immutable journal observations. They are indexed as
-evidence but excluded from normal retrieval; import legacy journals with
-`mem.py journal import --dry-run` before `mem.py journal import`, and inspect
-raw evidence only with `mem.py search --include-observations`.
+evidence and included in `search` and ranked `context` retrieval (the
+`--mode session` listing excludes them unless `--include-observations` is
+passed); import legacy journals with `mem.py journal import --dry-run` before
+`mem.py journal import`.

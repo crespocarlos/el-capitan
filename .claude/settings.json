@@ -73,6 +73,17 @@
         ]
       }
     ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\" 2>/dev/null; exit 0"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "idle_prompt",
@@ -119,6 +130,14 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/session-logger.sh\" 2>/dev/null; exit 0"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\" 2>/dev/null; exit 0"
           }
         ]
       }
