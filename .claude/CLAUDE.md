@@ -87,3 +87,4 @@ Two systems, keep them partitioned. Journal (`~/.agent/journal/`) — long-term,
 <!-- el-capitan:memory -->
 Run `~/.agent/bin/mem.py context --mode session` at task start and follow `~/.cursor/skills/crew-memory/references/contract.md`.
 <!-- /el-capitan:memory -->
+

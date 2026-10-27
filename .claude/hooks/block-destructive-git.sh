@@ -11,4 +11,6 @@ esac
 if printf '%s' "$cmd" | grep -Eqi '(^|[;& ]+)git[[:space:]]+(reset[[:space:]]+--hard|push.*--force( |$))' && ! printf '%s' "$cmd" | grep -q -- '--force-with-lease'; then
   msg='Destructive git command blocked.'
   if [ "$shape" = claude ]; then jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$m}}'; else jq -n --arg m "$msg" '{permission:"deny",user_message:$m,agent_message:$m}'; fi
+else
+  jq -n '{permission:"allow"}'
 fi
