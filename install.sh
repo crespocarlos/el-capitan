@@ -138,8 +138,7 @@ import sys
 home = Path(sys.argv[1])
 block = """<!-- el-capitan:memory -->
 Run `~/.agent/bin/mem.py context --mode session` at task start and follow `~/.cursor/skills/crew-memory/references/contract.md`.
-<!-- /el-capitan:memory -->
-"""
+<!-- /el-capitan:memory -->"""
 for target in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md"):
     text = target.read_text() if target.exists() else ""
     start, end = text.find("<!-- el-capitan:memory -->"), text.find("<!-- /el-capitan:memory -->")
@@ -147,7 +146,7 @@ for target in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md"):
         text = text[:start] + block + text[end + len("<!-- /el-capitan:memory -->"):]
     else:
         text = text.rstrip() + "\n\n" + block
-    target.write_text(text)
+    target.write_text(text.rstrip() + "\n")
 PY
 fi
 
@@ -195,13 +194,14 @@ backup_if_regular() {
   fi
 }
 
-for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md; do
+for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _MEMORY_TEMPLATE.md; do
   backup_if_regular ~/.agent/"$f"
   run ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
 done
 # ~/.agent/bin
 run rm -f ~/.agent/bin/resolve-task-dir.sh ~/.agent/bin/log-progress.sh
 link_dir_files "$SCRIPT_DIR/.agent/bin" ~/.agent/bin
+prune_broken_symlinks ~/.agent/bin
 if [ "$DRY_RUN" -eq 0 ] && [ ! -d "$HOME/.agent/memory/.git" ]; then
   CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/bin/mem.py" init
 fi

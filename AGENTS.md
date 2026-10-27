@@ -113,4 +113,14 @@ There is no lint, typecheck, or unit test to run.
 
 ## Persistent memory
 
-`mem.py` manages typed, scoped Markdown memories. Verify with `python3 evals/memory/run.py` and `python3 .agent/bin/crew-lint.py`.
+`mem.py` manages typed, repo-scoped Markdown memories in
+`~/.agent/memory`; SQLite FTS5 is a rebuildable index, not the source of
+truth. Run `bash install.sh` once to initialize the store and install
+harness-neutral read instructions. Agents retrieve memory automatically.
+
+Use `crew remember: <lesson>` only for durable, non-derivable information;
+use `crew memory seed` to draft journal candidates for approval, and `crew
+memory doctor` to diagnose the store. `mem.py ingest --source claude|codex
+--path <directory>` imports external memory read-only and never reconfigures
+or edits its source repository. Verify with `python3 evals/memory/run.py` and
+`python3 .agent/bin/crew-lint.py`.

@@ -12,3 +12,8 @@ esac
 ```
 
 Write only durable, non-derivable lessons. Skip facts already available from code, git, or rules; redact secrets; prefer writing nothing. Seed drafts at most two typed candidates per journal entry into `.inbox/`, shows them for approval, and imports only the approved batch.
+
+At implementation completion, review-address completion, and journal writes,
+agents may draft at most three evidence-backed candidates into `.inbox/`.
+Drafting is automatic; promotion is never automatic. Show the batch and wait
+for explicit approval before `mem.py import-inbox`.

@@ -392,4 +392,24 @@ find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -name '*.md' ! -type l
 
 ## Memory and validation
 
-Use `.agent/bin/mem.py` for typed persistent memory and `.agent/bin/crew-lint.py` for workflow consistency. Rules live in `rules/`.
+Run `bash install.sh` once after updating el-capitan. It creates the shared
+`~/.agent/memory` store, installs the `mem.py` command, and adds read
+instructions for Cursor, Claude Code, and Codex.
+
+After that, no routine setup is needed: agents retrieve relevant memory at task
+start. Use `crew remember: <lesson>` only for a durable fact that is not
+derivable from code or project rules. Use `crew memory seed` to draft
+user-approved candidates from the journal, or `crew memory doctor` to check
+the store. Existing Claude or Codex memory can be imported read-only with
+`mem.py ingest --source claude|codex --path <directory>`; the import never
+modifies the source directory.
+
+Implementation completion, review-address completion, and `crew log` draft up
+to three evidence-backed candidates into the inbox automatically. They are
+never imported automatically: review the batch and approve it with `crew
+memory seed` or `mem.py import-inbox`.
+
+`mem.py` stores typed Markdown units under `~/.agent/memory` and uses SQLite
+FTS5 only as a rebuildable search index. Verify with `python3
+evals/memory/run.py` and `python3 .agent/bin/crew-lint.py`. Rules live in
+`rules/`.

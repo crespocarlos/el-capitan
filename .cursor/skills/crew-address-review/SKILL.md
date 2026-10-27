@@ -112,6 +112,13 @@ Only after the user responds.
 
 After all edits are applied, print the summary and the mode-aware next step (see below).
 
+Before the summary, draft zero to three durable, evidence-backed memory
+candidates into `~/.agent/memory/.inbox/` from the accepted review outcomes.
+Do not draft facts already derivable from the changed files or review record;
+do not import any candidate. Show the candidate titles (or `none`) with the
+summary and require a later explicit batch approval through `crew memory seed`
+or `mem.py import-inbox`.
+
 **Idea mode:** Do not edit any files. Instead:
 
 1. If the user chose `none`, skip synthesis entirely — go straight to the summary.

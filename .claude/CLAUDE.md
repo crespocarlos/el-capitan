@@ -45,6 +45,12 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 See `rules/crew-router.mdc`.
 
+**Mapped workflows:** for a command routed to a workflow skill, do **not** call Claude's
+`Skill` tool. The workflow frontmatter intentionally sets
+`disable-model-invocation: true` to prevent unsolicited activation. Instead,
+read the routed `~/.claude/skills/<mapped-skill>/SKILL.md` file and execute its
+workflow inline, including when a user explicitly invokes a mapped command.
+
 ## How to invoke agents (CRITICAL)
 
 **Orchestrator agents** (crew-reviewer, crew-specwriter, crew-pr-resolver) run **inline in the main session** — read their protocol from `~/.claude/agents/crew-<name>.md` and execute it directly. Do NOT dispatch them via Agent tool. Claude Code does not support nested Agent tool calls (subagents cannot spawn subagents), so orchestrators must run in the main session to be able to dispatch persona subagents.
@@ -73,7 +79,16 @@ Append-only. Format: `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. Pipeline state is
 
 ## Memory
 
-Two systems, keep them partitioned. Journal (`~/.agent/journal/`) — long-term, updated manually via `crew log`. Auto-memory (`~/.claude/projects/*/memory/`) — session-scoped, auto-saved. `crew log` is the only bridge — do not cross-pollinate.
+The shared store at `~/.agent/memory` is the durable, harness-neutral source
+of truth. It contains typed, repo-scoped Markdown units; SQLite FTS5 is only a
+rebuildable retrieval index. At task start, read session context through
+`mem.py`; code, documentation, and user instructions always override memory.
+
+Do not write memories automatically. Use `crew remember:` only for durable
+information not available from code, git, or rules. `crew memory seed` drafts
+journal candidates for explicit user approval. Existing Claude Code or Codex
+memory may be imported as a read-only source with `mem.py ingest`; never
+reconfigure or modify its source repository.
 
 ## Invariants
 
@@ -87,4 +102,3 @@ Two systems, keep them partitioned. Journal (`~/.agent/journal/`) — long-term,
 <!-- el-capitan:memory -->
 Run `~/.agent/bin/mem.py context --mode session` at task start and follow `~/.cursor/skills/crew-memory/references/contract.md`.
 <!-- /el-capitan:memory -->
-

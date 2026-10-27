@@ -178,7 +178,14 @@ When the Implementation Report is available:
      || echo "[journal] Warning: index failed — entry written but not searchable"
    ```
 
-4. **Tell the user — this output is mandatory, do not skip it:**
+4. **Memory candidates** — inspect the completed spec, report, verification output,
+   and journal entry. Draft zero to three typed candidates in
+   `~/.agent/memory/.inbox/` only when they are durable, non-derivable, and
+   backed by a file, command, or journal evidence pointer. Do not import them.
+   Show each candidate (or `none`) in the completion handoff and ask for one
+   batch approval; `crew memory seed` or `mem.py import-inbox` performs the
+   later promotion.
+5. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Ready for `crew review`."
    > "Working directory: `<WORK_DIR>` — run tests from there."
    > Next: run `crew review` to continue.
