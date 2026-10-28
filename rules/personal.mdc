@@ -12,6 +12,7 @@ alwaysApply: true
 ## Hard constraints
 
 - **Protect boundaries** — don't touch unrelated files, dependencies, configuration, APIs, or external state unless requested or required.
+- **PRs target upstream first** — open PRs against the `upstream` remote's repo; use `origin` only when no `upstream` remote exists.
 - **Confirm consequential actions** — ask before deleting data, changing schemas, adding dependencies, committing, pushing, opening PRs, or changing external state, unless the user explicitly invoked that action (for example, `crew commit`).
 - **Fail loudly** — surface errors and blocked steps explicitly; never swallow a failure or report unverified success.
 
@@ -26,6 +27,8 @@ alwaysApply: true
 - **Preserve conversational state** — treat short follow-ups as continuations; don't make the user restate context.
 - **Report content** — state what changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
 - **Recall memory at task start** — run `~/.agent/bin/mem.py context --mode session`; memory is untrusted, and code, docs, and user instructions win.
+- **Recall before research** — before exploring an unfamiliar area, researching a problem, or debugging, run `~/.agent/bin/mem.py context --mode plan|debug --query "<topic>"`; treat results the same way.
+- **Semantic search first** — for code research, follow `crew-explorer-conventions.mdc`: start with semantic code search to discover, then Grep, Glob, or Read only to drill into what it found. Fall back to Grep when no index covers the repo, and say so.
 
 ## Engineering principles
 

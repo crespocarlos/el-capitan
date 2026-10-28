@@ -37,29 +37,24 @@ UPSTREAM_URL=$(git remote get-url upstream 2>/dev/null)
 UPSTREAM_REPO=$(_parse_repo "$UPSTREAM_URL")
 ```
 
-If `UPSTREAM_REPO` is non-empty, `origin` is a fork. Resolve `BASE` from the repo the PR will target: the default branch of `upstream` for a fork, otherwise of `origin`.
+**Target upstream first.** If `UPSTREAM_REPO` is non-empty, `origin` is a fork and the PR targets `upstream`. Only when there is no `upstream` remote does the PR target `origin`. Resolve `BASE` from the repo the PR will target: the default branch of `upstream` for a fork, otherwise of `origin`.
 
 ```bash
 BASE=$(~/.agent/bin/default-branch.sh "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)")
 ```
 
-Ask: "Does this branch stack on another branch? If so, name it." If it does, set `BASE` to that branch. Then check whether `BASE` exists on upstream:
-
 ```bash
-if [ -n "$UPSTREAM_REPO" ]; then
-  # Check if base branch exists on upstream
-  if GH_PAGER=cat gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null; then
-    TARGET_REPO="$UPSTREAM_REPO"
-  else
-    # Base branch only exists on the fork — target the fork
-    TARGET_REPO="$ORIGIN_REPO"
-  fi
-else
-  TARGET_REPO="$ORIGIN_REPO"
-fi
+TARGET_REPO="${UPSTREAM_REPO:-$ORIGIN_REPO}"
 ```
 
-This handles the common case where feature branches are based on other feature branches in your fork, not on upstream's main.
+Ask: "Does this branch stack on another branch? If so, name it." If it does, set `BASE` to that branch. With an `upstream` remote, that base must exist there, so check; if it does not, the PR cannot target upstream. Say so, and switch to `origin` only after the user confirms:
+
+```bash
+if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/default-branch.sh upstream)" ]; then
+  GH_PAGER=cat gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null \
+    || echo "BASE '$BASE' not found on $UPSTREAM_REPO (or the check failed); ask before targeting $ORIGIN_REPO"
+fi
+```
 
 Read these sources (in order of priority):
 

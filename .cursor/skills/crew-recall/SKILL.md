@@ -1,6 +1,6 @@
 ---
 name: crew-recall
-description: "Search persistent memory for past decisions, lessons, and prior incidents. Use when the user asks whether something was seen, decided, or learned before. Alias: 'crew recall: <question>'."
+description: "Search persistent memory for past decisions, lessons, and prior incidents. Use when the user asks whether something was seen, decided, or learned before. For recall before research, exploration, or debugging, `personal.mdc` runs `mem.py context` instead. Alias: 'crew recall: <question>'."
 ---
 
 # Memory recall
