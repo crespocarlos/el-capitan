@@ -1,12 +1,12 @@
-## Outcome logging
-
-For every finding, run `~/.agent/bin/review-findings.py outcome --review-dir <review-dir> --fingerprint <id> --persona <persona> --label <label> --outcome <fixed|rejected|deferred|skipped> --reason <reason> [--memory-id <id>]`. It appends immutable JSONL records to `<review dir>/../outcomes.jsonl`. For rejected findings, draft a repo-scoped `feedback` candidate into `.inbox/` titled `reviewer false positive: …` and include `Don't apply when`. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on exit 2 print `warning: memory unavailable`.
-
 ---
 disable-model-invocation: true
 name: crew-address-review
 description: "Work through findings from the most recent crew review inline. Trigger: 'crew review address'."
 ---
+
+## Outcome logging
+
+For every finding, run `~/.agent/bin/review-findings.py outcome --review-dir <review-dir> --fingerprint <id> --persona <persona> --label <label> --outcome <fixed|rejected|deferred|skipped> --reason <reason> [--memory-id <id>]`. It appends immutable JSONL records to `<review dir>/../outcomes.jsonl`. For rejected findings, draft a repo-scoped `feedback` candidate into `.inbox/` titled `reviewer false positive: …` and include `Don't apply when`. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on exit 2 print `warning: memory unavailable`.
 
 **Workflow**: build | **Stage**: post-review
 

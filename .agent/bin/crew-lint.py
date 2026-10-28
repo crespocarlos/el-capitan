@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 
 MAX_ALWAYS_RULE_TOKENS = 7000
+# The source of truth for skills that may activate without an explicit `crew` command.
+MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test"}
 
 
 def files(root: Path) -> list[Path]:
@@ -39,6 +41,15 @@ def rel(root: Path, path: Path) -> str:
 
 def line_no(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
+
+
+def parse_frontmatter(text: str) -> tuple[str | None, str | None, str | None]:
+    if not text.startswith("---\n"):
+        return None, "missing", "add YAML frontmatter at the start of the file"
+    value, separator, _ = text[4:].partition("\n---\n")
+    if not separator:
+        return None, "invalid", "close YAML frontmatter"
+    return value, None, None
 
 
 def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
@@ -104,24 +115,43 @@ def lint_rule_setup(root: Path) -> list[tuple[str, int, str, str]]:
             continue
 
         text = path.read_text(errors="replace")
-        if not text.startswith("---\n"):
+        frontmatter_text, error_kind, error = parse_frontmatter(text)
+        if error:
             findings.append(
-                (name, 1, "missing-rule-frontmatter", "add YAML frontmatter")
+                (name, 1, f"{error_kind}-rule-frontmatter", error)
             )
             continue
-        frontmatter, separator, _ = text[4:].partition("\n---\n")
-        if not separator:
-            findings.append(
-                (name, 1, "invalid-rule-frontmatter", "close YAML frontmatter")
-            )
-            continue
-        if not re.search(r"^description:\s*\S", frontmatter, re.MULTILINE):
+        if not re.search(r"^description:\s*\S", frontmatter_text, re.MULTILINE):
             findings.append(
                 (name, 1, "invalid-rule-frontmatter", "add description")
             )
-        if not re.search(r"^alwaysApply:\s*(?:true|false)\s*$", frontmatter, re.MULTILINE):
+        if not re.search(r"^alwaysApply:\s*(?:true|false)\s*$", frontmatter_text, re.MULTILINE):
             findings.append(
                 (name, 1, "invalid-rule-frontmatter", "set alwaysApply true or false")
+            )
+    return findings
+
+
+def lint_skill_setup(root: Path) -> list[tuple[str, int, str, str]]:
+    findings: list[tuple[str, int, str, str]] = []
+    for path in sorted((root / ".cursor/skills").glob("*/SKILL.md")):
+        text = path.read_text(errors="replace")
+        name = rel(root, path)
+        frontmatter_text, _, error = parse_frontmatter(text)
+        if error:
+            findings.append((name, 1, "invalid-skill-frontmatter", error))
+            continue
+        for key in ("name", "description"):
+            if not re.search(rf"^{key}:\s*\S", frontmatter_text, re.MULTILINE):
+                findings.append((name, 1, "invalid-skill-frontmatter", f"add {key}"))
+        skill_name = path.parent.name
+        if skill_name not in MODEL_INVOCABLE_SKILLS and not re.search(
+            r"^disable-model-invocation:\s*true\s*$", frontmatter_text, re.MULTILINE
+        ):
+            findings.append(
+                (name, 1, "missing-disable-model-invocation",
+                 "set disable-model-invocation: true or add the skill to "
+                 "MODEL_INVOCABLE_SKILLS")
             )
     return findings
 
@@ -130,6 +160,7 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
     findings: list[tuple[str, int, str, str]] = []
     findings.extend(lint_tool_catalog(root))
     findings.extend(lint_rule_setup(root))
+    findings.extend(lint_skill_setup(root))
     all_files = files(root)
     rule_dir = root / "rules"
     rules = (
@@ -185,13 +216,11 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
             ):
                 findings.append((name, line, "swallowed-call",
                                  "memory command failure is hidden"))
-        if path.suffix == ".md" and (
-            "/agents/" in name or "/skills/" in name
-        ):
+        if path.suffix == ".md" and "/agents/" in name:
             if text.startswith("---"):
-                frontmatter = text.split("---", 2)[1]
+                agent_frontmatter = text.split("---", 2)[1]
                 for key in ("name:", "description:"):
-                    if key not in frontmatter:
+                    if key not in agent_frontmatter:
                         findings.append((name, 1, "bad-frontmatter",
                                          f"frontmatter lacks {key[:-1]}"))
             for match in re.finditer(r"\]\((references/[^)#]+)\)", text):

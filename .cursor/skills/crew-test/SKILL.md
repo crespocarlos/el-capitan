@@ -1,8 +1,9 @@
 ---
-disable-model-invocation: true
 name: crew-test
-description: "Discover and run tests scoped to the current git diff. Trigger: 'crew test'."
+description: "Discover and run tests scoped to the current git diff. Use only when the user explicitly asks to run or verify tests for the current changes. Alias: 'crew test'."
 ---
+
+<!-- Model may run this only after an explicit request to test or verify changes. -->
 
 **Workflow**: build | **Stage**: test
 

@@ -2,6 +2,7 @@
 name: crew-evals
 description: "Inspect and compare evaluation experiments. Trigger: 'crew evals', or after an eval run when scores need explaining or comparing."
 ---
+
 # Evals
 
 Two tools, both read-only and stdlib-only. Elasticsearch configuration uses `ES_URL`, plus `ES_API_KEY` or `ES_USER` and `ES_PASS`; exit 2 means the service is unavailable.

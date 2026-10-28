@@ -1,7 +1,6 @@
 ---
-disable-model-invocation: true
 name: crew-diagnose
-description: "Diagnose a Cursor or Claude transcript. Trigger: 'crew diagnose <transcript>'."
+description: "Diagnose a Cursor or Claude transcript against the crew protocol. Use when the user asks why an agent run diverged, skipped a step, or misrouted, and supplies a transcript. Alias: 'crew diagnose <transcript>'."
 ---
 # Diagnose
 

@@ -16,11 +16,10 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 See `rules/crew-router.mdc`.
 
-**Mapped workflows:** for a command routed to a workflow skill, do **not** call Claude's
-`Skill` tool. The workflow frontmatter intentionally sets
-`disable-model-invocation: true` to prevent unsolicited activation. Instead,
-read the routed `~/.claude/skills/<mapped-skill>/SKILL.md` file and execute its
-workflow inline, including when a user explicitly invokes a mapped command.
+**Mapped workflows:** for an explicit `crew <command>`, do **not** call Claude's
+`Skill` tool. Read the routed `~/.claude/skills/<mapped-skill>/SKILL.md` file
+and execute its workflow inline. Skills without `disable-model-invocation: true`
+may also activate for a matching non-`crew` request.
 
 ## How to invoke agents (CRITICAL)
 
