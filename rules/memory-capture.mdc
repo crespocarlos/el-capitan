@@ -1,3 +1,8 @@
+---
+description: "Persistent-memory capture criteria and approval protocol."
+alwaysApply: true
+---
+
 # Memory Capture
 
 Persistent memory improves repeated work; it is not a transcript archive.

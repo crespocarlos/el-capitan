@@ -1,3 +1,8 @@
+---
+description: "Prompt authoring and evaluation requirements."
+alwaysApply: true
+---
+
 # Prompt engineering guide
 
 Prompt changes are code changes: define the intended behavior, test representative

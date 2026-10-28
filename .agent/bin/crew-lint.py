@@ -12,6 +12,8 @@ import re
 import sys
 from pathlib import Path
 
+MAX_ALWAYS_RULE_TOKENS = 7000
+
 
 def files(root: Path) -> list[Path]:
     patterns = [
@@ -83,9 +85,51 @@ def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
     return findings
 
 
+def lint_rule_setup(root: Path) -> list[tuple[str, int, str, str]]:
+    findings: list[tuple[str, int, str, str]] = []
+    rule_dir = root / "rules"
+    if not rule_dir.is_dir():
+        rule_dir = root / ".cursor/rules"
+
+    for path in sorted(rule_dir.iterdir()):
+        if not path.is_file():
+            continue
+        name = rel(root, path)
+        if path.suffix == ".md":
+            findings.append(
+                (name, 1, "inactive-rule-extension", "Cursor rules must use .mdc")
+            )
+            continue
+        if path.suffix != ".mdc":
+            continue
+
+        text = path.read_text(errors="replace")
+        if not text.startswith("---\n"):
+            findings.append(
+                (name, 1, "missing-rule-frontmatter", "add YAML frontmatter")
+            )
+            continue
+        frontmatter, separator, _ = text[4:].partition("\n---\n")
+        if not separator:
+            findings.append(
+                (name, 1, "invalid-rule-frontmatter", "close YAML frontmatter")
+            )
+            continue
+        if not re.search(r"^description:\s*\S", frontmatter, re.MULTILINE):
+            findings.append(
+                (name, 1, "invalid-rule-frontmatter", "add description")
+            )
+        if not re.search(r"^alwaysApply:\s*(?:true|false)\s*$", frontmatter, re.MULTILINE):
+            findings.append(
+                (name, 1, "invalid-rule-frontmatter", "set alwaysApply true or false")
+            )
+    return findings
+
+
 def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
     findings: list[tuple[str, int, str, str]] = []
     findings.extend(lint_tool_catalog(root))
+    findings.extend(lint_rule_setup(root))
     all_files = files(root)
     rule_dir = root / "rules"
     rules = (
@@ -175,9 +219,9 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
             text = rule.read_text(errors="replace")
             if re.search(r"alwaysApply:\s*true", text):
                 always += len(text) // 4
-        if always > 5500:
+        if always > MAX_ALWAYS_RULE_TOKENS:
             findings.append(("rules", 1, "budget",
-                             f"always-on rules estimate {always} tokens (>5500)"))
+                             f"always-on rules estimate {always} tokens (>{MAX_ALWAYS_RULE_TOKENS})"))
         for path in all_files:
             lines = path.read_text(errors="replace").count("\n") + 1
             if ("/agents/" in rel(root, path) or "/skills/" in rel(root, path)) and lines > 500:

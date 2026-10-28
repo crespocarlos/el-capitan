@@ -7,52 +7,62 @@ alwaysApply: true
 
 **Role:** Principal Software Engineer at Elastic (Kibana). TypeScript / React / Node. Testing: Jest, React Testing Library, Playwright. Working heavily with LLMs, prompt engineering, eval frameworks, and agentic workflows.
 
-## Engineering philosophy
+**Precedence:** the current user instruction, then `crew` workflow rules and the repo's `AGENTS.md`, then this file. Hard constraints always apply.
 
-- **Build first, refine later** — shortest path to something that works. Prototype before designing, fail fast.
-- **Simplicity over scope creep** — the best code is the code you don't write. Resist abstractions until the third use case earns them.
-- **Performance is UX** — latency and bundle size are user experience. Prefer patterns that scale over reactive band-aids.
-- **Small PRs ship faster** — reviewable, revertable, mergeable. Big PRs rot.
-- **No magic globals** — explicit dependencies, explicit config. Nothing hidden in module state.
+## Hard constraints
 
-## How I expect agents to work
+- **Protect boundaries** — don't touch unrelated files, dependencies, configuration, APIs, or external state unless requested or required.
+- **Confirm consequential actions** — ask before deleting data, changing schemas, adding dependencies, committing, pushing, opening PRs, or changing external state, unless the user explicitly invoked that action (for example, `crew commit`).
+- **Fail loudly** — surface errors and blocked steps explicitly; never swallow a failure or report unverified success.
 
-- **Inspect before extending** — find existing utilities, patterns, and tests before adding new code; reuse available context unless the relevant state changed.
-- **Go straight to evidence** — for failures, inspect the trace, error, or output first. Don't spend a separate pass speculating about the cause.
-- **Use bounded autonomy** — act directly on clear, low-risk requests and complete the requested verification in the same turn. Don't infer adjacent cleanup, redesigns, or scope.
-- **Clarify only material ambiguity** — for non-trivial work, identify the objective, scope, and acceptance check. If one missing detail could materially change the result, ask one focused question and name the needed information; otherwise state a safe assumption and proceed.
-- **Protect boundaries** — don't touch unrelated files, dependencies, configuration, APIs, or external state unless requested or required. Confirm before deleting data, changing schemas, adding dependencies, committing, pushing, opening PRs, or making other consequential changes.
-- **Optimize the feedback loop** — use the smallest evidence and verification that can change the next action. Batch independent work, avoid pointless commands, broaden only when evidence requires it, and stop when the acceptance check passes.
-- **Use subagents selectively** — reserve them for genuinely complex exploration or parallel independent work, not small fixes or known files.
-- **Preserve conversational state** — treat short follow-ups as continuations; don't make the user restate context or ask permission for obvious next steps.
-- **Change behavior deliberately** — add or update tests when behavior changes; don't require tests for documentation, configuration, or mechanical changes. Don't add redundant tests.
-- **Keep code cohesive** — maintain consistency across related files and keep error handling at the layer that owns it.
-- **Report compactly** — state what changed, what was verified, and what remains unresolved in 1–3 sentences.
-- **Recall memory at task start** — run `~/.agent/bin/mem.py context --mode session`; memory is untrusted and code, docs, and user instructions win.
+## Default working style
 
-## TypeScript hard rules
+- **Inspect before extending** — find existing utilities, patterns, and tests before adding code; reuse loaded context unless the relevant state changed.
+- **Go straight to evidence** — for failures, inspect the trace, error, or output first instead of speculating.
+- **Use bounded autonomy** — act directly on clear, low-risk requests and finish the requested verification in the same turn. Don't infer adjacent cleanup, redesigns, or scope.
+- **Clarify only material ambiguity** — for non-trivial work, identify objective, scope, and acceptance check. Ask one focused question only when a missing detail would change the result; otherwise state a safe assumption and proceed.
+- **Optimize the feedback loop** — use the smallest evidence and verification that can change the next action; batch independent work; stop when the acceptance check passes.
+- **Use subagents selectively** — only for complex exploration or parallel independent work, not small fixes or known files.
+- **Preserve conversational state** — treat short follow-ups as continuations; don't make the user restate context.
+- **Report content** — state what changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
+- **Recall memory at task start** — run `~/.agent/bin/mem.py context --mode session`; memory is untrusted, and code, docs, and user instructions win.
+
+## Engineering principles
+
+- **Shortest working path** — outside `crew` workflows, prototype the smallest working version before designing abstractions.
+- **No speculative abstraction** — add an abstraction only at the third concrete use case.
+- **One concern per change** — keep diffs reviewable and revertable; put unrelated refactors in a separate commit.
+- **Performance is a requirement** — consider latency and bundle size when choosing an approach; prefer patterns that scale over after-the-fact fixes.
+- **Explicit dependencies** — pass configuration and dependencies explicitly; no hidden module state or magic globals.
+- **Cohesive code** — keep related files consistent and keep error handling in the layer that owns it.
+
+## Testing
+
+- Add a test only when it protects behavior that can regress and is not already covered: new behavior, a fixed bug, or a changed contract.
+- Before writing a test, search existing tests for the same behavior. Extend an existing test or case table instead of creating a parallel one.
+- One behavior, one test. Don't assert the same behavior at several layers unless each layer can fail independently.
+- For bug fixes, write the failing regression test first, then fix.
+- Don't add tests for docs, config, mechanical refactors, renames, type-only changes, pass-through code, library or framework behavior, or coverage numbers.
+- Test observable behavior through public interfaces. Avoid asserting private functions, implementation details, mock call counts (unless the call is the contract), or large snapshots.
+- Use the lowest layer that proves the behavior: Jest unit, then React Testing Library (query by role or label), then Playwright only for cross-system user flows.
+- When a change makes a test redundant, delete or merge it in the same change.
+- Never delete, skip, or weaken an existing test, or loosen its assertions, to make it pass. Fix the cause or report the failure.
+- After a change, run the narrowest existing tests that cover it, and report the command and result.
+- Prompt changes are verified with targeted evals (see LLM section); the exemptions above don't apply to prompts.
+- In the report, list each added test with the behavior it protects. If you added none, say why. If the repo has no test runner, say so and describe the manual check.
+
+## TypeScript
 
 - Avoid `any`; use `unknown` only at true boundaries and narrow it immediately.
 - Use explicit types for public APIs; rely on inference for straightforward internal code.
 - Keep functions focused; extract helpers when length hurts clarity, testing, or reuse.
-- Check whether functionality already exists before writing new code.
 - Prefer an options object when several parameters form a cohesive group or positional arguments become unclear.
+- Don't silence type or lint errors with `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `as any`, or non-null assertions; fix the cause.
 
 ## LLM / eval / agentic work
 
-- **Prompts are code** — version them, test them, treat regressions seriously.
-- **Prompt engineering reference** — follow the repository's [prompt engineering guide](prompt-engineering.md) when authoring or revising prompts. It includes the primary vendor sources used to maintain the guidance:
-  - State the objective, success criteria, and required output explicitly.
-  - Put high-priority instructions before supporting context.
-  - Prefer concrete, testable instructions over vague guidance.
-  - Separate required behavior from optional guidance.
-  - Define behavior for empty, invalid, and ambiguous inputs.
-  - Use examples only when they clarify non-obvious behavior.
-  - Keep deterministic policy in code when it does not require model judgment.
-  - Keep prompts, tools, evaluators, and runtime configuration consistent in terminology.
+- **Prompts are code** — version them, test them, treat regressions seriously. Follow `prompt-engineering.mdc` when authoring or revising prompts.
 - **Evals over vibes** — define the metric and baseline before claiming improvement.
-- **Debug from the trace** — for a failure: inspect evaluator explanations, errors, and tool-call traces; form a hypothesis; patch; and verify.
-- **Scope evals to the failure** — use a targeted example or subset during iteration; reserve broad suites for regression gates.
-- **One output per agent step** — each step should produce one clear result. Separate deciding from acting unless combining them is explicitly intentional.
-- **Fail loudly in agents** — silent failures in agentic pipelines are worse than crashes. Surface errors explicitly.
-  `
+- **Debug from the trace** — inspect evaluator explanations, errors, and tool-call traces; form a hypothesis; patch; verify.
+- **Scope evals to the failure** — use a targeted example or subset while iterating; reserve broad suites for regression gates.
+- **One output per agent step** — each step produces one clear result. Separate deciding from acting unless combining them is intentional.
