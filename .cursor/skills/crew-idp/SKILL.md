@@ -59,12 +59,11 @@ Separate confirmed outcomes from plausible but unverified effects. Ask the user 
 
 Draft each requested response separately, using the user's exact question as the heading.
 
-- Read [Carlos's writing style](references/carlos-writing-style.md) before drafting or revising.
+- Read `~/.cursor/rules/voice.mdc` in full (Core traits, Never, and the Impact Connection / IDP answers channel) before drafting or revising; it owns voice and wording. If the file is missing, use plain first-person prose with no em dashes or promotional claims.
 - Keep each answer below **2,500 characters**; target **800–1,400 characters** unless the user requests another length.
 - Lead with the 2–4 highest-impact themes, not a chronological activity list.
-- Use direct first-person language and concrete nouns and verbs.
 - Include one meaningful challenge or learning where the question asks for it; do not fabricate a weakness.
-- Explain why each next-half priority matters to the team, customer, reliability, or delivery—not merely that it is planned.
+- Explain why each next-half priority matters to the team, customer, reliability, or delivery, not merely that it is planned.
 - Describe obstacles as specific risks plus the support, decision, dependency, or capacity needed to mitigate them.
 - Do not name confidential Slack participants or quote private content without user approval.
 
@@ -72,7 +71,7 @@ Draft each requested response separately, using the user's exact question as the
 
 When the user supplies draft text, priorities, or obstacles:
 
-- Preserve their structure, claims, and technical terms unless they ask for a substantive rewrite.
+- Preserve their structure, claims, and technical terms unless they ask for a substantive rewrite. Apply the Never list from `voice.mdc` to wording only.
 - Correct grammar, remove repetition, and improve clarity without adding unsupported evidence.
 - Apply the user's per-question format constraints over the default structure.
 - Keep shipped work, work in progress, and future priorities distinct.
@@ -83,19 +82,19 @@ When the user supplies draft text, priorities, or obstacles:
 
 Use at most 2 compact paragraphs:
 
-`<priority/context> — I <contribution>, which <confirmed outcome>. <Learning or challenge and response>.`
+`<priority/context>: I <contribution>, which <confirmed outcome>. <Learning or challenge and response>.`
 
 ### Next six-month focus areas
 
 Use 3 ranked bullets:
 
-`1. <focus area> — <why it matters>, measured by <success signal>.`
+`1. <focus area>: <why it matters>, measured by <success signal>.`
 
 ### Challenges and support needed
 
 Use 2–4 bullets:
 
-`<risk or obstacle> — <likely impact>. Needed: <specific decision, dependency, support, or capacity>.`
+`<risk or obstacle>: <likely impact>. Needed: <specific decision, dependency, support, or capacity>.`
 
 ## Final check
 
