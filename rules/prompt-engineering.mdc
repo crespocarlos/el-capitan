@@ -1,6 +1,7 @@
 ---
 description: "Prompt authoring and evaluation requirements."
-alwaysApply: true
+globs: **/*.md.txt, **/*.md
+alwaysApply: false
 ---
 
 # Prompt engineering guide
@@ -77,4 +78,3 @@ configuration consistent.
 - [Anthropic: Building effective agents](https://www.anthropic.com/research/building-effective-agents)
 - [OpenAI: Prompt engineering](https://platform.openai.com/docs/guides/prompt-engineering)
 - [Google: Gemini prompting strategies](https://ai.google.dev/gemini-api/docs/prompting-strategies)
-

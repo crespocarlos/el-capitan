@@ -30,7 +30,7 @@ Second paragraph (if there's a distinct second idea): another self-contained ins
 EOF
 ```
 
-Omit `--repo` for global entries. The command prints the observation ID.
+`<scope>` is the bare repository name (`kibana`); `OWNER/REPO` is normalized to it. Omit `--repo` for global entries. The command prints the observation ID.
 
 ## After writing
 

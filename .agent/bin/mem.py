@@ -80,7 +80,9 @@ def repo_key():
 def canonical_scope(value):
     if value == "global":
         return "global"
-    return value.removeprefix("repo:")
+    value = value.removeprefix("repo:")
+    owner_repo = re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/([A-Za-z0-9._-]+?)(?:\.git)?", value)
+    return owner_repo.group(1) if owner_repo else value
 
 
 def scope_directory(scope):

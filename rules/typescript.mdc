@@ -1,0 +1,41 @@
+---
+description: "TypeScript and React code organization, typing, and style preferences."
+globs: **/*.ts,**/*.tsx
+alwaysApply: false
+---
+
+# TypeScript and React
+
+Apply when writing or editing TypeScript or React code. The repo's lint config, Prettier, and style guide win over this file; don't restate rules that lint already enforces.
+
+## File organization
+
+- Order module contents: imports, then types and interfaces, then constants, then private helpers, then exported code. Declare a type or constant before the first code that uses it.
+- Use `import type` and `export type` for type-only symbols.
+- Replace magic numbers, strings, and regexes with named `UPPER_CASE` constants at module top.
+- Keep a type or constant local to its file until a second file needs it; then move it to the package's shared `types.ts` or `constants.ts` (in Kibana plugins, under `common/` when both server and browser use it). Sharing a type or constant this way is not an abstraction.
+- Import from a package's public entry point, not its internal paths. Don't add `export *` to plugin `index.ts` files or barrel files that defeat tree-shaking.
+
+## Typing
+
+- Avoid `any`; use `unknown` only at true boundaries and narrow it immediately.
+- Use explicit types for public APIs; rely on inference for straightforward internal code.
+- When a runtime schema exists (`@kbn/config-schema`, zod, io-ts), derive the type from it (`TypeOf<typeof schema>`, `z.infer`) instead of declaring a parallel interface.
+- Model variants as discriminated unions, and make `switch` statements exhaustive with a `never` check in the default branch.
+- Prefer `satisfies`, type guards, or narrowing over `as` assertions.
+- Don't silence type or lint errors with `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `as any`, or non-null assertions; fix the cause.
+
+## Functions and control flow
+
+- Keep functions focused; extract helpers when length hurts clarity, testing, or reuse.
+- Prefer an options object when several parameters form a cohesive group or positional arguments become unclear.
+- Use early returns instead of nested conditionals. Use at most one ternary per expression and never chain them.
+- Prefer immutable updates and `const`; don't mutate function arguments.
+
+## React
+
+- Start independent async work together (`Promise.all`) instead of awaiting it sequentially.
+- Lazy-load heavy components and rarely used code paths (`React.lazy`, dynamic `import()`).
+- Name handler props `on<Subject><Change>` (for example, `onFilterChange`).
+- Don't memoize by default; add `useMemo`, `useCallback`, or `React.memo` when the re-render or computation cost is measured or evident (for example, large lists or expensive derivations).
+- Prefer Emotion (CSS-in-JS) and EUI theme tokens over new SCSS.

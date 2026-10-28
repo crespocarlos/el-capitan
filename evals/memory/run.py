@@ -79,6 +79,10 @@ approval gate.
         journal_add_content = (
             journal_add_path.read_text() if journal_add_path.exists() else ''
         )
+        owner_repo_add = command(
+            store, 'journal', 'add', '--title', 'Owner repo scope', '--tags', 'x',
+            '--repo', 'acme/acme-gamma', journal_dir=journal, input='Owner scoped.\n',
+        )
         manual_observation = command(
             store, 'add', '--type', 'observation', '--scope', 'global',
             '--title', 'immutable observation', input='Manual raw evidence.\n',
@@ -158,6 +162,10 @@ title: Existing deployment copy
                 and 'created: 2026-05-31' in journal_add_content
                 and 'keywords: ["memory"]' in journal_add_content
                 and 'The journal add command records raw evidence.' in journal_add_content
+            ),
+            'owner_repo_scope_normalized': (
+                owner_repo_add.returncode == 0
+                and (store / 'observations' / 'acme-gamma' / f'{owner_repo_add.stdout.strip()}.md').exists()
             ),
             'observations_are_immutable': archive_observation.returncode == 1 and 'immutable' in archive_observation.stderr,
             'unsafe_scope_rejected': (

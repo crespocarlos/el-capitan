@@ -35,6 +35,7 @@ alwaysApply: true
 - **Performance is a requirement** — consider latency and bundle size when choosing an approach; prefer patterns that scale over after-the-fact fixes.
 - **Explicit dependencies** — pass configuration and dependencies explicitly; no hidden module state or magic globals.
 - **Cohesive code** — keep related files consistent and keep error handling in the layer that owns it.
+- **Essential comments only** — comment only what a competent reader can't get from the code: why a non-obvious choice or workaround exists, a hidden constraint or invariant, or a step key to following the flow. Keep each comment short and plain, usually one line; link to an issue or doc instead of explaining at length. Don't narrate what the code does, restate names or types, describe your change ("added", "fixed", "now"), or leave commented-out code; prefer a clearer name or a small helper. Public API doc comments follow the repo's convention. Don't remove existing comments unless they became wrong.
 
 ## Testing
 
@@ -53,11 +54,7 @@ alwaysApply: true
 
 ## TypeScript
 
-- Avoid `any`; use `unknown` only at true boundaries and narrow it immediately.
-- Use explicit types for public APIs; rely on inference for straightforward internal code.
-- Keep functions focused; extract helpers when length hurts clarity, testing, or reuse.
-- Prefer an options object when several parameters form a cohesive group or positional arguments become unclear.
-- Don't silence type or lint errors with `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `as any`, or non-null assertions; fix the cause.
+Follow `typescript.mdc` when writing or editing TypeScript or React code.
 
 ## LLM / eval / agentic work
 

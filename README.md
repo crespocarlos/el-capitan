@@ -268,7 +268,8 @@ el-capitan/
 │   │   ├── crew-router.mdc         # Routing table (always loaded)
 │   │   ├── crew-explorer-conventions.mdc  # Shared tool protocol for explorer subagents
 │   │   └── personal.mdc            # Personal engineering preferences (always loaded)
-│   └── prompt-engineering.mdc       # Always-loaded prompt authoring guidance
+│   ├── prompt-engineering.mdc       # Always-loaded prompt authoring guidance
+│   └── typescript.mdc               # TypeScript/React guidance (loaded for *.ts, *.tsx)
 ├── .cursor/
 │   ├── agents/              # Agent protocols (.md) — symlink to .claude/agents/
 │   │   ├── crew-*.md               # Orchestrator agents

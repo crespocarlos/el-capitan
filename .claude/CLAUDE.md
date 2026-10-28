@@ -4,6 +4,7 @@ Canonical rule files, shared with Cursor:
 
 @~/.cursor/rules/personal.mdc
 @~/.cursor/rules/prompt-engineering.mdc
+@~/.cursor/rules/typescript.mdc
 
 ---
 
