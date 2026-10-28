@@ -1,6 +1,6 @@
 ---
-disable-model-invocation: true
 name: crew-memory
+disable-model-invocation: true
 description: "Manage unified observations and durable memory. Triggers: 'crew remember: <text>' and 'crew memory seed|consolidate|doctor|journal'."
 ---
 

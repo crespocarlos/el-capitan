@@ -216,7 +216,7 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
             ):
                 findings.append((name, line, "swallowed-call",
                                  "memory command failure is hidden"))
-        if path.suffix == ".md" and "/agents/" in name:
+        if path.suffix == ".md" and ("/agents/" in name or path.name == "SKILL.md"):
             if text.startswith("---"):
                 agent_frontmatter = text.split("---", 2)[1]
                 for key in ("name:", "description:"):

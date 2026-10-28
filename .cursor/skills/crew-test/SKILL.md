@@ -3,8 +3,6 @@ name: crew-test
 description: "Discover and run tests scoped to the current git diff. Use only when the user explicitly asks to run or verify tests for the current changes. Alias: 'crew test'."
 ---
 
-<!-- Model may run this only after an explicit request to test or verify changes. -->
-
 **Workflow**: build | **Stage**: test
 
 # Test Runner
@@ -18,13 +16,10 @@ description: "Discover and run tests scoped to the current git diff. Use only wh
 ### Step 1: Resolve TASK_DIR
 
 ```bash
-if [ -n "${CREW_TASK_DIR+x}" ]; then
-  TASK_DIR="$CREW_TASK_DIR"
-else
-  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py) || exit 1
-  export CREW_TASK_DIR="$TASK_DIR"
-fi
+source ~/.agent/bin/task-env.sh
 ```
+
+If `TASK_DIR` is empty, stop with: "No active task. Run `crew spec` first, or set `CREW_TASK_DIR`." Do not use `exit`; it can close the agent shell.
 
 ### Step 2: Get changed files
 
@@ -57,7 +52,7 @@ If no symbols are found, use the basenames of changed files (without extension) 
 **Pre-check before dispatch** — skip tester-explorer when discovery would be redundant:
 
 1. If `$TASK_DIR/SPEC.md` exists and all typed blocks (`### Unit`, `### Integration`, `### E2E`, `### Validation`) that are **present** have a `**Command**` value that is not `"none"` or empty → the spec already has commands; skip to Step 5 using those commands.
-2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`, `.sh`, `.py` config-only) → no importable symbols exist; skip to Step 7 with WARN verdict.
+2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`) → no importable symbols exist; skip to Step 8 with WARN verdict.
 
 Otherwise, launch `tester-explorer` as a subagent with a structured prompt:
 
@@ -90,7 +85,7 @@ Extract test commands from the spec and from tester-explorer results using the f
 
 - If tester-explorer returned `## Frameworks`, extract the `unit` layer command and run it.
 - If tester-explorer returned the old `## Test command` format, use that command directly.
-- If no command is found from any format, skip to Step 7 with WARN verdict.
+- If no command is found from any format, skip to Step 8 with WARN verdict.
 
 ### Step 6: Runbook (scriptable only) + legacy SPEC guard
 
@@ -158,8 +153,6 @@ If verdict is WARN with no command: print `No test command found — skipping au
 - If WARN: print `Verdict: WARN` then `> Next: no test command found — verify manually using the checklist above, then run \`crew review\`.`
 - If FAIL: print `Verdict: FAIL` then `> Next: fix the test failures, then re-run \`crew test\`.`
 
-## Auto-clarity override
+## Plain-language gates
 
-This skill only runs read-only test discovery and test execution commands. No irreversible operations — override not applicable.
-
-Exception: if a test command modifies shared state (e.g. writes to a production database) — surface this plainly before running and ask for confirmation.
+No gate applies, because test discovery and test commands are not irreversible. If a test command modifies shared state (for example, writes to a production database), say so plainly and ask for confirmation before running it.

@@ -7,7 +7,7 @@ source of truth; `crew-lint.py` validates it.
 
 | Category | Commands | Purpose |
 | --- | --- | --- |
-| task | `check-spec-typed-tests.py`, `crew-ls.py`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-bundle.py` | Task state, validation, worktrees, and artifacts |
+| task | `check-spec-typed-tests.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-bundle.py`, `task-env.sh` | Task state, validation, worktrees, and artifacts |
 | review | `dispatch_subagents.py`, `get-diff.sh`, `pr-review-actions.py`, `pr-review-threads.graphql`, `review-findings.py` | Review dispatch, diffs, findings, and PR threads |
 | evals | `evals-inspect.py`, `evals-compare.py` | Inspect, compare, and diagnose evaluation runs |
 | memory | `mem.py` | Durable units and immutable observations |
@@ -19,8 +19,15 @@ source of truth; `crew-lint.py` validates it.
   infrastructure or invalid invocation.
 - `get-diff.sh` is source-only; it exports review context and intentionally
   does not implement an executable `--help`.
+- `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR`.
+  Skills source it instead of copying the resolver block.
+- `default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the
+  single definition used by skills and `manage-worktree.py`.
 - `manage-worktree.py` is stateful. Its usage output is available with
   `--help`; do not use smoke tests that create worktrees.
+- `manage-worktree.py` auto-prunes only worktrees whose remote branch is gone and
+  that are clean. It deletes the local branch with `git branch -d` and keeps
+  unmerged ones; merged branches with a live remote are left to `crew cleanup`.
 - The Elasticsearch tools are read-only. `evals-inspect.py` and
   `evals-compare.py` use `ES_URL`, plus `ES_API_KEY` or `ES_USER`/`ES_PASS`.
 - The repository is standard-library-only. `requirements.txt` documents that

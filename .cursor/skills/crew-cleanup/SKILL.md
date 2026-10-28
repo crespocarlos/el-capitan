@@ -31,7 +31,7 @@ For each non-main worktree, determine its status:
 - **Active**: neither gone nor merged — still in use
 
 ```bash
-DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
+DEFAULT_BRANCH=$(~/.agent/bin/default-branch.sh)
 ```
 
 ### Step 4: Present the table
@@ -55,9 +55,11 @@ Ask: "Remove all stale worktrees? (or specify numbers to keep)"
 For each confirmed removal:
 
 ```bash
-git worktree remove <path>
-git branch -D <branch>
+git worktree remove <path> && git branch -d <branch>   # merged
+git worktree remove <path> && git branch -D <branch>   # gone, confirmed in Step 5
 ```
+
+Chain with `&&`: if removal is refused, the branch must survive. Report the refused worktree and leave its task directories in place; do not offer them in the task-directory step below. If `-d` refuses after the worktree is removed, keep the branch and report it. Use `-D` only for gone branches the user confirmed; for those rows, show the unique-commit count in Step 4 (`git rev-list --count origin/$(~/.agent/bin/default-branch.sh)..<branch>`). Squash-merged branches show a nonzero count, so treat it as information, not proof of unmerged work.
 
 Also remove associated task directories. Multiple tasks can share the same branch (the spec says "Multiple specs can coexist per branch"), so collect all matches and confirm each individually before removing:
 
@@ -73,19 +75,24 @@ done < <(~/.agent/bin/resolve-task-dir.py   --remote "$WORKTREE_REMOTE" --branch
 
 if [ "${#MATCHING_DIRS[@]}" -eq 0 ]; then
   echo "No task directories found for branch '$WORKTREE_BRANCH'."
-elif [ "${#MATCHING_DIRS[@]}" -eq 1 ]; then
-  rm -rf "${MATCHING_DIRS[0]}"
-  echo "Removed task directory: ${MATCHING_DIRS[0]}"
 else
-  # Multiple tasks for the same branch — present each and ask which to remove
-  echo "Found ${#MATCHING_DIRS[@]} task directories for branch '$WORKTREE_BRANCH':"
   for i in "${!MATCHING_DIRS[@]}"; do
     slug=$(python3 -c "import json; d=json.load(open('${MATCHING_DIRS[$i]}/.task-id')); print(d.get('slug','unknown'))" 2>/dev/null || echo "unknown")
     echo "  $((i+1)). ${MATCHING_DIRS[$i]} (slug: $slug)"
   done
-  # Ask: "Remove which task directories? (all / none / comma-separated numbers)"
-  # Remove only those the user confirms
 fi
+```
+
+Ask for every listed task directory, even when only one matches: "Remove which task directories? (all / none / comma-separated numbers)". Store the confirmed paths in `CONFIRMED_DIRS`, then remove them:
+
+```bash
+root=$(cd "$HOME/.agent/tasks" && pwd -P)
+for dir in "${CONFIRMED_DIRS[@]}"; do
+  real=$(cd "$dir" 2>/dev/null && pwd -P) || { echo "skipped (missing): $dir" >&2; continue; }
+  case "$real" in "$root"/?*) ;; *) echo "skipped (not a task directory): $dir" >&2; continue ;; esac
+  [ -f "$real/.task-id" ] || { echo "skipped (no .task-id): $dir" >&2; continue; }
+  rm -rf "$real" && echo "Removed task directory: $real"
+done
 ```
 
 ### Step 7: Summary
@@ -96,19 +103,20 @@ Show what was removed:
 Removed N worktrees, N branches, N task directories.
 ```
 
-List any that failed removal (e.g. uncommitted changes in the worktree — `git worktree remove` will refuse).
+List any that failed removal (e.g. uncommitted changes in the worktree — `git worktree remove` will refuse). Also list worktrees removed with the branch kept (`-d` refused) and any skipped task directories.
 
 ## Rules
 
 - Never remove the main worktree
+- `git branch -D` only for gone branches the user confirmed; merged branches use `-d`
 - Always confirm before removing — never silent
-- If a worktree has uncommitted changes, warn the user and skip unless they confirm with `--force`
+- If a worktree has uncommitted changes, `git worktree remove` refuses. Report it and skip it; this skill never forces removal. The user removes it manually.
 
-## Auto-clarity override
+## Plain-language gates
 
-Drop to plain language before:
+Use plain language, without compressed summaries, before:
 
 - Running `git worktree remove` on any worktree — list all worktrees to be removed plainly (path + branch) before executing; this cannot be undone without re-checking out the branch
 - Any worktree with uncommitted changes — state the files at risk explicitly
 
-Resume compressed mode after confirmation.
+Continue after confirmation.

@@ -14,19 +14,12 @@ Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and use
 
 ### Step 1: Resolve task state
 
-First, check if the user's message contains a file path ending in `SPEC.md` or `spec.md` (e.g. `here is the spec /some/path/to/spec.md`). If found, attempt to read that file. If the read fails (file not found), stop immediately: 'Cannot read [path] — check the path and try again.' If the file exists but has no `## Status` section or the status value is not `approved`, stop: 'Spec status is [value] — get approval before implementing.' Otherwise, set `TASK_DIR` to its parent directory, export `CREW_TASK_DIR="$TASK_DIR"`, and skip to Step 2.
+First, check if the user's message contains a file path ending in `SPEC.md` or `spec.md` (e.g. `here is the spec /some/path/to/spec.md`). If found, attempt to read that file. If the read fails (file not found), stop immediately: 'Cannot read [path] — check the path and try again.' If the file exists but has no `## Status` section or the status value (compared case-insensitively) is neither `approved` nor `IMPLEMENTING`, stop: 'Spec status is [value]; expected `approved` or `IMPLEMENTING`.' Otherwise, set `TASK_DIR` to its parent directory, export `CREW_TASK_DIR="$TASK_DIR"`, and skip to Step 2.
 
 Otherwise:
 
 ```bash
-if [ -n "${CREW_TASK_DIR+x}" ]; then
-  TASK_DIR="$CREW_TASK_DIR"
-elif TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null); then
-  export CREW_TASK_DIR="$TASK_DIR"
-else
-  echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
-  TASK_DIR=""
-fi
+source ~/.agent/bin/task-env.sh
 ```
 
 If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs (see Step 2).
@@ -65,8 +58,14 @@ If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you
 
 ### Step 3: Auto-recall
 
+Set `SPEC_TITLE` to the SPEC.md title without the leading `#`, and `SPEC_PATHS` to a bash array of the file paths the spec names, for example `SPEC_PATHS=(src/a.ts src/b.ts)` (empty array when none).
+
 ```bash
-MEM_OUT=$(~/.agent/bin/mem.py context --mode implement --query "$SPEC_TITLE" --paths $SPEC_PATHS 2>&1); MEM_RC=$?
+if [ "${#SPEC_PATHS[@]}" -gt 0 ]; then
+  MEM_OUT=$(~/.agent/bin/mem.py context --mode implement --query "$SPEC_TITLE" --paths "${SPEC_PATHS[@]}" 2>&1); MEM_RC=$?
+else
+  MEM_OUT=$(~/.agent/bin/mem.py context --mode implement --query "$SPEC_TITLE" 2>&1); MEM_RC=$?
+fi
 case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
 ```
 
@@ -89,7 +88,7 @@ Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no
   - **worktree** — fetch the default branch and create a worktree:
 
   ```bash
-  DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
+  DEFAULT_BRANCH=$(~/.agent/bin/default-branch.sh)
   git fetch origin "$DEFAULT_BRANCH"
   cd "$(~/.agent/bin/manage-worktree.py -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
   ```
@@ -103,7 +102,7 @@ Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no
   - **new-branch** — create and checkout the branch:
 
     ```bash
-    DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
+    DEFAULT_BRANCH=$(~/.agent/bin/default-branch.sh)
     git fetch origin "$DEFAULT_BRANCH"
     git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
     ```
@@ -192,18 +191,18 @@ When the Implementation Report is available:
 ## Rules
 
 - Never start the worker without a gate-checked, approved SPEC.md
-- Always create the worktree before launching the worker
+- Create a worktree before launching the worker, unless the user chose `here` in Step 4
 - The skill handles ALL user interaction — the worker is non-interactive
 - If the worker returns failures, always surface them to the user with options
 - **Stop after all tasks pass.** Never commit, push, or create a PR. Always output the handoff message (Step 7) before stopping.
 - **ALWAYS follow crew-builder's protocol for implementation.** The orchestrator handles setup and gates. Code changes follow crew-builder's instructions — either via a subagent (Cursor Task tool) or by reading and following crew-builder's protocol directly. Never skip crew-builder's protocol and implement ad-hoc.
 
-## Auto-clarity override
+## Plain-language gates
 
-Drop to plain language at each gate checkpoint:
+Use plain language, without compressed summaries, at each gate checkpoint:
 
 - Before presenting the SPEC.md for approval (Gate 1) — summarize what will be built and list acceptance criteria in plain language
 - Before surfacing worker failures — state what failed and what the user's options are plainly; do not compress error messages or file paths
 - When a task's verify command fails three times — report the failure in full detail without compression (three-failure stop rule)
 
-Resume compressed mode once the user provides direction.
+Continue once the user provides direction.

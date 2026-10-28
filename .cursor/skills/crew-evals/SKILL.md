@@ -1,6 +1,6 @@
 ---
 name: crew-evals
-description: "Inspect and compare evaluation experiments. Trigger: 'crew evals', or after an eval run when scores need explaining or comparing."
+description: "Use when the user asks to inspect, compare, or explain evaluation experiments or scores, including after an eval run. Alias: 'crew evals'."
 ---
 
 # Evals
@@ -10,7 +10,7 @@ Two tools, both read-only and stdlib-only. Elasticsearch configuration uses `ES_
 ## Inspect one experiment: `~/.agent/bin/evals-inspect.py`
 - no argument: `latest`
 - experiment: `scores <exp>` then `failures <exp>`
-- `trace <exp> <example>`: `trace <exp> <example>`
+- `trace <exp> <example>`: full trace for one example.
 - `ki`, `flips <a> <b>`, and `cluster <exp>...` map directly.
 
 ## Compare runs: `~/.agent/bin/evals-compare.py`

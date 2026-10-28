@@ -11,7 +11,7 @@ description: "Log an agentic engineering session to the journal. Trigger: 'crew 
 Resolve context:
 
 ```bash
-TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
+source ~/.agent/bin/task-env.sh
 ```
 
 Read whatever is available: `$TASK_DIR/REPORT.md`, `$TASK_DIR/SESSION.md`, recent `git log -5 --format="%h %s"`. If no active task, synthesize from the current session conversation instead.
@@ -38,9 +38,9 @@ Keep the resulting observation IDs as evidence. Draft zero to three durable type
 
 Then:
 - If the entry contains a **durable rule** worth remembering in every future session, surface it: `"Worth adding to ~/.claude/CLAUDE.md?"`
-- **Drift check** — if `~/.claude/CLAUDE.md` and `rules/personal.mdc` differ in substance, surface: `"Preferences have drifted — consider syncing."`
+- **Drift check** — only when `~/.claude/CLAUDE.md` holds inline preference text (it usually imports `personal.mdc` with `@`) and it differs from `rules/personal.mdc`, surface: `"Preferences have drifted — consider syncing."`
 - If `TASK_DIR` is non-empty: clear `$TASK_DIR/SESSION.md` (buffer flushed).
 
-## Auto-clarity override
+## Plain-language gates
 
 Show the full journal entry draft before writing — observations are immutable and there is no edit or delete.

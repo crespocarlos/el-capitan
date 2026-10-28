@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -33,13 +34,19 @@ def worktrees() -> list[tuple[Path, str | None]]:
     return entries
 
 
+DEFAULT_BRANCH_HELPER = Path(__file__).resolve().with_name("default-branch.sh")
+
+
 def default_branch() -> str | None:
-    result = git("remote", "show", "origin", check=False)
-    for line in result.stdout.splitlines():
-        if "HEAD branch:" in line:
-            branch = line.rsplit(":", 1)[1].strip()
-            return branch if branch != "(not queried)" else None
-    return None
+    try:
+        result = subprocess.run(
+            [str(DEFAULT_BRANCH_HELPER), "--strict"],
+            text=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            check=False, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() or None
 
 
 def fetch_if_stale(git_dir: Path, dry_run: bool) -> None:
@@ -57,23 +64,25 @@ def prune_stale(dry_run: bool) -> None:
         print("dry-run: git worktree prune", file=sys.stderr)
     else:
         git("worktree", "prune", check=False)
-    branch = default_branch()
-    if not branch:
+    default = default_branch()
+    if not default:
         return
     git_dir = Path(git_stdout("rev-parse", "--git-dir"))
     fetch_if_stale(git_dir, dry_run)
-    main = Path(git_stdout("rev-parse", "--show-toplevel")).resolve()
+    main_worktree = Path(git_stdout("rev-parse", "--show-toplevel")).resolve()
+    # Match only the tracking field; the commit subject can contain ": gone]".
+    gone_line = re.compile(r"^[*+ ]*(\S+)\s+\S+\s+(?:\([^)]*\)\s+)?\[[^\]]*: gone\]")
     gone = {
-        line.strip().lstrip("* ").split()[0]
+        match.group(1)
         for line in git("branch", "-vv", check=False).stdout.splitlines()
-        if ": gone]" in line
+        if (match := gone_line.match(line))
     }
     merged = {
-        line.strip().lstrip("* ").strip()
-        for line in git("branch", "--merged", f"origin/{branch}", check=False).stdout.splitlines()
+        line.strip().lstrip("*+ ").strip()
+        for line in git("branch", "--merged", f"origin/{default}", check=False).stdout.splitlines()
     }
     for path, local_branch in worktrees():
-        if not local_branch or path.resolve() == main or local_branch not in gone | merged:
+        if not local_branch or path.resolve() == main_worktree or local_branch not in gone:
             continue
         if dry_run:
             print(f"dry-run: prune stale worktree {path} ({local_branch})", file=sys.stderr)
@@ -81,7 +90,12 @@ def prune_stale(dry_run: bool) -> None:
         removed = git("worktree", "remove", str(path), check=False).returncode == 0
         if removed:
             print(f"Pruned stale worktree: {path} ({local_branch})", file=sys.stderr)
-            if git("branch", "-D", local_branch, check=False).returncode == 0:
+            if local_branch not in merged:
+                print(
+                    f"Kept local branch {local_branch} (remote gone, not merged). Run `crew cleanup` to review it.",
+                    file=sys.stderr,
+                )
+            elif git("branch", "-d", local_branch, check=False).returncode == 0:
                 print(f"Deleted local branch: {local_branch}", file=sys.stderr)
 
 

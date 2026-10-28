@@ -4,10 +4,6 @@ name: crew-address-review
 description: "Work through findings from the most recent crew review inline. Trigger: 'crew review address'."
 ---
 
-## Outcome logging
-
-For every finding, run `~/.agent/bin/review-findings.py outcome --review-dir <review-dir> --fingerprint <id> --persona <persona> --label <label> --outcome <fixed|rejected|deferred|skipped> --reason <reason> [--memory-id <id>]`. It appends immutable JSONL records to `<review dir>/../outcomes.jsonl`. For rejected findings, draft a repo-scoped `feedback` candidate into `.inbox/` titled `reviewer false positive: …` and include `Don't apply when`. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on exit 2 print `warning: memory unavailable`.
-
 **Workflow**: build | **Stage**: post-review
 
 > **Not for PR review thread comments.** To fetch and action unresolved GitHub PR review comments, use `crew resolve PR <#X or URL>` (crew-pr-resolver) instead.
@@ -16,7 +12,7 @@ For every finding, run `~/.agent/bin/review-findings.py outcome --review-dir <re
 
 ## Execution model
 
-**Two modes — detect before starting:**
+**Two modes; Step 1 selects one:**
 
 - **Code mode** (self-review, changes review, PR review): silent file-check → verdict table → apply edits. 3 turns.
 - **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): no files to edit — findings are conceptual. Evaluate inline → present acceptance table → synthesize revised idea if approved. 3 turns.
@@ -38,7 +34,7 @@ Check if a `## Review:` heading is visible in the current session conversation. 
 If no review is visible in context (new session or context reset):
 
 ```bash
-TASK_DIR=$(python3 ~/.agent/bin/resolve-task-dir.py 2>/dev/null)
+source ~/.agent/bin/task-env.sh
 REPO=$(basename $(git rev-parse --show-toplevel))
 OUTPUT_DIR=${TASK_DIR:-/tmp/crew-review-$REPO}
 REVIEW_FILE="$OUTPUT_DIR/REVIEW.md"
@@ -104,16 +100,24 @@ Then ask:
 
 > **"Which of these should I incorporate? (`all` = all Accept/Nit rows; `none` = skip; numbers = cherry-pick). For any 'Needs Input' rows, answer them here."**
 
+### Step 3b: Log non-applied outcomes (code mode only)
+
+Idea mode has no review run directory or fingerprints; skip Step 3b and the `fixed` logging in Step 4.
+
+Run after the user responds, before any edit. `<review-dir>` is the newest directory under `$TASK_DIR/review/` (it holds the persona outputs and `candidates.json`). If `$TASK_DIR` is empty or that directory does not exist, skip outcome logging and say so; do not invent a path. If `findings.json` is missing, run `~/.agent/bin/review-findings.py normalize <review-dir>/candidates.json --output <review-dir>/findings.json` and take `<id>`, `<persona>`, and `<label>` from it. For every finding the user did not approve (a Needs Input row left unanswered counts as `deferred`), run `~/.agent/bin/review-findings.py outcome --review-dir <review-dir> --fingerprint <id> --persona <persona> --label <label> --outcome <rejected|deferred|skipped> --reason <reason> [--memory-id <id>]`. It appends immutable JSONL records to `<review-dir>/../outcomes.jsonl`. Log `fixed` only in Step 4, after the edit lands.
+
+For each rejected finding, draft a repo-scoped `feedback` candidate into `.inbox/` titled `reviewer false positive: <finding>` and include `Don't apply when`. These candidates count toward the Step 4 limit. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on exit 2 print `warning: memory unavailable`.
+
 ### Step 4: Execute approved fixes
 
 Only after the user responds.
 
-**Code mode:** Apply each approved edit. Read the file immediately before editing if it wasn't already loaded.
+**Code mode:** Apply each approved edit. Read the file immediately before editing if it wasn't already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; if an edit fails, log `skipped` with a reason that starts `edit-failed:`, so failures are distinguishable from user decisions.
 
 After all edits are applied, print the summary and the mode-aware next step (see below).
 
 Before the summary, draft zero to three durable, evidence-backed memory
-candidates into `~/.agent/memory/.inbox/` from the accepted review outcomes.
+candidates in total into `~/.agent/memory/.inbox/` from the accepted review outcomes, including the rejected-finding candidates from Step 3b.
 Do not draft facts already derivable from the changed files or review record;
 do not import any candidate. Show the candidate titles (or `none`) with the
 summary and require a later explicit batch approval through `crew memory seed`

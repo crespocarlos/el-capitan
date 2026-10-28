@@ -18,12 +18,7 @@ Run these simultaneously:
 git diff --staged --stat          # size check + file list
 git diff --staged --name-only     # file list for scope check
 
-if [ -n "${CREW_TASK_DIR+x}" ]; then
-  TASK_DIR="$CREW_TASK_DIR"
-else
-  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
-  export CREW_TASK_DIR="$TASK_DIR"
-fi
+source ~/.agent/bin/task-env.sh
 ```
 
 If nothing staged, run `git status --short` and show the user what's unstaged. Ask which files to stage — never `git add -A` without explicit approval (it can pick up .env files, debug logs, scratch files).
@@ -83,7 +78,7 @@ chore(deps): bump @kbn/inference-common to 1.4.0
 
 ### Step 2b: Out-of-scope check
 
-Before proposing the commit message, check for out-of-scope modifications. `TASK_DIR` was already resolved in Step 2 above.
+Before proposing the commit message, check for out-of-scope modifications. `TASK_DIR` was already resolved in Step 1.
 
 If `$TASK_DIR/BASELINE.diff` exists:
 
@@ -101,7 +96,7 @@ Surface all warnings before proposing the commit message. The user decides wheth
 
 Generate the message. Then:
 
-**Auto-commit (default)** — if all of the following are true, commit immediately without asking:
+**Auto-commit (default)** — the explicit `crew commit` invocation approves committing. If all of the following are true, commit immediately:
 - Message follows `type(scope): description` format
 - Message is ≤72 characters
 - No out-of-scope warnings from Step 2b
@@ -131,11 +126,11 @@ fi
 
 > Next: run `crew open pr` to push and open a PR, or push directly if a PR is already open.
 
-## Auto-clarity override
+## Plain-language gates
 
-Drop to plain language before:
+Use plain language before:
 
-- Presenting the commit message for confirmation — show the full message verbatim, not compressed; the user is approving the exact text that will be permanent in git history
+- Presenting the commit message for confirmation (pause mode only; auto-commit shows the message after committing) — show the full message verbatim, not compressed; the user is approving the exact text that will be permanent in git history
 - Any `git commit --amend` operation — state clearly it rewrites the last commit
 
-Resume compressed mode after the user approves the message.
+Continue after the user approves the message.

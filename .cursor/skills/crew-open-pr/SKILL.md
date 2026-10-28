@@ -26,7 +26,6 @@ Do not proceed with PR creation.
 
 ```bash
 BRANCH=$(git branch --show-current)
-BASE=$(git rev-parse --abbrev-ref HEAD@{upstream} 2>/dev/null | sed 's|origin/||' || echo "main")
 ```
 
 Detect fork workflow using git remotes — **do not use `gh repo view`** (freezes in VS Code terminals):
@@ -38,7 +37,13 @@ UPSTREAM_URL=$(git remote get-url upstream 2>/dev/null)
 UPSTREAM_REPO=$(_parse_repo "$UPSTREAM_URL")
 ```
 
-If `UPSTREAM_REPO` is non-empty, `origin` is a fork. Check whether the base branch exists on upstream:
+If `UPSTREAM_REPO` is non-empty, `origin` is a fork. Resolve `BASE` from the repo the PR will target: the default branch of `upstream` for a fork, otherwise of `origin`.
+
+```bash
+BASE=$(~/.agent/bin/default-branch.sh "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)")
+```
+
+Ask: "Does this branch stack on another branch? If so, name it." If it does, set `BASE` to that branch. Then check whether `BASE` exists on upstream:
 
 ```bash
 if [ -n "$UPSTREAM_REPO" ]; then
@@ -72,7 +77,9 @@ Enforce summary quality:
 - Gate length to the change size (see the template) — small changes get a sentence or two; only large, cross-cutting work warrants a second paragraph.
 - Do not group the summary by layer with per-file rename lists.
 
-### Step 3: Push and create the PR
+### Step 3: Approve, push, and create the PR
+
+`BASE` and `TARGET_REPO` come from Step 1. Show the title, description, `BASE`, and `TARGET_REPO`, and wait for approval before running the push. Do not push before approval.
 
 ```bash
 git push -u origin HEAD
@@ -112,14 +119,7 @@ Show the PR URL and a one-line summary.
 After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
 
 ```bash
-if [ -n "${CREW_TASK_DIR+x}" ]; then
-  TASK_DIR="$CREW_TASK_DIR"
-elif TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null); then
-  export CREW_TASK_DIR="$TASK_DIR"
-else
-  echo "Warning: resolve-task-dir failed — check git remote and branch." >&2
-  TASK_DIR=""
-fi
+source ~/.agent/bin/task-env.sh
 ```
 
 ```
@@ -147,12 +147,12 @@ On non-zero exit print `warning: memory unavailable` and continue.
 - **Always ask before creating.** Show the title + description and wait for "looks good" — same pattern as crew-commit.
 - **Always draft.** PRs are opened as drafts. Mark ready manually.
 
-## Auto-clarity override
+## Plain-language gates
 
-Drop to plain language before:
+Use plain language, without compressed summaries, before:
 
 - Running `git push` — state the branch name, remote, and whether this is a force push; force pushes rewrite remote history
 - Running `gh pr create` — show the full PR title, description, base branch, and target repo; PRs are public and trigger CI immediately
 - Any fork workflow where the target repo differs from origin — call out the fork explicitly to avoid misfiling the PR
 
-Resume compressed mode after the PR URL is returned.
+Continue after the PR URL is returned.
