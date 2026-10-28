@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "tools": [
+    {
+      "name": "check-spec-typed-tests.py",
+      "category": "task",
+      "owner": "crew-specwriter",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "crew-lint.py",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "crew-ls.py",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "crew-stats.py",
+      "category": "maintenance",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "dispatch_subagents.py",
+      "category": "review",
+      "owner": "crew-router",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "pr-review-actions.py",
+      "category": "review",
+      "owner": "crew-pr-resolver",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "review-findings.py",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "evals-compare.py",
+      "category": "evals",
+      "owner": "crew-evals",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "evals-inspect.py",
+      "category": "evals",
+      "owner": "crew-evals",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "get-diff.sh",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "source-only",
+      "smoke": "source-only"
+    },
+    {
+      "name": "log-metric.py",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "log-progress.py",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "mem.py",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "resolve-task-dir.py",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "task-bundle.py",
+      "category": "task",
+      "owner": "crew-builder",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "manage-worktree.py",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "argparse",
+      "smoke": "--help"
+    }
+  ],
+  "assets": [
+    {
+      "name": "pr-review-threads.graphql",
+      "category": "review",
+      "owner": "crew-pr-resolver"
+    },
+    {
+      "name": "requirements.txt",
+      "category": "metadata",
+      "owner": "repository"
+    }
+  ]
+}

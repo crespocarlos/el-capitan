@@ -295,7 +295,7 @@ el-capitan/
 
 ```
 ~/.agent/
-├── bin/                     # Symlinked tools from el-capitan/.agent/bin
+├── bin/                     # Flat stable tool surface; see TOOLS.md and tools.json
 ├── journal/                 # Legacy monthly journal files (import-only)
 ├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox
 ├── telemetry/               # Local hook telemetry JSONL

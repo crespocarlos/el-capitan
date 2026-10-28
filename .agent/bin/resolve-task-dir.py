@@ -63,6 +63,7 @@ def main():
         action="store_true",
         help="Return every matching dir (one per line) instead of the single best match",
     )
+    parser.add_argument("--json", action="store_true", help="Emit structured task state")
     args = parser.parse_args()
 
     if args.remote:
@@ -101,32 +102,40 @@ def main():
             matches.append((created_at, task_dir))
 
     if not matches:
-        print("")
+        if args.json:
+            print(json.dumps({"task_dir": None, "remote": current_remote, "branch": current_branch,
+                              "status": None, "matches": []}))
+        else:
+            print("")
         sys.exit(0)
 
     if args.all:
-        for _, task_dir in matches:
-            print(task_dir)
+        if args.json:
+            print(json.dumps({"remote": current_remote, "branch": current_branch, "matches": [
+                {"task_dir": task_dir, "created_at": created_at,
+                 "status": read_spec_status(os.path.join(task_dir, "SPEC.md"))}
+                for created_at, task_dir in matches
+            ]}))
+        else:
+            for _, task_dir in matches:
+                print(task_dir)
         sys.exit(0)
 
     if len(matches) == 1:
-        print(matches[0][1])
-        sys.exit(0)
+        best = matches[0][1]
+    else:
+        best = None
 
-    # Multiple matches: prefer non-DONE, then most recent created_at
-    best = None
-    best_date = ""
-    for created_at, task_dir in matches:
-        spec_path = os.path.join(task_dir, "SPEC.md")
-        spec_status = read_spec_status(spec_path)
-        if spec_status.lower() != "done":
-            try:
+        # Multiple matches: prefer non-DONE, then most recent created_at
+        best_date = ""
+        for created_at, task_dir in matches:
+            spec_path = os.path.join(task_dir, "SPEC.md")
+            spec_status = read_spec_status(spec_path)
+            if spec_status.lower() != "done":
                 date = created_at
-            except Exception:
-                date = ""
-            if best is None or date > best_date:
-                best = task_dir
-                best_date = date
+                if best is None or date > best_date:
+                    best = task_dir
+                    best_date = date
 
     if best is None:
         # All are DONE — pick most recent by created_at
@@ -136,11 +145,27 @@ def main():
         matches_sorted = sorted(matches, key=sort_key, reverse=True)
         best = matches_sorted[0][1]
 
-    print(
-        f"Multiple tasks found for this repo+branch. Using: {best} (most recent non-DONE).",
-        file=sys.stderr,
-    )
-    print(best)
+    if len(matches) > 1:
+        print(
+            f"Multiple tasks found for this repo+branch. Using: {best} (most recent non-DONE).",
+            file=sys.stderr,
+        )
+    if args.json:
+        metadata_path = Path(best) / ".task-id"
+        try:
+            metadata = json.loads(metadata_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            metadata = {}
+        print(json.dumps({
+            "task_dir": best, "remote": current_remote, "branch": current_branch,
+            "status": read_spec_status(os.path.join(best, "SPEC.md")),
+            "slug": metadata.get("slug"), "created_at": metadata.get("created_at"),
+            "has_spec": (Path(best) / "SPEC.md").is_file(),
+            "has_report": (Path(best) / "REPORT.md").is_file(),
+            "has_review": (Path(best) / "REVIEW.md").is_file(),
+        }))
+    else:
+        print(best)
 
 
 if __name__ == "__main__":

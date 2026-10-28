@@ -6,7 +6,7 @@ El-capitan is a spec-driven agentic engineering pipeline. All files are markdown
 - **Agent protocols** — `.cursor/agents/crew-*.md`, `specwriter-*.md`, `reviewer-*.md`, `tester-*.md`
 - **Skill files** — `.cursor/skills/<name>/SKILL.md`
 - **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md`, `_RUNBOOK_TEMPLATE.md`
-- **Tools** — `.agent/bin/` (shell scripts, Python utilities, GraphQL queries)
+- **Tools** — `.agent/bin/` (flat stable command surface; cataloged in `TOOLS.md` / `tools.json`)
 
 ## Bootstrap
 

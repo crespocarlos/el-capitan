@@ -91,7 +91,7 @@ Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no
   ```bash
   DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | awk '{print $NF}')
   git fetch origin "$DEFAULT_BRANCH"
-  cd "$(~/.agent/bin/manage-worktree.sh -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
+  cd "$(~/.agent/bin/manage-worktree.py -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
   ```
 
   After the worktree is created: **bootstrap dependencies.** Read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. Set `WORK_DIR` to the worktree directory.

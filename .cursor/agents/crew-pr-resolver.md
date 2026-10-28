@@ -21,7 +21,7 @@ Resolve the worktree and load repo patterns:
 
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
-cd "$(~/.agent/bin/manage-worktree.sh "$PR_BRANCH")"
+cd "$(~/.agent/bin/manage-worktree.py "$PR_BRANCH")"
 
 MEM_OUT=$(~/.agent/bin/mem.py context --mode debug --query "PR review resolution" 2>&1); MEM_RC=$?
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
@@ -31,7 +31,7 @@ All subsequent steps happen in this worktree. Apply any recalled rules silently 
 
 ### Step 2: Fetch review threads
 
-Fetch threads with `gh api graphql -F query=@$HOME/.agent/bin/pr-review-threads.graphql -f owner=OWNER -f repo=REPO -F pr=PR_NUMBER` (add `-f cursor=CURSOR` on later pages). Loop until `pageInfo.hasNextPage` is false, merging returned threads into the running list and updating the cursor to `endCursor` on each iteration.
+Fetch threads with `~/.agent/bin/pr-review-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER` (add `--cursor CURSOR` on later pages). Loop until `pageInfo.hasNextPage` is false, merging returned threads into the running list and updating the cursor to `endCursor` on each iteration.
 
 **Mandatory filter — apply before any further processing:**
 
@@ -108,15 +108,15 @@ Only after the user responds:
 
 1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in crew-eval-pr-comments). Use the `databaseId` from the first comment in the thread:
    ```bash
-   gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments/DATABASE_ID/replies -f body="🤖 **Verdict** — rationale"
+   ~/.agent/bin/pr-review-actions.py reply --repo OWNER/REPO --pr PR_NUMBER \
+     --thread-id THREAD_NODE_ID --comment-id DATABASE_ID \
+     --body "🤖 **Verdict** — rationale" --execute
    ```
 
 2. **Resolve** the thread using the GraphQL node `id` from the thread:
    ```bash
-   gh api graphql -F threadId="THREAD_NODE_ID" -f query='
-     mutation($threadId: ID!) {
-       resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } }
-     }'
+   ~/.agent/bin/pr-review-actions.py resolve --repo OWNER/REPO --pr PR_NUMBER \
+     --thread-id THREAD_NODE_ID --execute
    ```
 
 Edits the user excluded are not applied. Threads the user excluded are left open and unresolved — no comment, no resolution.

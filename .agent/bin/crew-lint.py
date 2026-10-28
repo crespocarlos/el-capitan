@@ -6,6 +6,8 @@ Usage: crew-lint.py [--root DIR] [--budget]
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -37,8 +39,53 @@ def line_no(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
+    """Validate the flat installed command surface without executing tools."""
+    findings: list[tuple[str, int, str, str]] = []
+    tool_dir = root / ".agent/bin"
+    manifest = tool_dir / "tools.json"
+    if not manifest.exists():
+        return [(".agent/bin", 1, "missing-tool-catalog", "add tools.json")]
+    try:
+        data = json.loads(manifest.read_text())
+        entries = data["tools"]
+        assets = data.get("assets", [])
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+        return [(".agent/bin/tools.json", 1, "invalid-tool-catalog", str(error))]
+    names = [entry.get("name") for entry in entries + assets]
+    if len(names) != len(set(names)) or any(not isinstance(name, str) for name in names):
+        findings.append((".agent/bin/tools.json", 1, "invalid-tool-catalog",
+                         "tool and asset names must be unique strings"))
+    executable = {
+        path.name for path in tool_dir.iterdir()
+        if path.is_file() and path.suffix in {".py", ".sh"} and path.name != "tools.json"
+    }
+    cataloged = {entry.get("name") for entry in entries}
+    for name in sorted(executable - cataloged):
+        findings.append((".agent/bin/tools.json", 1, "uncataloged-tool",
+                         f"{name} is executable but absent from tools.json"))
+    for entry in entries:
+        name = entry.get("name")
+        path = tool_dir / str(name)
+        required = {"name", "category", "owner", "help", "smoke"}
+        missing = required - entry.keys()
+        if missing:
+            findings.append((".agent/bin/tools.json", 1, "invalid-tool-catalog",
+                             f"{name}: missing {', '.join(sorted(missing))}"))
+        elif not path.is_file() or not os.access(path, os.X_OK):
+            findings.append((".agent/bin/tools.json", 1, "cataloged-tool-unavailable",
+                             f"{name} does not exist or is not executable"))
+    for asset in assets:
+        name = asset.get("name")
+        if not (tool_dir / str(name)).is_file():
+            findings.append((".agent/bin/tools.json", 1, "cataloged-asset-unavailable",
+                             f"{name} does not exist"))
+    return findings
+
+
 def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
     findings: list[tuple[str, int, str, str]] = []
+    findings.extend(lint_tool_catalog(root))
     all_files = files(root)
     rule_dir = root / "rules"
     rules = (
@@ -103,6 +150,11 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
                     if key not in frontmatter:
                         findings.append((name, 1, "bad-frontmatter",
                                          f"frontmatter lacks {key[:-1]}"))
+            for match in re.finditer(r"\]\((references/[^)#]+)\)", text):
+                target = path.parent / match.group(1)
+                if not target.is_file():
+                    findings.append((name, line_no(text, match.start()), "missing-reference",
+                                     f"{match.group(1)} does not exist"))
         if path != router and name != ".cursor/agents/crew-reviewer.md":
             for match in re.finditer(r"\|\s*`crew ", text):
                 findings.append((name, line_no(text, match.start()), "routing-drift",

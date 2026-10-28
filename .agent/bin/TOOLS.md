@@ -1,0 +1,44 @@
+# Agent tool catalog
+
+`~/.agent/bin/` is intentionally a flat, stable command surface. `install.sh`
+symlinks its files by basename, so do not move commands into subdirectories
+without an explicit compatibility shim. `tools.json` is the machine-readable
+source of truth; `crew-lint.py` validates it.
+
+| Category | Commands | Purpose |
+| --- | --- | --- |
+| task | `check-spec-typed-tests.py`, `crew-ls.py`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-bundle.py` | Task state, validation, worktrees, and artifacts |
+| review | `dispatch_subagents.py`, `get-diff.sh`, `pr-review-actions.py`, `pr-review-threads.graphql`, `review-findings.py` | Review dispatch, diffs, findings, and PR threads |
+| evals | `evals-inspect.py`, `evals-compare.py` | Inspect, compare, and diagnose evaluation runs |
+| memory | `mem.py` | Durable units and immutable observations |
+| maintenance | `crew-lint.py`, `crew-stats.py` | Repository validation and operational summaries |
+
+## Contracts
+
+- Executable Python tools expose `--help` and use exit code `2` for unavailable
+  infrastructure or invalid invocation.
+- `get-diff.sh` is source-only; it exports review context and intentionally
+  does not implement an executable `--help`.
+- `manage-worktree.py` is stateful. Its usage output is available with
+  `--help`; do not use smoke tests that create worktrees.
+- The Elasticsearch tools are read-only. `evals-inspect.py` and
+  `evals-compare.py` use `ES_URL`, plus `ES_API_KEY` or `ES_USER`/`ES_PASS`.
+- The repository is standard-library-only. `requirements.txt` documents that
+  deliberate absence of third-party dependencies.
+
+## Adding or retiring a tool
+
+1. Add or remove the executable and its `tools.json` entry in the same change.
+2. Give it `--help`, or document a specific exception in `help`.
+3. Assign one category and one owning skill, agent, or `repository`.
+4. Add a deterministic smoke command if the CLI is safe to invoke.
+5. Run `python3 .agent/bin/crew-lint.py` and the listed smoke command.
+
+## Compatibility policy
+
+Command basenames are public because installation creates matching
+`~/.agent/bin/<name>` symlinks. Rename a command only by adding a compatible
+wrapper for one release cycle, documenting the replacement in this catalog,
+and adding the old basename to the catalog with `status: deprecated`. Remove
+the wrapper only after all repository references and installed migration
+cleanup entries are gone.

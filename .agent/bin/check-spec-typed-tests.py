@@ -4,6 +4,9 @@ import re
 import sys
 
 def main():
+    if sys.argv[1:] in (["-h"], ["--help"]):
+        print("usage: check-spec-typed-tests.py <SPEC.md>")
+        return
     if len(sys.argv) != 2:
         print("usage: check-spec-typed-tests.py <SPEC.md>", file=sys.stderr)
         sys.exit(2)

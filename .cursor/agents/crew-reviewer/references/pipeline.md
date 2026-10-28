@@ -2,7 +2,7 @@
 
 Before auto-apply, set `REVIEW_ROOT="$TASK_DIR/review/$(date +%Y%m%d%H%M%S)"`; when no task exists, use `/tmp/crew-review-<repo>/review/$(date +%Y%m%d%H%M%S)`. Persist each dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`.
 
-Write `consolidation.json` as a list of `{fingerprint, persona, label, title, file, disposition, reason, memory_ids}`. The fingerprint is SHA-1 of `file|label-category|normalized title`; disposition is `kept`, `dropped`, or `merged`.
+Write candidate findings as JSON, then run `~/.agent/bin/review-findings.py normalize candidates.json --output consolidation.json`. It assigns SHA-1 fingerprints over `file|label|normalized title` and reports exact duplicates. `consolidation.json` contains findings with `{fingerprint, persona, label, title, file, disposition, reason, memory_ids}`; disposition is `kept`, `dropped`, or `merged`.
 
 ## Pipeline Integration (self-review mode only)
 

@@ -1,6 +1,6 @@
 ## Outcome logging
 
-For every finding, append one JSON line to `<review dir>/../outcomes.jsonl` with `ts`, `review_dir`, `fingerprint`, `persona`, `label`, `outcome` (`fixed`, `rejected`, `deferred`, or `skipped`), `reason`, and `memory_ids`. For rejected findings, draft a repo-scoped `feedback` candidate into `.inbox/` titled `reviewer false positive: …` and include `Don't apply when`. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on exit 2 print `warning: memory unavailable`.
+For every finding, run `~/.agent/bin/review-findings.py outcome --review-dir <review-dir> --fingerprint <id> --persona <persona> --label <label> --outcome <fixed|rejected|deferred|skipped> --reason <reason> [--memory-id <id>]`. It appends immutable JSONL records to `<review dir>/../outcomes.jsonl`. For rejected findings, draft a repo-scoped `feedback` candidate into `.inbox/` titled `reviewer false positive: …` and include `Don't apply when`. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on exit 2 print `warning: memory unavailable`.
 
 ---
 disable-model-invocation: true

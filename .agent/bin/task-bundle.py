@@ -3,6 +3,7 @@
 
 Requires env TASK_DIR to an existing directory. Optional tar when CREW_TASK_BUNDLE_TAR=1.
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -10,6 +11,10 @@ from pathlib import Path
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Write a path-only bundle manifest for TASK_DIR."
+    )
+    parser.parse_args()
     task_dir = os.environ.get("TASK_DIR", "").strip()
     if not task_dir:
         print("usage: set TASK_DIR to the task directory", file=sys.stderr)
