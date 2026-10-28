@@ -141,3 +141,15 @@ language: typescript and not filePath: *test*
 ## Why map_symbols > semantic (when you know what you're looking for)
 
 **Rule:** Know names → `map_symbols_by_query`. Exploring concepts → `discover_directories` first.
+
+## Availability and fallback
+
+- Run `auth_status` once per session before the first search. If the server is not authenticated or a call fails with an auth error, authenticate it (Cursor: MCP settings; Claude Code: `/mcp`), then retry once.
+- If the MCP is still unavailable, fall back to Grep, Glob, and Read, and state in the report that semantic search was unavailable.
+- `list_indices` shows which repositories are indexed. Check it when results look empty or belong to the wrong repo.
+- `document_symbols` lists the symbols of one known file. Use it instead of `read_file_from_chunks` when only the outline is needed.
+- `semantic_code_search` is for natural-language queries when no symbol or directory name is known. Prefer `discover_directories` first for broad concepts.
+
+## ES|QL construction
+
+For any ES|QL query or Elasticsearch/Kibana docs question, also use the elastic-docs MCP: `search_docs` to find the command, function, or syntax, then `get_document_by_url` to confirm it. Check ES|QL syntax and function availability there before writing a query. Use semantic-code-search only to find how Kibana code builds or consumes the query.

@@ -1,7 +1,7 @@
 ---
 name: tester-explorer
 description: "Test file discoverer for crew test. Dispatched by crew-test — do not invoke directly."
-tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__document_symbols, mcp__SemanticCodeSearch__list_indices, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__read_file_from_chunks
+tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
 readonly: false
 maxTurns: 8
 ---
@@ -15,7 +15,7 @@ You discover test files and test commands relevant to the changed symbols provid
 **Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
 
 **Tool budget (hard limit): ≤8 calls total.**
-- 1 × `mcp__SemanticCodeSearch__list_indices`
+- 1 × `mcp__semantic-code-search__list_indices`
 - 2 × semantic search
 - 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is found)
 - 2 × `Read` (1 for AGENTS.md/CLAUDE.md, 1 for framework config or test file)
@@ -27,7 +27,7 @@ You receive two sections in the dispatch prompt: `## Changed files` (one path pe
 **0. Project context** — Read `AGENTS.md` at the repo root (fall back to `CLAUDE.md` if that's what exists) **before** probing `package.json` scripts or jest configs. It often contains the canonical test command, saving a Grep/Read elsewhere. Costs 1 Read slot.
 
 **1. Test files** — files that reference the changed symbols. Discovery strategy:
-- When MCP SemanticCodeSearch is available: use `mcp__SemanticCodeSearch__map_symbols_by_query` with KQL `filePath: *test* AND content: "<symbol>"` per symbol.
+- When MCP SemanticCodeSearch is available: use `mcp__semantic-code-search__map_symbols_by_query` with KQL `filePath: *test* AND content: "<symbol>"` per symbol.
 - Fallback: `rg <symbol> --include="*.test.*" --include="*.spec.*" -l` per symbol.
 - Also check `Glob` patterns: `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`.
 
@@ -35,7 +35,7 @@ You receive two sections in the dispatch prompt: `## Changed files` (one path pe
 - **unit** (jest/vitest): check `package.json` `scripts` field (prefer `test:unit`, then `test`); jest config: `jest.config.js`, `jest.config.ts`, `jest.config.json`; vitest config: `vitest.config.js`, `vitest.config.ts`. If multiple options exist, return the most specific command scoped to the changed module (e.g., `jest --testPathPattern=<dir>`).
 - **integration** (FTR/integration configs): look for `functional_tests` scripts, FTR config files, or integration test directories.
 - **e2e** (playwright): look for `playwright.config.ts`, `playwright.config.js`, or `npx playwright test` scripts. When Playwright config is found, discover conventions from actual test files:
-  - Find test files: when MCP available, use `mcp__SemanticCodeSearch__map_symbols_by_query` with `kql: "filePath: *playwright* OR filePath: *.spec.* OR filePath: *.test.*"`; fallback: `Glob` `**/*.spec.*` / `**/*.test.*`.
+  - Find test files: when MCP available, use `mcp__semantic-code-search__map_symbols_by_query` with `kql: "filePath: *playwright* OR filePath: *.spec.* OR filePath: *.test.*"`; fallback: `Glob` `**/*.spec.*` / `**/*.test.*`.
   - One `Grep` across found files for selector patterns (attributes appearing in `locator()`, `getBy*`, `data-test-subj`, `data-testid`, etc.) AND auth setup (`storageState` paths, `globalSetup` refs, `process.env.*`).
   - Report `selector-convention` (dominant pattern found) and `auth-approach` (auth mechanism, or "not detected") as new fields in `### e2e` output.
   - **Omit both fields when no Playwright test files are found.** Never infer from non-test files.

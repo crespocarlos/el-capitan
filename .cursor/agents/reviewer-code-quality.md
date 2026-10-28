@@ -1,8 +1,8 @@
 ---
 name: reviewer-code-quality
 description: "Systematic quality reviewer with structured checklist. Works on code diffs, plans, and proposals. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__read_file_from_chunks
-readonly: true
+tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
+readonly: false
 maxTurns: 10
 ---
 The artifact may be a code diff, a plan, a design proposal, or a session discussion. Apply your lens to whatever is provided. If you need to verify a finding in the codebase: always start with `symbol_analysis` or `discover_directories`. Grep and Read are fallbacks — only use them after SemanticCodeSearch has identified the relevant file and line range. Never read full files.

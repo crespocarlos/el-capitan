@@ -120,9 +120,9 @@ crew spec <issue URL or description>
 
 | Dependency | Purpose | Install |
 |---|---|---|
-| SemanticCodeSearch MCP | Semantic code search across the codebase inside Claude Code | `claude mcp add --scope user SemanticCodeSearch -- npx @elastic/semantic-code-search-mcp-server` |
+| semantic-code-search MCP | Semantic code search across the codebase (remote, OAuth). Tools appear as `mcp__semantic-code-search__*` | `claude mcp add --transport http --scope user semantic-code-search https://semantic-code-search.elastic.dev/mcp`, then authenticate via `/mcp` |
 
-> **Without SemanticCodeSearch:** crew-specwriter uses file reads and grep for codebase exploration.
+> **Without semantic-code-search:** crew-specwriter uses file reads and grep for codebase exploration.
 
 ### macOS note
 

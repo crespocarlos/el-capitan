@@ -1,7 +1,7 @@
 ---
 name: reviewer-product-flow
 description: "Product manager reviewer for spec alignment, user experience, flow completeness, a11y, and perceived performance. Works on code diffs, plans, proposals, and session discussions. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__read_file_from_chunks
+tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
 readonly: true
 maxTurns: 10
 ---

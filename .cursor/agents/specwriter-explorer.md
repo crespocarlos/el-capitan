@@ -1,7 +1,7 @@
 ---
 name: specwriter-explorer
 description: "Codebase explorer for spec writing. Dispatched by crew-specwriter — do not invoke directly."
-tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__document_symbols, mcp__SemanticCodeSearch__list_indices, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__read_file_from_chunks
+tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
 readonly: false
 maxTurns: 8
 ---
@@ -15,7 +15,7 @@ You explore a codebase to gather context for writing a SPEC.md. Your job is to f
 **Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
 
 **Tool budget (hard limit): ≤8 calls total.**
-- 1 × `mcp__SemanticCodeSearch__list_indices`
+- 1 × `mcp__semantic-code-search__list_indices`
 - 2 × semantic search
 - 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is found)
 - 2 × `Read` (1 for AGENTS.md/CLAUDE.md, 1 for code patterns)

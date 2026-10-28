@@ -1,7 +1,7 @@
 ---
 name: reviewer-prompt-quality
 description: "LLM prompt quality reviewer for token efficiency, context density, instruction clarity, reference integrity, cross-document collisions, and model compatibility. Works on agent/skill/prompt file diffs and on sets of prompts loaded together. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__read_file_from_chunks
+tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
 readonly: true
 maxTurns: 10
 ---

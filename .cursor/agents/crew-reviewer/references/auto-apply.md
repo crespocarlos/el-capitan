@@ -103,7 +103,7 @@ After outputting the consolidated report, check:
 
 The reviewer roster is extensible. To add a domain-specific reviewer:
 
-1. Create a new `.cursor/agents/reviewer-<name>.md` file with YAML frontmatter (`name`, `description`, `tools: Read, Grep, Glob, SemanticSearch, mcp__SemanticCodeSearch__map_symbols_by_query, mcp__SemanticCodeSearch__symbol_analysis, mcp__SemanticCodeSearch__discover_directories, mcp__SemanticCodeSearch__read_file_from_chunks`, `readonly: true`, `maxTurns: 12`) and a persona prompt (identity, scope boundaries, focus areas, severity definitions, output format). Reviewer personas are analysis-only — set `readonly: false` only if the persona genuinely needs to write files (e.g. auto-applying fixes), and document why.
+1. Create a new `.cursor/agents/reviewer-<name>.md` file with YAML frontmatter (`name`, `description`, `tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks`, `readonly: true`, `maxTurns: 12`) and a persona prompt (identity, scope boundaries, focus areas, severity definitions, output format). Reviewer personas are analysis-only — set `readonly: false` only if the persona genuinely needs to write files (e.g. auto-applying fixes), and document why.
 2. Add a signal rule in Step 4 of this orchestrator to determine when the reviewer activates
 3. Assign a context tier in the dispatch table (Step 6)
 
