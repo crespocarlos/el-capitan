@@ -6,82 +6,95 @@ alwaysApply: false
 
 # Prompt engineering guide
 
-Prompt changes are code changes: define the intended behavior, test representative
-inputs, inspect failures, and keep the prompt, tools, evaluators, and runtime
-configuration consistent.
+Prompt changes are code changes: define the behavior, test representative inputs,
+inspect failures, and keep prompts, tools, evaluators, and runtime configuration
+consistent.
 
-## Authoring checklist
+## Authoring
 
-- State the objective, success criteria, and required output explicitly.
-- Put high-priority instructions before supporting context.
-- Prefer concrete, testable instructions over vague guidance.
-- Separate required behavior from optional guidance.
-- Use a predictable structure: role and objective, instructions, constraints,
-  output contract, examples, then task context.
-- Delimit instructions, examples, rules, and context with clear headings or
-  consistently named tags.
-- Define behavior for empty, invalid, and ambiguous inputs.
-- Use examples only when they clarify non-obvious behavior. Make them relevant,
-  varied, and explicitly delimited.
-- Ensure examples agree with the written instructions; models often copy examples
-  more literally than prose.
-- Prefer positive instructions that describe the desired behavior.
-- Explain non-obvious constraints when the rationale improves generalization.
-- Give tool-using agents an escape hatch for missing, invalid, or inapplicable
-  information; require them to say when they cannot proceed.
-- Keep deterministic policy in code when it does not require model judgment.
+- State the objective, success criteria, required output, and behavior for empty,
+  invalid, and ambiguous inputs.
+- Put high-priority instructions before context. Use clear headings or tags to
+  separate instructions, constraints, examples, and task data.
+- Use concrete, positive, testable instructions. Add examples only when they
+  clarify non-obvious behavior; keep them relevant, varied, and consistent.
+- Define output format, length, required fields, and what counts as success.
+- Give tool-using agents an escape hatch for missing or inapplicable information;
+  require them to say when they cannot proceed.
 
 ## Instruction revision
 
-- **Never patch instructions in isolation.** Before changing a prompt, rule, agent, skill, or evaluator, read the complete artifact and the instructions it directly loads or references. Reassess the instruction hierarchy and intended behavior as a whole.
-- Do not append a new instruction merely to counter an observed failure. Revise, merge, reorder, or remove existing guidance so one coherent rule set governs the behavior.
-- Before finalizing, review the complete resulting instruction system for duplicate guidance, contradictions, precedence collisions, stale examples, and rules that cannot be followed together.
-- Keep the smallest coherent rule set that preserves the intended behavior. A smaller replacement is better than an additive exception when it covers the same case.
+- **Never patch instructions in isolation.** Read the complete artifact and its
+  direct references, then reassess hierarchy, behavior, and scope as a whole.
+- Revise, merge, reorder, or remove guidance instead of appending a rule to
+  counter one failure. Before finalizing, remove duplicates, contradictions,
+  stale examples, and instructions that cannot be followed together.
 
 ## Agent and tool guidance
 
-- Persist until the requested work is resolved or a concrete blocker is reached.
-- Plan the next action before using a tool, then ground the action in tool output.
-- Require tool grounding for facts; do not permit guesses where a tool can verify
-  the answer.
-- Make tool arguments hard to misuse through explicit schemas, examples, and
-  actionable error messages.
-- Keep tool descriptions focused on purpose, inputs, outputs, and boundaries.
-- Prefer small, targeted tool calls and concise outputs to control context growth.
-- Separate deciding from acting when a step has meaningful side effects.
-- Fail loudly when an agent cannot complete a required step.
-- For research and diagnosis, maintain competing hypotheses and update confidence
-  as evidence accumulates; verify important claims across sources.
+- Ground factual claims in tool output. Plan the next action before using a tool,
+  keep tool arguments bounded and explicit, and fail loudly on required failures.
+- Prefer small, targeted calls and concise outputs. Separate deciding from acting
+  when a step has meaningful side effects.
+- Keep deterministic policy, validation, retries, branching, and parallel control
+  flow in code when they do not require model judgment. Keep tool descriptions
+  focused on purpose, inputs, outputs, and boundaries.
+- For research and diagnosis, maintain competing hypotheses, update confidence
+  from evidence, and verify important claims across sources.
 
-## Context and output
+## Program, don't prompt
 
-- In long prompts, place bulk context before the instructions that govern it.
-- Restate the highest-priority constraints near the output contract when long
-  context or multiple instruction sources could cause them to be missed.
-- Define output format, length, required fields, and what constitutes a successful
-  result.
-- Keep terminology consistent across prompts, tools, evaluators, and runtime
-  configuration.
+When an LLM workflow has multiple stages, tools, schemas, or evaluators, treat it
+as a program:
 
-## Evaluation
+- Define structured inputs and outputs as an input/output contract. Use field
+  names that explain meaning, and types or schemas for constrained values.
+- Keep stages independently inspectable, testable, and replaceable. Separate
+  context assembly, model calls, tool use, and output validation when useful.
+- Change inference strategies behind the same contract when possible; compare
+  direct prediction, reasoning, tool use, retry, or ensemble strategies against
+  the same metric.
+- Decompose only when it isolates context, enables reuse or inspection, routes
+  work to suitable models, or makes a subtask measurable.
+- Keep the model responsible for judgment and bounded tools responsible for
+  deterministic work. Validate both tool boundaries.
+- Evaluate the complete workflow, not only a prompt. Save configuration and
+  evaluation metadata when results must be reproduced, compared, or rolled back.
 
-- Define a metric and baseline before claiming an improvement.
-- Test representative inputs, including empty, invalid, ambiguous, and edge cases.
-- Use targeted examples while iterating; reserve broad suites for regression
-  checks.
-- Inspect traces and evaluator explanations before adding more instructions.
-- Remove redundant or conflicting rules when behavior diverges.
+For DSPy specifically, a **signature** is its input/output contract. Use a typed
+schema or class-based signature when fields need descriptions or validation; keep
+essential requirements out of unbounded prose. Change modules without changing
+the contract when comparing inference strategies.
 
-## Maintaining this guide
+## Evaluation and optimization
 
-- Prefer primary sources and link claims that depend on vendor-specific behavior.
-- Treat empirical claims as hypotheses until supported by a reproducible
-  evaluation or clearly labeled as guidance.
-- Update this file when prompt, tool, evaluator, or runtime conventions change.
+- Define a metric and baseline before claiming improvement. Test empty, invalid,
+  ambiguous, and representative edge cases.
+- Separate optimization examples from a held-out evaluation set. Keep model,
+  tools, runtime configuration, metric, and split fixed during comparison.
+- When an optimizer is applicable, run a bounded candidate search: include the
+  baseline, set breadth, iterations, temperature, call budget, and stop condition,
+  record candidates and scores, and generate the next iteration from scored
+  attempts and failure examples.
+- Keep the baseline when the result is tied, unmeasured, or only improves the
+  optimization set. Accept a candidate only when held-out required cases do not
+  regress.
+- Use labeled comparisons, deterministic checks, or a separate judge for task
+  quality. Keep structural validity checks at the schema or boundary when possible.
+- In DSPy, treat `dspy.COPRO` as optional and version-specific. Verify its
+  installed API before use; the documented optimizer requires a measurable metric,
+  a representative trainset, and `breadth > 1`, and searches instruction and
+  output-prefix candidates. Do not add DSPy only to rewrite a prompt manually.
+- Use targeted examples while iterating, reserve broad suites for regression
+  checks, and inspect traces before adding instructions.
 
-## Primary references
+## References
 
+- Prefer primary sources and link vendor-specific claims.
+- Treat empirical claims as hypotheses until reproducibly evaluated.
 - [Anthropic: Prompt engineering overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview)
 - [Anthropic: Building effective agents](https://www.anthropic.com/research/building-effective-agents)
 - [OpenAI: Prompt engineering](https://platform.openai.com/docs/guides/prompt-engineering)
 - [Google: Gemini prompting strategies](https://ai.google.dev/gemini-api/docs/prompting-strategies)
+- [DSPy: Program, don't prompt](https://dspy.ai/current/getting-started/program-dont-prompt/)
+- [DSPy: COPRO API](https://dspy.ai/current/api/optimizers/COPRO/)
