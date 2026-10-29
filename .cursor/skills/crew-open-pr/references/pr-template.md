@@ -48,4 +48,3 @@ If no SPEC.md exists, keep this section brief or omit it. Never invent steps.
 - If SPEC.md exists, derive the summary from its goal and user impact — don't paraphrase the diff as a change log.
 - Avoid layer-grouped section headers or long bullet inventories of renamed fields/files in the Summary.
 - **How to test** = **reviewer-only** manual bullets (capped) from SPEC Goal / Acceptance Criteria / diff risk, plus one **automated** line pointing at `crew test` / CI. Do not use runbook.md as the source for reviewer steps.
-- If the user confirmed LLM assistance, append `---\n🤖` after all content.

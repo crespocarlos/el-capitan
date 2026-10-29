@@ -84,13 +84,6 @@ This push is a hard ordering boundary: do not publish review comments, inline fi
 
 Present the title and description to the user. Title format: same as the primary commit message, or a summary if there are multiple commits.
 
-Before creating, ask: **"Did you use LLM assistance for this PR?"** If yes, append to the end of the description body:
-
-```
----
-🤖 Co-authored with AI assistance.
-```
-
 After approval:
 
 ```bash

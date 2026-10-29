@@ -78,8 +78,8 @@ Present the full report table. For Apply/Adapt threads, include the proposed edi
 
 | # | File | Reviewer | Verdict | Proposed Edit | Proposed Reply |
 |---|------|----------|---------|---------------|----------------|
-| 1 | path/to/file.ts:42 | @reviewer | Apply | Replace X with Y (lines 40-45) | 🤖 **Apply** — ... |
-| 2 | path/to/file.ts:80 | @reviewer | Reject | — | 🤖 **Reject** — ... |
+| 1 | path/to/file.ts:42 | @reviewer | Apply | Replace X with Y (lines 40-45) | Fixed in `<commit>`: <what changed and why>. |
+| 2 | path/to/file.ts:80 | @reviewer | Reject | — | I’m leaving this as-is because <specific reason>. |
 | ... | ... | ... | ... | ... | ... |
 
 Summary counts: N apply / N adapt / N reject / N defer / N already addressed
@@ -107,11 +107,11 @@ Only after the user responds:
 
 **Thread comments** — for each approved thread, two operations (both IDs come from the Step 2 query):
 
-1. **Reply** with the verdict and rationale. Always prefix with 🤖 so agent comments are distinguishable from human ones (format defined in crew-eval-pr-comments). Use the `databaseId` from the first comment in the thread:
+1. **Reply** directly: say what changed and why, or why it remains as-is. No verdict label. Use the `databaseId` from the first comment in the thread:
    ```bash
    ~/.agent/bin/pr-review-actions.py reply --repo OWNER/REPO --pr PR_NUMBER \
      --thread-id THREAD_NODE_ID --comment-id DATABASE_ID \
-     --body "🤖 **Verdict** — rationale" --execute
+     --body "Fixed in <commit>: <what changed and why>." --execute
    ```
 
 2. **Resolve** the thread using the GraphQL node `id` from the thread:

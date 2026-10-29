@@ -17,9 +17,6 @@ One-paragraph description of what this is and why it matters.
 ## 💡 Implementation hints
 
 - (optional — key files, ordered steps, known risks, merge order constraints)
-
----
-🤖
 ```
 
 ## Bug Report
@@ -47,9 +44,6 @@ What should happen instead.
 
 - [ ] The bug no longer reproduces following the steps above
 - [ ] (add criteria specific to the fix)
-
----
-🤖
 ```
 
 ## Template Selection
@@ -95,7 +89,6 @@ Typical mappings (apply only when the label exists in that repo):
 - **Restructure, don't dump.** Long session analysis (tables, numbered findings, Option A/B) belongs *inside* Summary, Acceptance criteria, and Implementation hints — not as separate top-level sections.
 - **Acceptance criteria:** each item should be **observable and testable** — describe the outcome, not the implementation step. Good: "`GET /api/foo` returns 200 with field `x`". Bad: "Update the handler to include field `x`".
 - **Implementation hints:** group by area (`**Routes**`, `**Schema**`, `**UI**`). Include concrete file paths when the session has them. Omit the section only if there is nothing substantive to say.
-- **Footer:** append `---` then `🤖` on the next line after all content.
 
 ## Anti-patterns (do not produce these)
 
@@ -127,7 +120,4 @@ The module uses inconsistent naming for the same concept across directories, rou
 - **Hooks / clients**: list affected hook and client files
 - **Schema / types**: list packages and barrel exports to update
 - **Tests**: note registry, API, and snapshot tests that assert old names
-
----
-🤖
 ```

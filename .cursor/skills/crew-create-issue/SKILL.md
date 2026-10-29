@@ -53,8 +53,6 @@ Classify as **bug** or **feature** per Template Selection in `issue-templates.md
 
 **Do not add** top-level sections such as `## Domain hierarchy`, `## Issues`, `## Proposed fix`, or `## Options`. Fold that content into Summary, Acceptance criteria, or Implementation hints.
 
-Append `---\n🤖` after all body content (see Writing notes in `issue-templates.md`).
-
 **Labels** — infer from content using [Label conventions](./references/issue-templates.md#label-conventions) in `issue-templates.md`. List available labels with `gh label list --repo OWNER/REPO` when unsure.
 
 ### Step 4: Self-check before presenting
@@ -64,7 +62,6 @@ Reject and rewrite the draft if any of these fail:
 - [ ] Body uses exact template section headings (emoji included)
 - [ ] No extra top-level `##` sections beyond the template
 - [ ] Acceptance criteria are observable outcomes, not "update file X"
-- [ ] Ends with `---` and `🤖` on its own line
 - [ ] Title matches repo convention
 
 ### Step 5: Draft and confirm
