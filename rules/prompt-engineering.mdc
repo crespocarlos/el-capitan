@@ -31,6 +31,13 @@ configuration consistent.
   information; require them to say when they cannot proceed.
 - Keep deterministic policy in code when it does not require model judgment.
 
+## Instruction revision
+
+- **Never patch instructions in isolation.** Before changing a prompt, rule, agent, skill, or evaluator, read the complete artifact and the instructions it directly loads or references. Reassess the instruction hierarchy and intended behavior as a whole.
+- Do not append a new instruction merely to counter an observed failure. Revise, merge, reorder, or remove existing guidance so one coherent rule set governs the behavior.
+- Before finalizing, review the complete resulting instruction system for duplicate guidance, contradictions, precedence collisions, stale examples, and rules that cannot be followed together.
+- Keep the smallest coherent rule set that preserves the intended behavior. A smaller replacement is better than an additive exception when it covers the same case.
+
 ## Agent and tool guidance
 
 - Persist until the requested work is resolved or a concrete blocker is reached.

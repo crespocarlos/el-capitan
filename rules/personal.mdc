@@ -42,6 +42,8 @@ alwaysApply: true
 
 ## Testing
 
+- **Test contracts first; verify behavior independently.** Before implementing a behavioral change, map each acceptance criterion, changed public contract, fixed regression, or boundary invariant to the lowest-layer repository test that protects it. Prefer tests that run in the repository's normal CI command; when necessary coverage is outside it, state the gap. Review the test plan before treating implementation as complete.
+- **Use acceptance probes selectively.** When an end-to-end flow, cross-system behavior, or fast iteration needs independent evidence, use an external Python or Playwright probe through a public interface. Keep it in task artifacts, not the product diff. The probe proves the requested behavior works now; a committed CI test protects durable behavior later. Neither replaces the other.
 - Add a test only when it protects behavior that can regress and is not already covered: new behavior, a fixed bug, or a changed contract.
 - Before writing a test, search existing tests for the same behavior. Extend an existing test or case table instead of creating a parallel one.
 - One behavior, one test. Don't assert the same behavior at several layers unless each layer can fail independently.
@@ -50,10 +52,11 @@ alwaysApply: true
 - Test observable behavior through public interfaces. Avoid asserting private functions, implementation details, mock call counts (unless the call is the contract), or large snapshots.
 - Use the lowest layer that proves the behavior: Jest unit, then React Testing Library (query by role or label), then Playwright only for cross-system user flows.
 - When a change makes a test redundant, delete or merge it in the same change.
+- **Prune before you report.** Tests used while iterating are fine, but retain added tests only when each protects a distinct contractual behavior or failure mode. Explain the contract and a plausible bad implementation it catches. If coverage is uncertain, retain the test and flag it for review; do not remove existing tests solely under this rule.
 - Never delete, skip, or weaken an existing test, or loosen its assertions, to make it pass. Fix the cause or report the failure.
 - After a change, run the narrowest existing tests that cover it, and report the command and result.
 - Prompt changes are verified with targeted evals (see LLM section); the exemptions above don't apply to prompts.
-- In the report, list each added test with the behavior it protects. If you added none, say why. If the repo has no test runner, say so and describe the manual check.
+- In the report, list each kept test with the behavior it protects, and note what the prune removed. If you added none, say why. If the repo has no test runner, say so and describe the manual check.
 
 ## TypeScript
 

@@ -37,6 +37,8 @@ The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
 
 **Read project context before starting.** Read `<WORK_DIR>/AGENTS.md` (or `<WORK_DIR>/CLAUDE.md` if that's what exists) to pick up project-specific conventions, forbidden patterns, build commands, and constraints that may not appear in the spec. Apply these silently throughout the task loop — do not re-read on each iteration. Specifically: if AGENTS.md defines a test command, use it as the default verify command in step 5 when the task's own verify line does not specify one; if it defines forbidden patterns (e.g. no `any`, no direct DB writes), treat violations as task failures.
 
+**Testing procedure.** Apply `personal.mdc` Testing. Before a behavioral task, keep a concise mapping from its acceptance criterion or contract to repository test coverage and verification command for `REPORT.md`. For a fixed regression, add or update the regression test and show it failing before changing implementation, then passing afterward. When that policy calls for an acceptance probe, create it under `$TASK_DIR/artifacts/verification/` and exercise a public interface; never add it to the product diff.
+
 **Task loop** — for each unchecked `- [ ]` line under the `## Tasks` section only (from `## Tasks` until the next `## ` heading), in order:
 
 1. **Signal** — emit `[N/M] <task name>...`
@@ -53,9 +55,10 @@ The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
 
 When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 
-1. Walk each `- [ ]` under **`## Acceptance criteria`** — mark `[x]` only if satisfied (each bullet should be verifiable: named command, `rg`/`pytest` line, or explicit file inspection stated in the criterion).
-2. **Optional digest (`REPORT.digest.md`):** If environment variable `CREW_REPORT_DIGEST=1` is set, write a **≤25 line** human skim to `$TASK_DIR/REPORT.digest.md` (no secrets, no tokens). Omit when unset. Canonical detail remains in `REPORT.md`.
-3. Set status to **done** (two lines only):
+1. **Reconcile test evidence.** Prune added tests per `personal.mdc` Testing, rerun the narrowest verify command, and update the contract mapping for retained evidence.
+2. Walk each `- [ ]` under **`## Acceptance criteria`** — mark `[x]` only if satisfied by the retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or explicit file inspection stated in the criterion).
+3. **Optional digest (`REPORT.digest.md`):** If environment variable `CREW_REPORT_DIGEST=1` is set, write a **≤25 line** human skim to `$TASK_DIR/REPORT.digest.md` (no secrets, no tokens). Omit when unset. Canonical detail remains in `REPORT.md`.
+4. Set status to **done** (two lines only):
 
    ```
    ## Status
@@ -86,6 +89,20 @@ Write to **`$TASK_DIR/REPORT.md`** and return it:
 
 ### Memory used
 [mem:id] values cited during implementation, or `none`.
+
+### Test pruning
+- Added: `<test>`, or `none` — `<reason if none>`.
+- Kept: `<test>` — contract: `<behavior or failure mode>` — catches: `<plausible bad implementation>` — uncertainty for review: `<detail>`, or `none`.
+- Removed: `<test>` — `<reason>`, or `none`.
+
+### Test contract
+- `<acceptance criterion or contract>` → `<test or existing coverage>` — protects `<behavior>` — verification: `<command>` — CI coverage: `<included|excluded|unknown>` — `<reason>`.
+
+### Acceptance verification
+- `<acceptance criterion>` — `<task artifact path>` — `<external Python or Playwright public-interface command>` — `<pass/fail/skipped>` — `<reason if skipped>`, or `none` — `<reason>`.
+
+### CI verification
+- `<repository command>` — `<pass/fail/skipped>` — `<reason if skipped>`, or `none`.
 
 ### Files Changed
 <output of git diff --name-only>
