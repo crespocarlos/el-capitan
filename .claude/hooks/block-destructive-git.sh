@@ -8,7 +8,7 @@ case "$event" in
   beforeShellExecution) cmd=$(printf '%s' "$input" | jq -r '.command // empty'); shape=cursor ;;
   *) echo "unknown hook_event_name: ${event:-missing}" >&2; exit 2 ;;
 esac
-if printf '%s' "$cmd" | grep -Eqi '(^|[;& ]+)git[[:space:]]+(reset[[:space:]]+--hard|push.*--force( |$))' && ! printf '%s' "$cmd" | grep -q -- '--force-with-lease'; then
+if grep -Eqi '(^|[;& ]+)git[[:space:]]+(reset[[:space:]]+--hard|push.*--force( |$))' <<<"$cmd" && ! grep -q -- '--force-with-lease' <<<"$cmd"; then
   msg='Destructive git command blocked.'
   if [ "$shape" = claude ]; then jq -n --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$m}}'; else jq -n --arg m "$msg" '{permission:"deny",user_message:$m,agent_message:$m}'; fi
 else
