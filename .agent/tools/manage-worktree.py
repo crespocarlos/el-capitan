@@ -34,7 +34,7 @@ def worktrees() -> list[tuple[Path, str | None]]:
     return entries
 
 
-DEFAULT_BRANCH_HELPER = Path(__file__).resolve().with_name("default-branch.sh")
+DEFAULT_BRANCH_HELPER = Path(__file__).resolve().parents[1] / "scripts" / "default-branch.sh"
 
 
 def default_branch() -> str | None:

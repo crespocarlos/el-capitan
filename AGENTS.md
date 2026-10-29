@@ -6,7 +6,7 @@ El-capitan is a spec-driven agentic engineering pipeline. All files are markdown
 - **Agent protocols** — `.cursor/agents/crew-*.md`, `specwriter-*.md`, `reviewer-*.md`, `tester-*.md`
 - **Skill files** — `.cursor/skills/<name>/SKILL.md`
 - **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md`, `_RUNBOOK_TEMPLATE.md`
-- **Tools** — `.agent/bin/` (flat stable command surface; cataloged in `TOOLS.md` / `tools.json`)
+- **Tools** — `.agent/tools/` (CLIs, cataloged in `TOOLS.md` / `tools.json`); `.agent/scripts/` (source-only and internal helpers). Both install flat into `~/.agent/bin/`.
 
 ## Bootstrap
 
@@ -104,9 +104,9 @@ Changes to agent/skill files are verified by reading them and checking the accep
 ```bash
 grep "keyword" .cursor/agents/target-file.md   # presence check
 grep METRIC: rules/crew-orchestrator.mdc .cursor/skills/crew-implement/SKILL.md  # METRIC audit docs + implement hooks
-mkdir -p /tmp/el-capitan-metric-selftest && test -x .agent/bin/log-metric.py && python3 .agent/bin/log-metric.py /tmp/el-capitan-metric-selftest selftest=1
-python3 -m py_compile .agent/bin/task-bundle.py
-grep -E "task-bundle|bundle-manifest" AGENTS.md .agent/bin/task-bundle.py
+mkdir -p /tmp/el-capitan-metric-selftest && test -x .agent/tools/log-metric.py && python3 .agent/tools/log-metric.py /tmp/el-capitan-metric-selftest selftest=1
+python3 -m py_compile .agent/tools/task-bundle.py
+grep -E "task-bundle|bundle-manifest" AGENTS.md .agent/tools/task-bundle.py
 ```
 
 There is no lint, typecheck, or unit test to run.
@@ -131,4 +131,4 @@ use `crew memory seed` to draft journal candidates for approval, and `crew
 memory doctor` to diagnose the store. `mem.py ingest --source claude|codex
 --path <directory>` imports external memory read-only and never reconfigures
 or edits its source repository. Verify with `python3 evals/memory/run.py` and
-`python3 .agent/bin/crew-lint.py`.
+`python3 .agent/tools/crew-lint.py`.

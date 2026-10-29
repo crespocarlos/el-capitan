@@ -65,27 +65,6 @@
       "smoke": "--help"
     },
     {
-      "name": "default-branch.sh",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "--help",
-      "smoke": "--help"
-    },
-    {
-      "name": "task-env.sh",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "source-only",
-      "smoke": "source-only"
-    },
-    {
-      "name": "get-diff.sh",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "source-only",
-      "smoke": "source-only"
-    },
-    {
       "name": "log-metric.py",
       "category": "task",
       "owner": "crew-orchestrator",
@@ -126,6 +105,29 @@
       "owner": "crew-implement",
       "help": "argparse",
       "smoke": "--help"
+    }
+  ],
+  "scripts": [
+    {
+      "name": "default-branch.sh",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "--help",
+      "smoke": "--help"
+    },
+    {
+      "name": "task-env.sh",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "source-only",
+      "smoke": "source-only"
+    },
+    {
+      "name": "get-diff.sh",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "source-only",
+      "smoke": "source-only"
     }
   ],
   "assets": [

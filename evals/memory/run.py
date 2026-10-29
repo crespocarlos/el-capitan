@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-MEM = ROOT.parent.parent / '.agent' / 'bin' / 'mem.py'
+MEM = ROOT.parent.parent / '.agent' / 'tools' / 'mem.py'
 
 def command(memory_dir, *arguments, journal_dir=None, input=None):
     env = {

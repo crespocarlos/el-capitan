@@ -1,9 +1,11 @@
 # Agent tool catalog
 
-`~/.agent/bin/` is intentionally a flat, stable command surface. `install.sh`
-symlinks its files by basename, so do not move commands into subdirectories
-without an explicit compatibility shim. `tools.json` is the machine-readable
-source of truth; `crew-lint.py` validates it.
+Source is split by kind: `.agent/tools/` holds CLIs and their assets, and
+`.agent/scripts/` holds source-only and internal helpers. `install.sh` links both
+into `~/.agent/bin/`, which stays a flat, stable command surface, so installed
+paths do not change. `tools.json` is the machine-readable source of truth: `tools`
+and `assets` live in `.agent/tools/`, and `scripts` lists the files in
+`.agent/scripts/`. `crew-lint.py` validates it.
 
 | Category | Commands | Purpose |
 | --- | --- | --- |
@@ -35,11 +37,11 @@ source of truth; `crew-lint.py` validates it.
 
 ## Adding or retiring a tool
 
-1. Add or remove the executable and its `tools.json` entry in the same change.
+1. Add or remove the executable in `.agent/tools/` or `.agent/scripts/` and its `tools.json` entry in the same change.
 2. Give it `--help`, or document a specific exception in `help`.
 3. Assign one category and one owning skill, agent, or `repository`.
 4. Add a deterministic smoke command if the CLI is safe to invoke.
-5. Run `python3 .agent/bin/crew-lint.py` and the listed smoke command.
+5. Run `python3 .agent/tools/crew-lint.py` and the listed smoke command.
 
 ## Compatibility policy
 

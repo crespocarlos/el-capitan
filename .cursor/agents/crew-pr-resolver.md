@@ -23,7 +23,8 @@ Resolve the worktree and load repo patterns:
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
 cd "$(~/.agent/bin/manage-worktree.py "$PR_BRANCH")"
 
-MEM_OUT=$(~/.agent/bin/mem.py context --mode debug --query "PR review resolution" 2>&1); MEM_RC=$?
+PR_TITLE=$(gh pr view PR_NUMBER --repo OWNER/REPO --json title --jq '.title')
+MEM_OUT=$(~/.agent/bin/mem.py context --mode review --query "$PR_TITLE" 2>&1); MEM_RC=$?
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 

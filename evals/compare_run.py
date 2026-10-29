@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("evals_compare", ROOT / ".agent/bin/evals-compare.py")
+SPEC = importlib.util.spec_from_file_location("evals_compare", ROOT / ".agent/tools/evals-compare.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 

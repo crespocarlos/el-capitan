@@ -32,10 +32,10 @@ flowchart TB
         direction LR
         issue["📝 create-issue"] -.->|"crew spec"| spec["📋 specwriter"]
         spec -->|"Gate 1: approve"| impl["🔨 builder"]
-        impl -->|"auto"| bcommit["commit"]
+        impl -->|"auto"| review["🔍 review"]
+        review -->|"auto"| bcommit["commit"]
         bcommit -->|"Gate 2: approve"| openpr["open-pr"]
         openpr --> done(["PR opened"])
-        impl -.->|"auto-recall"| journal2[("📓 journal")]
     end
 
     subgraph respond["respond"]
@@ -44,8 +44,13 @@ flowchart TB
         rcommit --> pushed(["pushed"])
     end
 
+    memory[("🧠 memory")]
+    spec -.->|"recall"| memory
+    review -.->|"recall"| memory
+    resolver -.->|"recall"| memory
     done -.->|"crew resolve PR"| resolver
     reviewer["🔍 reviewer"] -.->|"standalone"| impl
+    reviewer -.->|"recall"| memory
 ```
 
 **Two workflows. Two explicit gates in `build`.** Drive each step manually — `crew implement` → `crew review` → `crew commit` → `crew open pr` — or let the pipeline guide you.
@@ -57,7 +62,7 @@ El Capitan has three layers:
 | **Router** | `rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
 | **Orchestrator** | `rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
 | **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
-| **Runtime** | hooks, journal tools | Execution engines |
+| **Runtime** | hooks, `mem.py` | Execution engines |
 
 ---
 
@@ -143,7 +148,7 @@ git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
-`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. No files are copied — updates to the repo are reflected immediately.
+`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. `~/.agent/bin/` receives flat links to `.agent/tools/` and `.agent/scripts/`. No files are copied — updates to the repo are reflected immediately.
 
 **To update:**
 
@@ -159,7 +164,7 @@ git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
-Task state and journal are not tracked by git — they live in `~/.agent/tasks/` and `~/.agent/journal/` and persist locally.
+Task state and memory are not tracked by git — they live in `~/.agent/tasks/` and `~/.agent/memory/` and persist locally.
 
 ---
 
@@ -197,12 +202,12 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 | `crew review idea: <text>` | Multi-lens review of a pasted idea or proposal |
 | `crew review address` | Work through last review findings inline |
 
-### Memory & journal
+### Memory
 
 | Command | What it does |
 |---|---|
-| `crew log` | Record the session to the engineering journal |
-| `crew recall: <question>` | Search the journal by meaning or keyword |
+| `crew log` | Record the session as a memory observation |
+| `crew recall: <question>` | Search persistent memory by keyword |
 
 ### Utilities
 
@@ -263,30 +268,35 @@ Processes all unresolved review threads on a PR in a single batch: evaluates eac
 el-capitan/
 ├── AGENTS.md                # Agent guide — bootstrap, conventions, file layout
 ├── CLAUDE.md                # Claude Code project context for editing el-capitan itself
-├── rules/                   # Canonical always-loaded rules and prompt guidance
-│   │   ├── crew-orchestrator.mdc   # Pipeline state machine (always loaded)
-│   │   ├── crew-router.mdc         # Routing table (always loaded)
-│   │   ├── crew-explorer-conventions.mdc  # Shared tool protocol for explorer subagents
-│   │   └── personal.mdc            # Personal engineering preferences (always loaded)
-│   ├── prompt-engineering.mdc       # Always-loaded prompt authoring guidance
-│   └── typescript.mdc               # TypeScript/React guidance (loaded for *.ts, *.tsx)
+├── rules/                   # Canonical rules (.mdc), symlinked to ~/.cursor/rules/
+│   ├── crew-orchestrator.mdc          # Pipeline state machine (always loaded)
+│   ├── crew-router.mdc                # Routing table (always loaded)
+│   ├── crew-explorer-conventions.mdc  # Shared tool protocol for explorer subagents
+│   ├── agent-output.mdc               # Output format for agent replies
+│   ├── memory-capture.mdc             # When to propose durable memory
+│   ├── personal.mdc                   # Personal engineering preferences (always loaded)
+│   ├── prompt-engineering.mdc         # Always-loaded prompt authoring guidance
+│   ├── voice.mdc                      # Writing voice for authored text
+│   └── typescript.mdc                 # TypeScript/React guidance (loaded for *.ts, *.tsx)
 ├── .cursor/
-│   ├── agents/              # Agent protocols (.md) — symlink to .claude/agents/
+│   ├── agents/              # Agent protocols (.md) — canonical source
 │   │   ├── crew-*.md               # Orchestrator agents
 │   │   ├── reviewer-*.md           # Reviewer personas
 │   │   ├── specwriter-*.md         # Specwriter personas
 │   │   └── tester-*.md             # Tester personas
-│   └── skills/              # Inline skill protocols — symlink to .claude/skills/
+│   └── skills/              # Inline skill protocols — canonical source
 │       └── crew-<name>/SKILL.md
 ├── .claude/
 │   ├── CLAUDE.md            # Claude Code project context and command routing
 │   ├── hooks/               # Guard, telemetry, session, and memory-context hooks
 │   └── settings.json        # Hook configuration
 ├── .agent/
-│   ├── bin/                 # Shell scripts, Python utilities, and GraphQL queries
+│   ├── tools/               # CLIs (.py) with --help, GraphQL asset, tools.json and TOOLS.md catalog
+│   ├── scripts/             # Source-only and internal shell helpers (task-env.sh, default-branch.sh, get-diff.sh)
 │   ├── _SPEC_TEMPLATE.md    # Standard spec template
 │   ├── _BUG_SPEC_TEMPLATE.md  # Bug spec template
 │   ├── _MEMORY_TEMPLATE.md  # Typed durable-memory unit template
+│   ├── _JOURNAL_TEMPLATE.md   # Legacy journal entry template
 │   └── _RUNBOOK_TEMPLATE.md   # Validation runbook template
 ├── evals/                   # Deterministic memory and reviewer evaluation fixtures
 └── install.sh               # Symlink installer
@@ -296,7 +306,7 @@ el-capitan/
 
 ```
 ~/.agent/
-├── bin/                     # Flat stable tool surface; see TOOLS.md and tools.json
+├── bin/                     # Flat installed command surface (links from .agent/tools and .agent/scripts); see TOOLS.md
 ├── journal/                 # Legacy monthly journal files (import-only)
 ├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox
 ├── telemetry/               # Local hook telemetry JSONL
@@ -312,12 +322,13 @@ Always-loaded context is kept minimal on purpose:
 
 | File | Lines | Loaded |
 |---|---|---|
-| `crew-orchestrator.mdc` | ~90 | Every session |
-| `crew-router.mdc` | ~50 | Every session |
-| `personal.mdc` | ~40 | Every session |
-| `CLAUDE.md` | ~90 | Every session (Claude Code) |
+| `crew-orchestrator.mdc` | ~107 | Every session |
+| `crew-router.mdc` | ~78 | Every session |
+| `personal.mdc` | ~68 | Every session |
+| `prompt-engineering.mdc` | ~80 | Every session |
+| `.claude/CLAUDE.md` | ~74 | Every session (Claude Code) |
 
-Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/bin/` — not in agent files.
+Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` and `.agent/scripts/` — not in agent files.
 
 ---
 
@@ -419,7 +430,7 @@ approve it with `crew memory seed` or `mem.py import-inbox`.
 
 `mem.py` stores typed Markdown units under `~/.agent/memory` and uses SQLite
 FTS5 only as a rebuildable search index. Verify with `python3
-evals/memory/run.py` and `python3 .agent/bin/crew-lint.py`. Rules live in
+evals/memory/run.py` and `python3 .agent/tools/crew-lint.py`. Rules live in
 `rules/`.
 
 The same store also holds immutable journal observations. They are indexed as

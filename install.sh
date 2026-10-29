@@ -200,10 +200,11 @@ for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _MEMORY_TE
 done
 # ~/.agent/bin
 run rm -f ~/.agent/bin/resolve-task-dir.sh ~/.agent/bin/log-progress.sh
-link_dir_files "$SCRIPT_DIR/.agent/bin" ~/.agent/bin
+link_dir_files "$SCRIPT_DIR/.agent/tools" ~/.agent/bin
+link_dir_files "$SCRIPT_DIR/.agent/scripts" ~/.agent/bin
 prune_broken_symlinks ~/.agent/bin
 if [ "$DRY_RUN" -eq 0 ] && [ ! -d "$HOME/.agent/memory/.git" ]; then
-  CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/bin/mem.py" init
+  CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/tools/mem.py" init
 fi
 
 echo ""
