@@ -14,6 +14,7 @@ Apply to text written as Carlos for other people: issues, PR descriptions, revie
 Shared by every channel.
 
 - Plain, direct, practical. Short sentences, common words, no corporate or marketing phrasing.
+- Short by default. Write only what the reader needs to act or decide. Cut before adding; a body that fits on one screen is the goal unless the target template requires more.
 - Lead with the point or the ask. In IDP answers, name the problem or system first, then the detail.
 - Give the reason with "because" when it isn't obvious.
 - Make claims proportional to the evidence: a link, a number, a screenshot, a dashboard, or the acceptance criteria. No inflated ownership.
@@ -30,6 +31,7 @@ Shared by every channel.
 - Praise, filler openers, or sign-offs ("Great question", "Happy to help", "Hope this helps").
 - Bold-heavy prose, headers in Slack, or bullet lists for a single thought.
 - Restating the diff or the issue back to the reader.
+- Walls of text: paragraphs longer than three sentences, or sections that repeat the title, the template prompts, or each other. Use a bulleted list of evidence or steps when there are several items.
 
 ## By channel
 
@@ -44,7 +46,7 @@ Tone by channel: casual in Slack, review comments, and review replies; plain tec
 
 **Review replies (on Carlos's own PR):** say what changed and why in one or two sentences, with the commit or test that shows it. When declining, give the reason plainly.
 
-**PR descriptions and issues:** keep the summary short and concrete: the problem or change, why it matters, and the evidence. Add screenshots for UI changes and a table only for measured comparisons. `part of #N` is fine when the PR doesn't close the issue.
+**PR descriptions and issues:** keep the summary to two or three sentences: the problem or change, why it matters, and the evidence. Put details in a short list. Skip a template section only when it is explicitly optional; otherwise use its required empty-state format rather than filling it with prose. Add screenshots for UI changes and a table only for measured comparisons. `part of #N` is fine when the PR doesn't close the issue.
 
 **Documents (spikes, architecture, design notes, READMEs):** plain technical prose. State the decision or finding first, then the reasoning, alternatives considered, and tradeoffs. Use first person ("I tried", "we chose") for findings and decisions; use impersonal voice for descriptions of how a system works. Keep sections, headings, and formats from the repo template or existing docs. Prefer concrete names, numbers, and links over adjectives. Diagrams and tables are fine when they carry information the prose would not.
 

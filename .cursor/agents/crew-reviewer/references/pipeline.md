@@ -1,8 +1,8 @@
 ## Review artifacts
 
-Before auto-apply, set `REVIEW_ROOT="$TASK_DIR/review/$(date +%Y%m%d%H%M%S)"`; when no task exists, use `/tmp/crew-review-<repo>/review/$(date +%Y%m%d%H%M%S)`. Persist each dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`.
+Resolve `TASK_DIR` first (see Pipeline Integration below). Then, before auto-apply, set `REVIEW_ROOT="$TASK_DIR/review/$(date +%Y%m%d%H%M%S)"`. Use `/tmp/crew-review-<repo>/review/$(date +%Y%m%d%H%M%S)` only when `TASK_DIR` is empty. Persist each dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`.
 
-Write candidate findings as JSON, then run `~/.agent/bin/review-findings.py normalize candidates.json --output consolidation.json`. It assigns SHA-1 fingerprints over `file|label|normalized title` and reports exact duplicates. `consolidation.json` contains findings with `{fingerprint, persona, label, title, file, disposition, reason, memory_ids}`; disposition is `kept`, `dropped`, or `merged`.
+Write candidate findings as a JSON list (or `{"findings": [...]}`), then run `~/.agent/bin/review-findings.py normalize candidates.json --output consolidation.json`. It assigns SHA-1 fingerprints over `file|label|normalized title` and reports exact duplicates. `consolidation.json` contains findings with `{fingerprint, persona, label, title, file, disposition, reason, memory_ids}`; disposition is `kept`, `dropped`, or `merged`.
 
 ## Pipeline Integration (self-review mode only)
 
@@ -32,9 +32,13 @@ For **self-review and changes review only** (skip for PR review and spec review)
 
 ```bash
 # If PASS or WARN:
-~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
+if [ -n "$TASK_DIR" ]; then
+  ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
+fi
 # If BLOCK:
-~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
+if [ -n "$TASK_DIR" ]; then
+  ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
+fi
 ```
 
 _(Next-step handoff is emitted in Step 8 above for all modes.)_

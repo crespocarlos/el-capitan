@@ -37,8 +37,10 @@ def fingerprint(finding: dict) -> str:
 
 def read_findings(path: Path) -> list[dict]:
     data = json.loads(path.read_text())
+    if isinstance(data, dict) and isinstance(data.get("findings"), list):
+        data = data["findings"]
     if not isinstance(data, list):
-        raise ValueError("finding input must be a JSON list")
+        raise ValueError("finding input must be a JSON list or an object with a findings list")
     result = []
     for index, finding in enumerate(data, 1):
         if not isinstance(finding, dict) or not isinstance(finding.get("title"), str):

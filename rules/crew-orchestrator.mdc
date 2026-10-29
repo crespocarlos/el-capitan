@@ -103,5 +103,6 @@ Optional append-only lines for **offline analysis only**. `resolve-task-dir.py` 
 - Done = acceptance criteria pass, not "looks right"
 - **Git/gh is the source of truth for pipeline state** — PROGRESS.md is the audit trail
 - Autopilot never skips a gate — it chains between gates, not through them
+- Autopilot pauses and asks, rather than proceeding, when a step has an open question, expands or changes the approved scope (or user request when no spec exists), changes a public contract, or is hard to reverse (`personal.mdc` "Ask before acting on uncertainty")
 - Autopilot never auto-retries on failure — the user always decides
 - **Autopilot reads skill files directly — never re-triggers through the routing layer**

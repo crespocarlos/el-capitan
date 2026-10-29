@@ -22,12 +22,13 @@ alwaysApply: true
 
 - **Inspect before extending** — find existing utilities, patterns, and tests before adding code; reuse loaded context unless the relevant state changed.
 - **Go straight to evidence** — for failures, read the trace, error, tool output, or evaluator explanation before forming a hypothesis. After three failed attempts at the same approach, stop and report what was tried and what the evidence shows.
+- **Challenge before agreeing** — don't accept a premise, plan, or request because the user stated it. When a claim looks wrong, a plan has a flaw, or a simpler option exists, say so with evidence and let the user decide. Agreement must be earned by the evidence.
+- **Ask before acting on uncertainty** — for non-trivial work, identify objective, scope, and acceptance check. If any is unclear, or the step is hard to reverse (deletes, pushes, external calls, schema changes), ask focused questions first — unless the user explicitly invoked the consequential action and its required inputs are complete. State assumptions only for low-risk, easily reverted steps, and list them so they can be corrected.
 - **Use bounded autonomy** — act directly on clear, low-risk requests and finish the requested verification in the same turn. Don't infer adjacent cleanup, redesigns, or scope.
-- **Clarify only material ambiguity** — for non-trivial work, identify objective, scope, and acceptance check. Ask one focused question only when a missing detail would change the result; otherwise state a safe assumption and proceed.
 - **Optimize the feedback loop** — use the smallest evidence and verification that can change the next action; batch independent work; stop when the acceptance check passes.
 - **Use subagents selectively** — only for complex exploration or parallel independent work, not small fixes or known files.
 - **Preserve conversational state** — treat short follow-ups as continuations; don't make the user restate context.
-- **Report content** — state what changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
+- **Be direct** — every message goes straight to the point: state the answer or action first, no preamble, narration of intent, recap of the request, praise, or closing offers. Reports list what changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
 
 ## Research
 

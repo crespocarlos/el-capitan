@@ -2,7 +2,7 @@
 
 After outputting the consolidated report, check:
 
-**Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
+**Gate:** does any finding lack a `Fix:` field, is any finding labeled `[needs more info]`, or would any fix expand or change the approved scope (or user request when no spec exists), change a public contract or schema, touch files outside the reviewed diff, or require a hard-to-reverse or external action?
 
 - **Yes (gate fails):** output the consolidated report normally. Then output:
 
@@ -35,7 +35,7 @@ After outputting the consolidated report, check:
 
 After outputting the consolidated report, check:
 
-**Gate:** does any finding lack a `Fix:` field, or is any finding labeled `[needs more info]`?
+**Gate:** does any finding lack a `Fix:` field, is any finding labeled `[needs more info]`, or would any fix expand or change the approved scope (or user request when no spec exists), change a public contract or schema, touch files outside the reviewed diff, or require a hard-to-reverse or external action?
 
 - **Yes (gate fails):** output the consolidated report normally. Then output:
 
