@@ -73,6 +73,6 @@ Example: an agent file `~/.cursor/agents/crew-deploy.md` with frontmatter `descr
 ## Invariants
 
 - Explicit routing only — `crew` prefix required
-- **`crew implement` always follows crew-builder's protocol.** Code changes go through crew-builder — via subagent or by following the protocol directly. Never skip the protocol and implement ad-hoc.
+- **`crew implement` always follows crew-builder's protocol.** Changes made under `crew implement` go through crew-builder — via subagent or by following the protocol directly. Never skip the protocol and implement ad-hoc.
 - **`crew review` is a pre-PR gate, not a mid-iteration tool.** For a targeted fix mid-iteration, ask an inline question or a single adversarial check — not a full multi-lens review.
 - Pipeline state, task resolution, and gate logic live in `crew-orchestrator.mdc` — the router only dispatches.

@@ -137,7 +137,7 @@ import sys
 
 home = Path(sys.argv[1])
 block = """<!-- el-capitan:memory -->
-Run `~/.agent/bin/mem.py context --mode session` at task start and follow `~/.cursor/skills/crew-memory/references/contract.md`.
+Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
 <!-- /el-capitan:memory -->"""
 for target in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md"):
     text = target.read_text() if target.exists() else ""

@@ -322,11 +322,16 @@ Always-loaded context is kept minimal on purpose:
 
 | File | Lines | Loaded |
 |---|---|---|
+| `agent-output.mdc` | ~270 | Every session |
 | `crew-orchestrator.mdc` | ~107 | Every session |
 | `crew-router.mdc` | ~78 | Every session |
-| `personal.mdc` | ~68 | Every session |
-| `prompt-engineering.mdc` | ~80 | Every session |
+| `personal.mdc` | ~66 | Every session |
+| `memory-capture.mdc` | ~38 | Every session |
+| `prompt-engineering.mdc` | ~87 | When editing `.md` / `.mdc` files |
+| `typescript.mdc` | ~47 | When editing `.ts` / `.tsx` files |
 | `.claude/CLAUDE.md` | ~74 | Every session (Claude Code) |
+
+Load conditions are for Cursor. Claude Code imports `prompt-engineering.mdc` and `typescript.mdc` through `.claude/CLAUDE.md`, so both load every Claude session. `crew-lint.py --budget` fails when Cursor's always-on rules exceed about 7,000 tokens.
 
 Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` and `.agent/scripts/` — not in agent files.
 
@@ -349,6 +354,7 @@ install time:
 | Hook | Trigger | What it does |
 |---|---|---|
 | `PreToolUse` / Cursor pre-execution | Bash, Write, Edit | Blocks destructive Git commands and writes outside the active worktree |
+| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `check-publish.sh` blocks commits whose staged lines match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
 | `SessionStart` | Session begins | Loads bounded memory context and records session state (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
 | `SessionEnd` / `Stop` | Session ends | Records session telemetry |

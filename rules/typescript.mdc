@@ -39,3 +39,9 @@ Apply when writing or editing TypeScript or React code. The repo's lint config, 
 - Name handler props `on<Subject><Change>` (for example, `onFilterChange`).
 - Don't memoize by default; add `useMemo`, `useCallback`, or `React.memo` when the re-render or computation cost is measured or evident (for example, large lists or expensive derivations).
 - Prefer Emotion (CSS-in-JS) and EUI theme tokens over new SCSS.
+- In Kibana, translate user-facing strings with `@kbn/i18n` (`i18n.translate` or `FormattedMessage`) using stable, namespaced IDs; use placeholders instead of concatenating translated fragments.
+- Keep UI accessible: prefer EUI components' built-in semantics, label every form control, give icon-only buttons an `aria-label`, and don't convey state through color alone.
+
+## Tests
+
+- Use the lowest layer that proves the behavior: Jest for logic, React Testing Library for components (query by role or label, not test IDs or class names), Playwright only for cross-system user flows.

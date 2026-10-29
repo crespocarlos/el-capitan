@@ -95,11 +95,11 @@ Optional append-only lines for **offline analysis only**. `resolve-task-dir.py` 
 | `completion_protocol` | `METRIC: completion_protocol phase=ac_check` | Optional milestone inside Completion Protocol |
 | `session` | `METRIC: session tool_calls=42` | Optional coarse counters from hooks or notes |
 
-**How to write:** `~/.agent/bin/log-metric.py "$TASK_DIR" <words...>` (shipped under `.agent/bin/`; symlinked to `~/.agent/bin/` via `install.sh`).
+**How to write:** `~/.agent/bin/log-metric.py "$TASK_DIR" <words...>` (shipped under `.agent/tools/`; symlinked to `~/.agent/bin/` via `install.sh`).
 
 ## Invariants
 
-- Never start implementation without an approved SPEC.md
+- Never start `build` implementation without an approved SPEC.md; the lightweight path is the only exception
 - Done = acceptance criteria pass, not "looks right"
 - **Git/gh is the source of truth for pipeline state** — PROGRESS.md is the audit trail
 - Autopilot never skips a gate — it chains between gates, not through them

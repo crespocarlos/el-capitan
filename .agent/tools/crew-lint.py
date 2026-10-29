@@ -159,12 +159,30 @@ def lint_skill_setup(root: Path) -> list[tuple[str, int, str, str]]:
     return findings
 
 
+def lint_repo_paths(root: Path, paths: list[Path]) -> list[tuple[str, int, str, str]]:
+    """Flag backticked repo-relative paths that no longer exist."""
+    findings: list[tuple[str, int, str, str]] = []
+    pattern = re.compile(r"`((?:\.agent|\.cursor|\.claude|rules|evals)/[^`\s]*)`")
+    for path in paths:
+        text = path.read_text(errors="replace")
+        for match in pattern.finditer(text):
+            target = match.group(1)
+            if any(char in target for char in "<>*${}"):
+                continue
+            if not (root / target.rstrip("/")).exists():
+                findings.append((rel(root, path), line_no(text, match.start()), "stale-path",
+                                 f"{target} does not exist"))
+    return findings
+
+
 def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
     findings: list[tuple[str, int, str, str]] = []
     findings.extend(lint_tool_catalog(root))
     findings.extend(lint_rule_setup(root))
     findings.extend(lint_skill_setup(root))
     all_files = files(root)
+    docs = [root / name for name in ("README.md", "AGENTS.md") if (root / name).is_file()]
+    findings.extend(lint_repo_paths(root, all_files + docs))
     rule_dir = root / "rules"
     rules = (
         {path.name for path in rule_dir.glob("*.mdc")}

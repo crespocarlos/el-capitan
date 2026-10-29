@@ -1,5 +1,5 @@
 ---
-description: "SemanticCodeSearch-first protocol for all code research. Use for any investigation,discovery, exploration, or 'how/where/what' question. Grep and Read are fallbacks — only after SemanticCodeSearch has narrowed scope, or when the exact file/line is already known."
+description: "SemanticCodeSearch-first protocol for all code research. Use for any investigation, discovery, exploration, or 'how/where/what' question. Grep and Read are fallbacks — only after SemanticCodeSearch has narrowed scope, or when the exact file/line is already known."
 alwaysApply: false
 ---
 
@@ -9,6 +9,7 @@ alwaysApply: false
 
 **Before calling Grep, Glob, or Read for any discovery task: STOP.**
 Ask yourself: "Do I already know the exact file and line I need?"
+
 - **Yes** → Grep or Read is fine.
 - **No** → Use SemanticCodeSearch first. Always.
 
@@ -18,14 +19,14 @@ Defaulting to `rg` or `grep` for code exploration is a protocol violation. Seman
 
 **SemanticCodeSearch is always the preferred tool. Grep, Glob, and Read are fallbacks — only use them after SemanticCodeSearch has narrowed the scope, or when you already know the exact file and line.**
 
-| Task | Preferred | Fallback (scope already known) |
-|---|---|---|
-| Explore a concept, find implementations | `discover_directories` then `map_symbols_by_query` | — |
-| Find all usages of a known symbol | `map_symbols_by_query` or `symbol_analysis` | Grep for exact identifier |
-| Trace a symbol's definition, call sites, consumers | `symbol_analysis` | — |
-| Read a file discovered via search | `read_file_from_chunks` | `Read` for short local files |
-| Verify an exact string once you know the file | — | `Grep` |
-| Find files by path pattern once you know the area | — | `Glob` |
+| Task                                               | Preferred                                          | Fallback (scope already known) |
+| -------------------------------------------------- | -------------------------------------------------- | ------------------------------ |
+| Explore a concept, find implementations            | `discover_directories` then `map_symbols_by_query` | —                              |
+| Find all usages of a known symbol                  | `map_symbols_by_query` or `symbol_analysis`        | Grep for exact identifier      |
+| Trace a symbol's definition, call sites, consumers | `symbol_analysis`                                  | —                              |
+| Read a file discovered via search                  | `read_file_from_chunks`                            | `Read` for short local files   |
+| Verify an exact string once you know the file      | —                                                  | `Grep`                         |
+| Find files by path pattern once you know the area  | —                                                  | `Glob`                         |
 
 **The flow is always: SemanticCodeSearch to discover → Grep/Read/Glob only to drill into what SemanticCodeSearch already found. Never start with Grep.**
 
@@ -43,13 +44,17 @@ Path-based file find? ──→ Glob
 ## Tool selection
 
 ### discover_directories
+
 **For finding where things live.**
+
 - Returns top 20 directories with relevance scores
 - Best for: "Where is the auth layer?", navigating unfamiliar packages
 - Use BEFORE `map_symbols_by_query` when you don't know the directory
 
 ### map_symbols_by_query 🎯
+
 **Primary tool when you know symbol names or directories.**
+
 - Returns ALL matching files (not limited to 25)
 - Shows symbol density (more symbols = more relevant)
 - Structured output: symbols with line numbers, imports, exports
@@ -57,35 +62,43 @@ Path-based file find? ──→ Glob
 - Use AFTER `discover_directories` or `semantic_code_search`
 
 ### symbol_analysis
+
 **Deep dive on one symbol.**
+
 - Shows definition, usages, types, imports, call sites, tests, documentation
 - Reveals related symbols for your next search
 - Best for: Understanding a specific symbol completely, tracing impact of changes
 
 ### read_file_from_chunks
+
 **Get full file content from the index.**
+
 - Reconstructs complete files without needing the file path on disk
 - Best for: Reading files discovered via search
 
 ## Workflows
 
 **User mentions specific names** (e.g., "How does onFilter work?"):
+
 ```
 map_symbols_by_query → symbol_analysis (optional) → read_file_from_chunks
 ```
 
 **User asks conceptual question** (e.g., "How is auth handled?"):
+
 ```
 discover_directories → map_symbols_by_query → symbol_analysis → read_file_from_chunks
 ```
 
 **Tracing cross-file consistency** (e.g., "does the schema match the mapping?"):
+
 ```
 symbol_analysis('fieldName') → see all usages → verify same name everywhere
 map_symbols_by_query(kql: '"fieldName"') → find all files referencing it
 ```
 
 **Deep investigation of impact** (e.g., "what breaks if I change X?"):
+
 ```
 symbol_analysis → map_symbols_by_query (with related symbols) → read_file_from_chunks
 ```
@@ -120,6 +133,7 @@ language: typescript and not filePath: *test*
 ```
 
 ### Common mistakes
+
 - ❌ Quoting wildcards: `filePath: "*test*"` → ✅ `filePath: *test*`
 - ❌ Uppercase operators: `AND` → ✅ `and`
 - ❌ Missing quotes on kind: `kind: function` → ✅ `kind: "function_declaration"`
