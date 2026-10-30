@@ -1,6 +1,6 @@
 ---
 description: "Prompt authoring and evaluation requirements."
-globs: **/*.md.txt, **/*.md, **/*.mdc
+globs: **/*.md.txt, **/*.md.text, **/*.md, **/*.mdc
 alwaysApply: false
 ---
 

@@ -75,6 +75,9 @@ Task/Agent tool call:
     Likely modules: <any hints from the issue about which files/packages are involved>
     Specific files mentioned: <any file paths from the issue, or "none">
 
+    ## Project guidance
+    <output of `~/.agent/bin/agent-context.py <specific files mentioned or likely module paths>`; use the repository root when none are known>
+
     ## Recalled patterns
     <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
 

@@ -19,6 +19,11 @@ Extract owner, repo, and PR number from the user's input (URL or number).
 
 Resolve the worktree and load repo patterns:
 
+If either read-only `gh pr view` call below fails with a known sandbox-network
+denial, rerun that exact call once using the current harness's network-elevation
+mechanism (for example, full network permission in Cursor). Do not elevate for
+authentication, authorization, or scope failures; report those failures instead.
+
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
 cd "$(~/.agent/bin/manage-worktree.py "$PR_BRANCH")"
@@ -107,7 +112,9 @@ Only after the user responds:
 
 **Thread comments** — for each approved thread, two operations (both IDs come from the Step 2 query):
 
-1. **Reply** directly: say what changed and why, or why it remains as-is. No verdict label. Use the `databaseId` from the first comment in the thread:
+Before drafting any reply, read `~/.cursor/rules/voice.mdc` and apply it: PR review replies are written under Carlos's name. If the file is unreadable, stop and report.
+
+1. **Reply** directly: say what changed and why, or why it remains as-is. No verdict label. Put every code symbol, path, command, field, API, and identifier in inline backticks; leave natural-language prose unquoted. Use the `databaseId` from the first comment in the thread:
    ```bash
    ~/.agent/bin/pr-review-actions.py reply --repo OWNER/REPO --pr PR_NUMBER \
      --thread-id THREAD_NODE_ID --comment-id DATABASE_ID \

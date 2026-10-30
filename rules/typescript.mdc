@@ -1,6 +1,6 @@
 ---
 description: "TypeScript and React code organization, typing, and style preferences."
-globs: **/*.ts,**/*.tsx
+globs: **/*.ts, **/*.tsx
 alwaysApply: false
 ---
 

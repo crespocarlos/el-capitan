@@ -18,15 +18,11 @@ You explore a codebase to gather context for writing a SPEC.md. Your job is to f
 - 1 × `mcp__semantic-code-search__list_indices`
 - 2 × semantic search
 - 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is found)
-- 2 × `Read` (1 for AGENTS.md/CLAUDE.md, 1 for code patterns)
+- 2 × `Read` (code patterns)
 
 ## What to find
 
-**0. Project context** — Find and read the `AGENTS.md` (or `CLAUDE.md`) closest to the task files:
-1. `Glob` `**/AGENTS.md` to list all candidates (falls back to `**/CLAUDE.md` if none found).
-2. Pick the candidate with the most path segments in common with the deepest involved file — i.e., the longest shared prefix. If two candidates tie, prefer the deeper one.
-3. Read that file. Extract: bootstrap command, test commands, deploy/validate commands, quality gates (pre-commit validation steps), forbidden patterns, and project-specific conventions.
-4. Include a `## Project context` section in your output. Quality gates are **must-propagate** — flag them clearly so the spec writer puts them in `### Validation`. Costs 1 Glob + 1 Read slot.
+**0. Project context** — Use the `## Project guidance` section in the dispatch prompt (output of `agent-context.py`, repository root to nearest folder). Nearer files override farther ones; surface any conflict. Do not search for `AGENTS.md`/`CLAUDE.md` yourself. If the section is missing, say so in your output. Extract: bootstrap command, test commands, deploy/validate commands, quality gates (pre-commit validation steps), forbidden patterns, and project-specific conventions. Include a `## Project context` section in your output. Quality gates are **must-propagate** — flag them clearly so the spec writer puts them in `### Validation`. Costs 0 tool calls.
 
 **1. Involved files and modules** — which files will need to change, what modules they belong to.
 

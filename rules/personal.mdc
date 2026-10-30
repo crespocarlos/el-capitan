@@ -29,6 +29,7 @@ alwaysApply: true
 - **Use subagents selectively** — only for complex exploration or parallel independent work, not small fixes or known files.
 - **Preserve conversational state** — treat short follow-ups as continuations; don't make the user restate context.
 - **Be direct** — every message goes straight to the point: state the answer or action first, no preamble, narration of intent, recap of the request, praise, or closing offers. Reports list what changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
+- **Project guidance applies by file, not by request size** — before editing, testing, reviewing, or researching files, run `~/.agent/bin/agent-context.py` for the targets and apply every returned guidance file. In multi-file requests, do not skip guidance because other files use different languages or formats.
 
 ## Research
 
@@ -45,6 +46,7 @@ alwaysApply: true
 - **Keep changes coherent** — update related code, docs, diagrams, and references in the same change; keep error handling in the layer that owns it.
 - **Preserve compatibility** — changes to persisted data, saved objects, public APIs, routes, or configuration need a migration or versioning path; never break existing consumers silently.
 - **Essential comments only** — comment only what the code can't show: why a non-obvious choice or workaround exists, a hidden constraint or invariant, or a step key to the flow. Keep it to one plain line or a link. Don't narrate code, restate names or types, describe your change, or leave commented-out code; prefer a clearer name. Follow the repo's convention for public API docs, and don't remove comments unless they became wrong.
+- **GitHub access** — use `gh` or the repository's approved tool for ordinary PR, issue, and metadata reads. Use `pr-review-actions.py` for review-thread operations. Use raw GraphQL only when the approved tool/query requires it, not as a shortcut for standard reads. Retry a read-only command only after a known sandbox-network denial, using the current harness's elevation mechanism; report authentication, authorization, and scope failures.
 
 ## Testing
 
@@ -53,15 +55,15 @@ alwaysApply: true
 - **Test behavior, not implementation.** Extend existing tests or case tables before adding new ones; one behavior, one test, unless layers can fail independently. Assert observable behavior through public interfaces — not private functions, mock call counts (unless the call is the contract), or large snapshots.
 - **Probes are not tests.** When an end-to-end or cross-system flow needs independent evidence, use an external Python or Playwright acceptance probe through a public interface, kept in task artifacts and out of the diff. It proves the change works now; committed tests protect it later.
 - **Keep the suite honest.** Never delete, skip, or weaken a test, or loosen its assertions, to make it pass; fix the cause or report the failure. Delete or merge tests your change makes redundant. Before reporting, drop added tests that don't protect a distinct contractual behavior or failure mode; if unsure, keep and flag.
-- **Report evidence.** Run the narrowest tests that cover the change; report each kept test with the behavior it protects, the command and result, whether CI runs it, any probe result, and what was pruned — or why no test was added. Without a test runner, say so and describe the manual check.
+- **Report evidence.** Run the narrowest tests that cover the change. Before reporting a behavioral change that adds tests, run a pruning pass. For every kept test, record the protected behavior, distinct failure mode, verification command, and CI coverage; remove redundant tests or retain and flag uncertainty. Report removed tests, probes, and gaps. Without a test runner, say so and describe the manual check.
 
-## TypeScript
+## Scoped rules
 
-Follow `typescript.mdc` when writing or editing TypeScript or React code.
+Follow `typescript.mdc` for every request that writes or edits a `.ts` or `.tsx` file, even when the request also changes other files. Follow `voice.mdc` when writing text under Carlos's name, and `crew-explorer-conventions.mdc` when researching code.
 
 ## LLM / eval / agentic work
 
-- **Prompts are code** — version them, evaluate them, and treat regressions seriously. Follow `prompt-engineering.mdc` when authoring or revising prompts.
+- **Prompts are code** — version them, evaluate them, and treat regressions seriously. These rules apply even when a request changes multiple files. Read the complete prompt system before editing; revise the whole system rather than appending a patch. Define the objective, output contract, empty/invalid cases, metric, and baseline. Keep deterministic policy and validation in code. Follow `prompt-engineering.mdc` for the detailed checklist when it is loaded.
 - **Evals over vibes** — define the metric and baseline before claiming improvement.
 - **Scope evals to the failure** — form a hypothesis from evaluator explanations and tool-call traces, revise, and verify on a targeted example or subset; reserve broad suites for regression gates.
 - **One output per agent step** — each step produces one clear result. Separate deciding from acting unless combining them is intentional.

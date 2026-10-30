@@ -62,6 +62,9 @@ Otherwise, launch `tester-explorer` as a subagent with a structured prompt:
 
 ## Exported symbols
 <one symbol per line>
+
+## Project guidance
+<output of `~/.agent/bin/agent-context.py <changed files>`>
 ```
 
 Wait for tester-explorer to return its discovery summary.

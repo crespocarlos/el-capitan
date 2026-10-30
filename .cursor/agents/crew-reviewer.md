@@ -33,7 +33,7 @@ Run inline. Dispatch reviewer personas only from the main session; shared harnes
 
 ## Step 2: gather metadata
 
-For diff modes, gather names, sizes, and change types before loading a full diff. For spec review, resolve the task directory with `~/.agent/bin/resolve-task-dir.py`. For idea review, use the supplied idea or current topic.
+For diff modes, gather names, sizes, and change types before loading a full diff. For spec review, resolve the task directory with `~/.agent/bin/resolve-task-dir.py`. For idea review, use the supplied idea or current topic. For PR mode, if a read-only `gh` call returns `Forbidden` or a sandbox network error, retry the same call once with full network permission before reporting a retrieval failure.
 
 ## Step 3: size gate
 
@@ -45,11 +45,11 @@ Always dispatch Code Quality and Fresh Eyes for code reviews. Dispatch Adversari
 
 ## Step 5: build context
 
-Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md).
+Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md). For every changed or reviewed path, run `~/.agent/bin/agent-context.py` and include its returned guidance content in the context package, from repository root to nearest folder. If guidance conflicts, the nearer file wins and the conflict must be surfaced.
 
 ## Step 6: dispatch
 
-Use the shared dispatch contract. Give each persona its context package and mode-specific task; collect raw output without altering it.
+Use the shared dispatch contract. Give each persona its context package and mode-specific task; collect raw output without altering it. Personas may run in Ask mode; follow the evidence rules in the shared dispatch instructions.
 
 ## Step 7: consolidate
 
