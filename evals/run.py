@@ -90,14 +90,14 @@ Produce the full spec document. Be thorough and complete."""
 # ---------------------------------------------------------------------------
 
 STRUCTURE_KEYS = [
-    "## Context",
-    "## Goal",
-    "## Acceptance Criteria",
-    "## Design Constraints",
-    "## Tasks",
+    "## Summary",
+    "Out of scope:",
+    "## Acceptance criteria",
+    "WHEN ",           # EARS-style criteria
     "## Tests",
-    "- [ ]",          # checklist items
-    "**Acceptance**",  # task acceptance blocks
+    "**Command**",     # runnable test layers
+    "## Tasks",
+    "Verify:",         # per-task verification
 ]
 
 def score_structure(text: str) -> dict:

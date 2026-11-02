@@ -50,7 +50,6 @@ REVIEWER_PERSONAS = [
     "reviewer-adversarial",
     "reviewer-architecture",
     "reviewer-code-quality",
-    "reviewer-fresh-eyes",
     "reviewer-product-flow",
     "reviewer-prompt-quality",
 ]
@@ -129,6 +128,7 @@ def get_applicable_personas(fixture: dict, requested_persona: Optional[str] = No
     If requested_persona is set, intersect with that.
     """
     named = {ef["persona"] for ef in fixture.get("expected_findings", [])}
+    named.update(fixture.get("clean_for", []))
     if fixture.get("input_type", "diff") != "spec":
         named.add("reviewer-code-quality")  # always run for scope discipline check (diffs only)
     if requested_persona:
@@ -283,10 +283,16 @@ def run_fixture(
     )
 
     # unexpected_produced: findings that don't match any expected finding
-    label_count = len(re.findall(r'\[(blocking|attention|needs more info|nit)\]', raw_output, re.IGNORECASE))
+    label_count = len(re.findall(r'\[(blocking|attention|needs more info|nit|concern)\]', raw_output, re.IGNORECASE))
     unexpected_produced = max(0, label_count - len(matched))
+    clean_scored = persona_name in fixture.get("clean_for", [])
+    false_positives = (
+        len(re.findall(r'\[(blocking|attention)\]', raw_output, re.IGNORECASE)) if clean_scored else 0
+    )
 
     return {
+        "clean_scored": clean_scored,
+        "false_positives": false_positives,
         "fixture_id": fixture["id"],
         "persona": persona_name,
         "precision": precision,
@@ -361,8 +367,13 @@ def _compute_persona_stats(run_dir: pathlib.Path) -> dict[str, dict]:
                     "scope_violations": 0,
                     "truncated": 0,
                     "has_precision": False,
+                    "clean_fixtures": 0,
+                    "false_positives": 0,
                 }
             s = stats[persona]
+            if r.get("clean_scored") and not r.get("truncated"):
+                s["clean_fixtures"] += 1
+                s["false_positives"] += r.get("false_positives", 0)
             if not r.get("truncated"):
                 if r["precision"] is not None:
                     s["fixtures_run"] += 1
@@ -391,6 +402,7 @@ def save_baseline(run_dir: pathlib.Path, model: str) -> None:
             "recall": round(s["recall_sum"] / n, 4) if n else 0.0,
             "scope_violations": s["scope_violations"],
             "fixtures_scored": n,
+            "false_positives": s["false_positives"],
         }
         if s["has_precision"]:
             entry["precision"] = round(s["precision_sum"] / n, 4) if n else 0.0
@@ -436,7 +448,8 @@ def compare_to_baseline(persona_stats: dict[str, dict]) -> bool:
             and delta_p == delta_p  # not nan
             and delta_p < -0.20
         )
-        flag = " *** REGRESSION ***" if delta_r < -0.05 or delta_v > 0 or precision_regression else ""
+        fp_regression = s["false_positives"] > b.get("false_positives", 0)
+        flag = " *** REGRESSION ***" if delta_r < -0.05 or delta_v > 0 or precision_regression or fp_regression else ""
         if flag:
             has_regression = True
         print(f"{persona:<{col_w}} {r_str:>10} {p_str:>13} {v_str:>14}{flag}")
@@ -473,8 +486,8 @@ def summarize(results_root: pathlib.Path, compare: bool = False) -> int:
 
     # Print table
     col_w = 28
-    print(f"{'persona':<{col_w}} {'scored':>8} {'precision':>10} {'recall':>8} {'violations':>11}")
-    print("-" * (col_w + 42))
+    print(f"{'persona':<{col_w}} {'scored':>8} {'precision':>10} {'recall':>8} {'violations':>11} {'false pos':>10}")
+    print("-" * (col_w + 53))
 
     exit_code = 0
     for persona, s in sorted(persona_stats.items()):
@@ -491,7 +504,7 @@ def summarize(results_root: pathlib.Path, compare: bool = False) -> int:
             exit_code = 1
         print(
             f"{persona:<{col_w}} {n:>8}{trunc_note}  "
-            f"{p_str}  {avg_r:>7.2f}  {viol_str:>11}"
+            f"{p_str}  {avg_r:>7.2f}  {viol_str:>11} {s['false_positives']:>10}"
         )
 
     if has_violations:

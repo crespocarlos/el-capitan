@@ -8,14 +8,14 @@ Three-arm eval harness for measuring whether the SPEC.md template format improve
 |-----|--------------|-------|
 | `baseline` | None | Raw task description only |
 | `terse` | "Be specific. List acceptance criteria." | Generic brevity prompt |
-| `crew-spec` | Full `_SPEC_TEMPLATE.md` | El-capitan structured spec template |
+| `crew-spec` | Full `_SPEC_TEMPLATE.md` (symlink to `spec-writing/references/spec-template.md`) | El-capitan structured spec template |
 
 **Why three arms, not two:** Comparing `crew-spec` vs `baseline` conflates the template with generic conciseness. `crew-spec` vs `terse` is the honest delta — it isolates the value of the structure, not just the instruction to be specific.
 
 ## Metrics
 
 - **`output_tokens_api`** — primary signal: how many tokens the model emits
-- **`structure_score`** — secondary: count of `## Context`, `## Acceptance Criteria`, `- [ ]`, `**Acceptance**`, etc. present in the output
+- **`structure_score`** — secondary: count of `## Summary`, `## Acceptance criteria`, `WHEN `, `**Command**`, `Verify:`, etc. present in the output
 - **`input_tokens_api`** — cost signal: `crew-spec` will have higher input tokens due to the template
 
 ## Usage
@@ -50,7 +50,7 @@ Results are committed to `results/` as JSON. The `manifest.json` in each run dir
 A good `crew-spec` result shows:
 - Higher `structure_score` than `baseline` and `terse`
 - Output tokens ≥ baseline (more structured = more complete, not less)
-- Consistent `**Acceptance**` blocks in tasks (the key quality signal for crew-builder)
+- Consistent `Verify:` lines in tasks and `WHEN … THEN` criteria (the key quality signals for crew-builder)
 
 If `terse` matches `crew-spec` on structure score, the template isn't adding value beyond generic instruction — that's a signal to revise the template.
 

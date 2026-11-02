@@ -100,13 +100,6 @@
       "smoke": "--help"
     },
     {
-      "name": "task-bundle.py",
-      "category": "task",
-      "owner": "crew-builder",
-      "help": "argparse",
-      "smoke": "--help"
-    },
-    {
       "name": "manage-worktree.py",
       "category": "task",
       "owner": "crew-implement",

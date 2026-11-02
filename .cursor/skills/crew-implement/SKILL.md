@@ -142,6 +142,8 @@ Launch crew-builder as a background subagent in Cursor (`run_in_background: true
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
 - The full contents of `SPEC.md` (so the worker has it without needing to re-read)
 
+**Batching for large specs:** when the spec has more than 8 unchecked tasks, split them into consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh worker per batch with `TASK_RANGE` set. Launch the next batch only after the previous batch's `REPORT.part-*.md` exists and reports no failed task; on a failure, stop and go to Step 7 with that part report. The batch containing the last task runs the Completion Protocol and writes `REPORT.md`, merging the part reports' task results, decisions, and quality gates.
+
 ### Step 7: Handle results
 
 Read `$TASK_DIR/REPORT.md`. If the worker returned a message, use that. If neither exists, tell the user:
@@ -155,27 +157,22 @@ When the Implementation Report is available:
 1. ```bash
    ~/.agent/bin/log-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
    ~/.agent/bin/log-progress.py "$TASK_DIR" "IMPLEMENTING → REVIEW"
-   ( export TASK_DIR="$TASK_DIR"; ~/.agent/bin/task-bundle.py ) || true
    ```
-2. Append to `$TASK_DIR/SESSION.md`:
-   ```
-   [TIME] crew-implement: completed N/N tasks, files: <changed files from report>
-   ```
-3. **Auto-journal** — store an immutable observation (no prompt, passive). Title prefix: "Implemented:". Write 1-3 paragraphs of plain prose on stdin — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:
+2. **Auto-journal** — store an immutable observation (no prompt, passive). Title prefix: "Implemented:". Write 1-3 paragraphs of plain prose on stdin — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:
    - What was built and why it matters (always)
    - What broke or surprised during implementation, if REPORT.md has structural observations (omit if nothing notable)
    - Patterns or constraints discovered worth remembering (omit if nothing new)
 
    Store with `~/.agent/bin/mem.py journal add --title "Implemented: <title>" --tags <tags> --repo <scope> <<'EOF'` followed by the prose and `EOF`. Keep the printed observation ID as evidence. On non-zero exit print `warning: memory unavailable` and continue.
 
-4. **Memory candidates** — inspect the completed spec, report, verification output,
+3. **Memory candidates** — inspect the completed spec, report, verification output,
    and journal entry. Draft zero to three typed candidates in
    `~/.agent/memory/.inbox/` only when they are durable, non-derivable, and
    backed by a file, command, or journal evidence pointer. Do not import them.
    Show each candidate (or `none`) in the completion handoff and ask for one
    batch approval; `crew memory seed` or `mem.py import-inbox` performs the
    later promotion.
-5. **Tell the user — this output is mandatory, do not skip it:**
+4. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Ready for `crew review`."
    > "Working directory: `<WORK_DIR>` — run tests from there."
    > Next: run `crew review` to continue.

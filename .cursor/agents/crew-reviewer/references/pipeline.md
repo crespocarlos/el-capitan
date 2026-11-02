@@ -1,8 +1,14 @@
 ## Review artifacts
 
-Resolve `TASK_DIR` first (see Pipeline Integration below). Then, before auto-apply, set `REVIEW_ROOT="$TASK_DIR/review/$(date +%Y%m%d%H%M%S)"`. Use `/tmp/crew-review-<repo>/review/$(date +%Y%m%d%H%M%S)` only when `TASK_DIR` is empty. Persist each dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`.
+Persistence is mandatory for every mode; `crew commit` and `crew review address` read its output. Resolve `TASK_DIR` first (see Pipeline Integration below). Then, before auto-apply, set `REVIEW_ROOT="$TASK_DIR/review/$(date +%Y%m%d%H%M%S)"`. Use `/tmp/crew-review-<repo>/review/$(date +%Y%m%d%H%M%S)` only when `TASK_DIR` is empty. Persist each dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`, where `<persona>` is one of `adversarial`, `architecture`, `code-quality`, `product-flow`, `prompt-quality`, `explorer`.
 
-Write candidate findings as a JSON list (or `{"findings": [...]}`), then run `~/.agent/bin/review-findings.py normalize candidates.json --output consolidation.json`. It assigns SHA-1 fingerprints over `file|label|normalized title` and reports exact duplicates. `consolidation.json` contains findings with `{fingerprint, persona, label, title, file, disposition, reason, memory_ids}`; disposition is `kept`, `dropped`, or `merged`.
+1. Write candidate findings to `$REVIEW_ROOT/candidates.json` as a JSON list (or `{"findings": [...]}`) with `{persona, label, title, file, line, disposition, reason, memory_ids}`. `persona` uses the names above (a list when several flagged it); `disposition` is `patch`, `decide`, `defer`, `dropped`, or `merged`.
+2. Run `~/.agent/bin/review-findings.py normalize "$REVIEW_ROOT/candidates.json" --output "$REVIEW_ROOT/consolidation.json"`. It canonicalizes persona names, assigns SHA-1 fingerprints over `file|label|normalized title`, and merges exact duplicates.
+3. Write the emitted report to `$REVIEW_ROOT/report.md`, then run `~/.agent/bin/review-findings.py persist --review-dir "$REVIEW_ROOT" --report "$REVIEW_ROOT/report.md" --findings "$REVIEW_ROOT/consolidation.json" --mode <self|changes|pr|spec|idea> --files <reviewed file paths>`. It writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
+
+Creating `$REVIEW_ROOT` under `~/.agent/tasks/` fails with `Operation not permitted` in a sandboxed shell. Run the `mkdir`, `normalize`, and `persist` commands with the harness's elevated-permission mechanism from the start, not after the first failure.
+
+On exit 2 or any persistence failure, print the error and state `review not persisted` in the output; do not skip silently. State it only when no `REVIEW.md` was written.
 
 ## Pipeline Integration (self-review mode only)
 

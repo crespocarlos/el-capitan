@@ -19,10 +19,7 @@ Extract owner, repo, and PR number from the user's input (URL or number).
 
 Resolve the worktree and load repo patterns:
 
-If either read-only `gh pr view` call below fails with a known sandbox-network
-denial, rerun that exact call once using the current harness's network-elevation
-mechanism (for example, full network permission in Cursor). Do not elevate for
-authentication, authorization, or scope failures; report those failures instead.
+Network failures on the read-only `gh pr view` calls follow `personal.mdc` GitHub access.
 
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
@@ -129,19 +126,7 @@ Before drafting any reply, read `~/.cursor/rules/voice.mdc` and apply it: PR rev
 
 Edits the user excluded are not applied. Threads the user excluded are left open and unresolved — no comment, no resolution.
 
-### Step 8: Session capture (after posting)
-
-After reporting, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
-
-```bash
-TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null || echo "")
-```
-
-```
-[TIME] crew-pr-resolver: N applied / N adapted / N rejected / N deferred
-```
-
-### Auto-journal
+### Step 8: Auto-journal
 
 Regardless of `TASK_DIR` (PRs not built through the pipeline have none), store an immutable observation (no prompt — passive) from the threads and verdicts, via `~/.agent/bin/mem.py journal add --title "PR review: <PR title>" --tags <tags> --repo <scope>` with the prose on stdin (heredoc). Write 1-3 paragraphs in plain prose. Focus on what *you* learned from the feedback — not what you applied mechanically:
 - What the reviewer caught that you missed, and why it matters / what pattern it reveals

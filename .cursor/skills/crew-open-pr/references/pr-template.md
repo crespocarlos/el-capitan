@@ -31,12 +31,12 @@ Examples of bad summaries (avoid this shape):
 **Goal:** Only steps a **human reviewer** can perform on this PR without the full operator harness (at most **3–5** bullets). Never paste long integration matrices or internal runbooks.
 
 Derive from, in order:
-1. SPEC **Goal** and **high-signal** bullets under **Acceptance Criteria** (Requirements / Non-regression) — distill to reviewer-sized checks.
+1. SPEC **Summary** and **high-signal** bullets under **Acceptance criteria** — distill to reviewer-sized checks.
 2. **Diff risk** — what changed files or behaviors a reviewer should spot-check (UI path, config knob, API response shape).
 
 **Automated:** Typed commands under SPEC `## Tests` (`### Unit` / `### Integration` / `### E2E` / `### Validation`) are run via **`crew test`** (and CI when applicable). One line in the PR body is enough, e.g. "Automated: `crew test` passes in the worktree."
 
-**Do not:** Pull reviewer steps from `$TASK_DIR/runbook.md` (local artifact, scriptable-only policy). Do not invent steps.
+**Do not:** Invent steps.
 
 If no SPEC.md exists, keep this section brief or omit it. Never invent steps.
 ```
@@ -47,4 +47,4 @@ If no SPEC.md exists, keep this section brief or omit it. Never invent steps.
 - Summary tone: direct, for engineers. No fluff, no "This PR aims to..."
 - If SPEC.md exists, derive the summary from its goal and user impact — don't paraphrase the diff as a change log.
 - Avoid layer-grouped section headers or long bullet inventories of renamed fields/files in the Summary.
-- **How to test** = **reviewer-only** manual bullets (capped) from SPEC Goal / Acceptance Criteria / diff risk, plus one **automated** line pointing at `crew test` / CI. Do not use runbook.md as the source for reviewer steps.
+- **How to test** = **reviewer-only** manual bullets (capped) from SPEC Summary / Acceptance criteria / diff risk, plus one **automated** line pointing at `crew test` / CI.

@@ -23,7 +23,7 @@ Entry: `crew resolve PR <PR>`
 Stages: address-pr → commit → push
 Terminal: all review threads resolved and pushed; reviewer approval is external
 
-> **Lightweight path (no spec needed):** For changes touching ≤3 files with no new exports or API surface — implement inline → `crew review changes` → `crew commit`. Skip the spec, worktree, and task state entirely. Use full `build` when the change crosses that threshold.
+> **Lightweight path (no spec needed):** For changes touching ≤3 files with no new exports or API surface — `crew quick` (implement inline → `crew review changes`) → `crew commit`. Skip the spec, worktree, and task state entirely. Use full `build` when the change crosses that threshold.
 
 ## State machine
 
@@ -62,7 +62,7 @@ else
 fi
 ```
 
-- If `$TASK_DIR` is non-empty: read SPEC.md slug, derive state, surface: `Active task: **<slug>** (<STATE>). Next: \`<next crew command>\`.`
+- If `$TASK_DIR` is non-empty: read SPEC.md slug, derive state, surface: `Active task: **<slug>** (<STATE>). Next: \`<next crew command>\`.` If `$TASK_DIR/HANDOFF.md` exists, append: `Handoff saved — run \`crew handoff resume\`.`
 - If `$TASK_DIR` is empty and exit was 0: no active task — say nothing.
 - If exit was non-zero: surface the warning above and say nothing further.
 

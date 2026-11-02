@@ -1,6 +1,6 @@
 ## Step 7: Consolidation
 
-Collect all reviewer outputs. Consolidation operates **exclusively on the text output** from each reviewer — never re-read source code.
+Collect all reviewer outputs. Consolidation starts from persona text but decides against the repository: every `[blocking]` and `[attention]` candidate is verified in the source before it is kept (see "Verify against the repository"). Never re-review the artifact for new findings.
 
 **Truncation check:** Before evaluating any finding, check the word count of each persona response. If any response is fewer than 80 words, emit: "[persona-name] may have been cut short — consider relaunching."
 
@@ -25,11 +25,8 @@ Can you trace a direct line from the artifact to the conclusion? If a reviewer s
 **Is it internally consistent within this review?**
 Does this finding contradict another finding from the same reviewer in this same run? Contradiction is a signal that the reviewer was pattern-matching rather than reasoning. Surface it: `(note: conflicts with [other finding] — kept the stronger one)`.
 
-**Does it assert absence without verification?**
-When a finding claims something does NOT exist (no guard, no constraint, no check, no validation), verify via a targeted Read or Grep before accepting it — the reviewer may have seen a truncated diff or an incomplete slice of the file. A finding that asserts "there is no X" based solely on the diff is ungrounded until the actual file confirms it. If you cannot verify, downgrade to `[needs more info]` with the verification question, or drop it.
-
 **Is the severity proportionate to actual impact?**
-A reviewer saying "this is blocking" must be able to name the concrete harm. If the harm is speculative or relies on an unlikely chain of events, downgrade: `(downgraded: harm is speculative — no direct failure path in this artifact)`.
+Ignore the persona's label and assign one from the verified harm. A `[blocking]` must name a concrete failure path. If the harm is speculative or relies on an unlikely chain of events, downgrade: `(downgraded: harm is speculative — no direct failure path in this artifact)`.
 
 **Is it specific enough to act on?**
 Vague findings ("this could be improved", "consider handling this case") with no concrete target are noise. Either sharpen with what you know of the artifact, or drop: `(dropped: too vague to act on)`.
@@ -39,9 +36,37 @@ Every question must name what breaks if the answer is wrong. If it doesn't, add 
 
 The goal is a report where every finding has a traceable, defensible reason to exist — not a relay of whatever the reviewers returned.
 
+### Verify against the repository
+
+For each `[blocking]` and `[attention]` candidate in a code review, confirm the claim in the current source with at most two targeted reads (the cited lines plus one caller, guard, or definition). Judge each finding on its own evidence, never by analogy to another finding. Absence claims ("there is no guard") always need this check, because personas see truncated slices. Claims about filesystem or persisted-data state ("symlink is a real directory", "existing specs use the old format") also need one command (`ls -la`, a count over the real data), because Ask-mode personas cannot run shell commands. When a `[blocking]` claim needs more than two reads, dispatch one read-only validator subagent (`reviewer-explorer`) with only that claim and its location, and keep its verdict. Outcomes:
+
+- **confirmed** — keep, with the evidence location in the internal record.
+- **refuted** — drop: `(dropped: refuted by <path:line>)`.
+- **unverifiable** (blocked reads, missing context) — downgrade to `[needs more info]` naming the blocked check, or drop.
+
+Spec and idea reviews verify claims against the artifact text instead; verify repository claims inside them the same way.
+
+### Not a finding
+
+Drop these regardless of label:
+
+- problems that already existed before this change and that the change does not touch or worsen — route to `defer`;
+- anything a configured linter, formatter, or type-checker reports;
+- pedantic style preferences with no stated cost;
+- issues the code explicitly silences or documents as intentional (an ignore comment with a reason, a linked issue);
+- duplicates of a finding the user rejected earlier in the session, unless new evidence is stated.
+
+### Route
+
+Give each kept finding a disposition in the internal record:
+
+- **patch** — has a concrete `Fix:` inside the reviewed scope.
+- **decide** — needs a user choice (scope, contract, trade-off); emit as `[needs more info]` with the options.
+- **defer** — real but pre-existing or outside the reviewed scope. Do not emit it in the numbered list; append it to the deferred file (see pipeline persistence) and mention the count in one line after the list.
+
 ### Selective empirical verification
 
-Before consolidation, classify each `[blocking]` or `[attention]` candidate as **static**, **runtime-verifiable**, **prompt-evaluable**, or **human-judgment**. Verify only runtime-verifiable and prompt-evaluable candidates that have a concrete failure path:
+After the repository check, classify each remaining `[blocking]` or `[attention]` candidate as **static**, **runtime-verifiable**, **prompt-evaluable**, or **human-judgment**. Verify only runtime-verifiable and prompt-evaluable candidates that have a concrete failure path:
 
 - Use an existing targeted test, eval, API request, or configured live-cluster query when one is available.
 - Reuse the same fixture or query for related findings instead of running one check per finding.

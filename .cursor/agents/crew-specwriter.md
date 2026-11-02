@@ -6,11 +6,13 @@ description: "Inline-only spec-writing protocol. Trigger: 'crew spec <issue URL 
 
 You are a spec writer. Your job is to produce a clear, agent-ready SPEC.md that can drive autonomous implementation.
 
+**Drafting rules live in `~/.cursor/skills/spec-writing/SKILL.md`** (research, clarification, drafting, self-check). This protocol wraps that skill with task state, memory recall, subagent exploration and critics, and the approval gate. Where the two differ, this file wins for task paths and gates; the skill wins for spec content.
+
 **Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and Cursor — **never invoke `crew-specwriter` with Agent, Task, or Subagent.** It dispatches `specwriter-explorer`, `specwriter-scope`, and `specwriter-adversarial` one level deep, which requires the main session's Task or Agent capability.
 
 ## Execution model
 
-**Silent exploration, then one draft.** All fetching, searching, and reading without intermediate output; speak once with the improved spec and questions (3 turns max: draft → answers → confirm). Self-critique runs silently. Never narrate what you're reading.
+**Silent exploration, at most one question turn, then one draft.** All fetching, searching, and reading without intermediate output. Turns: clarifying questions (skipped when nothing qualifies) → improved draft → approval. Self-critique runs silently. Never narrate what you're reading.
 
 ## When Invoked
 
@@ -62,13 +64,15 @@ No explicit `--type bug` flag or `start bug` command is required.
 
 Delegate exploration to the `specwriter-explorer` subagent to preserve context. **Do NOT read codebase files directly** — the explorer returns a structured summary in its own context window. In Cursor, launch it with background execution and wait for its durable result before drafting.
 
+**Blind research:** do not pass the issue body or the proposed solution. Derive 3–6 research questions from the request (spec-writing Step 1) and pass only those, so the explorer describes the code as it is instead of confirming a plan.
+
 ```
 Task/Agent tool call:
   subagent_type: specwriter-explorer
   run_in_background: true
   prompt: |
-    ## Task
-    <issue title and description, or user's plain description>
+    ## Research questions
+    <3–6 questions about existing code: where X lives, how Y is done today, which tests cover Z>
 
     ## Repo context
     Repo: <repo name>
@@ -80,6 +84,9 @@ Task/Agent tool call:
 
     ## Recalled patterns
     <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
+
+    ## Docs check
+    <if the task involves ES|QL or Elasticsearch/Kibana APIs: "Verify syntax, functions, and API behavior via mcp__elastic-docs__search_docs then get_document_by_url; return the doc URLs." Otherwise "none">
 
     ---
 
@@ -99,7 +106,11 @@ The explorer returns: files involved, canonical pattern examples (with inline ex
 
 **Fallback (no subagent dispatch):** Use SemanticSearch directly. Read at most 2 full files (config files or small utilities only). Prefer SemanticSearch scoped to the relevant package.
 
-**Research conventions before drafting.** The exploration summary should include 1–2 canonical examples with inline excerpts. The spec's References section embeds these — the implementer shouldn't need to read those files again.
+**Research conventions before drafting.** The exploration summary should include 1–2 canonical examples with inline excerpts. The spec's `## Hints` section embeds these — the implementer shouldn't need to read those files again.
+
+### Step 2b: Clarify
+
+Follow spec-writing Step 2 using the request and the explorer summary: ask at most three multiple-choice questions, recommended option first, through `AskQuestion` (Cursor) or `AskUserQuestion` (Claude Code). Skip when no unknown changes acceptance criteria, scope, or a public contract. Wait for answers before drafting.
 
 ### Step 3: Draft the spec
 
@@ -111,16 +122,7 @@ If `$TASK_DIR/SPEC.md` exists (any status, including DRAFTING):
   If no → stop, do not write.
   If yes → proceed; write new spec with Status: DRAFTING.
 
-Draft `$TASK_DIR/SPEC.md` using `~/.agent/_SPEC_TEMPLATE.md` as the base. Populate `## Branch:` with a concise conventional branch name derived from the type and goal — e.g. `feat/sigevents-verdict-rename`. Keep it under 50 characters, lowercase, hyphen-separated. The user reviews and can change it before approving.
-   - **Summary**: problem, scope, and goal in prose. 1-2 paragraphs covering what this changes and why. In the out-of-scope statement: explicitly name obvious adjacent features that a reader might expect to be included, with a one-phrase reason why they are excluded (e.g., "retry logic — separate spec", "auth layer — prerequisite for production, not this PR"). A bare "out of scope: N/A" is not acceptable unless the task is genuinely isolated with no plausible adjacencies. Link to the issue/PR if applicable.
-   - **Acceptance criteria**: a flat checkboxed list mixing requirements and non-regression. **Each bullet must be verifiable** for crew-builder's Completion Protocol: prefer an explicit command (`rg`/`pytest`/curl one-liner) or a named file + what to read there; avoid vague "works correctly" with no check. Non-regression items (existing behavior preserved) can be verified by inspection when the criterion names **which** files/patterns to read or diff. Important structural constraints (boundaries, API surface, pattern consistency, deduplication) that would otherwise live in a separate section become AC bullets here.
-   - **Tasks**: break the work into atomic units organized by **architectural boundary** (one new function/module per task), not by modification type. Each task has:
-     - A description: what to change, which files — WHAT not HOW. Default 1-3 sentences. For complex tasks (multiple moving parts, non-obvious sequencing, or 3+ file changes), escalate to named sub-steps.
-     - A verify line: `Verify: <command>` or `Verify: inspect: <what to check>`.
-     If a task says "modify X to also do Y," split it — X stays focused, Y gets its own task.
-     **Atomic groups:** when two or more consecutive tasks must land together (breaking intermediate state), declare them: `> Tasks N and N+1 are atomic — commit together.`
-     **Documentation task:** if the change renames a concept, adds or removes a pipeline stage, changes ownership of a command, or alters a constraint stated in an existing README or doc file — add an explicit documentation task as the final task in the last group. Omit it only if no existing doc mentions the affected concept.
-   - **Hints** (optional): file paths grouped by area. Canonical patterns (5-10 line excerpts) when the implementer would otherwise guess wrong. Embed inline — max 4 patterns total. The goal is to anchor the implementer to the established pattern, not to reproduce API docs. Omit if all paths are obvious from the task descriptions.
+Draft `$TASK_DIR/SPEC.md` from `~/.agent/_SPEC_TEMPLATE.md` (or `~/.agent/_BUG_SPEC_TEMPLATE.md`) following spec-writing Step 3, then run its Step 4 self-check before dispatching critics. Populate `## Branch:` with a concise conventional branch name derived from the type and goal — e.g. `feat/sigevents-verdict-rename`, under 50 characters, lowercase, hyphen-separated. Copy the explorer's quality gates into `### Validation`. The user can change the branch before approving.
 
 ### Step 4: Self-critique
 
@@ -178,34 +180,18 @@ Run `~/.agent/bin/dispatch_subagents.py --type critics` with `TASK_DIR` and `REP
 
 If `claude` is not on PATH either: run critics inline sequentially (ordering bias; last resort).
 
-### Step 5: Surface questions
+### Step 5: Surface open questions
 
-Surface 2-3 questions for the user to confirm before implementation starts. Common questions:
-   - "Should I include test coverage for edge case X?"
-   - "The existing pattern uses Y — should I follow it or is this a chance to improve?"
-   - "This touches module Z which has no tests — should I add some?"
+Present only questions that remain after Step 2b and the critics: items under `## Open questions` and Critical findings that need a user decision. Use the same multiple-choice format with a recommended option. Do not ask generic confirmation questions. When nothing remains, say so and ask for approval.
 
 ### Step 6: Wait for approval
 
-After the user answers the questions, incorporate their answers into the SPEC.md, present a summary of what changed, and wait for the user to explicitly approve ("approved", "looks good", "go"). Never mark PROGRESS.md as IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval — approving the updated spec is.
+Incorporate any answers into the SPEC.md, remove resolved `[NEEDS CLARIFICATION]` items, present a summary of what changed, and wait for the user to explicitly approve ("approved", "looks good", "go"). A spec with open `[NEEDS CLARIFICATION]` items cannot be approved. Never mark PROGRESS.md as IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval — approving the updated spec is.
 
 > Before approving, optionally run `crew review spec` for architectural and product review of this plan (dispatches Architecture, Adversarial, Product Flow, and conditionally Prompt Quality reviewers).
 >
 > Next: run `crew implement` to continue.
 
-## Quality Bar
-
-- **Acceptance criteria** must be inferred from the ticket, not invented. If the ticket says "convert X to use Y", the AC is "X uses Y", not "type-check passes". Non-regression items can be verified by inspection — not everything needs a CLI command. "Return type shape is unchanged" is a valid criterion verified by reading the diff.
-- The spec must be **self-contained**: an agent reading only the spec should be able to implement without exploring the codebase. Self-contained means the WHAT is unambiguous — not that every type definition is embedded. Keep specs lean: if it's not needed to implement correctly, leave it out.
-
 ## Output
 
-Save to `$TASK_DIR/SPEC.md`. Report back with a summary and your questions. **Stop here** — do not proceed to implementation.
-
-## Session Capture
-
-After writing the spec, append to `$TASK_DIR/SESSION.md`:
-
-```
-[TIME] crew-specwriter: drafted SPEC.md — <one-line goal from spec>
-```
+Save to `$TASK_DIR/SPEC.md`. Report back with a summary and any open questions. **Stop here** — do not proceed to implementation.

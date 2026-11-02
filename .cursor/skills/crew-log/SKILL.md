@@ -14,7 +14,7 @@ Resolve context:
 source ~/.agent/bin/task-env.sh
 ```
 
-Read whatever is available: `$TASK_DIR/REPORT.md`, `$TASK_DIR/SESSION.md`, recent `git log -5 --format="%h %s"`. If no active task, synthesize from the current session conversation instead.
+Read whatever is available: `$TASK_DIR/REPORT.md`, `$TASK_DIR/PROGRESS.md`, recent `git log -5 --format="%h %s"`. If no active task, synthesize from the current session conversation instead.
 
 Show the draft and ask: **"Anything to add before I write this?"** If the user says nothing or "no", write immediately. Do not prompt for specific fields.
 
@@ -39,7 +39,6 @@ Keep the resulting observation IDs as evidence. Draft zero to three durable type
 Then:
 - If the entry contains a **durable rule** worth remembering in every future session, surface it: `"Worth adding to ~/.claude/CLAUDE.md?"`
 - **Drift check** — only when `~/.claude/CLAUDE.md` holds inline preference text (it usually imports `personal.mdc` with `@`) and it differs from `rules/personal.mdc`, surface: `"Preferences have drifted — consider syncing."`
-- If `TASK_DIR` is non-empty: clear `$TASK_DIR/SESSION.md` (buffer flushed).
 
 ## Plain-language gates
 

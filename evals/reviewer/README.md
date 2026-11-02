@@ -10,8 +10,9 @@ Two metrics:
 - **Recall** — of the expected findings for a persona, what fraction did it actually produce?
 - **Precision** — of all labeled findings produced, what fraction matched an expected finding?
 
-A third signal:
+Additional signals:
 - **Scope violations** — findings from `reviewer-code-quality` that contain Architecture-lane terms (`architecture`, `boundary`, `coupling`, `dependency direction`). Any violations cause a non-zero exit code.
+- **False positives** — `[blocking]` or `[attention]` findings a persona produces on a fixture listed as clean for it (`clean_for`). An increase over the baseline is flagged as a regression.
 
 ---
 
@@ -69,6 +70,7 @@ Fixtures live in `evals/reviewer/fixtures.json`:
 | `expected_findings[].persona` | string | Exact persona name (e.g. `reviewer-adversarial`) |
 | `expected_findings[].severity` | string | Expected label: `blocking`, `attention`, `needs more info`, or `nit` |
 | `expected_findings[].match_hint` | string | Short phrase (3–8 words) that must appear in any correct finding |
+| `clean_for` | array | Optional. Personas that must produce no `[blocking]`/`[attention]` finding on this diff; they run on the fixture and count toward false positives |
 
 ---
 
@@ -108,6 +110,10 @@ Applied only to `reviewer-code-quality`. The raw output is scanned for these den
 
 Any match counts as a scope violation. The summary table shows the count per persona, and any non-zero count causes a non-zero exit code.
 
+### False positives
+
+For each persona in a fixture's `clean_for`, the count of `[blocking]` and `[attention]` labels in its output is added to that persona's `false_positives`. The summary shows a "false pos" column; the baseline stores the count, and any increase is reported as a regression. Clean fixtures test that verification and the "not a finding" rules suppress noise, not just that bugs are caught.
+
 ### Truncation guard
 
 If a persona returns fewer than 50 characters, the result is marked `truncated` and excluded from precision/recall. Truncated responses do not count as recall=0.
@@ -143,8 +149,17 @@ Current fixtures:
 
 | ID | What it tests | Expected persona | Severity |
 |---|---|---|---|
-| r1 | Null dereference — `user` accessed without null check | `reviewer-adversarial` | `blocking` |
-| r2 | Swallowed async error — exception caught, success returned | `reviewer-adversarial` | `attention` |
-| r3 | New exported function with no test coverage | `reviewer-code-quality` | `attention` |
-| r4 | Scope discipline — Architecture boundary change (Code Quality must NOT produce arch findings) | `reviewer-code-quality` | `attention` |
-| r5 | Prompt file verbosity regression — redundant restatements burying critical instruction | `reviewer-prompt-quality` | `attention` |
+| r1 | Behavioral regression — email fallback removed for active users | `reviewer-adversarial` | `blocking` |
+| r2 | Silent failure — exception logged, function returns success | `reviewer-adversarial` | `blocking` |
+| r3 | Timezone corruption — `replace(tzinfo=…)` overwrites the offset | `reviewer-code-quality` | `blocking`, `attention` |
+| r4 | Scope discipline — new module boundary (Code Quality must NOT produce arch findings) | `reviewer-code-quality` | `blocking` |
+| r5 | Prompt file verbosity regression — redundant restatements burying critical instruction | `reviewer-prompt-quality` | `blocking` |
+| r6 | API backward-compat break — exported parameter removed | `reviewer-architecture` | `blocking` |
+| r7 | Magic numbers — hardcoded TTL and refresh threshold (naming lane, formerly Fresh Eyes) | `reviewer-code-quality` | any |
+| r8 | Incomplete error state — payment failure has no user message | `reviewer-product-flow` | `attention` |
+| r9 | Spec with an untestable acceptance criterion | `specwriter-adversarial` | any |
+| r10 | Spec task granularity violation — one task touches 5 files | `specwriter-scope` | any |
+| r11 | Clean — guard visible in hunk context; an absence claim is a false positive | `clean_for`: adversarial, code-quality | — |
+| r12 | Clean — small, tested, conventional refactor | `clean_for`: code-quality | — |
+
+`baseline.json` predates the Fresh Eyes merge and the clean fixtures; re-run and re-baseline before comparing.

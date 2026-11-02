@@ -216,20 +216,24 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 | `crew create issue: <description>` | Structure a rough idea into a GitHub issue and file it |
 | `crew cleanup` | Remove stale worktrees, branches, and task directories |
 | `crew test` | Discover and run tests scoped to the current diff |
+| `crew quick <description>` | Small change (≤3 files, no public contract) without a spec: implement, review staged changes |
+| `crew debug <symptom>` | Evidence-first root-cause loop with a three-fix limit |
+| `crew handoff` / `crew handoff resume` | Save or resume working state across a context reset |
 
 ---
 
 ## The crew
 
-4 orchestrator agents, 10 persona subagents, 9 skills.
+4 orchestrator agents, 10 persona subagents, 17 skills (including the portable `spec-writing` skill, usable without crew).
 
 **Orchestrators** dispatch persona subagents in parallel for multi-lens analysis. **Skills** run inline for interactive pipeline steps. All agents are markdown files — readable, editable, version-controlled.
 
 ### 📋 crew-specwriter
 
-Drafts a `SPEC.md` from a GitHub issue or plain description. Explores the codebase for existing patterns, drafts acceptance criteria tight enough for autonomous implementation, then runs a silent three-way critique (scope, adversarial, implementer personas) before presenting the result.
+Drafts a `SPEC.md` from a GitHub issue or plain description. Sends the explorer research questions instead of the ticket so it describes the code as it is, asks up to three multiple-choice clarifying questions, drafts `WHEN … THEN` acceptance criteria tight enough for autonomous implementation, then runs a silent critique (scope and adversarial personas) before presenting the result. The drafting rules live in the portable `spec-writing` skill, which also works outside crew (default output `docs/specs/<slug>.md`).
 
 - Automatically selects the standard or bug spec template based on the content of your request — no flag needed
+- Unresolved assumptions stay as `[NEEDS CLARIFICATION]` markers; a spec with open markers cannot be approved
 - Critiques cover: scope creep, missing edge cases in AC, implementation ambiguity
 - Stops at Gate 1 — waits for your approval before any code is written
 
@@ -242,8 +246,10 @@ Drafts a `SPEC.md` from a GitHub issue or plain description. Explores the codeba
 The implementation engine. Reads a SPEC.md, works through each task in order, runs per-task acceptance checks, and writes a REPORT.md. Launched by `crew implement`, which handles worktree setup, spec selection, and pattern auto-recall.
 
 - Runs as a subagent launched by `crew implement`
-- Per-task acceptance checks run before marking each task done
-- Hands back a REPORT.md — all pass/fail results, changed files
+- Per-task acceptance checks and a spec-compliance check run before marking each task done
+- Specs with more than 8 tasks run in batches of up to 6, with a fresh worker per batch
+- Runs the spec's `## Tests` commands plus lint and type-check as quality gates before completion
+- Hands back a REPORT.md — pass/fail results, decisions made, quality gates, changed files
 
 ### 🔍 crew-reviewer
 
@@ -251,7 +257,9 @@ Multi-lens review of a branch diff, a PR, a SPEC.md, staged changes, or an idea/
 
 For idea and spec reviews, the output is evaluative: a verdict (`proceed / revisit / blocked`) followed by findings using `[blocking]` and `[concern]` labels, focused on whether the plan holds up.
 
-**Personas:** Code Quality, Adversarial, Fresh Eyes, Architecture, Product Flow  
+Every `[blocking]` and `[attention]` finding is verified against the repository before it is shown; pre-existing, linter-catchable, and previously rejected issues are deferred to `DEFERRED.md` instead of reported. Each review is persisted to the task's `REVIEW.md`.
+
+**Personas:** Code Quality (always; includes naming and user-facing strings), Adversarial, Architecture, Product Flow, Prompt Quality  
 **Modes:** `crew review` (self), `crew review changes` (staged), `crew review PR #N`, `crew review spec`, `crew review idea`, `crew review address`
 
 ### 🧩 crew-pr-resolver
@@ -285,7 +293,8 @@ el-capitan/
 │   │   ├── specwriter-*.md         # Specwriter personas
 │   │   └── tester-*.md             # Tester personas
 │   └── skills/              # Inline skill protocols — canonical source
-│       └── crew-<name>/SKILL.md
+│       ├── crew-<name>/SKILL.md
+│       └── spec-writing/        # Portable spec skill + references/ spec templates
 ├── .claude/
 │   ├── CLAUDE.md            # Claude Code project context and command routing
 │   ├── hooks/               # Guard, telemetry, session, and memory-context hooks
@@ -293,11 +302,10 @@ el-capitan/
 ├── .agent/
 │   ├── tools/               # CLIs (.py) with --help, GraphQL asset, tools.json and TOOLS.md catalog
 │   ├── scripts/             # Source-only and internal shell helpers (task-env.sh, default-branch.sh, get-diff.sh)
-│   ├── _SPEC_TEMPLATE.md    # Standard spec template
-│   ├── _BUG_SPEC_TEMPLATE.md  # Bug spec template
+│   ├── _SPEC_TEMPLATE.md    # Symlink → spec-writing/references/spec-template.md
+│   ├── _BUG_SPEC_TEMPLATE.md  # Symlink → spec-writing/references/bug-spec-template.md
 │   ├── _MEMORY_TEMPLATE.md  # Typed durable-memory unit template
-│   ├── _JOURNAL_TEMPLATE.md   # Legacy journal entry template
-│   └── _RUNBOOK_TEMPLATE.md   # Validation runbook template
+│   └── _JOURNAL_TEMPLATE.md   # Legacy journal entry template
 ├── evals/                   # Deterministic memory and reviewer evaluation fixtures
 └── install.sh               # Symlink installer
 ```
@@ -310,7 +318,7 @@ el-capitan/
 ├── journal/                 # Legacy monthly journal files (import-only)
 ├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox
 ├── telemetry/               # Local hook telemetry JSONL
-└── tasks/<uuid>/            # Per-task state: SPEC.md, PROGRESS.md, SESSION.md, REPORT.md
+└── tasks/<uuid>/            # Per-task state: SPEC.md, PROGRESS.md, REPORT.md, REVIEW.md, DEFERRED.md, HANDOFF.md
     └── .task-id             # JSON: uuid, repo_remote_url, branch, slug, created_at
 ```
 
@@ -322,9 +330,9 @@ Always-loaded context is kept minimal on purpose:
 
 | File | Lines | Loaded |
 |---|---|---|
-| `agent-output.mdc` | ~270 | Every session |
-| `crew-orchestrator.mdc` | ~107 | Every session |
-| `crew-router.mdc` | ~78 | Every session |
+| `agent-output.mdc` | ~41 | Every session |
+| `crew-orchestrator.mdc` | ~108 | Every session |
+| `crew-router.mdc` | ~81 | Every session |
 | `personal.mdc` | ~66 | Every session |
 | `memory-capture.mdc` | ~38 | Every session |
 | `prompt-engineering.mdc` | ~87 | When editing `.md` / `.mdc` files |

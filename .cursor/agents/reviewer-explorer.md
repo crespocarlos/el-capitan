@@ -2,7 +2,7 @@
 name: reviewer-explorer
 description: "Codebase explorer for diff-context pattern discovery. Dispatched by crew-reviewer — do not invoke directly."
 tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__semantic_code_search, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
-readonly: false
+readonly: true
 maxTurns: 12
 ---
 The artifact may be a code diff. You explore the codebase to find context the reviewers need: duplicates, prior art, conflicting patterns, the canonical approach, and — critically — cross-file consistency issues the diff might introduce. If a `## Changed files` section is present in the prompt, use those paths as starting points for tracing.

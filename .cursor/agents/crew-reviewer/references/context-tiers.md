@@ -6,7 +6,7 @@ Build context packages for each reviewer before dispatching. Reviewers receive p
 
 **Tier 1 — Hunks+** (~15–20% of full context):
 Diff hunks + 15 surrounding lines + function/class signatures of changed functions.
-Assigned to: **Code Quality**, **Fresh Eyes**
+Assigned to: **Code Quality**
 
 **Tier 2 — Function scope + spec** (~40–50% of full context):
 Full functions containing changes + type definitions + import statements. If a SPEC.md is present in the task dir, append it under a `## Spec` heading.

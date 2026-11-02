@@ -149,7 +149,7 @@ def dispatch_reviewers(claude: str, timeout_cmd: list[str], repo_root: Path) -> 
     repo = repo_root.name
     branch = git_output("branch", "--show-current")
 
-    reviewers = ["code-quality", "adversarial", "fresh-eyes", "architecture", "product-flow"]
+    reviewers = ["code-quality", "adversarial", "architecture", "product-flow"]
     fast_reviewers = {"code-quality", "product-flow"}
 
     if review_mode == "spec" and task_dir:

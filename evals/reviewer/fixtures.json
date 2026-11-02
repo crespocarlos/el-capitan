@@ -83,7 +83,7 @@
       "diff": "--- a/src/cache/session.py\n+++ b/src/cache/session.py\n@@ -1,6 +1,13 @@\n def create_session(user_id: str) -> str:\n     token = _generate_token()\n-    _store.set(f\"session:{token}\", user_id)\n+    _store.set(f\"session:{token}\", user_id, ex=86400)\n     return token\n+\n+\n+def is_valid_session(token: str) -> bool:\n+    ttl = _store.ttl(f\"session:{token}\")\n+    return ttl > 300",
       "expected_findings": [
         {
-          "persona": "reviewer-fresh-eyes",
+          "persona": "reviewer-code-quality",
           "severity": null,
           "match_hint": "300"
         }
@@ -125,6 +125,25 @@
           "severity": null,
           "match_hint": "files"
         }
+      ]
+    },
+    {
+      "id": "r11",
+      "description": "Clean: guard is visible in hunk context — an absence claim ('no null check') is a false positive",
+      "diff": "--- a/src/user/profile.py\n+++ b/src/user/profile.py\n@@ -10,8 +10,9 @@ def get_user_display_name(user_id: str) -> str:\n     user = db.fetch_user(user_id)\n     if user is None:\n         raise UserNotFound(user_id)\n-    return user.display_name\n+    name = user.display_name or user.email\n+    return name.strip()\n",
+      "expected_findings": [],
+      "clean_for": [
+        "reviewer-adversarial",
+        "reviewer-code-quality"
+      ]
+    },
+    {
+      "id": "r12",
+      "description": "Clean: small, tested, conventional change — no blocking or attention finding is warranted",
+      "diff": "--- a/src/utils/slug.py\n+++ b/src/utils/slug.py\n@@ -1,6 +1,8 @@\n import re\n \n+_NON_WORD = re.compile(r\"[^a-z0-9]+\")\n+\n \n def slugify(text: str) -> str:\n-    return re.sub(r\"[^a-z0-9]+\", \"-\", text.lower()).strip(\"-\")\n+    return _NON_WORD.sub(\"-\", text.lower()).strip(\"-\")\n--- a/tests/utils/test_slug.py\n+++ b/tests/utils/test_slug.py\n@@ -3,3 +3,7 @@ from src.utils.slug import slugify\n \n def test_slugify_basic():\n     assert slugify(\"Hello World\") == \"hello-world\"\n+\n+\n+def test_slugify_strips_edges():\n+    assert slugify(\"  --Hi--  \") == \"hi\"\n",
+      "expected_findings": [],
+      "clean_for": [
+        "reviewer-code-quality"
       ]
     }
   ]

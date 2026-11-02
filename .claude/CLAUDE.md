@@ -66,7 +66,7 @@ reconfigure or modify its source repository.
 - Never start `build` implementation without an approved SPEC.md; the lightweight path is the only exception
 - Done = acceptance criteria pass, not "looks right"
 - Explicit handoffs: every skill step that hands off must name the next step and say "proceed immediately"
-- **Before running `tsc` or type-check, check if `node_modules` is a symlink** (`test -L node_modules`). If symlinked, skip — `tsc` follows the symlink and emits `.d.ts` files in the main repo. If `node_modules` is a real directory, type-check is safe.
+- **Type-check without emitting when `node_modules` is a symlink** (`test -L node_modules`): emitting builds write `.d.ts` files into the main repo through the symlink. Use `tsc --noEmit -p <tsconfig>`; if no no-emit form exists, report the type-check as skipped.
 - **`crew implement` always follows crew-builder's protocol.** Changes made under `crew implement` go through crew-builder — via subagent (Cursor Task tool) or by following crew-builder's protocol directly. Never skip the protocol and implement ad-hoc.
 
 <!-- el-capitan:memory -->

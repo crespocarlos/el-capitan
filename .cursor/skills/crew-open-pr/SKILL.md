@@ -58,7 +58,7 @@ fi
 
 Read these sources (in order of priority):
 
-1. **SPEC.md** — resolve `TASK_DIR` using the canonical resolution recipe (see Session Capture block below) and read `$TASK_DIR/SPEC.md` for goal, context, and **Acceptance Criteria** (Requirements / Non-regression) to distill **reviewer-sized** "How to test" bullets (max 3–5). Read typed `## Tests` subsection headings only to mention automation (`crew test` / CI) — do not treat runbook or deprecated Manual blocks as PR reviewer steps.
+1. **SPEC.md** — resolve `TASK_DIR` using the canonical resolution recipe (see Session Capture block below) and read `$TASK_DIR/SPEC.md` for goal, context, and **Acceptance criteria** to distill **reviewer-sized** "How to test" bullets (max 3–5). Read typed `## Tests` subsection headings only to mention automation (`crew test` / CI).
 2. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
 3. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if the stat is small enough (<30 files)
 
@@ -104,14 +104,10 @@ Show the PR URL and a one-line summary.
 
 ## Session Capture
 
-After creating the PR, resolve `TASK_DIR` and append to `$TASK_DIR/SESSION.md` (if found):
+After creating the PR, resolve `TASK_DIR`:
 
 ```bash
 source ~/.agent/bin/task-env.sh
-```
-
-```
-[TIME] crew-open-pr: PR_URL — PR_TITLE
 ```
 
 If `TASK_DIR` is non-empty, log the transition and auto-journal:

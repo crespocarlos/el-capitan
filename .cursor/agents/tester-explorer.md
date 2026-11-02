@@ -2,7 +2,7 @@
 name: tester-explorer
 description: "Test file discoverer for crew test. Dispatched by crew-test — do not invoke directly."
 tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
-readonly: false
+readonly: true
 maxTurns: 8
 ---
 

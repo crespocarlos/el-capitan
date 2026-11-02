@@ -31,11 +31,6 @@
       "fixtures_scored": 1,
       "precision": 0.5
     },
-    "reviewer-fresh-eyes": {
-      "recall": 1.0,
-      "scope_violations": 0,
-      "fixtures_scored": 1
-    },
     "reviewer-product-flow": {
       "recall": 1.0,
       "scope_violations": 0,

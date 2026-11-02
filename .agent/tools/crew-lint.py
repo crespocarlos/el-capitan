@@ -14,7 +14,7 @@ from pathlib import Path
 
 MAX_ALWAYS_RULE_TOKENS = 7000
 # The source of truth for skills that may activate without an explicit `crew` command.
-MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test"}
+MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test", "spec-writing"}
 
 
 def files(root: Path) -> list[Path]:

@@ -20,6 +20,7 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | Trigger | Crew member |
 |---|---|
 | `crew spec` issue/URL/description | crew-specwriter |
+| `crew quick` description | crew-quick skill |
 | `crew implement` | crew-implement → @crew-builder |
 | `crew test` | crew-test skill |
 | `crew commit` | crew-commit |
@@ -36,6 +37,8 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 | `crew evals` | crew-evals skill |
 | `crew idp` | crew-idp skill |
 | `crew diagnose` transcript | crew-diagnose skill |
+| `crew debug` symptom | crew-debug skill |
+| `crew handoff` [resume] | crew-handoff skill |
 
 **This table is authoritative.** Do not override it with judgment calls.
 

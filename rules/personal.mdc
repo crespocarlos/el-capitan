@@ -29,7 +29,7 @@ alwaysApply: true
 - **Use subagents selectively** — only for complex exploration or parallel independent work, not small fixes or known files.
 - **Preserve conversational state** — treat short follow-ups as continuations; don't make the user restate context.
 - **Be direct** — every message goes straight to the point: state the answer or action first, no preamble, narration of intent, recap of the request, praise, or closing offers. Reports list what changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
-- **Project guidance applies by file, not by request size** — before editing, testing, reviewing, or researching files, run `~/.agent/bin/agent-context.py` for the targets and apply every returned guidance file. In multi-file requests, do not skip guidance because other files use different languages or formats.
+- **Project guidance applies by file, not by request size** — before editing, testing, reviewing, or researching files, run `~/.agent/bin/agent-context.py` for the targets and apply every returned guidance file. The nearer file wins on conflict; report the conflict. In multi-file requests, do not skip guidance because other files use different languages or formats.
 
 ## Research
 

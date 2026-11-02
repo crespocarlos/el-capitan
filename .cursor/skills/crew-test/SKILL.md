@@ -52,7 +52,7 @@ If no symbols are found, use the basenames of changed files (without extension) 
 **Pre-check before dispatch** — skip tester-explorer when discovery would be redundant:
 
 1. If `$TASK_DIR/SPEC.md` exists and all typed blocks (`### Unit`, `### Integration`, `### E2E`, `### Validation`) that are **present** have a `**Command**` value that is not `"none"` or empty → the spec already has commands; skip to Step 5 using those commands.
-2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`) → no importable symbols exist; skip to Step 8 with WARN verdict.
+2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`) → no importable symbols exist; skip to Step 6 with WARN verdict.
 
 Otherwise, launch `tester-explorer` as a subagent with a structured prompt:
 
@@ -84,52 +84,15 @@ Extract test commands from the spec and from tester-explorer results using the f
 - Capture exit code and up to 30 lines of output per block.
 - A block PASSES if exit code is 0; FAILS otherwise.
 
-**Backward-compat fallback (no typed blocks in SPEC.md):**
+**Fallback (no typed blocks in SPEC.md):** if tester-explorer returned `## Frameworks`, extract the `unit` layer command and run it. If no command is found, skip to Step 6 with WARN verdict.
 
-- If tester-explorer returned `## Frameworks`, extract the `unit` layer command and run it.
-- If tester-explorer returned the old `## Test command` format, use that command directly.
-- If no command is found from any format, skip to Step 8 with WARN verdict.
-
-### Step 6: Runbook (scriptable only) + legacy SPEC guard
-
-### Evidence
-
-If `## Evidence` is present in SPEC.md, run its named command and report PASS or FAIL against its metric threshold and baseline id before the final verdict.
-
-**Deprecated `### Manual` under `## Tests`:** If `$TASK_DIR/SPEC.md` still contains `### Manual` under `## Tests`, print one line only:
-
-```
-[crew-test] WARN: SPEC still uses ### Manual under ## Tests — migrate checks to Acceptance Criteria, typed ## Tests, and scriptable runbook.md. Skipping that block.
-```
-
-Do not execute legacy Manual items.
-
-**`$TASK_DIR/runbook.md`:** If the file exists, process each top-level `## ` section in order, **except** `## Prerequisites` and `## Common Failures and Fixes`:
-
-- **Skip with WARN** (one line per section): section title or body indicates `type: visual`, `type: judgment`, or human-only QA; or the section has **no** fenced shell (bash/sh) code block with a following `**Pass:**` / `Pass:` line suitable for deterministic checks.
-- **Auto-execute** (same spirit as former manual `type: script`): section contains a fenced shell block and an inline `**Pass:**` or `Pass:` criterion → run the extracted command from repo root (`cd $(git rev-parse --show-toplevel) && …`); compare exit code/output to the criterion; report PASS/FAIL.
-
-If no `runbook.md`, skip silently (unless WARN above).
-
-Large transcripts attached to REPORT under `$TASK_DIR/artifacts/` are not re-ingested here — follow the paths cited in REPORT when debugging.
-
-### Step 7: Runbook outline
-
-If `$TASK_DIR/runbook.md` exists:
-
-```bash
-test -f "$TASK_DIR/runbook.md" && grep "^## " "$TASK_DIR/runbook.md"
-```
-
-Prefix output with `Runbook: $TASK_DIR/runbook.md` and `Sections:` for operator visibility.
-
-### Step 8: Verdict
+### Step 6: Verdict
 
 Determine verdict:
 
-- **PASS**: all typed blocks (or fallback) ran and exited 0; all auto-executed runbook scripted steps passed
-- **WARN**: no typed blocks, no extractable command from any format, and no `runbook.md` found; or no test files found
-- **FAIL**: any typed block or auto-executed runbook step exited non-zero
+- **PASS**: all typed blocks (or fallback) ran and exited 0
+- **WARN**: no typed blocks and no extractable command; or no test files found
+- **FAIL**: any typed block exited non-zero
 
 Output each test file discovered as:
 
@@ -153,7 +116,7 @@ If verdict is WARN with no command: print `No test command found — skipping au
 **Conclusion:**
 
 - If PASS: print `Verdict: PASS` then `> Next: run \`crew review\` to continue.`
-- If WARN: print `Verdict: WARN` then `> Next: no test command found — verify manually using the checklist above, then run \`crew review\`.`
+- If WARN: print `Verdict: WARN` then `> Next: no test command found — verify the SPEC.md acceptance criteria manually, then run \`crew review\`.`
 - If FAIL: print `Verdict: FAIL` then `> Next: fix the test failures, then re-run \`crew test\`.`
 
 ## Plain-language gates
