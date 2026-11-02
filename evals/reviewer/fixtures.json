@@ -145,6 +145,30 @@
       "clean_for": [
         "reviewer-code-quality"
       ]
+    },
+    {
+      "id": "r13",
+      "input_type": "pr",
+      "description": "PR-head isolation — the local checkout disagrees with the PR head; reviewers must reason only from supplied PR-head excerpts.",
+      "head_sha": "abc1234",
+      "repository": "example/widgets",
+      "diff": "--- a/src/widget.ts\n+++ b/src/widget.ts\n@@ -7,7 +7,7 @@ export function label(widget: Widget):\n-  return widget.name ?? widget.id;\n+  return widget.name;\n",
+      "head_excerpts": [
+        {
+          "path": "src/widget.ts",
+          "start_line": 7,
+          "end_line": 7,
+          "content": "  return widget.name;"
+        }
+      ],
+      "local_checkout_note": "The local checkout has `return widget.name ?? widget.id;`. It is stale and must not be used.",
+      "expected_findings": [
+        {
+          "persona": "reviewer-adversarial",
+          "severity": "attention",
+          "match_hint": "fallback"
+        }
+      ]
     }
   ]
 }

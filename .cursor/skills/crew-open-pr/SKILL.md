@@ -110,7 +110,7 @@ After creating the PR, resolve `TASK_DIR`:
 source ~/.agent/bin/task-env.sh
 ```
 
-If `TASK_DIR` is non-empty, log the transition and auto-journal:
+If `TASK_DIR` is non-empty, log the transition:
 
 ```bash
 if [ -n "$TASK_DIR" ]; then
@@ -118,11 +118,7 @@ if [ -n "$TASK_DIR" ]; then
 fi
 ```
 
-Regardless of `TASK_DIR`, store an immutable observation via `~/.agent/bin/mem.py journal add --title "PR opened: <title>" --tags <tags> --repo <scope>` with the prose on stdin (heredoc). Write 1-2 paragraphs in plain prose — each paragraph one self-contained idea. Derive from SPEC.md when a task exists, otherwise from the commit log and PR description. Skip writing when there is nothing non-derivable to record:
-- What was built and why, plus any key architectural decisions made
-- Anything worth remembering for future similar work (omit if nothing notable)
-
-On non-zero exit print `warning: memory unavailable` and continue.
+**Journal (opt-in, never automatic).** Memory writes need explicit approval (`memory-capture.mdc`; `CLAUDE.md`: do not write memories automatically). After the PR is open, draft an observation only when it holds something non-derivable: a key architectural decision, or a lesson for future similar work. Derive it from SPEC.md when a task exists, otherwise from the commit log and PR description; 1-2 plain-prose paragraphs, each one self-contained idea. Show the title and prose and ask `Store this journal entry? (yes / no)`. Only on `yes`, run `~/.agent/bin/mem.py journal add --title "PR opened: <title>" --tags <tags> --repo <scope>` with the prose on stdin (heredoc). On `no`, or when nothing qualifies, write nothing and say `journal: none`. On non-zero exit print `warning: memory unavailable` and continue.
 
 ## Rules
 

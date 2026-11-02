@@ -22,6 +22,18 @@ again=$(printf '%s' '{"conversation_id":"repeat"}' \
 test "$(printf '%s' "$again" | jq -r 'keys | length')" -eq 0
 printf '%s' '{"hook_event_name":"beforeShellExecution","command":"git reset --hard"}' | bash "$root/.claude/hooks/block-destructive-git.sh" | jq -e '.permission == "deny"' >/dev/null
 printf '%s' '{"hook_event_name":"PreToolUse","tool_input":{"command":"git reset --hard"}}' | bash "$root/.claude/hooks/block-destructive-git.sh" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+guard() { jq -n --arg c "$1" '{hook_event_name:"beforeShellExecution",command:$c}' | bash "$root/.claude/hooks/block-destructive-git.sh" | jq -r '.permission'; }
+test "$(guard 'gh pr checkout 301097')" = deny
+test "$(guard 'cd x && gh pr co 12')" = deny
+test "$(guard 'gh pr chec\kout 12')" = deny
+test "$(guard 'git fetch upstream pull/301097/head:pr301097')" = deny
+test "$(guard 'git fetch origin refs/pull/5/head')" = deny
+test "$(guard 'git fetch origin refs/pull/$PR/head')" = deny
+test "$(guard 'git show refs/pull/42/head:path')" = deny
+test "$(guard 'git diff refs/pull/42/head')" = deny
+test "$(guard 'gh pr diff 301097')" = allow
+test "$(guard 'git fetch upstream main')" = allow
+test "$(guard 'gh pr view 1 --json headRefOid')" = allow
 large_command="git reset --hard; # $(head -c 70000 < /dev/zero | tr '\0' x)"
 jq -n --arg c "$large_command" '{hook_event_name:"beforeShellExecution",command:$c}' \
   | bash "$root/.claude/hooks/block-destructive-git.sh" | jq -e '.permission == "deny"' >/dev/null

@@ -232,6 +232,22 @@ def run_fixture(
             "## Spec content\n\n"
             f"{fixture['content']}\n"
         )
+    elif input_type == "pr":
+        excerpts = "\n\n".join(
+            f"### {item['path']}:{item['start_line']}–{item['end_line']}@{fixture['head_sha']}\n"
+            f"```\n{item['content']}\n```"
+            for item in fixture['head_excerpts']
+        )
+        dispatch_prompt = (
+            "## PR review context\n\n"
+            f"Repository: {fixture['repository']}\nHead: {fixture['head_sha']}\n"
+            "Use only the PR diff and PR-head excerpts below. Do not use local checkout state or infer missing code. "
+            "If the supplied evidence is insufficient, return [needs more info] naming the needed path@head SHA.\n\n"
+            "## PR diff\n\n"
+            f"```diff\n{fixture['diff']}\n```\n\n"
+            "## PR-head excerpts\n\n"
+            f"{excerpts}\n\n---\n\n{output_rules}\n"
+        )
     else:
         dispatch_prompt = (
             "## Review context\n\n"

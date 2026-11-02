@@ -361,7 +361,7 @@ install time:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| `PreToolUse` / Cursor pre-execution | Bash, Write, Edit | Blocks destructive Git commands and writes outside the active worktree |
+| `PreToolUse` / Cursor pre-execution | Bash, Write, Edit | Blocks destructive Git commands, pulling a PR into the local checkout (`gh pr checkout`, fetching `pull/<n>` refs), and writes outside the active worktree |
 | `PreToolUse` / Cursor `beforeShellExecution` | Bash | `check-publish.sh` blocks commits whose staged lines match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
 | `SessionStart` | Session begins | Loads bounded memory context and records session state (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |

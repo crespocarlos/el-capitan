@@ -15,6 +15,21 @@ You do a focused exploration to find context relevant to a code diff. Two jobs: 
 
 **Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
 
+### PR validator mode
+
+When the prompt supplies `## PR validation`, do not use any repository tool:
+`Read`, `Grep`, `Glob`, semantic search, and local filesystem state all refer
+to the reviewer's checkout, not the PR head. Use only the supplied
+`path:line@headSHA` excerpts and contract. If those excerpts cannot settle the
+claim, return:
+
+```
+## PR validation
+- [needs more info] <claim> — need `<path>@<headSHA>` <specific caller, guard, or definition>; local repository reads cannot verify a PR.
+```
+
+Do not attempt pattern discovery or cross-file tracing in PR validator mode.
+
 **Tool budget (hard limit): ≤12 calls total.**
 - 1 × `mcp__semantic-code-search__list_indices`
 - 4 × semantic search (`mcp__semantic-code-search__semantic_code_search`, `map_symbols_by_query`, `document_symbols`, or `SemanticSearch`)

@@ -76,6 +76,51 @@ def test_persist_rejects_unexpected_review_dir(tmp: Path) -> None:
     assert not (tmp / "task" / "REVIEW.md").exists()
 
 
+def test_normalize_strict_requires_verified_evidence_and_cap(tmp: Path) -> None:
+    source = tmp / "c.json"
+    base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch"}
+    source.write_text(json.dumps([base]))
+    assert run("normalize", str(source), "--strict").returncode == 2
+    assert run("normalize", str(source)).returncode == 0
+    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3"}]))
+    assert run("normalize", str(source), "--strict").returncode == 0
+    for evidence in (True, {}, "verified elsewhere", "a.ts"):
+        source.write_text(json.dumps([{**base, "verified": True, "evidence": evidence}]))
+        assert run("normalize", str(source), "--strict").returncode == 2
+    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3@abc1234"}]))
+    assert run("normalize", str(source), "--strict").returncode == 0
+    many = [{**base, "title": f"t{i}", "label": "nit"} for i in range(8)]
+    source.write_text(json.dumps(many))
+    result = run("normalize", str(source), "--strict")
+    assert result.returncode == 2 and "cap" in result.stderr
+
+
+def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    report = tmp / "report.md"
+    report.write_text("x\n")
+    args = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--strict", "--personas", "adversarial")
+    result = run(*args)
+    assert result.returncode == 2 and "adversarial.in.md" in result.stderr
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("out")
+    assert run(*args).returncode == 0
+
+
+def test_select_returns_required_personas(tmp: Path) -> None:
+    result = run("select", "--mode", "changes", "--contract",
+                 "--paths", ".cursor/skills/x/SKILL.md", "rules/crew-router.mdc", "evals/a.json")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["required"] == [
+        "adversarial", "architecture", "code-quality", "product-flow", "prompt-quality"]
+    assert json.loads(run("select", "--mode", "pr", "--paths", "x.ts").stdout)["required"] == ["adversarial", "code-quality"]
+    assert "prompt-quality" in json.loads(
+        run("select", "--mode", "changes", "--paths", "evals/reviewer/run.py").stdout
+    )["required"]
+    assert json.loads(run("select", "--mode", "spec").stdout)["required"] == []
+
+
 def test_persist_spec_mode_keeps_code_review(tmp: Path) -> None:
     task = tmp / "task"
     review_dir = task / "review" / "20261102"

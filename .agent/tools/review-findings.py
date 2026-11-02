@@ -10,6 +10,10 @@ REVIEW.<mode>.md (spec, idea) so code verdicts that crew-commit and
 crew-address-review read are never overwritten, and appends deferred findings to DEFERRED.md.
 `outcome` appends an immutable JSONL record whose `persona` is a list of
 canonical names. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
+`select` prints the reviewer personas a review must dispatch. `normalize
+--strict` rejects emitted blocking/attention findings without `verified` and
+`evidence`, and more than MAX_FINDINGS emitted findings. `persist --strict
+--personas ...` requires each dispatched persona's `.in.md` and `.out.md`.
 """
 from __future__ import annotations
 
@@ -26,6 +30,13 @@ OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}
 PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prompt-quality", "explorer"}
 LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs still normalize
 CODE_MODES = {"self", "changes", "pr"}
+MAX_FINDINGS = 7
+EMITTED = {"patch", "decide"}
+EVIDENCE_LOCATION = re.compile(r"^[^:\s][^:]*:\d+(?:@[0-9a-f]{7,40})?$")
+SELECT_RULES = {
+    "prompt-quality": re.compile(r"(^|/)(agents|skills|evals)/|\.mdc$"),
+    "architecture": re.compile(r"router|orchestrator|install|dispatch|tools\.json|(^|/)\.claude/"),
+}
 DISPOSITIONS = {"patch", "decide", "defer", "dropped", "merged"}
 
 
@@ -82,6 +93,24 @@ def read_findings(path: Path) -> list[dict]:
     return result
 
 
+def check_strict(findings: list[dict]) -> None:
+    emitted = [f for f in findings if f.get("disposition") in EMITTED]
+    for f in emitted:
+        evidence = f.get("evidence")
+        if f["label"] in {"blocking", "attention"} and not (
+            f.get("verified") is True
+            and isinstance(evidence, str)
+            and EVIDENCE_LOCATION.fullmatch(evidence)
+        ):
+            raise ValueError(
+                f"unverified {f['label']} finding {f['title']!r}: set verified=true with evidence as path:line "
+                "(or path:line@headSHA), "
+                "or downgrade to 'needs more info'"
+            )
+    if len(emitted) > MAX_FINDINGS:
+        raise ValueError(f"{len(emitted)} emitted findings exceed the cap of {MAX_FINDINGS}; drop the lowest severity")
+
+
 def normalize(args: argparse.Namespace) -> int:
     findings = read_findings(args.input)
     kept, duplicates = {}, []
@@ -96,6 +125,8 @@ def normalize(args: argparse.Namespace) -> int:
             )
         else:
             kept[finding["fingerprint"]] = finding
+    if args.strict:
+        check_strict(list(kept.values()))
     payload = {"findings": list(kept.values()), "duplicates": duplicates}
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
@@ -109,6 +140,17 @@ def persist(args: argparse.Namespace) -> int:
     args.review_dir = args.review_dir.resolve()
     if args.review_dir.parent.name != "review":
         raise ValueError(f"--review-dir must be <task>/review/<timestamp>, got {args.review_dir}")
+    if args.strict:
+        if not args.personas:
+            raise ValueError("--strict requires --personas")
+        missing = [
+            f"{persona}.{kind}.md"
+            for persona in canonical_personas(args.personas)
+            for kind in ("in", "out")
+            if not (args.review_dir / f"{persona}.{kind}.md").is_file()
+        ]
+        if missing:
+            raise ValueError(f"missing persona artifacts in {args.review_dir}: {', '.join(missing)}")
     report = args.report.read_text()
     if args.files:
         report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(f"- `{name}`\n" for name in args.files)
@@ -133,6 +175,23 @@ def persist(args: argparse.Namespace) -> int:
                     continue
                 handle.write(f"- [{stamp}] [{f['label']}] {f['title']} — `{where}` — {reason}\n")
     print(json.dumps({"review": str(owner / task_report), "deferred": deferred}))
+    return 0
+
+
+def select(args: argparse.Namespace) -> int:
+    required = {}
+    if args.mode in CODE_MODES:
+        required["code-quality"] = "code review"
+        required["adversarial"] = "code review"
+        for persona, pattern in SELECT_RULES.items():
+            hits = [path for path in args.paths if pattern.search(path)]
+            if hits:
+                required[persona] = f"paths: {', '.join(hits[:3])}"
+        if args.compat:
+            required.setdefault("architecture", "--compat")
+    if args.contract:
+        required["product-flow"] = "--contract"
+    print(json.dumps({"required": sorted(required), "reasons": required}, indent=2, sort_keys=True))
     return 0
 
 
@@ -161,12 +220,20 @@ def main() -> int:
     normalize_parser = commands.add_parser("normalize")
     normalize_parser.add_argument("input", type=Path)
     normalize_parser.add_argument("--output", type=Path)
+    normalize_parser.add_argument("--strict", action="store_true")
     persist_parser = commands.add_parser("persist")
     persist_parser.add_argument("--review-dir", required=True, type=Path)
     persist_parser.add_argument("--report", required=True, type=Path)
     persist_parser.add_argument("--findings", type=Path)
     persist_parser.add_argument("--mode", choices=sorted(CODE_MODES | {"spec", "idea"}), default="self")
     persist_parser.add_argument("--files", nargs="*", default=[])
+    persist_parser.add_argument("--strict", action="store_true")
+    persist_parser.add_argument("--personas", nargs="*", default=[])
+    select_parser = commands.add_parser("select")
+    select_parser.add_argument("--mode", required=True, choices=sorted(CODE_MODES | {"spec", "idea"}))
+    select_parser.add_argument("--paths", nargs="*", default=[])
+    select_parser.add_argument("--contract", action="store_true", help="a spec or PR contract supplies acceptance criteria")
+    select_parser.add_argument("--compat", action="store_true", help="the change alters behavior of an existing consumer")
     outcome_parser = commands.add_parser("outcome")
     outcome_parser.add_argument("--review-dir", required=True, type=Path)
     outcome_parser.add_argument("--fingerprint", required=True)
@@ -176,7 +243,7 @@ def main() -> int:
     outcome_parser.add_argument("--reason", required=True)
     outcome_parser.add_argument("--memory-id", action="append", default=[])
     args = parser.parse_args()
-    handlers = {"normalize": normalize, "persist": persist, "outcome": outcome}
+    handlers = {"normalize": normalize, "persist": persist, "select": select, "outcome": outcome}
     try:
         return handlers[args.command](args)
     except (OSError, ValueError, json.JSONDecodeError) as error:
