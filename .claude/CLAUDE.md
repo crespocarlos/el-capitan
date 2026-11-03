@@ -84,5 +84,7 @@ never reconfigure or modify its source repository.
   directly. Never skip the protocol and implement ad-hoc.
 
 <!-- el-capitan:memory -->
-Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
+Claude Code and Cursor inject session memory at session start; other harnesses run
+`~/.agent/bin/mem.py context --mode session` at task start. Follow
+`~/.cursor/skills/crew-memory/references/contract.md`.
 <!-- /el-capitan:memory -->
