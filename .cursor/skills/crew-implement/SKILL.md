@@ -8,13 +8,20 @@ description: "Orchestrate implementation of an approved SPEC.md. Trigger: 'crew 
 
 # crew-implement
 
-Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and user interaction — then launches the implementation worker for the heavy lifting.
+Orchestrate implementation of an approved SPEC.md. Handles setup, gates, and user interaction — then
+launches the implementation worker for the heavy lifting.
 
 ## Workflow
 
 ### Step 1: Resolve task state
 
-First, check if the user's message contains a file path ending in `SPEC.md` or `spec.md` (e.g. `here is the spec /some/path/to/spec.md`). If found, attempt to read that file. If the read fails (file not found), stop immediately: 'Cannot read [path] — check the path and try again.' If the file exists but has no `## Status` section or the status value (compared case-insensitively) is neither `approved` nor `IMPLEMENTING`, stop: 'Spec status is [value]; expected `approved` or `IMPLEMENTING`.' Otherwise, set `TASK_DIR` to its parent directory, export `CREW_TASK_DIR="$TASK_DIR"`, and skip to Step 2.
+First, check if the user's message contains a file path ending in `SPEC.md` or `spec.md` (e.g. `here
+is the spec /some/path/to/spec.md`). If found, attempt to read that file. If the read fails (file
+not found), stop immediately: 'Cannot read [path] — check the path and try again.' If the file
+exists but has no `## Status` section or the status value (compared case-insensitively) is neither
+`approved` nor `IMPLEMENTING`, stop: 'Spec status is [value]; expected `approved` or
+`IMPLEMENTING`.' Otherwise, set `TASK_DIR` to its parent directory, export
+`CREW_TASK_DIR="$TASK_DIR"`, and skip to Step 2.
 
 Otherwise:
 
@@ -22,7 +29,8 @@ Otherwise:
 source ~/.agent/bin/task-env.sh
 ```
 
-If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs (see Step 2).
+If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs
+(see Step 2).
 
 ### Step 2: Gate check
 
@@ -34,31 +42,31 @@ find ~/.agent/tasks -name "SPEC.md" -type f -exec stat -f "%m %N" {} \; 2>/dev/n
 
 For each found SPEC.md, read its first line (title) and `## Status` field to build a list.
 
-- If specs exist (under the current branch or elsewhere), present non-DONE specs sorted by last modified (newest first):
+- If specs exist (under the current branch or elsewhere), present non-DONE specs sorted by last
+  modified (newest first):
 
-  > "Found these specs:"
-  >
-  > | #   | Repo / Branch / Task                             | Title                        | Status       | Last modified |
-  > | --- | ------------------------------------------------ | ---------------------------- | ------------ | ------------- |
-  > | 1   | kibana / main / add-retry-logic                  | Retry logic for async search | APPROVED     | 2 hours ago   |
-  > | 2   | kibana / feature/error-handling / improve-errors | Improve error boundaries     | IMPLEMENTING | 3 days ago    |
-  >
-  > "Which one? (or run `crew spec` to draft a new one)"
+> "Found these specs:" > > | #   | Repo / Branch / Task                             | Title
+| Status       | Last modified | > | --- | ------------------------------------------------ |
+---------------------------- | ------------ | ------------- | > | 1   | kibana / main /
+add-retry-logic                  | Retry logic for async search | APPROVED     | 2 hours ago   | > |
+2   | kibana / feature/error-handling / improve-errors | Improve error boundaries     | IMPLEMENTING
+| 3 days ago    | > > "Which one? (or run `crew spec` to draft a new one)"
 
-  When the user picks one, set `TASK_DIR` to that spec's parent directory and continue.
+When the user picks one, set `TASK_DIR` to that spec's parent directory and continue.
 
-- If no specs exist anywhere, stop:
-  > "No specs found. Run `crew spec` first to draft one."
+- If no specs exist anywhere, stop: > "No specs found. Run `crew spec` first to draft one."
 
 If the SPEC.md status is `DRAFTING`, stop:
 
 > "The spec hasn't been approved yet. Get approval before implementing."
 
-If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you're resuming — inform the user which tasks are done and which remain.
+If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you're resuming —
+inform the user which tasks are done and which remain.
 
 ### Step 3: Auto-recall
 
-Set `SPEC_TITLE` to the SPEC.md title without the leading `#`, and `SPEC_PATHS` to a bash array of the file paths the spec names, for example `SPEC_PATHS=(src/a.ts src/b.ts)` (empty array when none).
+Set `SPEC_TITLE` to the SPEC.md title without the leading `#`, and `SPEC_PATHS` to a bash array of
+the file paths the spec names, for example `SPEC_PATHS=(src/a.ts src/b.ts)` (empty array when none).
 
 ```bash
 if [ "${#SPEC_PATHS[@]}" -gt 0 ]; then
@@ -69,21 +77,25 @@ fi
 case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
 ```
 
-Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no journal entries or search unavailable), set `RECALLED_PATTERNS="none"` — do **not** leave it as an empty string. Passing an empty string causes crew-builder to re-run auto-recall redundantly.
+Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no journal entries or
+search unavailable), set `RECALLED_PATTERNS="none"` — do **not** leave it as an empty string.
+Passing an empty string causes crew-builder to re-run auto-recall redundantly.
 
 ### Step 4: Branch setup
 
-**If already on a feature branch** (not `main` or the default branch): set `WORK_DIR` to the current directory and proceed to Step 5.
+**If already on a feature branch** (not `main` or the default branch): set `WORK_DIR` to the current
+directory and proceed to Step 5.
 
 **If on the default branch:** ask the user:
 
 > "Create a worktree for this implementation, or work directly on this branch? (worktree / here)"
 
-  Read the branch name from SPEC.md:
+Read the branch name from SPEC.md:
   ```bash
   BRANCH_NAME=$(grep "^## Branch:" "$TASK_DIR/SPEC.md" | sed 's/^## Branch: *//')
   ```
-  If `## Branch:` is absent or empty, derive it from the SPEC.md type and goal (type-prefix/slug, ≤50 chars), propose it, and confirm before proceeding.
+If `## Branch:` is absent or empty, derive it from the SPEC.md type and goal (type-prefix/slug, ≤50
+chars), propose it, and confirm before proceeding.
 
   - **worktree** — fetch the default branch and create a worktree:
 
@@ -93,11 +105,14 @@ Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no
   cd "$(~/.agent/bin/manage-worktree.py -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
   ```
 
-  After the worktree is created: **bootstrap dependencies.** Read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. Set `WORK_DIR` to the worktree directory.
+After the worktree is created: **bootstrap dependencies.** Read the repo's `AGENTS.md` (or
+`CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. Set `WORK_DIR` to the
+worktree directory.
 
 - **here** — set `WORK_DIR` to the current directory. Ask:
 
-  > "Create a new branch (`$BRANCH_NAME`), or commit directly to `<current-branch>`? (new-branch / here)"
+> "Create a new branch (`$BRANCH_NAME`), or commit directly to `<current-branch>`? (new-branch /
+> here)"
 
   - **new-branch** — create and checkout the branch:
 
@@ -133,29 +148,40 @@ This snapshot is used by `crew commit` to detect out-of-scope modifications.
 
 ### Step 6: Launch worker
 
-**Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` (whichever exists).
+**Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or
+`~/.claude/agents/crew-builder.md` (whichever exists).
 
-Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code: follow crew-builder's protocol directly). This avoids terminating a healthy implementation run at the synchronous turn limit. Pass these inputs:
+Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code:
+follow crew-builder's protocol directly). This avoids terminating a healthy implementation run at
+the synchronous turn limit. Pass these inputs:
 
 - `TASK_DIR` — the resolved task directory path (absolute)
-- `WORK_DIR` — the worktree or repo directory (absolute path, e.g. `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and shell commands must run. It is not a shell variable — pass the literal path.
+- `WORK_DIR` — the worktree or repo directory (absolute path, e.g.
+  `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and
+  shell commands must run. It is not a shell variable — pass the literal path.
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
 - The full contents of `SPEC.md` (so the worker has it without needing to re-read)
 
-**Batching for large specs:** when the spec has more than 8 unchecked tasks, split them into consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh worker per batch with `TASK_RANGE` set. Launch the next batch only after the previous batch's `REPORT.part-*.md` exists and reports no failed task; on a failure, stop and go to Step 7 with that part report. The batch containing the last task runs the Completion Protocol and writes `REPORT.md`, merging the part reports' task results, decisions, and quality gates.
+**Batching for large specs:** when the spec has more than 8 unchecked tasks, split them into
+consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh
+worker per batch with `TASK_RANGE` set. Launch the next batch only after the previous batch's
+`REPORT.part-*.md` exists and reports no failed task; on a failure, stop and go to Step 7 with that
+part report. The batch containing the last task runs the Completion Protocol and writes `REPORT.md`,
+merging the part reports' task results, decisions, and quality gates.
 
 ### Step 7: Handle results
 
-Read `$TASK_DIR/REPORT.md`. If the worker returned a message, use that. If neither exists, tell the user:
+Read `$TASK_DIR/REPORT.md`. If the worker returned a message, use that. If neither exists, tell the
+user:
 
-> "The worker finished but didn't produce a report. Check `$TASK_DIR/` for SPEC.md task status, or re-run `crew implement` to resume."
+> "The worker finished but didn't produce a report. Check `$TASK_DIR/` for SPEC.md task status, or
+> re-run `crew implement` to resume."
 
 When the Implementation Report is available:
 
 **All tasks passed:**
 
-1. ```bash
-   ~/.agent/bin/log-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
+1. ```bash ~/.agent/bin/log-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
    ~/.agent/bin/log-progress.py "$TASK_DIR" "IMPLEMENTING → REVIEW"
    ```
 2. **Auto-journal** — store an immutable observation (no prompt, passive). Title prefix: "Implemented:". Write 1-3 paragraphs of plain prose on stdin — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:

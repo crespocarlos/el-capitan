@@ -20,7 +20,8 @@ git fetch --prune --quiet
 git worktree list
 ```
 
-Parse each worktree path and its checked-out branch. Identify the main worktree (from `git rev-parse --show-toplevel`) — it is never removed.
+Parse each worktree path and its checked-out branch. Identify the main worktree (from `git rev-parse
+--show-toplevel`) — it is never removed.
 
 ### Step 3: Classify each worktree
 
@@ -44,7 +45,8 @@ Show all worktrees with their status:
 | 2   | /path/to/worktree-b | chore/cleanup  | merged |
 | 3   | /path/to/worktree-c | feature/active | active |
 
-If no stale worktrees (gone or merged), say "All worktrees are active. Nothing to clean up." and stop.
+If no stale worktrees (gone or merged), say "All worktrees are active. Nothing to clean up." and
+stop.
 
 ### Step 5: Confirm removal
 
@@ -59,9 +61,16 @@ git worktree remove <path> && git branch -d <branch>   # merged
 git worktree remove <path> && git branch -D <branch>   # gone, confirmed in Step 5
 ```
 
-Chain with `&&`: if removal is refused, the branch must survive. Report the refused worktree and leave its task directories in place; do not offer them in the task-directory step below. If `-d` refuses after the worktree is removed, keep the branch and report it. Use `-D` only for gone branches the user confirmed; for those rows, show the unique-commit count in Step 4 (`git rev-list --count origin/$(~/.agent/bin/default-branch.sh)..<branch>`). Squash-merged branches show a nonzero count, so treat it as information, not proof of unmerged work.
+Chain with `&&`: if removal is refused, the branch must survive. Report the refused worktree and
+leave its task directories in place; do not offer them in the task-directory step below. If `-d`
+refuses after the worktree is removed, keep the branch and report it. Use `-D` only for gone
+branches the user confirmed; for those rows, show the unique-commit count in Step 4 (`git rev-list
+--count origin/$(~/.agent/bin/default-branch.sh)..<branch>`). Squash-merged branches show a nonzero
+count, so treat it as information, not proof of unmerged work.
 
-Also remove associated task directories. Multiple tasks can share the same branch (the spec says "Multiple specs can coexist per branch"), so collect all matches and confirm each individually before removing:
+Also remove associated task directories. Multiple tasks can share the same branch (the spec says
+"Multiple specs can coexist per branch"), so collect all matches and confirm each individually
+before removing:
 
 ```bash
 WORKTREE_REMOTE=$(git -C <worktree-path> remote get-url origin 2>/dev/null || echo "")
@@ -83,7 +92,9 @@ else
 fi
 ```
 
-Ask for every listed task directory, even when only one matches: "Remove which task directories? (all / none / comma-separated numbers)". Store the confirmed paths in `CONFIRMED_DIRS`, then remove them:
+Ask for every listed task directory, even when only one matches: "Remove which task directories?
+(all / none / comma-separated numbers)". Store the confirmed paths in `CONFIRMED_DIRS`, then remove
+them:
 
 ```bash
 root=$(cd "$HOME/.agent/tasks" && pwd -P)
@@ -103,20 +114,24 @@ Show what was removed:
 Removed N worktrees, N branches, N task directories.
 ```
 
-List any that failed removal (e.g. uncommitted changes in the worktree — `git worktree remove` will refuse). Also list worktrees removed with the branch kept (`-d` refused) and any skipped task directories.
+List any that failed removal (e.g. uncommitted changes in the worktree — `git worktree remove` will
+refuse). Also list worktrees removed with the branch kept (`-d` refused) and any skipped task
+directories.
 
 ## Rules
 
 - Never remove the main worktree
 - `git branch -D` only for gone branches the user confirmed; merged branches use `-d`
 - Always confirm before removing — never silent
-- If a worktree has uncommitted changes, `git worktree remove` refuses. Report it and skip it; this skill never forces removal. The user removes it manually.
+- If a worktree has uncommitted changes, `git worktree remove` refuses. Report it and skip it; this
+  skill never forces removal. The user removes it manually.
 
 ## Plain-language gates
 
 Use plain language, without compressed summaries, before:
 
-- Running `git worktree remove` on any worktree — list all worktrees to be removed plainly (path + branch) before executing; this cannot be undone without re-checking out the branch
+- Running `git worktree remove` on any worktree — list all worktrees to be removed plainly (path +
+  branch) before executing; this cannot be undone without re-checking out the branch
 - Any worktree with uncommitted changes — state the files at risk explicitly
 
 Continue after confirmation.

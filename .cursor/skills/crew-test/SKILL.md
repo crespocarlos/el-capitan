@@ -9,7 +9,8 @@ description: "Discover and run tests scoped to the current git diff. Use only wh
 
 ## Execution model
 
-**Single-shot output, 1 turn.** Resolve context, discover, run, report — without intermediate narration. Never say "now running tests".
+**Single-shot output, 1 turn.** Resolve context, discover, run, report — without intermediate
+narration. Never say "now running tests".
 
 ## When Invoked
 
@@ -19,7 +20,8 @@ description: "Discover and run tests scoped to the current git diff. Use only wh
 source ~/.agent/bin/task-env.sh
 ```
 
-If `TASK_DIR` is empty, stop with: "No active task. Run `crew spec` first, or set `CREW_TASK_DIR`." Do not use `exit`; it can close the agent shell.
+If `TASK_DIR` is empty, stop with: "No active task. Run `crew spec` first, or set `CREW_TASK_DIR`."
+Do not use `exit`; it can close the agent shell.
 
 ### Step 2: Get changed files
 
@@ -45,14 +47,18 @@ CHANGED_FILES=$(git diff --name-only)
 grep -h "^export " $CHANGED_FILES 2>/dev/null | grep -oP "(?<=export (function|class|const|type|interface) )\w+"
 ```
 
-If no symbols are found, use the basenames of changed files (without extension) as symbol identifiers.
+If no symbols are found, use the basenames of changed files (without extension) as symbol
+identifiers.
 
 ### Step 4: Dispatch tester-explorer
 
 **Pre-check before dispatch** — skip tester-explorer when discovery would be redundant:
 
-1. If `$TASK_DIR/SPEC.md` exists and all typed blocks (`### Unit`, `### Integration`, `### E2E`, `### Validation`) that are **present** have a `**Command**` value that is not `"none"` or empty → the spec already has commands; skip to Step 5 using those commands.
-2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`) → no importable symbols exist; skip to Step 6 with WARN verdict.
+1. If `$TASK_DIR/SPEC.md` exists and all typed blocks (`### Unit`, `### Integration`, `### E2E`,
+   `### Validation`) that are **present** have a `**Command**` value that is not `"none"` or empty →
+   the spec already has commands; skip to Step 5 using those commands.
+2. If all `CHANGED_FILES` have non-source extensions (`.md`, `.mdc`, `.json`, `.yaml`, `.toml`) → no
+   importable symbols exist; skip to Step 6 with WARN verdict.
 
 Otherwise, launch `tester-explorer` as a subagent with a structured prompt:
 
@@ -73,9 +79,23 @@ Wait for tester-explorer to return its discovery summary.
 
 Extract test commands from the spec and from tester-explorer results using the following logic:
 
-**If `$TASK_DIR/SPEC.md` contains typed blocks** (`### Unit`, `### Integration`, `### E2E`, `### Validation`):
+**Jest path grouping:** When a requested command is `node scripts/jest` with explicit test paths,
+first group those paths by their nearest ancestor `jest.config.js` (walk upward from each test file
+to the repository root). Run one command per group, passing only that group's paths:
 
-- For each typed block present (in order: Unit → Integration → E2E → Validation), extract its `Command` field.
+```bash
+node scripts/jest --config <nearest-jest.config.js> <path-in-that-config> [...]
+```
+
+Never pass test paths belonging to different nearest Jest configs to one `node scripts/jest`
+invocation. Report one `[Unit]` result per config group. If a path has no ancestor `jest.config.js`,
+do not guess: report WARN for that path and run no command for it.
+
+**If `$TASK_DIR/SPEC.md` contains typed blocks** (`### Unit`, `### Integration`, `### E2E`, `###
+Validation`):
+
+- For each typed block present (in order: Unit → Integration → E2E → Validation), extract its
+  `Command` field.
 - Skip blocks whose `Command` is `"none"` or empty.
 - Run each command in sequence:
   ```bash
@@ -84,7 +104,8 @@ Extract test commands from the spec and from tester-explorer results using the f
 - Capture exit code and up to 30 lines of output per block.
 - A block PASSES if exit code is 0; FAILS otherwise.
 
-**Fallback (no typed blocks in SPEC.md):** if tester-explorer returned `## Frameworks`, extract the `unit` layer command and run it. If no command is found, skip to Step 6 with WARN verdict.
+**Fallback (no typed blocks in SPEC.md):** if tester-explorer returned `## Frameworks`, extract the
+`unit` layer command and run it. If no command is found, skip to Step 6 with WARN verdict.
 
 ### Step 6: Verdict
 
@@ -116,9 +137,12 @@ If verdict is WARN with no command: print `No test command found — skipping au
 **Conclusion:**
 
 - If PASS: print `Verdict: PASS` then `> Next: run \`crew review\` to continue.`
-- If WARN: print `Verdict: WARN` then `> Next: no test command found — verify the SPEC.md acceptance criteria manually, then run \`crew review\`.`
+- If WARN: print `Verdict: WARN` then `> Next: no test command found — verify the SPEC.md acceptance
+  criteria manually, then run \`crew review\`.`
 - If FAIL: print `Verdict: FAIL` then `> Next: fix the test failures, then re-run \`crew test\`.`
 
 ## Plain-language gates
 
-No gate applies, because test discovery and test commands are not irreversible. If a test command modifies shared state (for example, writes to a production database), say so plainly and ask for confirmation before running it.
+No gate applies, because test discovery and test commands are not irreversible. If a test command
+modifies shared state (for example, writes to a production database), say so plainly and ask for
+confirmation before running it.

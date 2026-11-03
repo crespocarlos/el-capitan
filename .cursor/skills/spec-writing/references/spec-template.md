@@ -6,17 +6,19 @@
 DRAFTING
 
 ## Summary
-[1-2 paragraphs: what this changes and why. Problem, scope, and goal in prose. Link to issue/PR if applicable.]
+[1-2 paragraphs: what this changes and why. Problem, scope, and goal in prose. Link to issue/PR if
+applicable.]
 
 Out of scope: [adjacent work a reader might expect — one-phrase reason each]
 
 ## Open questions
-- [NEEDS CLARIFICATION: question — what breaks if guessed wrong]
-[Delete this section when empty. A spec with open items cannot be approved.]
+- [NEEDS CLARIFICATION: question — what breaks if guessed wrong] [Delete this section when empty. A
+  spec with open items cannot be approved.]
 
 ## Acceptance criteria
 - [ ] WHEN [trigger or input] THEN [observable outcome] — verify: `[command]`
-- [ ] [Structural constraint: boundary, API surface, or pattern] — verify: inspect `[path]` for [what]
+- [ ] [Structural constraint: boundary, API surface, or pattern] — verify: inspect `[path]` for
+  [what]
 - [ ] Non-regression: [existing behavior X preserved] — verify: `[command]`
 
 ## Tests
@@ -40,4 +42,5 @@ Out of scope: [adjacent work a reader might expect — one-phrase reason each]
   - Verify: `[command]`
 
 ## Hints
-[Optional. File paths grouped by area. Canonical patterns (5-10 line excerpts) when the implementer would otherwise guess wrong. Omit if all paths are obvious from the task descriptions.]
+[Optional. File paths grouped by area. Canonical patterns (5-10 line excerpts) when the implementer
+would otherwise guess wrong. Omit if all paths are obvious from the task descriptions.]

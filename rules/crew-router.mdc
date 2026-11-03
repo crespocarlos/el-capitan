@@ -5,11 +5,13 @@ alwaysApply: true
 
 # el-capitan
 
-Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew`, respond normally — no routing.
+Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew`,
+respond normally — no routing.
 
 ## Known paths (do not search for these)
 
-- Agent files: `~/.cursor/agents/` — orchestrators: `crew-*.md`, personas: `<orchestrator>-<persona>.md`
+- Agent files: `~/.cursor/agents/` — orchestrators: `crew-*.md`, personas:
+  `<orchestrator>-<persona>.md`
 - Skill files: `~/.cursor/skills/<name>/SKILL.md`
 - Bin tools: `~/.agent/bin/`
 - Task state: `~/.agent/tasks/<uuid>/` (resolve via `resolve-task-dir.py`)
@@ -44,7 +46,8 @@ Route `crew <command>` triggers to the right crew member. If the message doesn't
 
 ## Dispatch
 
-Heavy commands normally run as isolated subagents to avoid polluting the orchestrator's context, except multi-persona orchestrators that must remain in the main session.
+Heavy commands normally run as isolated subagents to avoid polluting the orchestrator's context,
+except multi-persona orchestrators that must remain in the main session.
 
 | Command | subagent_type | Dispatch |
 |---|---|---|
@@ -58,24 +61,42 @@ Heavy commands normally run as isolated subagents to avoid polluting the orchest
 
 ### Dispatch reliability
 
-- **`crew spec` and `crew review` have hard inline boundaries.** Run their protocols directly in the main session, then dispatch only their explorer/critic or `reviewer-*` personas. If native persona dispatch is unavailable, use the documented degraded fallback; never move either orchestrator into a subagent.
-- **Preserve model inheritance.** Do not set a model on agent frontmatter; subagents must inherit the invoking model.
-- **Use asynchronous dispatch for heavy worker subagents in Cursor.** Launch `crew-builder` and `crew-pr-resolver` with background execution so a synchronous ~30-second turn limit cannot terminate a healthy run.
-- **Keep orchestration state durable.** Pass the task directory and worktree paths in the launch prompt, then read the agent's durable report (`SPEC.md`, `REPORT.md`, or the resolver result) after completion.
-- **Retry once asynchronously** when a dispatch ends without its durable report; do not restart a task that already produced its report.
-- **Use the documented degraded fallback** (`~/.agent/bin/dispatch_subagents.py`) only when native subagent dispatch is unavailable, not as a model override.
+- **`crew spec` and `crew review` have hard inline boundaries.** Run their protocols directly in the
+  main session, then dispatch only their explorer/critic or `reviewer-*` personas. If native persona
+  dispatch is unavailable, use the documented degraded fallback; never move either orchestrator into
+  a subagent.
+- **Preserve model inheritance.** Do not set a model on agent frontmatter; subagents must inherit
+  the invoking model.
+- **Use asynchronous dispatch for heavy worker subagents in Cursor.** Launch `crew-builder` and
+  `crew-pr-resolver` with background execution so a synchronous ~30-second turn limit cannot
+  terminate a healthy run.
+- **Keep orchestration state durable.** Pass the task directory and worktree paths in the launch
+  prompt, then read the agent's durable report (`SPEC.md`, `REPORT.md`, or the resolver result)
+  after completion.
+- **Retry once asynchronously** when a dispatch ends without its durable report; do not restart a
+  task that already produced its report.
+- **Use the documented degraded fallback** (`~/.agent/bin/dispatch_subagents.py`) only when native
+  subagent dispatch is unavailable, not as a model override.
 
-Multi-persona orchestrators dispatch persona subagents in parallel. All agents at `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
+Multi-persona orchestrators dispatch persona subagents in parallel. All agents at
+`~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.
 
 ## Add-ons
 
-Skills/agents in `~/.cursor/` that are regular files (not symlinks) are add-ons. Route to them by matching the user's trigger to their `description` frontmatter field.
+Skills/agents in `~/.cursor/` that are regular files (not symlinks) are add-ons. Route to them by
+matching the user's trigger to their `description` frontmatter field.
 
-Example: an agent file `~/.cursor/agents/crew-deploy.md` with frontmatter `description: "Deploy the current branch to staging"` would be routed to when the user types `crew deploy`. The description is the routing key — make it describe the trigger, not the implementation.
+Example: an agent file `~/.cursor/agents/crew-deploy.md` with frontmatter `description: "Deploy the
+current branch to staging"` would be routed to when the user types `crew deploy`. The description is
+the routing key — make it describe the trigger, not the implementation.
 
 ## Invariants
 
 - Explicit routing only — `crew` prefix required
-- **`crew implement` always follows crew-builder's protocol.** Changes made under `crew implement` go through crew-builder — via subagent or by following the protocol directly. Never skip the protocol and implement ad-hoc.
-- **`crew review` is a pre-PR gate, not a mid-iteration tool.** For a targeted fix mid-iteration, ask an inline question or a single adversarial check — not a full multi-lens review.
-- Pipeline state, task resolution, and gate logic live in `crew-orchestrator.mdc` — the router only dispatches.
+- **`crew implement` always follows crew-builder's protocol.** Changes made under `crew implement`
+  go through crew-builder — via subagent or by following the protocol directly. Never skip the
+  protocol and implement ad-hoc.
+- **`crew review` is a pre-PR gate, not a mid-iteration tool.** For a targeted fix mid-iteration,
+  ask an inline question or a single adversarial check — not a full multi-lens review.
+- Pipeline state, task resolution, and gate logic live in `crew-orchestrator.mdc` — the router only
+  dispatches.

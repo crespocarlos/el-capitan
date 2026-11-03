@@ -1,6 +1,8 @@
 # Issue Templates
 
-**Read this file before drafting.** If the target repo has `.github/ISSUE_TEMPLATE/` with its own templates, prefer those — read them and fill in their sections instead. When that directory is missing (404), use the fallback templates below.
+**Read this file before drafting.** If the target repo has `.github/ISSUE_TEMPLATE/` with its own
+templates, prefer those — read them and fill in their sections instead. When that directory is
+missing (404), use the fallback templates below.
 
 ## Default (feature / task)
 
@@ -49,7 +51,8 @@ What should happen instead.
 ## Template Selection
 
 - **Default**: use for features, tasks, refactors, and enhancements. This is the primary template.
-- **Bug**: use when the user describes something broken, an error, unexpected behavior, a regression, or a crash.
+- **Bug**: use when the user describes something broken, an error, unexpected behavior, a
+  regression, or a crash.
 
 ## Title conventions
 
@@ -65,7 +68,8 @@ Common patterns (use only when the repo already uses them):
 - `[Workstream][Area] Short imperative description`
 - Plain imperative description with no prefix
 
-Match the dominant style in recent issues. Omit a workstream prefix only when the work is genuinely cross-cutting.
+Match the dominant style in recent issues. Omit a workstream prefix only when the work is genuinely
+cross-cutting.
 
 ## Label conventions
 
@@ -86,9 +90,15 @@ Typical mappings (apply only when the label exists in that repo):
 
 ## Writing notes
 
-- **Restructure, don't dump.** Long session analysis (tables, numbered findings, Option A/B) belongs *inside* Summary, Acceptance criteria, and Implementation hints — not as separate top-level sections.
-- **Acceptance criteria:** each item should be **observable and testable** — describe the outcome, not the implementation step. Good: "`GET /api/foo` returns 200 with field `x`". Bad: "Update the handler to include field `x`".
-- **Implementation hints:** group by area (`**Routes**`, `**Schema**`, `**UI**`). Include concrete file paths when the session has them. Omit the section only if there is nothing substantive to say.
+- **Restructure, don't dump.** Long session analysis (tables, numbered findings, Option A/B) belongs
+  *inside* Summary, Acceptance criteria, and Implementation hints — not as separate top-level
+  sections.
+- **Acceptance criteria:** each item should be **observable and testable** — describe the outcome,
+  not the implementation step. Good: "`GET /api/foo` returns 200 with field `x`". Bad: "Update the
+  handler to include field `x`".
+- **Implementation hints:** group by area (`**Routes**`, `**Schema**`, `**UI**`). Include concrete
+  file paths when the session has them. Omit the section only if there is nothing substantive to
+  say.
 
 ## Anti-patterns (do not produce these)
 

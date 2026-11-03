@@ -8,15 +8,12 @@ DRAFTING
 ## Summary
 [What's broken and the minimal fix boundary. Link to issue.]
 
-Reproduction: [steps or failing command]
-Current behavior: [what happens]
-Expected behavior: [what should happen]
-Unchanged behavior: [adjacent behavior the fix must not alter]
-Out of scope: [adjacent work — one-phrase reason each]
+Reproduction: [steps or failing command] Current behavior: [what happens] Expected behavior: [what
+should happen] Unchanged behavior: [adjacent behavior the fix must not alter] Out of scope:
+[adjacent work — one-phrase reason each]
 
 ## Open questions
-- [NEEDS CLARIFICATION: question — what breaks if guessed wrong]
-[Delete this section when empty.]
+- [NEEDS CLARIFICATION: question — what breaks if guessed wrong] [Delete this section when empty.]
 
 ## Acceptance criteria
 - [ ] WHEN [reproduction] THEN [expected behavior] — verify: `[regression test command]`

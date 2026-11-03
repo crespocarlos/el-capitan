@@ -106,6 +106,27 @@ def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     (review_dir / "adversarial.in.md").write_text("in")
     (review_dir / "adversarial.out.md").write_text("out")
     assert run(*args).returncode == 0
+    comma_args = (
+        "persist", "--review-dir", str(review_dir), "--report", str(report),
+        "--strict", "--personas", "adversarial,code-quality",
+    )
+    result = run(*comma_args)
+    assert result.returncode == 2 and "comma-separated personas" in result.stderr
+
+
+def test_canonical_personas_rejects_comma_string_without_split(tmp: Path) -> None:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("review_findings", TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        module.canonical_personas("adversarial,code-quality", split_commas=False)
+    except ValueError as error:
+        assert "comma-separated personas" in str(error)
+    else:
+        raise AssertionError("string input with commas must raise when split_commas=False")
+    assert module.canonical_personas("adversarial code-quality".split(), split_commas=False) == [
+        "adversarial", "code-quality"]
 
 
 def test_select_returns_required_personas(tmp: Path) -> None:

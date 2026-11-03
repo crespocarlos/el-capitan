@@ -43,8 +43,13 @@ If no SPEC.md exists, keep this section brief or omit it. Never invent steps.
 
 ## Rules
 
-- `closes <URL_OR_NUMBER>` goes at the top, before the summary. Use the full GitHub issue URL (e.g. `closes https://github.com/org/repo/issues/123`) or `closes #123` if same repo. GitHub auto-closes from the body.
+- `closes <URL_OR_NUMBER>` goes at the top, before the summary. Use the full GitHub issue URL (e.g.
+  `closes https://github.com/org/repo/issues/123`) or `closes #123` if same repo. GitHub auto-closes
+  from the body.
 - Summary tone: direct, for engineers. No fluff, no "This PR aims to..."
-- If SPEC.md exists, derive the summary from its goal and user impact — don't paraphrase the diff as a change log.
-- Avoid layer-grouped section headers or long bullet inventories of renamed fields/files in the Summary.
-- **How to test** = **reviewer-only** manual bullets (capped) from SPEC Summary / Acceptance criteria / diff risk, plus one **automated** line pointing at `crew test` / CI.
+- If SPEC.md exists, derive the summary from its goal and user impact — don't paraphrase the diff as
+  a change log.
+- Avoid layer-grouped section headers or long bullet inventories of renamed fields/files in the
+  Summary.
+- **How to test** = **reviewer-only** manual bullets (capped) from SPEC Summary / Acceptance
+  criteria / diff risk, plus one **automated** line pointing at `crew test` / CI.

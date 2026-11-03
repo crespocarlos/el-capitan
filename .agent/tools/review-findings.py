@@ -44,11 +44,15 @@ def normalized_title(title: str) -> str:
     return re.sub(r"\s+", " ", title.strip().lower())
 
 
-def canonical_personas(value: object) -> list[str]:
+def canonical_personas(value: object, *, split_commas: bool = True) -> list[str]:
+    if not split_commas and isinstance(value, str) and "," in value:
+        raise ValueError("comma-separated personas are invalid; pass each persona as a separate argument")
     raw = value if isinstance(value, list) else str(value or "").split(",")
     result = []
     for item in raw:
         name = re.sub(r"\s+", "-", str(item).strip().lower()).removeprefix("reviewer-")
+        if not split_commas and "," in str(item):
+            raise ValueError("comma-separated personas are invalid; pass each persona as a separate argument")
         if not name:
             continue
         if name not in PERSONAS | LEGACY_PERSONAS:
@@ -145,7 +149,7 @@ def persist(args: argparse.Namespace) -> int:
             raise ValueError("--strict requires --personas")
         missing = [
             f"{persona}.{kind}.md"
-            for persona in canonical_personas(args.personas)
+            for persona in canonical_personas(args.personas, split_commas=False)
             for kind in ("in", "out")
             if not (args.review_dir / f"{persona}.{kind}.md").is_file()
         ]

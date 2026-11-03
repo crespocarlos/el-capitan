@@ -8,24 +8,31 @@ description: "Structure a rough idea into a well-formed GitHub issue and file it
 
 Synthesize the issue from the current session conversation. Do not ask questions to fill gaps.
 
-**This skill produces GitHub issues, not design docs or specs.** Session analysis (tables, numbered problem lists, Option A/B proposals) must be **restructured** into the template sections — never pasted as freeform top-level headings.
+**This skill produces GitHub issues, not design docs or specs.** Session analysis (tables, numbered
+problem lists, Option A/B proposals) must be **restructured** into the template sections — never
+pasted as freeform top-level headings.
 
 ## When Invoked
 
 ### Step 1: Mode and target repo
 
-Scan the conversation for an explicit issue reference (URL or bare `#N`). If found, **update** that issue. Otherwise, **create** a new one. If ambiguous, confirm in one line: `"Fill out existing #N, or open a new issue?"`
+Scan the conversation for an explicit issue reference (URL or bare `#N`). If found, **update** that
+issue. Otherwise, **create** a new one. If ambiguous, confirm in one line: `"Fill out existing #N,
+or open a new issue?"`
 
 ```bash
 git remote get-url origin 2>/dev/null \
   | sed 's|.*github\.com[:/]\(.*\)\.git|\1|; s|.*github\.com[:/]\(.*\)|\1|'
 ```
 
-If that returns `OWNER/REPO`, use it. If a repo is mentioned in the conversation (via URL or `org/repo`), use that. If genuinely unresolvable, ask exactly one question: **"Which repo? (OWNER/REPO)"**
+If that returns `OWNER/REPO`, use it. If a repo is mentioned in the conversation (via URL or
+`org/repo`), use that. If genuinely unresolvable, ask exactly one question: **"Which repo?
+(OWNER/REPO)"**
 
 ### Step 2: Load the template (mandatory)
 
-**Read** [issue-templates.md](./references/issue-templates.md) before drafting. Do not rely on memory.
+**Read** [issue-templates.md](./references/issue-templates.md) before drafting. Do not rely on
+memory.
 
 Check for repo-native templates:
 
@@ -36,13 +43,18 @@ GH_PAGER=cat gh api repos/OWNER/REPO/contents/.github/ISSUE_TEMPLATE --jq '.[].n
 - If templates exist → read the most relevant one and use its sections.
 - If the command 404s or returns nothing → use the fallback templates in `issue-templates.md`.
 
-Classify as **bug** or **feature** per Template Selection in `issue-templates.md`; default to Default (feature) when ambiguous.
+Classify as **bug** or **feature** per Template Selection in `issue-templates.md`; default to
+Default (feature) when ambiguous.
 
 ### Step 3: Draft title, body, and labels
 
-**Title** — follow [Title conventions](./references/issue-templates.md#title-conventions) in `issue-templates.md`. Infer prefix/style from recent issues in the target repo; do not hardcode org- or workstream-specific patterns.
+**Title** — follow [Title conventions](./references/issue-templates.md#title-conventions) in
+`issue-templates.md`. Infer prefix/style from recent issues in the target repo; do not hardcode org-
+or workstream-specific patterns.
 
-**Body** — use **only** the section headings from the chosen template, with emoji headers exactly as written (`## 📓 Summary`, `## ✔️ Acceptance criteria`, etc.). Map session content into these sections:
+**Body** — use **only** the section headings from the chosen template, with emoji headers exactly as
+written (`## 📓 Summary`, `## ✔️ Acceptance criteria`, etc.). Map session content into these
+sections:
 
 | Session material | Goes in |
 |---|---|
@@ -51,9 +63,12 @@ Classify as **bug** or **feature** per Template Selection in `issue-templates.md
 | File paths, risky areas, merge order, approach notes | `## 💡 Implementation hints` (grouped by area) |
 | Repro steps, logs (bugs only) | Bug template sections |
 
-**Do not add** top-level sections such as `## Domain hierarchy`, `## Issues`, `## Proposed fix`, or `## Options`. Fold that content into Summary, Acceptance criteria, or Implementation hints.
+**Do not add** top-level sections such as `## Domain hierarchy`, `## Issues`, `## Proposed fix`, or
+`## Options`. Fold that content into Summary, Acceptance criteria, or Implementation hints.
 
-**Labels** — infer from content using [Label conventions](./references/issue-templates.md#label-conventions) in `issue-templates.md`. List available labels with `gh label list --repo OWNER/REPO` when unsure.
+**Labels** — infer from content using [Label
+conventions](./references/issue-templates.md#label-conventions) in `issue-templates.md`. List
+available labels with `gh label list --repo OWNER/REPO` when unsure.
 
 ### Step 4: Self-check before presenting
 
@@ -66,7 +81,9 @@ Reject and rewrite the draft if any of these fail:
 
 ### Step 5: Draft and confirm
 
-Show the complete **title**, **body**, **target repo**, and **labels** before filing. One question: `File this? (yes / edit / cancel)`. If "edit", apply their corrections and re-present — do not ask what to change.
+Show the complete **title**, **body**, **target repo**, and **labels** before filing. One question:
+`File this? (yes / edit / cancel)`. If "edit", apply their corrections and re-present — do not ask
+what to change.
 
 ### Step 6: File
 
@@ -116,7 +133,8 @@ GH_PAGER=cat gh project item-edit \
   --field-id FIELD_ID --single-select-option-id OPTION_ID
 ```
 
-Status inference: **"In Review"** for open PRs · **"Ready"** for merged · **"In Progress"** for active work.
+Status inference: **"In Review"** for open PRs · **"Ready"** for merged · **"In Progress"** for
+active work.
 
 ### Step 7: After filing
 

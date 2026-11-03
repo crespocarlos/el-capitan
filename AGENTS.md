@@ -1,12 +1,16 @@
 # el-capitan — Agent Guide
 
-El-capitan is a spec-driven agentic engineering pipeline. All files are markdown, shell scripts, and Python utilities — there is no build step and no package manager. It contains:
+El-capitan is a spec-driven agentic engineering pipeline. All files are markdown, shell scripts, and
+Python utilities — there is no build step and no package manager. It contains:
 
 - **Orchestration rules** — `rules/crew-orchestrator.mdc`, `crew-router.mdc` (always loaded)
-- **Agent protocols** — `.cursor/agents/crew-*.md`, `specwriter-*.md`, `reviewer-*.md`, `tester-*.md`
+- **Agent protocols** — `.cursor/agents/crew-*.md`, `specwriter-*.md`, `reviewer-*.md`,
+  `tester-*.md`
 - **Skill files** — `.cursor/skills/<name>/SKILL.md`
-- **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md` (symlinks to the portable `spec-writing` skill's `references/`)
-- **Tools** — `.agent/tools/` (CLIs, cataloged in `TOOLS.md` / `tools.json`); `.agent/scripts/` (source-only and internal helpers). Both install flat into `~/.agent/bin/`.
+- **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md` (symlinks to the
+  portable `spec-writing` skill's `references/`)
+- **Tools** — `.agent/tools/` (CLIs, cataloged in `TOOLS.md` / `tools.json`); `.agent/scripts/`
+  (source-only and internal helpers). Both install flat into `~/.agent/bin/`.
 
 ## Bootstrap
 
@@ -20,7 +24,8 @@ No setup required. Skip the bootstrap step in any worktree.
 
 No automated test runner is configured. `crew test` will return WARN with no test command.
 
-Verification: run **`crew test`** (typed `## Tests` commands) and check **Acceptance criteria** in SPEC.md. Specs use the two-line `## Status\n<value>` form.
+Verification: run **`crew test`** (typed `## Tests` commands) and check **Acceptance criteria** in
+SPEC.md. Specs use the two-line `## Status\n<value>` form.
 
 ## File layout
 
@@ -48,7 +53,9 @@ install.sh      ← creates symlinks from ~/.cursor/, ~/.claude/, ~/.agent/ → 
 
 ## Symlink rules
 
-`.cursor/agents/` and `.cursor/skills/` are the canonical sources. `.claude/agents/` and `.claude/skills/` are symlinks pointing to them — edit only the `.cursor/` paths (symlinks follow automatically).
+`.cursor/agents/` and `.cursor/skills/` are the canonical sources. `.claude/agents/` and
+`.claude/skills/` are symlinks pointing to them — edit only the `.cursor/` paths (symlinks follow
+automatically).
 
 ```bash
 # Verify symlinks
@@ -58,11 +65,18 @@ ls -la .claude/skills   # should show → ../.cursor/skills
 
 ## Editing conventions
 
-- **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, `model`, `readonly`, `tools`, `maxTurns`) followed by protocol prose. Follow the existing style in the file you're editing.
-- **Skill files** (`.cursor/skills/<name>/SKILL.md`) — workflow header, execution model, numbered steps. Follow `crew-commit/SKILL.md` as the canonical example.
-- **Routing** — `crew-router.mdc` is the single source of truth. `.claude/CLAUDE.md` says "do not duplicate it here" — do not add routing entries to CLAUDE.md.
-- **Templates** — spec templates live in `.cursor/skills/spec-writing/references/` (edit there; `.agent/_*SPEC_TEMPLATE.md` are symlinks). Changes affect all future specs.
-- **Tool budget in explorers** — `specwriter-explorer.md` and `tester-explorer.md` each have a hard ≤8 tool call budget. If you add a new discovery step that consumes a slot, update the budget breakdown comment.
+- **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, `model`,
+  `readonly`, `tools`, `maxTurns`) followed by protocol prose. Follow the existing style in the file
+  you're editing.
+- **Skill files** (`.cursor/skills/<name>/SKILL.md`) — workflow header, execution model, numbered
+  steps. Follow `crew-commit/SKILL.md` as the canonical example.
+- **Routing** — `crew-router.mdc` is the single source of truth. `.claude/CLAUDE.md` says "do not
+  duplicate it here" — do not add routing entries to CLAUDE.md.
+- **Templates** — spec templates live in `.cursor/skills/spec-writing/references/` (edit there;
+  `.agent/_*SPEC_TEMPLATE.md` are symlinks). Changes affect all future specs.
+- **Tool budget in explorers** — `specwriter-explorer.md` and `tester-explorer.md` each have a hard
+  ≤8 tool call budget. If you add a new discovery step that consumes a slot, update the budget
+  breakdown comment.
 
 ## Using crew commands on this repo
 
@@ -96,7 +110,8 @@ The worktree will be created at `~/worktrees/el-capitan-<branch>/`. No bootstrap
 
 ## Verification pattern
 
-Changes to agent/skill files are verified by reading them and checking the acceptance criteria in the SPEC.md. Most checks are `grep`-based:
+Changes to agent/skill files are verified by reading them and checking the acceptance criteria in
+the SPEC.md. Most checks are `grep`-based:
 
 ```bash
 grep "keyword" .cursor/agents/target-file.md   # presence check
@@ -110,22 +125,19 @@ There is no lint, typecheck, or unit test to run.
 
 ## Persistent memory
 
-`mem.py` manages typed, repo-scoped Markdown memories in
-`~/.agent/memory`; SQLite FTS5 is a rebuildable index, not the source of
-truth. Run `bash install.sh` once to initialize the store and install
-harness-neutral read instructions. Agents retrieve memory automatically.
-Repository scope uses the upstream repository's bare name when available, so
-forks and upstream worktrees share their memory.
+`mem.py` manages typed, repo-scoped Markdown memories in `~/.agent/memory`; SQLite FTS5 is a
+rebuildable index, not the source of truth. Run `bash install.sh` once to initialize the store and
+install harness-neutral read instructions. Agents retrieve memory automatically. Repository scope
+uses the upstream repository's bare name when available, so forks and upstream worktrees share their
+memory.
 
-Journal entries are immutable `observation` evidence in the same store.
-`mem.py search` and ranked `mem.py context` (plan, implement, review, debug)
-include them; the unranked `--mode session` listing excludes them unless
-`--include-observations` is passed. Import legacy journals read-only with
-`mem.py journal import`.
+Journal entries are immutable `observation` evidence in the same store. `mem.py search` and ranked
+`mem.py context` (plan, implement, review, debug) include them; the unranked `--mode session`
+listing excludes them unless `--include-observations` is passed. Import legacy journals read-only
+with `mem.py journal import`.
 
-Use `crew remember: <lesson>` only for durable, non-derivable information;
-use `crew memory seed` to draft journal candidates for approval, and `crew
-memory doctor` to diagnose the store. `mem.py ingest --source claude|codex
---path <directory>` imports external memory read-only and never reconfigures
-or edits its source repository. Verify with `python3 evals/memory/run.py` and
-`python3 .agent/tools/crew-lint.py`.
+Use `crew remember: <lesson>` only for durable, non-derivable information; use `crew memory seed` to
+draft journal candidates for approval, and `crew memory doctor` to diagnose the store. `mem.py
+ingest --source claude|codex --path <directory>` imports external memory read-only and never
+reconfigures or edits its source repository. Verify with `python3 evals/memory/run.py` and `python3
+.agent/tools/crew-lint.py`.
