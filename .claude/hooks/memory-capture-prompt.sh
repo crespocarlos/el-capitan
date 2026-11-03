@@ -47,9 +47,10 @@ message = (
     "Memory capture check: this session had "
     + reason
     + ". Review the session for at most three durable, non-derivable lessons, "
-      "user preferences, or process gaps. Do not write memory yet. Present only "
-      "the candidates with evidence and ask the user whether to store them; if "
-      "there are none, say `nothing to persist`."
+      "user preferences, or process gaps. Write each candidate as one .md file "
+      "in ~/.agent/memory/.inbox/ (drafts only, not durable memory), then ask the "
+      "user once whether to import them with `mem.py import-inbox`; if there are "
+      "none, say `nothing to persist`."
 )
 print(json.dumps({"followup_message": message}))
 PY
