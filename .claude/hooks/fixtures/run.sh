@@ -51,6 +51,9 @@ test "$(publish "git -C $repo commit -m leak" "$home")" = deny
 seq 1 40000 > "$repo/big.txt"; git -C "$repo" add big.txt
 test "$(publish 'git commit -m large')" = deny
 git -C "$repo" rm -q --cached b.txt big.txt
+printf 'key=%s\n' "AKIA""ABCDEFGHIJKLMNOP" > "$repo/c.txt"; seq 1 40000 >> "$repo/c.txt"; git -C "$repo" add c.txt
+test "$(publish 'git commit -m secret-on-line-1-of-large-diff')" = deny
+git -C "$repo" rm -q --cached c.txt
 test "$(publish 'gh pr create --draft')" = allow
 git -C "$repo" remote add upstream https://github.com/example/upstream.git
 test "$(publish 'gh pr create --draft')" = deny

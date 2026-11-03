@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 input=$(cat)
+if ! jq -e . >/dev/null 2>&1 <<<"$input"; then
+  echo "Write blocked: hook input is not valid JSON." >&2
+  exit 2
+fi
 event=$(printf '%s' "$input" | jq -r '.hook_event_name // empty')
 case "$event" in
   PreToolUse) path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty'); shape=claude ;;
