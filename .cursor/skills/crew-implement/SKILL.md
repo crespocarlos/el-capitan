@@ -130,7 +130,7 @@ The UUID task directory (`$TASK_DIR`) is stable — it does not move either way.
 ### Step 5: Update progress
 
 ```bash
-~/.agent/bin/log-progress.py "$TASK_DIR" "APPROVED → IMPLEMENTING"
+~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR"
 ~/.agent/bin/log-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
 ```
 
@@ -183,7 +183,6 @@ When the Implementation Report is available:
 **All tasks passed:**
 
 1. ```bash ~/.agent/bin/log-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
-   ~/.agent/bin/log-progress.py "$TASK_DIR" "IMPLEMENTING → REVIEW"
    ```
 2. **Auto-journal** — store an immutable observation (no prompt, passive). Title prefix: "Implemented:". Write 1-3 paragraphs of plain prose on stdin — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:
    - What was built and why it matters (always)
@@ -200,9 +199,9 @@ When the Implementation Report is available:
    batch approval; `crew memory seed` or `mem.py import-inbox` performs the
    later promotion.
 4. **Tell the user — this output is mandatory, do not skip it:**
-   > "All tasks done. Ready for `crew review`."
+   > "All tasks done. Status stays `IMPLEMENTING` until the PR is opened."
    > "Working directory: `<WORK_DIR>` — run tests from there."
-   > Next: run `crew review` to continue.
+   > Next: `crew review`, then `crew commit`, then `crew open pr`.
 
 **Some tasks failed:**
 

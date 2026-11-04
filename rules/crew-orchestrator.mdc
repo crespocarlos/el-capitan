@@ -28,22 +28,29 @@ resolved and pushed; reviewer approval is external
 ## State machine
 
 ```
-DRAFTING → [gate: approve spec] → IMPLEMENTING → REVIEW → COMMITTING → [gate: approve message] → PR_OPEN → DONE
+DRAFTING → [gate: approve spec] → APPROVED → IMPLEMENTING → DONE
 ```
 
-Two gates. Everything between them auto-advances in autopilot.
+Four states. Review, commit and the PR are steps inside `IMPLEMENTING`; their results are evidence,
+not states. `DONE` is set when `crew open pr` creates the PR. Side states: `ON-HOLD` (auto after 14
+idle days) and `ABANDONED` (set by the user only).
 
 | From | To | Gate? | What runs |
 |---|---|---|---|
 | DRAFTING | APPROVED | **Gate 1** — user approves spec | — |
-| APPROVED | IMPLEMENTING | auto | crew-implement skill |
-| IMPLEMENTING | REVIEW | auto | crew-reviewer (self-review) |
-| REVIEW | COMMITTING | auto | crew-commit skill (presents message) |
-| COMMITTING | PR_OPEN | **Gate 2** — user approves message | crew-open-pr skill |
-| PR_OPEN | DONE | auto | — |
+| APPROVED | IMPLEMENTING | auto | crew-implement skill (builder only); `crew-ls.py --mark-implementing` |
+| IMPLEMENTING | DONE | **Gate 2** — two approvals, in order | crew-open-pr skill, then `crew-ls.py --mark-done` |
 
-`ON-HOLD (auto-hold: …; was <status>)` is set by `crew-ls --reconcile --apply` on specs idle over 14
-days in `DRAFTING` or `APPROVED`. Resume by editing the Status back to the `was` value.
+Inside `IMPLEMENTING`, `crew review` and `crew commit` run as separate steps. Gate 2 is two
+approvals: (a) the commit message in crew-commit, then (b) the PR title, description, and push in
+crew-open-pr. Approving (a) does not approve (b).
+
+Automatic transitions are data in `.agent/tools/transitions.json`, applied by
+`crew-ls.py --reconcile --apply`. `DRAFTING|APPROVED` go `ON-HOLD` after 14 idle days, with the prior state recorded in the
+status; resume by editing the Status back to the `was` value. `IMPLEMENTING` specs are reported as
+ready to open a PR (all criteria checked, review pass or warn) or stalled, never rewritten. `DONE`
+is written only by `crew-ls.py --mark-done` from `crew open pr`, and means the draft PR was opened,
+not merged.
 
 To show task state in chat, run `crew-ls.py --md` and paste its output as written, outside a code
 fence, so it renders as a table.
@@ -83,7 +90,7 @@ fi
 Append-only event log. Never read for state — only write. Format:
 ```
 [YYYY-MM-DD HH:MM] TRANSITION: APPROVED → IMPLEMENTING
-[YYYY-MM-DD HH:MM] TRANSITION: IMPLEMENTING → REVIEW
+[YYYY-MM-DD HH:MM] TRANSITION: IMPLEMENTING → DONE (PR opened: <url>)
 ```
 
 ### `METRIC:` lines (audit / cost / loop forensics)
@@ -102,7 +109,7 @@ Optional append-only lines for **offline analysis only**. `resolve-task-dir.py` 
 | Event | Example | When |
 |--------|---------|------|
 | `implement_start` | `METRIC: implement_start mode=inline` | After `APPROVED → IMPLEMENTING`, before builder runs |
-| `implement_complete` | `METRIC: implement_complete tasks_passed=8 tasks_failed=0` | After builder success, before `IMPLEMENTING → REVIEW` |
+| `implement_complete` | `METRIC: implement_complete tasks_passed=8 tasks_failed=0` | After builder success |
 | `completion_protocol` | `METRIC: completion_protocol phase=ac_check` | Optional milestone inside Completion Protocol |
 | `session` | `METRIC: session tool_calls=42` | Optional coarse counters from hooks or notes |
 

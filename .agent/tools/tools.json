@@ -137,6 +137,11 @@
       "owner": "crew-pr-resolver"
     },
     {
+      "name": "transitions.json",
+      "category": "task",
+      "owner": "crew-orchestrator"
+    },
+    {
       "name": "requirements.txt",
       "category": "metadata",
       "owner": "repository"

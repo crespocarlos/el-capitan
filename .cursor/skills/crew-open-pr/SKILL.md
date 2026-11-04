@@ -103,8 +103,10 @@ a summary if there are multiple commits.
 After approval:
 
 ```bash
-GH_PAGER=cat gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO"
+PR_URL=$(GH_PAGER=cat gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO")
 ```
+
+`gh pr create` prints the PR URL; keep it as `PR_URL` for Step 4 and Session Capture.
 
 **Important:** Always pass `--body` explicitly. If `--body` is omitted or empty, `gh` opens
 `$EDITOR` which freezes the VS Code terminal. Never rely on interactive input for the body.
@@ -128,13 +130,22 @@ After creating the PR, resolve `TASK_DIR`:
 source ~/.agent/bin/task-env.sh
 ```
 
-If `TASK_DIR` is non-empty, log the transition:
+If `TASK_DIR` is non-empty, set the spec to `done` and log the transition. `--mark-done` writes the
+status and appends to `PROGRESS.md`; it refuses unless the spec is `IMPLEMENTING`, all criteria are
+checked, the last review verdict is pass or warn, and the task branch matches the current branch:
 
 ```bash
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-progress.py "$TASK_DIR" "COMMITTING → PR_OPEN ($PR_URL)"
+  ~/.agent/bin/crew-ls.py --mark-done "$TASK_DIR" --pr-url "$PR_URL" \
+    --branch "$(git rev-parse --abbrev-ref HEAD)" \
+    || echo "warning: PR opened but spec not marked done" >&2
 fi
 ```
+
+On a non-zero exit, show the `error:` line and the PR URL, and say the spec is not marked done. Do not
+re-run `gh pr create`. Once the cause is fixed, re-run the same `--mark-done` command; `--force`
+skips the evidence checks only when the user asks for it. With no `TASK_DIR` (for example `crew
+quick`), there is nothing to mark.
 
 **Journal (opt-in, never automatic).** Memory writes need explicit approval (`memory-capture.mdc`;
 `CLAUDE.md`: do not write memories automatically). After the PR is open, draft an observation only

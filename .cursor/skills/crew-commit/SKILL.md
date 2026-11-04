@@ -131,7 +131,7 @@ After a successful commit, log the transition using the already-resolved `$TASK_
 
 ```bash
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-progress.py "$TASK_DIR" "COMMITTING: committed $(git rev-parse --short HEAD)"
+  ~/.agent/bin/log-progress.py "$TASK_DIR" "commit: $(git rev-parse --short HEAD)"
 fi
 ```
 

@@ -70,7 +70,7 @@ logging.
 ```bash
 # If PASS or WARN:
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW → COMMITTING"
+  ~/.agent/bin/log-progress.py "$TASK_DIR" "review: passed"
 fi
 # If BLOCK:
 if [ -n "$TASK_DIR" ]; then

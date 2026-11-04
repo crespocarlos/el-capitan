@@ -86,6 +86,10 @@ until the next `## ` heading, limited to `TASK_RANGE` when set), in order:
 
 When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 
+**Already-complete guard (check first):** If every checkbox in SPEC.md (Tasks and Acceptance
+criteria) is `[x]` and `REPORT.md` is newer than `SPEC.md`, stop — do not re-run anything.
+Otherwise run steps 1-4 and overwrite `REPORT.md`.
+
 1. **Reconcile test evidence.** Prune added tests per `personal.mdc` Testing, rerun the narrowest
    verify command, and update the contract mapping for retained evidence.
 2. **Run quality gates.** Run every command under the spec's `## Tests` section, then the lint and
@@ -95,15 +99,8 @@ When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 3. Walk each `- [ ]` under **`## Acceptance criteria`** — mark `[x]` only if satisfied by the
    retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or
    explicit file inspection stated in the criterion).
-4. Set status to **done** (two lines only):
-
-   ```
-   ## Status
-   done
-   ```
-
-**Already-done guard:** If status is already `done` AND all checkboxes are `[x]`, stop — do not
-re-run anything.
+4. Leave `## Status` as `IMPLEMENTING`. The status becomes `done` only when `crew open pr` creates
+   the PR (`crew-ls.py --mark-done`). Do not write `done` here.
 
 Then write `REPORT.md`.
 

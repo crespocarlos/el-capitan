@@ -80,7 +80,7 @@ test "$(status_of onhold)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)
 test "$(status_of drafting-old)" = 'ON-HOLD (auto-hold: no activity 14d; was DRAFTING)'
 test "$(status_of suffixed-old)" = 'ON-HOLD (auto-hold: no activity 14d; was DRAFTING)'
 test "$(status_of drafting-new)" = DRAFTING
-test "$(status_of implementing-pass)" = done
+test "$(status_of implementing-pass)" = IMPLEMENTING
 test "$(status_of implementing-nits)" = IMPLEMENTING
 test "$(status_of implementing-rerun)" = IMPLEMENTING
 grep -q '^## Summary$' "$tasks/empty-status/SPEC.md"
@@ -91,9 +91,15 @@ ln -s "$root/.agent/tools/crew-ls.py" "$hook_home/.agent/bin/crew-ls.py"
 mkdir -p "$hook_home/.agent/tasks/idle" "$hook_home/.agent/tasks/shipped"
 printf '# T\n\n## Status\nDRAFTING\n\n- [ ] a\n' > "$hook_home/.agent/tasks/idle/SPEC.md"; touch -t 202610010000 "$hook_home/.agent/tasks/idle/SPEC.md"
 printf '# T\n\n## Status\ndone\n\n- [x] a\n' > "$hook_home/.agent/tasks/shipped/SPEC.md"
+mkdir -p "$hook_home/.agent/tasks/ready" "$hook_home/.agent/tasks/stuck"
+printf '# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' > "$hook_home/.agent/tasks/ready/SPEC.md"
+printf 'Verdict: pass\n' > "$hook_home/.agent/tasks/ready/REVIEW.md"
+printf '# T\n\n## Status\nIMPLEMENTING\n\n- [ ] a\n' > "$hook_home/.agent/tasks/stuck/SPEC.md"; touch -t 202610010000 "$hook_home/.agent/tasks/stuck/SPEC.md"
 hook_out=$(HOME="$hook_home" bash "$root/.claude/hooks/spec-status-reconcile.sh")
 grep -q 'spec-status: idle -> ON-HOLD' <<<"$hook_out"
 grep -q '1 done spec(s) lack a review pass' <<<"$hook_out"
+grep -q 'spec-status: 1 ready to open PR: ready' <<<"$hook_out"
+grep -q 'spec-status: 1 stalled IMPLEMENTING: stuck' <<<"$hook_out"
 missing_out=$(HOME="$home/no-tool" bash "$root/.claude/hooks/spec-status-reconcile.sh")
 grep -q 'reconcile failed' <<<"$missing_out"
 table_out=$(python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks")
@@ -102,3 +108,60 @@ python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --tsv | awk -F'\t' 
 md_out=$(python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --md)
 grep -q '^| STATE | TASK | BRANCH | REVIEW | AGE |$' <<<"$md_out"
 grep -q '^|---|---|---|---|---|$' <<<"$md_out"
+ls_tool="$root/.agent/tools/crew-ls.py"
+mkspec approved-old $'# T\n\n## Status\nAPPROVED\n\n- [ ] a\n' '' 202610010000
+mkspec implementing-old-open $'# T\n\n## Status\nIMPLEMENTING\n\n- [ ] a\n' 'Verdict: pass' 202610010000
+mkspec approved-done-old $'# T\n\n## Status\nAPPROVED\n\n- [x] a\n' 'Verdict: pass' 202610010000
+mkspec implementing-nobox $'# T\n\n## Status\nIMPLEMENTING\n\nno boxes\n' 'Verdict: pass'
+mkspec implementing-warn $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict: warn'
+python3 "$ls_tool" --tasks-dir "$tasks" --reconcile --apply >/dev/null
+test "$(status_of approved-old)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)'
+test "$(status_of implementing-old-open)" = IMPLEMENTING
+test "$(status_of approved-done-old)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)'
+reconcile_out=$(python3 "$ls_tool" --tasks-dir "$tasks" --reconcile)
+section() { awk -v h="$1" 'index($0,h)==1{f=1;next} /^[a-z]/{f=0} f' <<<"$reconcile_out"; }
+ready=$(section 'ready to open PR')
+grep -q 'implementing-pass' <<<"$ready"
+grep -q 'implementing-warn' <<<"$ready"
+for name in implementing-nits implementing-rerun implementing-old-open implementing-nobox; do
+  if grep -q "$name" <<<"$ready"; then exit 1; fi
+done
+grep -q 'implementing-old-open' <<<"$(section 'stalled IMPLEMENTING')"
+if grep -q 'implementing-pass' <<<"$(section 'stalled IMPLEMENTING')"; then exit 1; fi
+
+fails() { local expect=$1; shift; local rc=0 err; err=$("$@" 2>&1 >/dev/null) || rc=$?; test "$rc" -ne 0; grep -q -- "$expect" <<<"$err"; }
+mkspec approved-new $'# T\n\n## Status\nAPPROVED\n\n- [x] a\n' 'Verdict: warn'
+fails 'not APPROVED' python3 "$ls_tool" --mark-implementing "$tasks/drafting-new"
+fails 'no SPEC.md' python3 "$ls_tool" --mark-implementing "$tasks/missing"
+python3 "$ls_tool" --mark-implementing "$tasks/approved-new" >/dev/null
+test "$(status_of approved-new)" = IMPLEMENTING
+grep -q 'APPROVED → IMPLEMENTING' "$tasks/approved-new/PROGRESS.md"
+python3 "$ls_tool" --mark-implementing "$tasks/approved-new" | grep -q 'already implementing'
+python3 "$ls_tool" --mark-done "$tasks/approved-new" --pr-url https://example.test/pr/2 >/dev/null
+test "$(status_of approved-new)" = done
+
+printf '{"slug":"implementing-pass","branch":"feature/x"}' > "$tasks/implementing-pass/.task-id"
+fails 'current branch is feature/y' python3 "$ls_tool" --mark-done "$tasks/implementing-pass" --pr-url x --branch feature/y
+test "$(status_of implementing-pass)" = IMPLEMENTING
+python3 "$ls_tool" --mark-done "$tasks/implementing-pass" --pr-url https://example.test/pr/1 --branch feature/x >/dev/null
+test "$(status_of implementing-pass)" = done
+grep -q 'IMPLEMENTING → DONE (PR opened: https://example.test/pr/1)' "$tasks/implementing-pass/PROGRESS.md"
+python3 "$ls_tool" --mark-done "$tasks/implementing-pass" --pr-url x | grep -q 'already done'
+fails 'unchecked' python3 "$ls_tool" --mark-done "$tasks/implementing-old-open" --pr-url x
+fails 'need pass or warn' python3 "$ls_tool" --mark-done "$tasks/implementing-rerun" --pr-url x
+fails 'not IMPLEMENTING' python3 "$ls_tool" --mark-done "$tasks/drafting-new" --pr-url x
+fails 'no SPEC.md' python3 "$ls_tool" --mark-done "$tasks/missing" --pr-url x
+fails '--pr-url' python3 "$ls_tool" --mark-done "$tasks/drafting-new"
+test "$(status_of drafting-new)" = DRAFTING
+python3 "$ls_tool" --mark-done "$tasks/implementing-old-open" --pr-url x --force >/dev/null
+test "$(status_of implementing-old-open)" = done
+
+bad_tools="$home/bad-tools"; mkdir -p "$bad_tools"
+cp "$ls_tool" "$root/.agent/tools/log-progress.py" "$bad_tools/"
+printf '{bad' > "$bad_tools/transitions.json"
+python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" >/dev/null
+fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile
+printf '{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["bogus"],"status":"x","log":"y"}]}' > "$bad_tools/transitions.json"
+fails 'unknown predicate' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply
+printf '{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["idle"],"status":"{typo}","log":"y"}]}' > "$bad_tools/transitions.json"
+fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply

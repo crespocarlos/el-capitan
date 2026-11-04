@@ -8,7 +8,7 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 
 | Category | Commands | Purpose |
 | --- | --- | --- |
-| task | `agent-context.py`, `check-spec-typed-tests.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-env.sh` | Guidance context, task state, validation, worktrees, and artifacts |
+| task | `agent-context.py`, `check-spec-typed-tests.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-env.sh`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
 | review | `dispatch_subagents.py`, `get-diff.sh`, `pr-review-actions.py`, `pr-review-threads.graphql`, `review-findings.py` | Review dispatch, diffs, findings, and PR threads |
 | evals | `evals-inspect.py`, `evals-compare.py` | Inspect, compare, and diagnose evaluation runs |
 | memory | `mem.py` | Durable units and immutable observations |

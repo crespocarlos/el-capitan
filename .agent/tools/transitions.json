@@ -1,0 +1,23 @@
+{
+ "_comment": "Automatic spec-status rules read by crew-ls.py --reconcile; tried in file order, first match wins. kind: ready and stalled are report-only; hold rewrites Status using `status` and logs `log` (fields: idle_days, prior, from_state). Predicates are defined in crew-ls.py. DONE is written only by `crew-ls.py --mark-done` from crew open pr; IMPLEMENTING only by `--mark-implementing`.",
+ "idle_days": 14,
+ "auto": [
+  {
+   "from": ["IMPLEMENTING"],
+   "kind": "ready",
+   "when": ["all_checked", "has_checkboxes", "verdict_ok"]
+  },
+  {
+   "from": ["IMPLEMENTING"],
+   "kind": "stalled",
+   "when": ["idle"]
+  },
+  {
+   "from": ["DRAFTING", "APPROVED"],
+   "kind": "hold",
+   "when": ["idle"],
+   "status": "ON-HOLD (auto-hold: no activity {idle_days}d; was {prior})",
+   "log": "{from_state} → ON-HOLD (auto: idle {idle_days}d)"
+  }
+ ]
+}
