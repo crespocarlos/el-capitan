@@ -20,7 +20,8 @@ is the spec /some/path/to/spec.md`). If found, attempt to read that file. If the
 not found), stop immediately: 'Cannot read [path] — check the path and try again.' If the file
 exists but has no `## Status` section or the status value (compared case-insensitively) is neither
 `approved` nor `IMPLEMENTING`, stop: 'Spec status is [value]; expected `approved` or
-`IMPLEMENTING`.' Otherwise, set `TASK_DIR` to its parent directory, export
+`IMPLEMENTING`.' (For an `ON-HOLD (… was <status>)` value, add: 'Set Status back to the `was` value
+to resume.') Otherwise, set `TASK_DIR` to its parent directory, export
 `CREW_TASK_DIR="$TASK_DIR"`, and skip to Step 2.
 
 Otherwise:

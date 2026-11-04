@@ -56,7 +56,9 @@ spine-focused strategy. Skip this step for specs and ideas.
 
 ## Step 4: select reviewers
 
-Run `~/.agent/bin/review-findings.py select --mode <mode> --paths <changed paths> [--contract]
+Derive `<selector-mode>` from the base mode: lowercase it and remove the `auto` or `auto-loop`
+modifier (`PR` → `pr`; `self auto` → `self`). Run
+`~/.agent/bin/review-findings.py select --mode <selector-mode> --paths <changed paths> [--contract]
 [--compat]` and dispatch every persona it returns; pass `--contract` when a spec or PR contract
 supplies acceptance criteria and `--compat` when the change alters behavior of an existing consumer.
 Skipping a returned persona is not allowed; adding one is. The rules below describe the same

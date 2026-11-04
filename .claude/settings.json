@@ -116,6 +116,14 @@
             "command": "bash \"$HOME/.claude/hooks/memory-context.sh\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/spec-status-reconcile.sh\"; exit 0"
+          }
+        ]
       }
     ],
     "SessionEnd": [

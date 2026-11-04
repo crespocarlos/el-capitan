@@ -42,6 +42,12 @@ Two gates. Everything between them auto-advances in autopilot.
 | COMMITTING | PR_OPEN | **Gate 2** — user approves message | crew-open-pr skill |
 | PR_OPEN | DONE | auto | — |
 
+`ON-HOLD (auto-hold: …; was <status>)` is set by `crew-ls --reconcile --apply` on specs idle over 14
+days in `DRAFTING` or `APPROVED`. Resume by editing the Status back to the `was` value.
+
+To show task state in chat, run `crew-ls.py --md` and paste its output as written, outside a code
+fence, so it renders as a table.
+
 ## Session-start awareness
 
 On every conversation start, check for an active task:

@@ -61,3 +61,44 @@ test "$(publish 'git commit -m x && gh pr create --draft')" = deny
 test "$(publish 'gh pr create --draft --repo example/upstream')" = allow
 test "$(publish 'ls')" = allow
 jq -n --arg d "$repo" '{hook_event_name:"PreToolUse",tool_input:{command:"gh pr create"},cwd:$d}' | bash "$root/.claude/hooks/check-publish.sh" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+
+tasks="$home/tasks"; mkdir -p "$tasks"
+mkspec() { mkdir -p "$tasks/$1"; printf '%s' "$2" > "$tasks/$1/SPEC.md"; [ -z "${3:-}" ] || printf '%s\n' "$3" > "$tasks/$1/REVIEW.md"; [ -z "${4:-}" ] || touch -t "$4" "$tasks/$1"/*; return 0; }
+status_of() { awk '/^## Status/{getline; print; exit}' "$tasks/$1/SPEC.md"; }
+mkspec abandoned $'# T\n\n## Status\nABANDONED\n\n- [x] a\n' 'Verdict: pass'
+mkspec onhold $'# T\n\n## Status\nON-HOLD (auto-hold: no activity 14d; was APPROVED)\n\n- [x] a\n' 'Verdict: pass'
+mkspec drafting-old $'# T\n\n## Status\nDRAFTING\n\n- [x] a\n' 'Verdict: pass' 202610010000
+mkspec suffixed-old $'# T\n\n## Status\nDRAFTING (updated by Task 9; needs approval)\n\n- [ ] a\n' '' 202610010000
+mkspec drafting-new $'# T\n\n## Status\nDRAFTING\n\n- [ ] a\n'
+mkspec implementing-pass $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict: PASS. No findings.'
+mkspec implementing-nits $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict: pass-with-nits'
+mkspec implementing-rerun $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' $'Verdict: pass\n\nround 2\nVerdict: BLOCK'
+mkspec empty-status $'# T\n\n## Status\n\n## Summary\n\n- [x] a\n' 'Verdict: pass'
+python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply >/dev/null
+test "$(status_of abandoned)" = ABANDONED
+test "$(status_of onhold)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)'
+test "$(status_of drafting-old)" = 'ON-HOLD (auto-hold: no activity 14d; was DRAFTING)'
+test "$(status_of suffixed-old)" = 'ON-HOLD (auto-hold: no activity 14d; was DRAFTING)'
+test "$(status_of drafting-new)" = DRAFTING
+test "$(status_of implementing-pass)" = done
+test "$(status_of implementing-nits)" = IMPLEMENTING
+test "$(status_of implementing-rerun)" = IMPLEMENTING
+grep -q '^## Summary$' "$tasks/empty-status/SPEC.md"
+grep -q 'DRAFTING → ON-HOLD' "$tasks/drafting-old/PROGRESS.md"
+
+hook_home="$home/hook-home"; mkdir -p "$hook_home/.agent/bin" "$hook_home/.agent/tasks"
+ln -s "$root/.agent/tools/crew-ls.py" "$hook_home/.agent/bin/crew-ls.py"
+mkdir -p "$hook_home/.agent/tasks/idle" "$hook_home/.agent/tasks/shipped"
+printf '# T\n\n## Status\nDRAFTING\n\n- [ ] a\n' > "$hook_home/.agent/tasks/idle/SPEC.md"; touch -t 202610010000 "$hook_home/.agent/tasks/idle/SPEC.md"
+printf '# T\n\n## Status\ndone\n\n- [x] a\n' > "$hook_home/.agent/tasks/shipped/SPEC.md"
+hook_out=$(HOME="$hook_home" bash "$root/.claude/hooks/spec-status-reconcile.sh")
+grep -q 'spec-status: idle -> ON-HOLD' <<<"$hook_out"
+grep -q '1 done spec(s) lack a review pass' <<<"$hook_out"
+missing_out=$(HOME="$home/no-tool" bash "$root/.claude/hooks/spec-status-reconcile.sh")
+grep -q 'reconcile failed' <<<"$missing_out"
+table_out=$(python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks")
+grep -q '^STATE  *TASK  *BRANCH  *REVIEW  *AGE$' <<<"$table_out"
+python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --tsv | awk -F'\t' 'NF!=5{bad=1} END{exit bad}'
+md_out=$(python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --md)
+grep -q '^| STATE | TASK | BRANCH | REVIEW | AGE |$' <<<"$md_out"
+grep -q '^|---|---|---|---|---|$' <<<"$md_out"
