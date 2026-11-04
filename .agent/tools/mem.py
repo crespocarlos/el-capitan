@@ -613,6 +613,8 @@ def rank_context(rows, query, requested_paths, mode):
         keywords = set(tokens(" ".join(json.loads(row["keywords"] or "[]"))))
         path_score = path_overlap(paths, requested_paths)
         keyword_score = (len(keywords & query_tokens) / len(query_tokens)) if query_tokens else 0
+        if not query_tokens and path_score == 0:
+            continue
         priority = 0.2 * (len(priorities) - priorities.index(row["type"])) / len(priorities) if row["type"] in priorities else 0
         stale = is_stale(row["review_by"])
         score = (bm25 + 0.3 * path_score + 0.2 * keyword_score + priority) * (0.7 if stale else 1)
@@ -632,6 +634,8 @@ def path_overlap(unit_paths, requested_paths):
     for unit_path in unit_paths:
         for requested in requested_paths:
             if fnmatch.fnmatch(requested, unit_path) or fnmatch.fnmatch(unit_path, requested):
+                return 1
+            if unit_path.endswith("/") and requested.startswith(unit_path):
                 return 1
     return 0
 
