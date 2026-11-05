@@ -936,46 +936,56 @@ def import_inbox(args):
     with store_lock():
         conn = refresh(write_indexes=False)
         writes, removals, backups = [], [], []
+        errors, duplicates = [], []
         for source in sources:
             if not source.exists():
-                print(f"inbox file not found: {source.name}", file=sys.stderr)
-                return 1
+                errors.append(f"inbox file not found: {source.name}")
+                continue
             try:
                 unit = parse_unit(source, inferred_scope=repo_key())
             except (OSError, ValueError) as error:
-                print(f"parse error: {source.name}: {error}", file=sys.stderr)
-                return 1
-            duplicates = duplicate_candidates(conn, unit)
-            if duplicates:
-                print(f"{source.name}: duplicate {' '.join(duplicates)}", file=sys.stderr)
-                return 3
+                errors.append(f"parse error: {source.name}: {error}")
+                continue
+            candidate_duplicates = duplicate_candidates(conn, unit)
+            if candidate_duplicates:
+                duplicates.append(f"{source.name}: duplicate {' '.join(candidate_duplicates)}")
+                continue
             target = imported_path(unit)
             writes.append((target, render_unit(unit)))
             removals.append(source)
-        try:
-            commit_external_changes()
-            for path, rendered in writes:
-                previous = path.read_text(encoding="utf-8") if path.exists() else None
-                atomic_write(path, rendered)
-                backups.append((path, previous))
-            for source in removals:
-                backups.append((source, source.read_text(encoding="utf-8")))
-                source.unlink()
-            refreshed = refresh(write_indexes=False)
-            backups.extend(write_indexes_for_scopes(refreshed))
-            refreshed.close()
-            run_git(["add", "-A"])
-            git_commit(f"mem: import-inbox {len(writes)} units")
-        except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
-            for path, previous in backups:
-                if previous is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    atomic_write(path, previous)
-            print(str(error), file=sys.stderr)
-            return 2
-    for path, _ in writes:
-        print(path.stem)
+        if writes:
+            try:
+                commit_external_changes()
+                for path, rendered in writes:
+                    previous = path.read_text(encoding="utf-8") if path.exists() else None
+                    atomic_write(path, rendered)
+                    backups.append((path, previous))
+                for source in removals:
+                    backups.append((source, source.read_text(encoding="utf-8")))
+                    source.unlink()
+                refreshed = refresh(write_indexes=False)
+                backups.extend(write_indexes_for_scopes(refreshed))
+                refreshed.close()
+                run_git(["add", "-A"])
+                git_commit(f"mem: import-inbox {len(writes)} units")
+            except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
+                for path, previous in backups:
+                    if previous is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        atomic_write(path, previous)
+                print(str(error), file=sys.stderr)
+                return 2
+        for path, _ in writes:
+            print(path.stem)
+        for error in errors:
+            print(error, file=sys.stderr)
+        for duplicate in duplicates:
+            print(f"skipped: {duplicate}", file=sys.stderr)
+        if errors:
+            return 1
+        if duplicates and not writes:
+            return 3
     return 0
 
 

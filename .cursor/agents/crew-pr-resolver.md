@@ -21,7 +21,9 @@ Extract owner, repo, and PR number from the user's input (URL or number).
 
 Resolve the worktree and load repo patterns:
 
-Network failures on the read-only `gh pr view` calls follow `personal.mdc` GitHub access.
+If a read-only `gh` command fails with a known sandbox-network denial such as `Forbidden`, retry
+the same command once with the current harness's `full_network` permission. Do not alter the read
+or fall back to a local PR ref. Authentication, authorization, and scope failures remain terminal.
 
 ```bash
 PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')

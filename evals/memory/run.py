@@ -148,8 +148,22 @@ scope: acme-alpha
 title: Existing deployment copy
 ---
 {existing_deploy}""")
+        inbox.joinpath('valid-import.md').write_text("""---
+id: candidate-valid-import
+type: procedure
+scope: acme-alpha
+title: Valid inbox import
+status: active
+created: 2026-05-31
+modified: 2026-05-31
+evidence: [memory eval]
+---
+Import valid drafts even when another inbox file is malformed.
+""")
+        inbox.joinpath('invalid-import.md').write_text("not a memory unit\n")
         consolidation = command(store, 'consolidate', '--dry-run')
         consolidation_output = consolidation.stdout
+        inbox_import = command(store, 'import-inbox', '--all')
         observation_checks = {
             'journal_source_unchanged': source_unchanged_after_import,
             'journal_imported_paragraphs': len(observation_ids) == 3,
@@ -188,6 +202,13 @@ title: Existing deployment copy
                 and 'UPDATE inbox: update.md replaces alpha-deploy' in consolidation_output
                 and 'SUPERSEDE inbox: supersede.md overlaps alpha-deploy' in consolidation_output
                 and 'NOOP inbox: noop.md matches alpha-deploy' in consolidation_output
+            ),
+            'inbox_import_isolates_invalid_drafts': (
+                inbox_import.returncode == 1
+                and 'procedure_valid-inbox-import' in inbox_import.stdout
+                and (inbox / 'invalid-import.md').exists()
+                and not (inbox / 'valid-import.md').exists()
+                and (store / 'repos' / 'acme-alpha' / 'procedure_valid-inbox-import.md').exists()
             ),
         }
         hits = expected = correct_empty = empty_cases = superseded_leaks = scope_leaks = 0

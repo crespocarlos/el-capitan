@@ -46,8 +46,10 @@ narration.
 
 For diff modes, gather names, sizes, and change types before loading a full diff. For spec review,
 resolve the task directory with `~/.agent/bin/resolve-task-dir.py`. For idea review, use the
-supplied idea or current topic. For PR mode, read-only `gh` network failures follow `personal.mdc`
-GitHub access.
+supplied idea or current topic. For PR mode, if a read-only `gh` command fails with a known
+sandbox-network denial such as `Forbidden`, retry the same command once with the current harness's
+`full_network` permission. Do not alter the read or fall back to a local PR ref. Authentication,
+authorization, and scope failures remain terminal.
 
 ## Step 3: size gate
 

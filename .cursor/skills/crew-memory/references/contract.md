@@ -19,6 +19,11 @@ permitted` and exit 2. Run memory write commands with the harness's unsandboxed 
 from the first attempt; reads (`context`, `search`) work in the sandbox only if the index is already
 current. Exit 2 means retry unsandboxed once before reporting `warning: memory unavailable`.
 
+`import-inbox` validates each requested draft independently. It imports valid, non-duplicate drafts
+while retaining malformed or duplicate drafts in `.inbox/`, reports every skipped file, and returns
+a non-zero status when any file was skipped. Use `consolidate --dry-run` before approval to classify
+inbox candidates and avoid proposing an existing memory as new.
+
 Write only durable, non-derivable lessons. Skip facts already available from code, git, or rules;
 redact secrets; prefer writing nothing. `crew memory seed` drafts at most two typed candidates per
 journal entry (a batch is reviewed together, so the cap is tighter), shows them for approval, and

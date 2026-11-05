@@ -47,10 +47,16 @@ message = (
     "Memory capture check: this session had "
     + reason
     + ". Review the session for at most three durable, non-derivable lessons, "
-      "user preferences, or process gaps. Write each candidate as one .md file "
-      "in ~/.agent/memory/.inbox/ (drafts only, not durable memory), then ask the "
-      "user once whether to import them with `mem.py import-inbox`; if there are "
-      "none, say `nothing to persist`."
+      "user preferences, or process gaps. Before drafting, run "
+      "`mem.py context --mode review --query '<topic>'` or "
+      "`mem.py consolidate --dry-run` to avoid duplicates. Write each candidate "
+      "as one `.md` file in `~/.agent/memory/.inbox/` using this exact frontmatter "
+      "shape: `---`, `id: <stable-id>`, `type: feedback|failure-shield|procedure|"
+      "project|user`, `scope: global|<repo>`, `title: <short title>`, "
+      "`status: active`, `created: YYYY-MM-DD`, `modified: YYYY-MM-DD`, "
+      "`evidence: [<session evidence>]`, `---`, followed by the claim. These are "
+      "drafts only, not durable memory. Then ask the user once whether to import "
+      "them with `mem.py import-inbox`; if there are none, say `nothing to persist`."
 )
 print(json.dumps({"followup_message": message}))
 PY
