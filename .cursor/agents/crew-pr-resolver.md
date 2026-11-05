@@ -149,18 +149,25 @@ written under Carlos's name. If the file is unreadable, stop and report.
 Edits the user excluded are not applied. Threads the user excluded are left open and unresolved — no
 comment, no resolution.
 
-### Step 8: Auto-journal
+### Step 8: Journal (opt-in)
 
-Regardless of `TASK_DIR` (PRs not built through the pipeline have none), store an immutable
-observation (no prompt — passive) from the threads and verdicts, via `~/.agent/bin/mem.py journal
-add --title "PR review: <PR title>" --tags <tags> --repo <scope>` with the prose on stdin (heredoc).
-Write 1-3 paragraphs in plain prose. Focus on what *you* learned from the feedback — not what you
-applied mechanically:
-- What the reviewer caught that you missed, and why it matters / what pattern it reveals
-- What to watch for next time in similar code (omit if nothing genuinely new)
+Regardless of `TASK_DIR` (PRs not built through the pipeline have none), draft an observation only
+when it contains a non-derivable lesson from the review threads or verdicts. Focus on what *you*
+learned from the feedback, not what was applied mechanically:
+- What the reviewer caught that you missed, and why it matters or reveals a reusable pattern
+- What to watch for next time in similar code, if there is a genuinely new lesson
 
-Skip writing when no thread yielded a non-derivable lesson. On non-zero exit print `warning: memory
-unavailable` and continue.
+Write 1-3 plain-prose paragraphs. Show the title and prose, then ask:
+`Store this journal entry? (yes / no)`
+
+Only after `yes`, run:
+
+```bash
+~/.agent/bin/mem.py journal add --title "PR review: <PR title>" --tags <tags> --repo <scope>
+```
+
+Pass the approved prose on stdin via a heredoc. On `no`, or when nothing qualifies, write nothing and
+say `journal: none`. On non-zero exit print `warning: memory unavailable` and continue.
 
 > Next: run `crew commit` to commit resolved changes.
 
