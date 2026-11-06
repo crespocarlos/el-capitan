@@ -14,14 +14,21 @@ canonical names. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
 --strict` rejects emitted blocking/attention findings without `verified` and
 `evidence`, and more than MAX_FINDINGS emitted findings. `persist --strict
 --personas ...` requires each dispatched persona's `.in.md` and `.out.md`.
+`--files` is an evidence allowlist, not a diff check: it records what was reviewed and
+gates evidence paths against it. It is deliberately not compared with `git diff`, because
+`persist` runs in three modes with no single base ref. Tree identity is `--head`, which
+`crew-ls.py --mark-done` requires to be an ancestor of HEAD.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -62,6 +69,19 @@ def canonical_personas(value: object, *, split_commas: bool = True) -> list[str]
     return result
 
 
+def atomic_write(path: Path, text: str) -> None:
+    """Write via a sibling temp file so an interrupted run cannot truncate REVIEW.md."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".review-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def fingerprint(finding: dict) -> str:
     material = "|".join(
         [
@@ -97,7 +117,7 @@ def read_findings(path: Path) -> list[dict]:
     return result
 
 
-def check_strict(findings: list[dict]) -> None:
+def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
     emitted = [f for f in findings if f.get("disposition") in EMITTED]
     for f in emitted:
         evidence = f.get("evidence")
@@ -111,6 +131,16 @@ def check_strict(findings: list[dict]) -> None:
                 "(or path:line@headSHA), "
                 "or downgrade to 'needs more info'"
             )
+        if files:
+            # Shape is not enough: evidence must point at something under review, or a
+            # finding about an untouched file is reported as verified.
+            location = evidence.split("@", 1)[0].rsplit(":", 1)[0]
+            matches = [name for name in files
+                       if name == location or name.endswith("/" + location) or location.endswith("/" + name)]
+            if not matches:
+                raise ValueError(
+                    f"finding {f['title']!r} cites {location}, which is not in the reviewed file set"
+                )
     if len(emitted) > MAX_FINDINGS:
         raise ValueError(f"{len(emitted)} emitted findings exceed the cap of {MAX_FINDINGS}; drop the lowest severity")
 
@@ -130,7 +160,7 @@ def normalize(args: argparse.Namespace) -> int:
         else:
             kept[finding["fingerprint"]] = finding
     if args.strict:
-        check_strict(list(kept.values()))
+        check_strict(list(kept.values()), args.files)
     payload = {"findings": list(kept.values()), "duplicates": duplicates}
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
@@ -138,6 +168,42 @@ def normalize(args: argparse.Namespace) -> int:
     else:
         print(text, end="")
     return 0
+
+
+def persona_outcome(path: Path) -> str:
+    """Classify a persona artifact: ok, failed, skipped, truncated, missing, unknown.
+
+    Only the leading block is read, so a persona quoting `status: failed` from the
+    finding it reviews cannot flip a good run. The documented success signal is a
+    verdict line or a complete labeled finding; an empty artifact is `unknown`, not
+    `ok`, because the failure this guards against is a persona that died silently.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return "missing"
+    if not text.strip():
+        return "unknown"
+    declared = re.match(r"\s*(?:#+[^\n]*\n+\s*)?status:\s*(\w+)", text)
+    if declared:
+        return declared.group(1).lower()
+    if "### Verdict:" in text or re.search(r"^\s*\d+\.\s*\[(?:blocking|attention|concern|nit|needs more info)\]", text, re.M):
+        return "ok"
+    return "unknown"
+
+
+def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:
+    """A review where no persona actually ran proves nothing about the change."""
+    outcomes = [persona_outcome(review_dir / f"{persona}.out.md")
+                for persona in canonical_personas(personas, split_commas=False)]
+    # `unknown` counts as usable only when the artifact actually carries review content;
+    # persona_outcome already returns `unknown` for an empty file.
+    unusable = {"failed", "skipped", "truncated", "missing", "unknown"}
+    if all(outcome in unusable for outcome in outcomes):
+        raise ValueError(
+            "every dispatched persona failed, was skipped, or produced no output; "
+            "there is no review to persist"
+        )
 
 
 def persist(args: argparse.Namespace) -> int:
@@ -155,17 +221,34 @@ def persist(args: argparse.Namespace) -> int:
         ]
         if missing:
             raise ValueError(f"missing persona artifacts in {args.review_dir}: {', '.join(missing)}")
+        check_persona_coverage(args.review_dir, args.personas)
     report = args.report.read_text()
     if args.files:
         report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(f"- `{name}`\n" for name in args.files)
-    rows = []
-    if args.findings:
-        rows = [f for f in read_findings(args.findings) if f.get("disposition") == "defer"]
+    # Bind the verdict to the tree it approved. `crew commit` moves HEAD past it, so the
+    # gate in `crew-ls --mark-done` accepts a reviewed ancestor only; recording the SHA
+    # still makes a review of a *different* tree detectable.
+    if args.head:
+        head = args.head.strip()
+        if not re.fullmatch(r"[0-9a-f]{7,40}", head):
+            raise ValueError(f"--head must be a commit SHA, got {head!r}")
+        # Accept a reviewed ancestor: the documented order commits after review, so an
+        # exact-HEAD match would fail every first attempt at --mark-done. Verify the SHA
+        # exists here so a wrong-repo SHA is rejected at write time, not at close-out.
+        exists = subprocess.run(["git", "cat-file", "-e", f"{head}^{{commit}}"],
+                                capture_output=True)
+        if exists.returncode:
+            raise ValueError(f"--head {head} is not a commit in this repository")
+        report = report.rstrip() + f"\n\nReviewed at: {head}\n"
+    findings = read_findings(args.findings) if args.findings else []
+    if args.strict and args.files:
+        check_strict([f for f in findings if f.get("disposition") in EMITTED], args.files)
+    rows = [f for f in findings if f.get("disposition") == "defer"]
     args.review_dir.mkdir(parents=True, exist_ok=True)
-    (args.review_dir / "REVIEW.md").write_text(report)
+    atomic_write(args.review_dir / "REVIEW.md", report)
     owner = args.review_dir.parent.parent
     task_report = "REVIEW.md" if args.mode in CODE_MODES else f"REVIEW.{args.mode}.md"
-    (owner / task_report).write_text(report)
+    atomic_write(owner / task_report, report)
     deferred = len(rows)
     if rows:
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -193,6 +276,12 @@ def select(args: argparse.Namespace) -> int:
                 required[persona] = f"paths: {', '.join(hits[:3])}"
         if args.compat:
             required.setdefault("architecture", "--compat")
+    else:
+        # Specs and ideas have no diff to review, so the lenses are fixed rather than
+        # derived from paths; otherwise the selection is empty and nothing is dispatched.
+        required["product-flow"] = "plan coherence"
+        required["adversarial"] = "plan failure modes"
+        required.setdefault("architecture", "plan boundaries and compatibility")
     if args.contract:
         required["product-flow"] = "--contract"
     print(json.dumps({"required": sorted(required), "reasons": required}, indent=2, sort_keys=True))
@@ -225,6 +314,8 @@ def main() -> int:
     normalize_parser.add_argument("input", type=Path)
     normalize_parser.add_argument("--output", type=Path)
     normalize_parser.add_argument("--strict", action="store_true")
+    normalize_parser.add_argument("--files", nargs="*", default=[],
+                                  help="reviewed paths; strict evidence must point inside this set")
     persist_parser = commands.add_parser("persist")
     persist_parser.add_argument("--review-dir", required=True, type=Path)
     persist_parser.add_argument("--report", required=True, type=Path)
@@ -233,6 +324,7 @@ def main() -> int:
     persist_parser.add_argument("--files", nargs="*", default=[])
     persist_parser.add_argument("--strict", action="store_true")
     persist_parser.add_argument("--personas", nargs="*", default=[])
+    persist_parser.add_argument("--head", default="", help="reviewed commit SHA recorded as `Reviewed at:`")
     select_parser = commands.add_parser("select")
     select_parser.add_argument("--mode", required=True, choices=sorted(CODE_MODES | {"spec", "idea"}))
     select_parser.add_argument("--paths", nargs="*", default=[])

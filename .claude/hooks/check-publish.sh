@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 # Guards outbound actions: secrets in commits, implicit PR targets.
+# Fails closed: unparsable input or a missing parser denies the command.
 set -euo pipefail
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "check-publish: jq is required; denying so the guard cannot be bypassed." >&2
+  exit 2
+fi
+
 input=$(cat)
+if ! jq -e . >/dev/null 2>&1 <<<"$input"; then
+  echo "check-publish: hook input is not valid JSON; denying." >&2
+  exit 2
+fi
+
 event=$(jq -r '.hook_event_name // empty' <<<"$input")
 case "$event" in
   PreToolUse) cmd=$(jq -r '.tool_input.command // empty' <<<"$input"); shape=claude ;;
@@ -28,19 +40,32 @@ added_lines() { grep -E '^\+' <<<"$1" | grep -Ev '^\+\+\+ (a/|b/|/dev/null)' || 
 GIT_COMMIT='(^|[;&|(/[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
 GH_PR_CREATE='(^|[;&|(/[:space:]])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
 DIR_FROM_C='git[[:space:]]+-C[[:space:]]+([^[:space:];&|]+)'
-DIR_FROM_CD='(^|[;&|[:space:]])cd[[:space:]]+([^[:space:];&|]+)'
+# Anchored to a command position so `cd` inside a commit message cannot redirect the scan.
+DIR_FROM_CD='(^|[;&|][[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*)cd[[:space:]]+([^[:space:];&|]+)'
 # High-precision formats only: a false positive blocks the commit.
 SECRET_PATTERN='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}'
 
+# Commit messages and other message arguments are data, not commands: blank them before
+# parsing directories, or `git commit -m "fix cd back"` scans a nonexistent repo. Blanking
+# every quoted string would also blank a quoted directory (`cd 'x'`, `git -C "x"`) and let
+# the scan fall back to the wrong repo, so only the message bodies are removed.
+skeleton=$(printf '%s' "$cmd" | sed -E \
+  -e "s/(-m|-F|--message|--file|--body)[[:space:]]+'[^']*'/\1 ''/g" \
+  -e 's/(-m|-F|--message|--file|--body)[[:space:]]+"[^"]*"/\1 ""/g')
+
 repo=$cwd
 dir=""
-if [[ $cmd =~ $DIR_FROM_C ]]; then dir=${BASH_REMATCH[1]}
-elif [[ $cmd =~ $DIR_FROM_CD ]]; then dir=${BASH_REMATCH[2]}
+if [[ $skeleton =~ $DIR_FROM_C ]]; then dir=${BASH_REMATCH[1]}
+elif [[ $skeleton =~ $DIR_FROM_CD ]]; then dir=${BASH_REMATCH[2]}
 fi
 if [ -n "$dir" ]; then
   dir=${dir//\"/}; dir=${dir//\'/}; dir=${dir/#\~/$HOME}
   [[ $dir = /* ]] || dir=$cwd/$dir
-  repo=$dir
+  # Only adopt the candidate when it is a repository; otherwise keep scanning $cwd
+  # rather than denying a legitimate commit with a misleading error.
+  if git -C "$dir" rev-parse --git-dir >/dev/null 2>&1; then
+    repo=$dir
+  fi
 fi
 
 if matches "$GIT_COMMIT"; then

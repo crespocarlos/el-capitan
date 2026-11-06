@@ -104,7 +104,9 @@ def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     result = run(*args)
     assert result.returncode == 2 and "adversarial.in.md" in result.stderr
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("out")
+    # A real persona artifact carries a verdict or a status line; a bare word with
+    # neither is indistinguishable from a crashed run and must not pass the gate.
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
     assert run(*args).returncode == 0
     comma_args = (
         "persist", "--review-dir", str(review_dir), "--report", str(report),
@@ -112,6 +114,21 @@ def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     )
     result = run(*comma_args)
     assert result.returncode == 2 and "comma-separated personas" in result.stderr
+
+
+def test_persist_strict_rejects_empty_persona_output(tmp: Path) -> None:
+    """A persona that died before writing anything must not yield a persisted review."""
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    report = tmp / "report.md"
+    report.write_text("x\n")
+    for persona in ("adversarial", "code-quality"):
+        (review_dir / f"{persona}.in.md").write_text("in")
+        (review_dir / f"{persona}.out.md").write_text("")
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                 "--strict", "--personas", "adversarial", "code-quality")
+    assert result.returncode == 2 and "no output" in result.stderr
+    assert not (tmp / "task" / "REVIEW.md").exists()
 
 
 def test_canonical_personas_rejects_comma_string_without_split(tmp: Path) -> None:
@@ -139,7 +156,11 @@ def test_select_returns_required_personas(tmp: Path) -> None:
     assert "prompt-quality" in json.loads(
         run("select", "--mode", "changes", "--paths", "evals/reviewer/run.py").stdout
     )["required"]
-    assert json.loads(run("select", "--mode", "spec").stdout)["required"] == []
+    # Specs and ideas have no diff to derive lenses from; an empty selection would mean
+    # a review could pass with no persona dispatched.
+    for mode in ("spec", "idea"):
+        spec_required = json.loads(run("select", "--mode", mode).stdout)["required"]
+        assert spec_required == ["adversarial", "architecture", "product-flow"], (mode, spec_required)
 
 
 def test_persist_spec_mode_keeps_code_review(tmp: Path) -> None:

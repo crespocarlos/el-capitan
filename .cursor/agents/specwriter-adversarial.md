@@ -1,7 +1,6 @@
 ---
 name: specwriter-adversarial
 description: "Spec adversarial critic for missing criteria and edge cases. Dispatched by crew-specwriter — do not invoke directly."
-model: inherit
 readonly: true
 tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
 maxTurns: 5

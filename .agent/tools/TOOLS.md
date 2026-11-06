@@ -20,8 +20,18 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
   invalid invocation.
 - `get-diff.sh` is source-only; it exports review context and intentionally does not implement an
   executable `--help`.
-- `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR`. Skills source it
-  instead of copying the resolver block.
+- `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state
+  `CREW_TASK_STATE` (`ok`, `none`, `error`). Skills source it instead of copying the resolver block.
+  Gates that require a task must abort on `error` rather than treating it as `none`.
+- `crew-ls.py --status-file SPEC.md` is the single reader for the `## Status` contract, implemented
+  in `task_status.py`; hooks and other tools import it and must not re-implement it.
+- `review-findings.py persist --files` records the reviewed paths and gates evidence against them;
+  it deliberately does not compare that list with the diff. `persist` runs in three modes with no
+  single base ref, so inferring one would be wrong more often than right. Tree identity is carried by
+  `--head` instead: `--mark-done` refuses unless the reviewed commit is an ancestor of HEAD.
+- `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
+  evidence check, including review ancestry. It exists for a spec whose branch was intentionally
+  rebased; it is never used by a skill on its own initiative.
 - `default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the single
   definition used by skills and `manage-worktree.py`.
 - `manage-worktree.py` is stateful. Its usage output is available with `--help`; do not use smoke

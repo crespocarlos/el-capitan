@@ -130,9 +130,12 @@ After creating the PR, resolve `TASK_DIR`:
 source ~/.agent/bin/task-env.sh
 ```
 
-If `TASK_DIR` is non-empty, set the spec to `done` and log the transition. `--mark-done` writes the
+If `TASK_DIR` is non-empty, set the spec to `DONE` and log the transition. `--mark-done` writes the
 status and appends to `PROGRESS.md`; it refuses unless the spec is `IMPLEMENTING`, all criteria are
-checked, the last review verdict is pass or warn, and the task branch matches the current branch:
+checked, the last review verdict is pass or warn, the task branch matches the current branch, and the
+last review's `Reviewed at:` commit is an ancestor of HEAD. Because `crew commit` runs after
+`crew review`, HEAD is normally ahead of the reviewed tree — that is fine, but a review of a
+different branch, or one older than a rebase, must be re-run.
 
 ```bash
 if [ -n "$TASK_DIR" ]; then

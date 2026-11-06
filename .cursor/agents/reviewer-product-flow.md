@@ -35,7 +35,9 @@ decisions. Other reviewers handle those.
 
 **When the artifact has no user-facing surface and no spec is provided** (pure refactor, internal
 type changes, config-only diff, or any change where no spec is in context): output exactly `Nothing
-in my lane for this artifact.` Do not manufacture UX findings for changes that don't affect any user
+in my lane for this artifact.` followed by `### Verdict: no findings` and one sentence naming what is
+missing. The verdict line is required — the orchestrator reads a response with neither a finding nor
+that line as truncated. Do not manufacture UX findings for changes that don't affect any user
 journey or acceptance criteria.
 
 ## Focus areas

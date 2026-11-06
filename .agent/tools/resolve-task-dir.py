@@ -28,6 +28,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+for _dir in (Path(__file__).resolve().parent, Path(__file__).resolve().parent.parent / "scripts"):
+    if (_dir / "task_status.py").is_file() and str(_dir) not in sys.path:
+        sys.path.insert(0, str(_dir))
+from task_status import read_status  # noqa: E402  shared `## Status` contract
+
 
 def git_output(args):
     result = subprocess.run(args, capture_output=True, text=True)
@@ -37,15 +42,8 @@ def git_output(args):
 
 
 def read_spec_status(spec_path):
-    try:
-        with open(spec_path) as f:
-            lines = f.readlines()
-        for i, line in enumerate(lines):
-            if line.strip() == "## Status" and i + 1 < len(lines):
-                return lines[i + 1].strip()
-    except OSError:
-        pass
-    return ""
+    """Delegate to the shared contract so hooks and tools cannot diverge."""
+    return read_status(spec_path)
 
 
 def main():
@@ -90,9 +88,13 @@ def main():
             continue
 
         file_remote = data.get("repo_remote_url", "")
-        file_branch = data.get("branch", "")
+        # A task is written on one branch and implemented on another, so match either;
+        # matching only `branch` stranded the drafting checkout after implementation.
+        task_branches = {data.get("branch", "")}
+        if data.get("spec_branch"):
+            task_branches.add(data["spec_branch"])
 
-        if file_remote == current_remote and file_branch == current_branch:
+        if file_remote == current_remote and current_branch in task_branches:
             created_at = data.get("created_at", "")
             task_dir = str(Path(task_id_file).parent)
             matches.append((created_at, task_dir))
@@ -122,12 +124,13 @@ def main():
     else:
         best = None
 
-        # Multiple matches: prefer non-DONE, then most recent created_at
+        # Multiple matches: prefer non-DONE, then most recent created_at. A spec whose
+        # status cannot be read must not be ranked as open.
         best_date = ""
         for created_at, task_dir in matches:
             spec_path = os.path.join(task_dir, "SPEC.md")
             spec_status = read_spec_status(spec_path)
-            if spec_status.lower() != "done":
+            if spec_status is not None and spec_status.lower() != "done":
                 date = created_at
                 if best is None or date > best_date:
                     best = task_dir

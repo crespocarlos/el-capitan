@@ -22,10 +22,18 @@ No setup required. Skip the bootstrap step in any worktree.
 
 ## Tests
 
-No automated test runner is configured. `crew test` will return WARN with no test command.
+Four hermetic checks, also run in CI (`.github/workflows/validate.yml`):
 
-Verification: run **`crew test`** (typed `## Tests` commands) and check **Acceptance criteria** in
-SPEC.md. Specs use the two-line `## Status\n<value>` form.
+```bash
+python3 .agent/tools/crew-lint.py --budget          # conventions, catalog, references, token budget
+bash .claude/hooks/fixtures/run.sh                  # guard hooks, crew-ls gates, status reconcile
+python3 evals/memory/run.py                         # memory retrieval and scope isolation
+python3 evals/reviewer/test_review_findings.py      # review-findings normalize/persist/select
+```
+
+`crew test` looks for typed `## Tests` commands in a spec; with none it returns WARN. Verification of
+a change means the four commands above plus the **Acceptance criteria** in SPEC.md. Specs use the
+two-line `## Status\n<value>` form.
 
 ## File layout
 
@@ -65,9 +73,10 @@ ls -la .claude/skills   # should show → ../.cursor/skills
 
 ## Editing conventions
 
-- **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, `model`,
-  `readonly`, `tools`, `maxTurns`) followed by protocol prose. Follow the existing style in the file
-  you're editing.
+- **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, optional
+ `readonly`, `tools`, `maxTurns`) followed by protocol prose. Do not set `model:`; see
+ `rules/crew-router.mdc` for the model-inheritance rule. Follow the existing style in the file you're
+ editing.
 - **Skill files** (`.cursor/skills/<name>/SKILL.md`) — workflow header, execution model, numbered
   steps. Follow `crew-commit/SKILL.md` as the canonical example.
 - **Routing** — `crew-router.mdc` is the single source of truth. `.claude/CLAUDE.md` says "do not
@@ -115,13 +124,15 @@ the SPEC.md. Most checks are `grep`-based:
 
 ```bash
 grep "keyword" .cursor/agents/target-file.md   # presence check
-grep METRIC: rules/crew-orchestrator.mdc .cursor/skills/crew-implement/SKILL.md  # METRIC audit docs + implement hooks
-mkdir -p /tmp/el-capitan-metric-selftest && test -x .agent/tools/log-metric.py && python3 .agent/tools/log-metric.py /tmp/el-capitan-metric-selftest selftest=1
-python3 .agent/tools/crew-lint.py   # routing, catalog, and reference integrity
-python3 evals/reviewer/test_review_findings.py   # review-findings normalize/persist
+python3 .agent/tools/crew-lint.py --budget   # routing, catalog, reference integrity, token budget
+bash .claude/hooks/fixtures/run.sh   # hook guards, crew-ls gates, status reconciliation
+python3 evals/memory/run.py   # memory retrieval, scope isolation, conflict handling
+python3 evals/reviewer/test_review_findings.py   # review-findings normalize/persist/select
 ```
 
-There is no lint, typecheck, or unit test to run.
+All four are hermetic (no network, no API key) and run in CI via `.github/workflows/validate.yml`.
+`evals/run.py` and `evals/reviewer/run.py` make model calls and need an API key; they are not part of
+the deterministic gate.
 
 ## Persistent memory
 

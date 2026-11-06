@@ -15,6 +15,11 @@ info]` only when it names the missing PR-head path or excerpt.
 
 A persona with no findings ends its response with the line `### Verdict: no findings`.
 
+A persona that judges the artifact outside its lane (no prompt files, no user-facing surface) emits
+the same line plus one sentence of reason. It does not end with a bare statement of disinterest,
+because the orchestrator treats a response with neither a finding nor this verdict line as
+incomplete and relaunches it.
+
 A persona may not treat an unverified absence or a claim that depends on blocked reads as a grounded
 finding; mark it `[needs more info]` and name the blocked read. The orchestrator remains responsible
 for verifying findings against the authoritative repository before consolidation.

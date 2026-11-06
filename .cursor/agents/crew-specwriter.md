@@ -113,9 +113,9 @@ Task/Agent tool call:
 **Claude Code (Agent tool — inline session):** Same prompt structure, dispatch via Agent tool by
 name. The main session can dispatch subagents natively.
 
-| Explorer | Subagent name | Model |
-|---|---|---|
-| Codebase explorer | `specwriter-explorer` | default |
+| Explorer | Subagent name |
+|---|---|
+| Codebase explorer | `specwriter-explorer` |
 
 The explorer returns: files involved, canonical pattern examples (with inline excerpts), test
 locations + commands, and build config. Use this summary as the foundation for the spec.
@@ -172,7 +172,6 @@ they see only the improved spec in the output.
    Task tool call per critic:
      subagent_type: <subagent name from table below>
      run_in_background: true
-     model: <per table below>
      prompt: |
        ## Critique context
 
@@ -191,10 +190,10 @@ they see only the improved spec in the output.
 **Claude Code (Agent tool — inline session):** Same prompt structure, dispatch via Agent tool by
 name. The main session can dispatch subagents natively.
 
-   | Critic | Subagent name | Model |
-   |---|---|---|
-   | Scope + Implementer | `specwriter-scope` | default |
-   | Adversarial | `specwriter-adversarial` | default |
+   | Critic | Subagent name |
+   |---|---|
+   | Scope + Implementer | `specwriter-scope` |
+   | Adversarial | `specwriter-adversarial` |
 
 3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error),
    proceed with the available findings — do not block on a single failure.
@@ -235,6 +234,16 @@ summary of what changed, and wait for the user to explicitly approve ("approved"
 "go"). A spec with open `[NEEDS CLARIFICATION]` items cannot be approved. Never mark PROGRESS.md as
 IMPLEMENTING or begin implementation until the user confirms. Answering questions is not approval —
 approving the updated spec is.
+
+**Record Gate 1 on approval.** Once the user approves, run:
+
+```bash
+~/.agent/bin/crew-ls.py --mark-approved "$TASK_DIR"
+```
+
+It sets `Status: APPROVED` (the only writer of that value, and only from `DRAFTING`) and refuses
+while `[NEEDS CLARIFICATION]` items remain. Without it the spec stays `DRAFTING` and `crew implement`
+refuses to start. Report the recorded status, then stop.
 
 > Before approving, optionally run `crew review spec` for architectural and product review of this
 > plan (dispatches Architecture, Adversarial, Product Flow, and conditionally Prompt Quality

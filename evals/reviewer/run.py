@@ -348,7 +348,8 @@ def write_manifest(
 ) -> None:
     total_input = sum(r["input_tokens"] for r in all_results)
     total_output = sum(r["output_tokens"] for r in all_results)
-    # Rough cost estimate: claude-opus-4-5 pricing (see OPUS_*_PRICE_PER_MTOK constants)
+    # Token totals are recorded; dollar cost is not modeled because OpenRouter prices
+    # differ per model and change without notice.
     cost_approx = (total_input * INPUT_PRICE_PER_MTOK + total_output * OUTPUT_PRICE_PER_MTOK) / 1_000_000
     manifest = {
         "run_at": datetime.now(timezone.utc).isoformat(),

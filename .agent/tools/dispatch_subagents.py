@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""dispatch.py — parallel persona dispatch for crew degraded fallbacks.
+"""dispatch_subagents.py — parallel persona dispatch for crew degraded fallbacks.
 
 Usage:
-  dispatch.py --type reviewers     # crew-reviewer fallback
-  dispatch.py --type critics       # crew-specwriter fallback
-  dispatch.py --type perspectives  # crew-thinker fallback
+  dispatch_subagents.py --type reviewers     # crew-reviewer fallback
+  dispatch_subagents.py --type critics       # crew-specwriter fallback
 
 Environment variables (common):
   REPO_ROOT           — git repo root (auto-detected if unset)
@@ -15,9 +14,6 @@ reviewers:
 
 critics:
   TASK_DIR
-
-perspectives:
-  TASK_DIR, TOPIC, JOURNAL_CONTEXT_FULL, JOURNAL_CONTEXT_TOP5
 """
 
 import argparse
@@ -72,7 +68,11 @@ def run_persona(
 
 def read_persona(repo_root: Path, subdir: str, name: str) -> str:
     p = repo_root / ".cursor" / "agents" / f"{subdir}-{name}.md"
-    return p.read_text(encoding="utf-8") if p.exists() else ""
+    if not p.is_file():
+        # An empty system prompt still produces plausible output and a zero exit, so a
+        # missing persona would be reported as a successful review.
+        raise FileNotFoundError(f"persona file missing: {p}")
+    return p.read_text(encoding="utf-8")
 
 
 def dispatch_all(
@@ -177,7 +177,11 @@ def dispatch_reviewers(claude: str, timeout_cmd: list[str], repo_root: Path) -> 
         source = r.stdout or ""
 
     for reviewer in reviewers:
-        persona = read_persona(repo_root, "reviewer", reviewer)
+        try:
+            persona = read_persona(repo_root, "reviewer", reviewer)
+        except FileNotFoundError as error:
+            print(f"dispatch: reviewer failed: {error}", file=sys.stderr)
+            return 1
         prompt = (
             f"{persona}\n\n---\n\n"
             f"## Review context\n\nMode: {review_mode}\n\n"
@@ -218,7 +222,11 @@ def dispatch_critics(claude: str, timeout_cmd: list[str], repo_root: Path) -> in
     run_dir = make_run_dir(Path(task_dir) / "personas")
 
     for critic in critics:
-        persona = read_persona(repo_root, "specwriter", critic)
+        try:
+            persona = read_persona(repo_root, "specwriter", critic)
+        except FileNotFoundError as error:
+            print(f"dispatch: critic failed: {error}", file=sys.stderr)
+            return 1
         prompt = (
             f"{persona}\n\n---\n\n"
             "## Critique context\n\n"
@@ -241,74 +249,13 @@ def dispatch_critics(claude: str, timeout_cmd: list[str], repo_root: Path) -> in
 
 
 # ---------------------------------------------------------------------------
-# Perspectives
-# ---------------------------------------------------------------------------
-
-def dispatch_perspectives(claude: str, timeout_cmd: list[str], repo_root: Path) -> int:
-    topic = os.environ.get("TOPIC", "")
-    journal_full = os.environ.get("JOURNAL_CONTEXT_FULL", "")
-    journal_top5 = os.environ.get("JOURNAL_CONTEXT_TOP5", "")
-    fast_model = os.environ.get("CLAUDE_FAST_MODEL", "sonnet")
-
-    if not topic:
-        print("dispatch: TOPIC required for --type perspectives", file=sys.stderr)
-        return 1
-
-    repo = repo_root.name
-    dispatch_base = Path.home() / ".agent" / "thinker" / repo / "personas"
-    run_dir = make_run_dir(dispatch_base)
-
-    profile_path = Path.home() / ".agent" / "PROFILE.md"
-    try:
-        profile = profile_path.read_text(encoding="utf-8")
-    except OSError:
-        profile = "(no profile)"
-
-    def build_context(journal: str) -> str:
-        return (
-            f"**User profile:**\n{profile}\n\n"
-            f"**Topic:**\n{topic}\n\n"
-            f"**Journal context:**\n{journal}"
-        )
-
-    ctx_full = build_context(journal_full)
-    ctx_top5 = build_context(journal_top5)
-
-    perspectives = ["builder", "contrarian", "connector", "pragmatist"]
-    fast_perspectives = {"pragmatist"}
-
-    for perspective in perspectives:
-        persona = read_persona(repo_root, "thinker", perspective)
-        ctx = ctx_full if perspective == "connector" else ctx_top5
-        prompt = (
-            f"{persona}\n\n---\n\n"
-            f"## Context\n\n{ctx}\n\n---\n\n"
-            "Produce your output now. Follow the output format in your persona definition.\n"
-        )
-        (run_dir / "prompts" / f"{perspective}.txt").write_text(prompt, encoding="utf-8")
-
-    successes, failures = dispatch_all(claude, timeout_cmd, run_dir, perspectives, fast_perspectives, fast_model)
-
-    print_outputs(run_dir, perspectives)
-
-    if failures:
-        for f in failures:
-            print(f"dispatch: perspective failed: {f}", file=sys.stderr)
-        # Partial results are still useful — return 0 so the caller can use what succeeded.
-        return 0
-    return 0
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parallel persona dispatch for crew fallbacks.")
     parser.add_argument(
         "--type",
         required=True,
-        choices=["reviewers", "critics", "perspectives"],
+        choices=["reviewers", "critics"],
         help="Which persona set to dispatch",
     )
     parser.add_argument("--repo-root", default="", help="Git repo root (auto-detected if unset)")
@@ -326,7 +273,6 @@ def main() -> None:
     fn = {
         "reviewers": dispatch_reviewers,
         "critics": dispatch_critics,
-        "perspectives": dispatch_perspectives,
     }[args.type]
 
     sys.exit(fn(claude, tc, repo_root))

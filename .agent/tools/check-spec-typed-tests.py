@@ -26,13 +26,17 @@ def main():
     m2 = re.search(r"^## [^#\s]", rest, re.MULTILINE)
     block = rest[: m2.start()] if m2 else rest
     layers = ("Unit", "Integration", "E2E", "Validation")
+    seen = 0
     for layer in layers:
-        pat = rf"^### {layer}\s*$"
-        if not re.search(pat, block, re.MULTILINE):
+        # Specs in the wild use `### unit` and `### E2E tests`; matching case-sensitively
+        # made both the layer and its Command check pass vacuously.
+        pat = rf"^### {layer}\b[^\n]*$"
+        matches = list(re.finditer(pat, block, re.MULTILINE | re.IGNORECASE))
+        if not matches:
             continue
+        seen += len(matches)
         # slice subsection
-        subm = list(re.finditer(pat, block, re.MULTILINE))
-        for sm in subm:
+        for sm in matches:
             i = sm.end()
             tail = block[i:]
             nm = re.search(r"^### ", tail, re.MULTILINE)
@@ -52,6 +56,9 @@ def main():
                     file=sys.stderr,
                 )
                 sys.exit(1)
+    if not seen:
+        print("[fail] spec-typed-tests: ## Tests has no recognized layer heading", file=sys.stderr)
+        sys.exit(1)
     print("[ok] spec-typed-tests: typed blocks have commands")
 
 if __name__ == "__main__":

@@ -49,7 +49,8 @@ read and write `<WORK_DIR>/src/foo.ts`.
 
 **Read project context before starting.** Run `~/.agent/bin/agent-context.py` for every task file
 and use the returned guidance content, from repository root to the nearest folder. Apply it silently
-throughout the task loop — do not re-read on each iteration. If an applicable file defines a test
+throughout the task loop — do not re-read on each iteration. Record each guidance file you applied in
+the report's `### Guidance applied` section. If an applicable file defines a test
 command, use it as the default verify command in step 5 when the task's own verify line does not
 specify one; treat forbidden patterns as task failures.
 
@@ -125,6 +126,9 @@ Write to **`$TASK_DIR/REPORT.md`** and return it:
 
 ### Quality gates
 - `<command>` — `<pass/fail/skipped>` — `<reason if failed or skipped>`.
+
+### Guidance applied
+- `<AGENTS.md or CLAUDE.md path returned by agent-context.py>` — `<constraint honored, or "no additional guidance">`, or `none` — `<reason>`.
 
 ### Memory used
 [mem:id] values cited during implementation, or `none`.

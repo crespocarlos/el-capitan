@@ -53,8 +53,10 @@ authorization, and scope failures remain terminal.
 
 ## Step 3: size gate
 
-For self, changes, and PR review, use metadata to select the complete diff or the documented
-spine-focused strategy. Skip this step for specs and ideas.
+For self, changes, and PR review, use metadata to select the complete diff or the spine-focused
+strategy defined under "Spine files" in
+[context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md), and emit its one-line
+`Size gate:` summary. Skip this step for specs and ideas.
 
 ## Step 4: select reviewers
 
@@ -108,8 +110,24 @@ files); name the lens and the gap.
 
 ## Step 9: extensibility
 
-Add a reviewer persona with frontmatter, a Step 4 activation signal, and a context tier. Personas
-remain analysis-only unless a documented write requirement exists.
+Adding a reviewer persona touches four places; the first three are code, not prose, or the
+persona is never dispatched:
+
+1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
+   `description`, `tools: Read, Grep, Glob, SemanticSearch,
+   mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis,
+   mcp__semantic-code-search__discover_directories,
+   mcp__semantic-code-search__read_file_from_chunks`, `readonly: true`, `maxTurns: 12`) and a
+   persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
+   Reviewers are analysis-only; set `readonly: false` only if the persona must write, and say why.
+2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
+   `review-findings.py`; `select` is what dispatch reads, so Step 4 prose alone dispatches nothing.
+3. **Context tier** — assign the persona to a tier in `context-tiers.md` (Step 5).
+4. **Fixture** — add the persona to an `evals/reviewer/fixtures.json` case, or its prompt is
+   unmeasured.
+
+For example, an SRE team could add `reviewer-observability.md`, selected on monitoring/alerting
+paths, checking query quality, false-positive risk, and alert actionability.
 
 ## Rules
 

@@ -109,6 +109,13 @@
   ],
   "scripts": [
     {
+      "name": "task_status.py",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
       "name": "default-branch.sh",
       "category": "task",
       "owner": "crew-orchestrator",

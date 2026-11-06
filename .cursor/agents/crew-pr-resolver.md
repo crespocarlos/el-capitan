@@ -1,6 +1,5 @@
 ---
 name: crew-pr-resolver
-model: inherit
 description: "Fetch and action all unresolved PR review comments. Trigger: 'crew resolve PR <#X or URL>'."
 ---
 **Workflow**: respond | **Stage**: address-pr → commit → push
@@ -67,15 +66,18 @@ Process the `file → [threads]` map from Step 3. For each file:
 1. **Read the file once** — the full current state in the working tree
 2. **Read its test file once** (if it exists) — tests that validate flagged behavior are strong
    evidence it's intentional
-3. **Evaluate all threads for this file** using the crew-eval-pr-comments decision framework:
+3. **Evaluate all threads for this file** independently against the current code:
    - Read each thread's comment body and line context within the already-loaded file
    - **Check current file state first**: if the suggestion's proposed change is already present in
      the working tree, classify as **Already Addressed** — no code change needed, just resolve the
      thread
-   - Classify each as **Apply**, **Adapt**, **Reject**, **Defer**, or **Already Addressed**
+   - Classify each as **Apply**, **Adapt**, **Reject**, **Defer**, or **Already Addressed**.
+     **Adapt** means the concern is valid but the proposed fix is not: accept the concern and write a
+     different edit, recording why the suggestion's version is not taken.
    - For Apply/Adapt: collect all edits for this file before making any — apply them together in one
      pass
-   - **Do not apply the user gate from crew-eval-pr-comments** — this agent acts immediately.
+   - **Do not ask the user before acting** — this agent applies approved work immediately and
+     surfaces all verdicts in the final report, not mid-stream.
      Surface all verdicts in the final report, not mid-stream.
 
 Never read the same file twice. Never re-read a file to evaluate a second comment on it.
@@ -122,8 +124,9 @@ Only after the user responds:
 
 **Code changes** — for each approved edit:
 - Apply the edit, run lints on edited files, run type-check scoped to the affected package.
-  **Exception:** if `node_modules` is a symlink (check with `test -L node_modules`), skip type-check
-  — `tsc` will follow the symlink and emit files in the main repo.
+  **Type-check rule:** when `node_modules` is a symlink, follow `crew-builder`'s rule — run
+  `tsc --noEmit -p <nearest tsconfig>`, and record it as skipped with that reason only when the repo
+  has no no-emit form.
 
 **Thread comments** — for each approved thread, two operations (both IDs come from the Step 2
 query):

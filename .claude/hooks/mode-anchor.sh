@@ -5,13 +5,17 @@
 set +e
 exec 2>/dev/null
 
-# Resolve active task for this repo+branch
-TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null) || exit 0
+# Resolve active task for this repo+branch. A UserPromptSubmit hook must never block a
+# turn, so resolution failures are swallowed by design (crew-lint: allow-swallow).
+TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null) || exit 0   # crew-lint: allow-swallow
 [ -z "$TASK_DIR" ] && exit 0
 [ ! -f "$TASK_DIR/SPEC.md" ] && exit 0
 
 TITLE=$(head -1 "$TASK_DIR/SPEC.md" | sed 's/^#* *//' | tr -d '"\]\n[:cntrl:]')
-STATUS=$(awk '/^## Status/{found=1; next} found && NF{print; exit}' "$TASK_DIR/SPEC.md" | tr -d '[:space:]"\][:cntrl:]')
+# Single reader for `## Status` (crew-ls owns the contract). An empty value means the
+# spec has no status set — the anchor says so rather than silently emitting nothing.
+STATUS=$(~/.agent/bin/crew-ls.py --status-file "$TASK_DIR/SPEC.md" 2>/dev/null | tr -d '[:space:]"\][:cntrl:]')   # crew-lint: allow-swallow
+[ -n "$STATUS" ] || STATUS=unset
 BRANCH=$(git -C "${CLAUDE_PROJECT_DIR:-.}" branch --show-current 2>/dev/null || echo "")
 BRANCH=${BRANCH//\"/}
 TASK_DIR_SAFE=${TASK_DIR//\"/}

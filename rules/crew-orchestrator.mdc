@@ -37,13 +37,14 @@ idle days) and `ABANDONED` (set by the user only).
 
 | From | To | Gate? | What runs |
 |---|---|---|---|
-| DRAFTING | APPROVED | **Gate 1** — user approves spec | — |
+| DRAFTING | APPROVED | **Gate 1** — user approves spec | `crew-ls.py --mark-approved` (see `crew-specwriter` Step 6) |
 | APPROVED | IMPLEMENTING | auto | crew-implement skill (builder only); `crew-ls.py --mark-implementing` |
-| IMPLEMENTING | DONE | **Gate 2** — two approvals, in order | crew-open-pr skill, then `crew-ls.py --mark-done` |
+| IMPLEMENTING | DONE | **Gate 2** — user approves the PR title, description, base, and target | crew-open-pr skill, then `crew-ls.py --mark-done` |
 
-Inside `IMPLEMENTING`, `crew review` and `crew commit` run as separate steps. Gate 2 is two
-approvals: (a) the commit message in crew-commit, then (b) the PR title, description, and push in
-crew-open-pr. Approving (a) does not approve (b).
+Inside `IMPLEMENTING`, `crew review` and `crew commit` run as separate steps. Gate 2 is the PR
+approval in `crew-open-pr`: the title, description, base, and target repo, shown before the push.
+The commit message is reviewed in `crew-commit` (auto-committed when unambiguous, paused when not),
+but approving a commit message is not the gate — Gate 2 is the push and PR creation.
 
 Automatic transitions are data in `.agent/tools/transitions.json`, applied by
 `crew-ls.py --reconcile --apply`. `DRAFTING|APPROVED` go `ON-HOLD` after 14 idle days, with the prior state recorded in the
@@ -87,34 +88,13 @@ fi
 
 ## PROGRESS.md
 
-Append-only event log. Never read for state — only write. Format:
+Append-only event log. Never use it for gate or status decisions — SPEC.md plus git/gh are the only
+state source. Skills may read it for narrative resume context (which tasks completed in an earlier
+session). Format:
 ```
 [YYYY-MM-DD HH:MM] TRANSITION: APPROVED → IMPLEMENTING
 [YYYY-MM-DD HH:MM] TRANSITION: IMPLEMENTING → DONE (PR opened: <url>)
 ```
-
-### `METRIC:` lines (audit / cost / loop forensics)
-
-Optional append-only lines for **offline analysis only**. `resolve-task-dir.py` must not parse
-`METRIC:` for gates or transitions — **git/gh + SPEC.md remain the source of truth.**
-
-**Format** (same timestamp style as `TRANSITION`; seconds recommended for ordering):
-
-```
-[YYYY-MM-DD HH:MM:SS] METRIC: <event> [<key=value> ...]
-```
-
-**Suggested `event` names** (keep `a-z0-9_` for easy `rg`; other text is fine):
-
-| Event | Example | When |
-|--------|---------|------|
-| `implement_start` | `METRIC: implement_start mode=inline` | After `APPROVED → IMPLEMENTING`, before builder runs |
-| `implement_complete` | `METRIC: implement_complete tasks_passed=8 tasks_failed=0` | After builder success |
-| `completion_protocol` | `METRIC: completion_protocol phase=ac_check` | Optional milestone inside Completion Protocol |
-| `session` | `METRIC: session tool_calls=42` | Optional coarse counters from hooks or notes |
-
-**How to write:** `~/.agent/bin/log-metric.py "$TASK_DIR" <words...>` (shipped under
-`.agent/tools/`; symlinked to `~/.agent/bin/` via `install.sh`).
 
 ## Invariants
 
@@ -128,3 +108,15 @@ Optional append-only lines for **offline analysis only**. `resolve-task-dir.py` 
   hard to reverse (`personal.mdc` "Ask before acting on uncertainty")
 - Autopilot never auto-retries on failure — the user always decides
 - **Autopilot reads skill files directly — never re-triggers through the routing layer**
+
+## METRIC lines (offline analysis only)
+
+`METRIC:` lines are append-only audit records for offline analysis. `resolve-task-dir.py` must not
+parse them for gates or transitions — git/gh plus SPEC.md remain the source of truth.
+
+- Format: `[YYYY-MM-DD HH:MM:SS] METRIC: <event> [<key=value> ...]`
+- Write with `~/.agent/bin/log-metric.py "$TASK_DIR" <event> [key=value ...]`
+- Events: `implement_start mode=inline`, `implement_complete tasks_passed=N tasks_failed=N`,
+  `completion_protocol phase=ac_check`, `session tool_calls=N`
+
+See `.agent/tools/TOOLS.md` for the full contract.

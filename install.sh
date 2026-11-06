@@ -2,6 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+FAILED=0
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -41,11 +42,18 @@ else
 fi
 echo "  Source: $SCRIPT_DIR"
 
-# The pre-rules-layout installer created this as a managed directory symlink. Remove
-# it before mkdir -p, otherwise a dangling legacy link makes migration fail.
+# Legacy: an old installer linked this directory at $SCRIPT_DIR/rules; a later one used
+# $SCRIPT_DIR/.cursor/rules. Remove either, or `mkdir -p` traverses the link and the
+# repo is linked into itself.
 legacy_rules="$HOME/.cursor/rules"
-if [ -L "$legacy_rules" ] && [[ "$(readlink "$legacy_rules")" == "$SCRIPT_DIR/.cursor/rules" ]]; then
-  run rm -f "$legacy_rules"
+if [ -L "$legacy_rules" ]; then
+  case "$(readlink "$legacy_rules")" in
+    "$SCRIPT_DIR/rules"|"$SCRIPT_DIR/.cursor/rules") run rm -f "$legacy_rules" ;;
+  esac
+fi
+if [ -d "$legacy_rules" ] && [[ "$(cd "$legacy_rules" && pwd -P)" == "$SCRIPT_DIR"* ]]; then
+  echo "  ERROR: ~/.cursor/rules resolves inside the source repo; remove it and re-run." >&2
+  exit 1
 fi
 
 run mkdir -p ~/.claude ~/.cursor/rules ~/.cursor/skills ~/.cursor/agents ~/.agent/tasks ~/.agent/journal ~/.agent/bin
@@ -57,9 +65,43 @@ for dir in agents skills; do
   target="$HOME/.claude/$dir"
   if [ -d "$target" ] && [ ! -L "$target" ]; then
     count=$(find "$target" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
-    echo "  WARNING: ~/.claude/$dir is a real directory ($count .md files) — replacing with dir symlink."
-    echo "           Backup any local-only files before proceeding."
-    run rm -rf "$target"
+    # Never delete: hand-placed and third-party agents live here. Move aside so the
+    # install can proceed and the files stay recoverable.
+    backup="${target}.bak.$(date +%s)"
+    while [ -e "$backup" ]; do backup="${backup}x"; done
+    echo "  ~/.claude/$dir is a real directory ($count .md files) — moving to $backup and linking the managed dir."
+    run mv "$target" "$backup"
+    # Restore user files into the add-on location, or the migration silently disables
+    # every third-party agent the user had. Names the managed set already owns are skipped.
+    restored=0
+    if [ "$DRY_RUN" -eq 0 ]; then
+      mkdir -p "$HOME/.cursor/$dir"
+      if [ "$dir" = agents ]; then
+        # Agents are flat files.
+        shopt -s nullglob
+        for file in "$backup"/*.md; do
+          name=$(basename "$file")
+          [ -e "$SCRIPT_DIR/.cursor/$dir/$name" ] && continue
+          [ -e "$HOME/.cursor/$dir/$name" ] && continue
+          cp "$file" "$HOME/.cursor/$dir/$name" || FAILED=1
+          restored=$((restored + 1))
+        done
+        shopt -u nullglob
+      else
+        # Skills are directories holding SKILL.md.
+        shopt -s nullglob
+        for skill in "$backup"/*/; do
+          name=$(basename "$skill")
+          [ -f "$skill/SKILL.md" ] || continue
+          [ -e "$SCRIPT_DIR/.cursor/$dir/$name" ] && continue
+          [ -e "$HOME/.cursor/$dir/$name" ] && continue
+          cp -R "$skill" "$HOME/.cursor/$dir/$name" || FAILED=1
+          restored=$((restored + 1))
+        done
+        shopt -u nullglob
+      fi
+      echo "  Restored $restored user item(s) into ~/.cursor/$dir; originals kept in $backup"
+    fi
   fi
   run ln -sfn "$HOME/.cursor/$dir" "$target"
 done
@@ -133,12 +175,32 @@ else
   mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.agent"
   python3 - "$HOME" <<'PY'
 from pathlib import Path
+import os
 import sys
+import tempfile
 
 home = Path(sys.argv[1])
 block = """<!-- el-capitan:memory -->
 Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
 <!-- /el-capitan:memory -->"""
+
+
+def write_atomically(target, text):
+    # Preserve the existing file's mode (mkstemp creates 0600) and follow a symlink so a
+    # dotfiles-managed CLAUDE.md keeps its link instead of being replaced by a file.
+    target = target.resolve() if target.is_symlink() else target
+    mode = target.stat().st_mode & 0o777 if target.exists() else 0o644
+    descriptor, temporary = tempfile.mkstemp(prefix=".install-", dir=target.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.chmod(temporary, mode)
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 for target in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md"):
     text = target.read_text() if target.exists() else ""
     start, end = text.find("<!-- el-capitan:memory -->"), text.find("<!-- /el-capitan:memory -->")
@@ -146,7 +208,7 @@ for target in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md"):
         text = text[:start] + block + text[end + len("<!-- /el-capitan:memory -->"):]
     else:
         text = text.rstrip() + "\n\n" + block
-    target.write_text(text.rstrip() + "\n")
+    write_atomically(target, text.rstrip() + "\n")
 PY
 fi
 
@@ -165,13 +227,17 @@ if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
     if ! python3 "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST"; then
       echo "  ERROR: settings.json merge failed — hooks may not be registered" >&2
       echo "  Run manually: python3 $SCRIPT_DIR/.claude/merge_claude_settings.py $SETTINGS_SRC $SETTINGS_DEST" >&2
+      FAILED=1
     fi
   fi
 fi
 link_dir_files "$SCRIPT_DIR/.claude/hooks" ~/.claude/hooks
 if [ "$DRY_RUN" -eq 0 ]; then
   mkdir -p "$HOME/.cursor"
-  python3 "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json"
+  if ! python3 "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json"; then
+    echo "  ERROR: ~/.cursor/hooks.json merge failed — Cursor guards are not registered" >&2
+    FAILED=1
+  fi
 fi
 
 # ~/.agent templates (dotfile keeps stderr hush if optional upstream omits it)
@@ -208,16 +274,29 @@ if [ "$DRY_RUN" -eq 0 ] && [ ! -d "$HOME/.agent/memory/.git" ]; then
 fi
 
 echo ""
-echo "Done. Installed:"
+if [ "$FAILED" -eq 1 ]; then
+  echo "Install INCOMPLETE — see errors above. Hooks or settings may not be registered."
+else
+  echo "Done. Installed:"
+fi
 echo "  Rules:    $(ls ~/.cursor/rules/*.mdc 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/rules)"
 echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc -l | tr -d ' ') (symlinked → ~/.cursor/agents ← ~/.claude/agents)"
 echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/skills ← ~/.claude/skills)"
-echo ""
-# Check optional dependencies
-
 echo ""
 echo "  Journal:  ~/.agent/journal/ (monthly files, not tracked by git)"
 
 echo ""
 echo "Add-ons go directly in ~/.cursor/agents/ or ~/.cursor/skills/ as regular files."
 echo "~/.agent/tasks/ is ready for per-repo/branch task state."
+
+# Required dependencies: the guard hooks below fail closed, so a missing interpreter
+# turns into a blocked shell rather than a warning.
+missing=0
+for dep in jq python3 git; do
+  if ! command -v "$dep" >/dev/null 2>&1; then
+    echo "  ERROR: $dep is required (hooks and tools use it)" >&2
+    missing=1
+  fi
+done
+[ "$missing" -eq 0 ] || exit 1
+[ "$FAILED" -eq 0 ] || exit 1

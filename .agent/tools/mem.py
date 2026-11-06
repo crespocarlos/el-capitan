@@ -112,8 +112,18 @@ def connection():
         raise MemoryError(f"memory store unreadable or corrupt: {error}") from error
 
 
+SCHEMA_VERSION = 1
+
+
 def initialize_database():
     conn = sqlite3.connect(database_path())
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+    except sqlite3.Error:
+        version = 0
+    if version not in (0, SCHEMA_VERSION):
+        # The index is a rebuildable cache: drop it and let refresh() repopulate.
+        conn.execute("DROP TABLE IF EXISTS units")
     conn.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS units USING fts5(
             id UNINDEXED, type UNINDEXED, scope UNINDEXED, title,
@@ -123,6 +133,7 @@ def initialize_database():
             misled UNINDEXED, tokenize='porter unicode61'
         )
     """)
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     conn.close()
 
@@ -134,7 +145,9 @@ def init_store():
         directory.mkdir(exist_ok=True)
     ignore = root / ".gitignore"
     existing = ignore.read_text() if ignore.exists() else ""
-    additions = [line for line in (".index.sqlite", ".lock") if line not in existing.splitlines()]
+    # `.sessions` holds raw tool telemetry; never commit it alongside approved units.
+    additions = [line for line in (".index.sqlite", ".lock", ".sessions/")
+                 if line not in existing.splitlines()]
     if additions:
         atomic_write(ignore, existing + ("" if not existing or existing.endswith("\n") else "\n")
                      + "\n".join(additions) + "\n")
@@ -169,25 +182,110 @@ def atomic_write(path, content):
             os.unlink(temporary)
 
 
+def split_inline_list(inner):
+    """Split an inline list body on commas that sit outside quotes."""
+    parts, current, quote, index = [], [], None, 0
+    while index < len(inner):
+        char = inner[index]
+        if quote:
+            if char == "\\" and index + 1 < len(inner):
+                current.append(inner[index:index + 2])
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+        elif char in {'"', "'"}:
+            quote = char
+        elif char == ",":
+            parts.append("".join(current))
+            current = []
+            index += 1
+            continue
+        current.append(char)
+        index += 1
+    parts.append("".join(current))
+    return [part.strip() for part in parts if part.strip()]
+
+
 def parse_scalar(value):
     value = value.strip()
     if value in {"null", "None", "~"}:
         return None
     if value.startswith("[") and value.endswith("]"):
-        return [part.strip().strip("'\"") for part in value[1:-1].split(",") if part.strip()]
-    return value.strip("'\"")
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+        return [part.strip("'\"") for part in split_inline_list(inner)]
+    if value[:1] in {'"', "'"}:
+        # render_unit writes scalars with json.dumps, so unescape must be its inverse;
+        # plain strip() re-escapes backslashes on every rewrite.
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            # Not JSON: single-quoted YAML escapes an inner quote by doubling it.
+            if value[0] == "'" and value.endswith("'"):
+                return value[1:-1].replace("''", "'")
+            return value.strip("'\"")
+        return parsed if isinstance(parsed, str) else value.strip("'\"")
+    return value
+
+
+EMITTED_KEYS = {
+    "id", "type", "scope", "title", "paths", "keywords", "status", "superseded_by",
+    "created", "modified", "review_by", "evidence", "source_identity", "uses",
+    "last_used", "helped", "misled",
+}
+# `name` and `description` are consumed as id/title only when the canonical key is absent;
+# otherwise they are preserved like any other unmodeled key. See split_frontmatter.
+
+
+def split_frontmatter(text, path):
+    """Return (frontmatter lines, extra raw lines, body).
+
+    Aliases (`name`, `description`) are only consumed when the canonical key is absent;
+    otherwise the original line is preserved, so a hand-authored unit round-trips intact.
+    """
+    end = text.find("\n---", 4)
+    if end < 0:
+        raise ValueError(f"unterminated YAML frontmatter: {path}")
+    lines = text[4:end].splitlines()
+    top_level = {match.group(1) for line in lines
+                 if (match := re.match(r"^([\w-]+):", line))}
+    consumed = set(EMITTED_KEYS)
+    if "title" not in top_level:
+        consumed.add("description")
+    if "id" not in top_level:
+        consumed.add("name")
+    extras, keeping = [], False
+    block_indent = 0
+    for line in lines:
+        match = re.match(r"^(\s*)([\w-]+):", line)
+        if match:
+            indent, key = match.groups()
+            keeping = key not in consumed
+            # Children of a preserved block key stay preserved, blank lines included.
+            block_indent = len(indent)
+        elif not line.strip():
+            # A blank line ends only a top-level key's block, not a nested one.
+            keeping = keeping and block_indent > 0
+        if keeping:
+            extras.append(line)
+    return lines, extras, text[end + 4:].lstrip("\n")
 
 
 def parse_unit(path, source_path=None, inferred_scope=None):
     text = path.read_text(encoding="utf-8", errors="replace")
     if not text.startswith("---\n"):
         raise ValueError("missing YAML frontmatter")
-    end = text.find("\n---", 4)
-    if end < 0:
-        raise ValueError("unterminated YAML frontmatter")
-    frontmatter, body = text[4:end], text[end + 4:].lstrip("\n")
+    lines, extras, body = split_frontmatter(text, path)
     data, metadata, in_metadata = {}, {}, False
-    for line in frontmatter.splitlines():
+    for line in lines:
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if line.strip() == "metadata:":
@@ -227,6 +325,7 @@ def parse_unit(path, source_path=None, inferred_scope=None):
         "source_identity": data.get("source_identity"),
         "source_path": source_path or str(path.relative_to(memory_root())),
         "mtime": file_stat.st_mtime_ns, "size": file_stat.st_size,
+        "extra_frontmatter": extras,
     }
 
 
@@ -343,6 +442,8 @@ def unit_path(conn, ident, scope=None):
 def render_unit(unit):
     def inline(values):
         return "[" + ", ".join(json.dumps(value) for value in values) + "]"
+    extras = unit.get("extra_frontmatter") or []
+    extra_block = ("\n" + "\n".join(extras)) if extras else ""
     return f"""---
 id: {unit['id']}
 type: {unit['type']}
@@ -360,7 +461,7 @@ source_identity: {unit.get('source_identity') or 'null'}
 uses: {unit['uses']}
 last_used: {unit.get('last_used') or 'null'}
 helped: {unit['helped']}
-misled: {unit['misled']}
+misled: {unit['misled']}{extra_block}
 ---
 {unit['body']}"""
 
@@ -386,6 +487,21 @@ def dirty_files():
     return [line for line in result.stdout.splitlines() if line]
 
 
+def unresolved_conflicts():
+    """Return conflicted paths, or raise when git cannot answer.
+
+    A failed `git diff` (broken index, missing repo, held lock) is not "no conflicts":
+    reporting clean would let `commit_external_changes` adopt conflict markers.
+    """
+    result = run_git(["diff", "--name-only", "--diff-filter=U"], check=False)
+    if result.returncode:
+        raise MemoryError(
+            "cannot verify the memory store's merge state: "
+            + (result.stderr.strip() or f"git exit {result.returncode}")
+        )
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
 def git_commit(message):
     result = run_git([
         "-c", "user.name=mem", "-c", "user.email=mem@localhost",
@@ -396,6 +512,14 @@ def git_commit(message):
 
 
 def commit_external_changes():
+    # `git add -A` on a conflicted file marks the working tree (markers included) as the
+    # resolution, so a merge conflict would be silently adopted and indexed.
+    conflicts = unresolved_conflicts()
+    if conflicts:
+        raise MemoryError(
+            "memory store has unresolved merge conflicts: " + ", ".join(conflicts)
+            + " — resolve them in " + str(memory_root()) + " and retry"
+        )
     changes = dirty_files()
     if changes:
         run_git(["add", "-A"])
@@ -507,6 +631,12 @@ def add(args):
     return 0
 
 
+def sanitized_query(query):
+    """Quoted-phrase fallback: FTS5 treats `(`, `:` and quotes as operators."""
+    terms = [term for term in re.split(r"[^\w]+", query) if term]
+    return " OR ".join(f'"{term}"' for term in terms) if terms else ""
+
+
 def fts_rows(conn, query, scopes, types=None, include_observations=False):
     clauses, values = ["status = 'active'"], []
     if not include_observations and "observation" not in (types or []):
@@ -518,18 +648,25 @@ def fts_rows(conn, query, scopes, types=None, include_observations=False):
         clauses.append("type IN (" + ",".join("?" for _ in types) + ")")
         values.extend(types)
     if query.strip():
+        statement = (
+            "SELECT *, bm25(units) AS rank FROM units WHERE units MATCH ? AND "
+            + " AND ".join(clauses) + " ORDER BY rank"
+        )
         try:
-            return conn.execute(
-                "SELECT *, bm25(units) AS rank FROM units WHERE units MATCH ? AND "
-                + " AND ".join(clauses) + " ORDER BY rank", [query, *values]
-            ).fetchall()
+            return conn.execute(statement, [query, *values]).fetchall()
         except sqlite3.OperationalError:
-            return []
+            fallback = sanitized_query(query)
+            if not fallback:
+                return []
+            try:
+                return conn.execute(statement, [fallback, *values]).fetchall()
+            except sqlite3.OperationalError:
+                return []
     return conn.execute("SELECT *, 0 AS rank FROM units WHERE " + " AND ".join(clauses), values).fetchall()
 
 
 def selected_scopes(repo):
-    if repo:
+    if repo and repo != "*":
         return ["global", canonical_scope(repo)]
     return ["global", repo_key()]
 
@@ -537,7 +674,9 @@ def selected_scopes(repo):
 def search(args):
     ensure_store()
     conn = refresh()
-    scopes = selected_scopes(args.repo) if args.repo else None
+    # Scope to this repository plus global by default: an unscoped search returns other
+    # projects' units into this codebase's guidance. --repo '*' searches everything.
+    scopes = None if args.repo == "*" else selected_scopes(args.repo)
     rows = fts_rows(
         conn, args.query, scopes, [args.type] if args.type else None,
         include_observations=True,
@@ -711,7 +850,16 @@ def cite(args):
         backups = []
         for path in paths:
             unit = parse_unit(path)
-            updates = {"uses": unit["uses"] + 1, "last_used": today(), args.outcome: unit[args.outcome] + 1}
+            # `used` is the generic signal: it increments the usage counter. `helped`
+            # and `misled` are counters the unit actually stores.
+            if args.outcome == "used":
+                updates = {"uses": unit["uses"] + 1, "last_used": today()}
+            else:
+                updates = {
+                    "uses": unit["uses"] + 1,
+                    "last_used": today(),
+                    args.outcome: unit[args.outcome] + 1,
+                }
             backups.append(update_frontmatter(path, updates))
         return backups
     try:
@@ -785,8 +933,15 @@ def consolidate(args):
     ).fetchall()
     for row in rows:
         paths = json.loads(row["paths"] or "[]")
-        if any(not Path(path).exists() for path in paths if not any(token in path for token in "*?[")):
-            report.append(f"missing path: {row['id']}")
+        # Paths are relative to the unit's own repository, so they can only be checked
+        # when this session is in that repository. Checking another repo's paths reports
+        # every one of them as missing.
+        current = repo_key()
+        if row["scope"] == current:
+            missing = [p for p in paths
+                       if not any(token in p for token in "*?[") and not Path(p).exists()]
+            if missing:
+                report.append(f"missing path: {row['id']} ({', '.join(missing[:2])})")
         if is_stale(row["review_by"]) and row["uses"] == 0:
             report.append(f"archive: {row['id']}")
             archives.append(row["id"])
@@ -1164,7 +1319,7 @@ def build_parser():
     add_parser.add_argument("--force", action="store_true")
     search_parser = commands.add_parser("search")
     search_parser.add_argument("query")
-    search_parser.add_argument("--repo")
+    search_parser.add_argument("--repo", help="repository scope; '*' searches every scope")
     search_parser.add_argument("--type", choices=sorted(TYPES))
     search_parser.add_argument("--include-observations", action="store_true")
     search_parser.add_argument("--top", type=int, default=5)

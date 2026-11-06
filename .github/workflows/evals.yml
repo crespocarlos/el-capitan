@@ -48,4 +48,4 @@ jobs:
           if [ "$PROVIDER" = anthropic ] && [ -f reviewer/baseline.json ]; then
             MODEL=$(python -c 'import json; print(json.load(open("reviewer/baseline.json"))["model"])')
           fi
-          uv run python reviewer/run.py --compare --provider "$PROVIDER" --model "$MODEL"
+          uv run python reviewer/run.py --compare --model "$MODEL"

@@ -1,0 +1,39 @@
+name: validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    name: Deterministic checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every check below is hermetic: no network, no API key, no model calls.
+      - name: Repo conventions (routing, catalog, references)
+        run: python3 .agent/tools/crew-lint.py --budget
+
+      - name: Hook and task-state fixtures
+        run: bash .claude/hooks/fixtures/run.sh
+
+      - name: Install migration and idempotency
+        run: bash .claude/hooks/fixtures/install.sh
+
+      - name: Memory eval
+        run: python3 evals/memory/run.py
+
+      - name: Review-findings tests
+        run: python3 evals/reviewer/test_review_findings.py
+
+      - name: Python syntax
+        run: python3 -m compileall -q .agent/tools .agent/scripts evals .claude
+
+      - name: Shell syntax
+        run: |
+          bash -n install.sh
+          for script in .claude/hooks/*.sh .agent/scripts/*.sh; do bash -n "$script"; done

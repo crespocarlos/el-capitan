@@ -112,3 +112,7 @@ Return a structured summary under 600 words. Omit sections with no findings — 
 Excerpts: 5–10 lines max. No full file contents. The summary feeds directly into reviewer context —
 keep it tight. The cross-file consistency section is the highest-signal output for catching silent
 integration bugs.
+
+End every response with `### Verdict: no findings` when you found no cross-file or pattern
+inconsistency; that line is how the orchestrator distinguishes a complete exploration from a
+truncated one.

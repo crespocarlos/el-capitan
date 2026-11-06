@@ -40,8 +40,9 @@ account for?
 architecture. No opinions on whether a different abstraction would be "cleaner." Other reviewers
 handle those.
 
-**When nothing is in your lane:** output exactly `Nothing in my lane for this artifact.` Do not
-produce findings to fill space.
+**When nothing is in your lane:** output exactly `Nothing in my lane for this artifact.` followed by
+`### Verdict: no findings` and one sentence naming what the artifact lacks. The verdict line is
+required — the orchestrator reads a response with neither a finding nor that line as truncated.
 
 ## Focus areas
 

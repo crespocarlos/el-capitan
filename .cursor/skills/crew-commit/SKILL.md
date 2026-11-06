@@ -27,15 +27,21 @@ files).
 
 ### Step 2: Read the diff (fast path first)
 
-**Fast path — use when `$TASK_DIR/REVIEW.md` exists AND staged files haven't changed since the
+**Fast path — use when `$TASK_DIR/REVIEW.md` exists AND the reviewed tree is unchanged since the
 review:**
 
-First verify the staged file set still matches the review. Run:
+The review records the identity it approved. Verify all three:
+
 ```bash
-git diff --name-only --cached | sort
+git rev-parse HEAD                                    # compare to "Reviewed at:" in REVIEW.md
+git diff --name-only --cached | sort                  # compare to "### Files reviewed"
+git status --porcelain -- $(git diff --name-only --cached)   # must be empty: no unstaged edits
 ```
-Compare against the file list in `REVIEW.md`. Any mismatch (new file, removed file, or different
-path) → fall back to slow path.
+
+Compare `HEAD` against the `Reviewed at:` line, the staged file list against `### Files reviewed`,
+and require the third command to print nothing — an edited-but-restaged file keeps the same name set,
+so the file list alone cannot prove the review still applies. Any mismatch (new file, removed file,
+different path, new commits, or unstaged edits) → fall back to slow path.
 
 If the file set matches: read `$TASK_DIR/REVIEW.md` and `$TASK_DIR/SPEC.md` (if present) for intent
 context. Skip reading the full diff unless the REVIEW.md summary is insufficient to determine type

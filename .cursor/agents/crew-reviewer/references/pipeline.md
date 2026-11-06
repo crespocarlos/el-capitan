@@ -24,12 +24,14 @@ Resolve `TASK_DIR` first (see Pipeline Integration below). Then, before auto-app
    emitted report to `$REVIEW_ROOT/report.md`, and run `~/.agent/bin/review-findings.py persist
    --review-dir "$REVIEW_ROOT" --report "$REVIEW_ROOT/report.md" --findings
    "$REVIEW_ROOT/consolidation.json" --mode <self|changes|pr|spec|idea> --files <reviewed file
-   paths> --strict --personas adversarial code-quality`; pass every dispatched persona as its own
-   space-delimited argument (for example, add `architecture prompt-quality`). Comma-separated values
-   such as `adversarial,code-quality` are invalid. `--strict` fails when a dispatched persona lacks
-   its `.in.md` or `.out.md`. It writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to
-   the review directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same
-   place.
+   paths> --head "$(git rev-parse HEAD)" --strict --personas adversarial code-quality`; pass every
+   dispatched persona as its own space-delimited argument (for example, add `architecture
+   prompt-quality`). Comma-separated values such as `adversarial,code-quality` are invalid.
+   `--strict` fails when a dispatched persona lacks its `.in.md` or `.out.md`, when every persona
+   is failed or skipped, or when a finding's evidence cites a file outside `--files`. `--head`
+   records the approved commit so `crew commit` and `--mark-done` can detect a tree that moved.
+   `--strict` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
+   directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
 
 Creating `$REVIEW_ROOT` under `~/.agent/tasks/` fails with `Operation not permitted` in a sandboxed
 shell. Run the `mkdir`, `normalize`, and `persist` commands with the harness's elevated-permission
@@ -46,12 +48,12 @@ the consolidated report, log the pipeline transition and provide a commit-ready 
 **Resolve TASK_DIR:**
 
 ```bash
-if [ -n "${CREW_TASK_DIR+x}" ]; then
-  TASK_DIR="$CREW_TASK_DIR"
-elif TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null); then
-  export CREW_TASK_DIR="$TASK_DIR"
+if [ -n "${CREW_TASK_DIR:-}" ]; then
+  TASK_DIR="$CREW_TASK_DIR"; CREW_TASK_STATE=ok
+elif [ -n "${CREW_TASK_STATE:-}" ]; then
+  TASK_DIR=""   # already resolved this session; task-env.sh owns the tri-state
 else
-  TASK_DIR=""
+  source ~/.agent/bin/task-env.sh
 fi
 ```
 
@@ -60,7 +62,7 @@ fi
 Determine verdict first:
 
 - **PASS** — zero findings, or only `[nit]` / `[needs more info]`
-- **WARN** — `[attention]` findings only, no `[blocking]`
+- **WARN** — `[attention]` or `[concern]` findings only, no `[blocking]`
 - **BLOCK** — any `[blocking]` finding present. `Verdict: revisit` from reviewers always maps to
   BLOCK.
 

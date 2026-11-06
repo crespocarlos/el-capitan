@@ -36,6 +36,26 @@ never embed a full file in a context package unless the file is under 50 lines. 
 explicit exception above. For large diffs under the spine-focused strategy, limit Tier 3 to spine
 files + their consumers.
 
+### Spine files (size-gate strategy)
+
+A diff over roughly 30 changed files or 1,500 changed lines uses the spine strategy. The **spine** is
+every changed file that either exports a symbol the change adds or edits, or is an entry point
+(route handler, CLI command, hook, agent/skill protocol, config that changes runtime behavior). Its
+**consumers** are files that import from a spine file or invoke it by name.
+
+Everything else in the diff is context, not spine: keep those files out of persona packages except
+for their hunks. The gate emits one line before dispatch so the choice is auditable:
+
+```
+Size gate: spine strategy — N spine files, M consumers, K files as hunks only
+```
+
+A diff below that threshold uses the complete diff and emits:
+
+```
+Size gate: full diff — N files, M changed lines
+```
+
 ### PR review mode
 
 The PR head is authoritative. Never use the local checkout, `Read`, `Grep`, semantic search, or an
@@ -58,7 +78,6 @@ explorer's local repository tools to build or verify PR context.
 
 For large PRs, use the spine-focused strategy on the PR diff and fetch only spine files plus named
 consumers through `gh api`. PR mode has no local-read fallback.
-
 ### Spec review mode
 
 No context tiers — all reviewers receive the full SPEC.md text.

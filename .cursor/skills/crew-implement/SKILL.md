@@ -33,6 +33,10 @@ source ~/.agent/bin/task-env.sh
 If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs
 (see Step 2).
 
+**If `CREW_TASK_STATE=error`, stop here** — before the scan above — and report the resolver message:
+the repo state is unreadable (detached HEAD, no `origin` remote), so task state cannot be determined
+and every gate below would silently skip. A scan is only valid for `CREW_TASK_STATE=none`.
+
 ### Step 2: Gate check
 
 If no task was resolved (TASK_DIR is empty), scan globally for other specs (most recent first):
@@ -130,9 +134,16 @@ The UUID task directory (`$TASK_DIR`) is stable — it does not move either way.
 ### Step 5: Update progress
 
 ```bash
-~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR"
+~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR" --branch "$(git -C "${WORK_DIR:-$PWD}" rev-parse --abbrev-ref HEAD)"
 ~/.agent/bin/log-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
 ```
+
+`--branch` reads `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
+separate shell, so a bare `git rev-parse` reports the drafting checkout and would record
+the wrong branch. `--mark-implementing` records the branch actually being implemented in
+`.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
+branch and implemented on another, and task resolution matches either: without this every
+later `crew` command in the worktree resolves no task and silently skips its gates.
 
 ### Step 5b: Capture baseline diff
 
@@ -184,12 +195,20 @@ When the Implementation Report is available:
 
 1. ```bash ~/.agent/bin/log-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
    ```
-2. **Auto-journal** — store an immutable observation (no prompt, passive). Title prefix: "Implemented:". Write 1-3 paragraphs of plain prose on stdin — each paragraph one self-contained idea. Derive from SPEC.md + REPORT.md:
+2. **Journal (draft, never automatic)** — draft an immutable observation only when it holds something
+   non-derivable from code, git, or the spec: a decision that will constrain future work, or a
+   surprise with a lesson. Derive it from SPEC.md + REPORT.md:
    - What was built and why it matters (always)
    - What broke or surprised during implementation, if REPORT.md has structural observations (omit if nothing notable)
    - Patterns or constraints discovered worth remembering (omit if nothing new)
 
-   Store with `~/.agent/bin/mem.py journal add --title "Implemented: <title>" --tags <tags> --repo <scope> <<'EOF'` followed by the prose and `EOF`. Keep the printed observation ID as evidence. On non-zero exit print `warning: memory unavailable` and continue.
+   Show the title and 1–3 plain-prose paragraphs, each one self-contained idea, then ask
+   `Store this journal entry? (yes / no)`. Only on `yes`, run
+   `~/.agent/bin/mem.py journal add --title "Implemented: <title>" --tags <tags> --repo <scope>` with
+   the prose on stdin. On `no`, or when nothing qualifies, write nothing and report `journal: none`.
+   On non-zero exit print `warning: memory unavailable` and continue. Observations are immutable, so
+   the approval step is mandatory (`memory-capture.mdc`; `CLAUDE.md`: do not write memories
+   automatically).
 
 3. **Memory candidates** — inspect the completed spec, report, verification output,
    and journal entry. Draft zero to three typed candidates in

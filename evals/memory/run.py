@@ -160,7 +160,72 @@ evidence: [memory eval]
 ---
 Import valid drafts even when another inbox file is malformed.
 """)
+        inbox.joinpath('commas.md').write_text("""---
+id: candidate-commas
+type: failure-shield
+scope: acme-alpha
+title: Comma evidence survives import
+evidence: ["2026-05-31: staged 985 files, then git checkout aborted", "second item"]
+---
+Keep commas inside one evidence item.
+""")
         inbox.joinpath('invalid-import.md').write_text("not a memory unit\n")
+        # Round-trip fixtures: a cite must not lose unmodeled keys or corrupt quoted titles.
+        (store / 'global').mkdir(exist_ok=True)
+        (store / 'global' / 'procedure_cite-unmodeled.md').write_text("""---
+id: cite-unmodeled
+type: procedure
+scope: global
+title: Unmodeled keys
+status: active
+created: 2026-05-31
+modified: 2026-05-31
+evidence: [memory eval]
+description: hand written
+metadata:
+  owner: team-a
+---
+Body.
+""")
+        (store / 'global' / 'procedure_cite-quotes.md').write_text("""---
+id: cite-quotes
+type: procedure
+scope: global
+title: He said "hi"
+status: active
+created: 2026-05-31
+modified: 2026-05-31
+evidence: [memory eval]
+---
+Body.
+""")
+        (store / 'global' / 'procedure_cite-single.md').write_text("""---
+id: cite-single
+type: procedure
+scope: global
+title: 'it''s mine'
+status: active
+created: 2026-05-31
+modified: 2026-05-31
+evidence: [memory eval]
+---
+Body.
+""")
+        (store / 'global' / 'procedure_cite-uses.md').write_text("""---
+id: cite-uses
+type: procedure
+scope: global
+title: Usage counter
+status: active
+created: 2026-05-31
+modified: 2026-05-31
+evidence: [memory eval]
+---
+Body.
+""")
+        for ident in ('cite-unmodeled', 'cite-quotes', 'cite-single'):
+            command(store, 'cite', '--outcome', 'misled', ident)
+        command(store, 'cite', '--outcome', 'used', 'cite-uses')
         consolidation = command(store, 'consolidate', '--dry-run')
         consolidation_output = consolidation.stdout
         inbox_import = command(store, 'import-inbox', '--all')
@@ -209,6 +274,24 @@ Import valid drafts even when another inbox file is malformed.
                 and (inbox / 'invalid-import.md').exists()
                 and not (inbox / 'valid-import.md').exists()
                 and (store / 'repos' / 'acme-alpha' / 'procedure_valid-inbox-import.md').exists()
+            ),
+            'inbox_import_keeps_commas_inside_evidence_items': (
+                (store / 'repos' / 'acme-alpha' / 'failure-shield_comma-evidence-survives-import.md').exists()
+                and 'evidence: ["2026-05-31: staged 985 files, then git checkout aborted", "second item"]'
+                in (store / 'repos' / 'acme-alpha' / 'failure-shield_comma-evidence-survives-import.md').read_text()
+            ),
+            'cite_preserves_unmodeled_frontmatter': (
+                (store / 'global' / 'procedure_cite-unmodeled.md').exists()
+                and 'description: hand written' in (store / 'global' / 'procedure_cite-unmodeled.md').read_text()
+                and 'metadata:' in (store / 'global' / 'procedure_cite-unmodeled.md').read_text()
+            ),
+            'cite_round_trips_quoted_titles': (
+                'title: "he said \\"hi\\""'
+                in (store / 'global' / 'procedure_cite-quotes.md').read_text().lower()
+                and "it's mine" in (store / 'global' / 'procedure_cite-single.md').read_text()
+            ),
+            'cite_counts_used_outcome': (
+                'uses: 1' in (store / 'global' / 'procedure_cite-uses.md').read_text()
             ),
         }
         hits = expected = correct_empty = empty_cases = superseded_leaks = scope_leaks = 0

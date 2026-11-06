@@ -237,6 +237,17 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
             ):
                 findings.append((name, line, "swallowed-call",
                                  "memory command failure is hidden"))
+            # State and gate commands must surface failure; audit logging is the one
+            # legitimate exception because it cannot change a pipeline decision. A hook
+            # that must never block a session opts out with a `crew-lint: allow-swallow`
+            # comment on its own line.
+            if "~/.agent/bin/" in value and "log-metric.py" not in value and (
+                "2>/dev/null" in value or re.search(r"\|\|\s*true", value)
+            ):
+                exempt = "crew-lint: allow-swallow" in value
+                if not exempt and not re.search(r"\|\|\s*(echo|printf|exit)", value):
+                    findings.append((name, line, "swallowed-call",
+                                     "agent command failure is hidden"))
         if path.suffix == ".md" and ("/agents/" in name or path.name == "SKILL.md"):
             if text.startswith("---"):
                 agent_frontmatter = text.split("---", 2)[1]

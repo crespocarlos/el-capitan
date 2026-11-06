@@ -2,7 +2,12 @@
 
 **A spec-driven AI engineering crew for Cursor and Claude Code.**
 
-El Capitan gives you a team of coordinated AI agents that follow a structured pipeline — from drafting a spec to opening a pull request. You stay in control at two gates: you approve the spec before any code is written, and you approve the commit message before anything is pushed. Everything in between is automated.
+El Capitan gives you a team of coordinated AI agents that follow a structured pipeline — from drafting a spec to opening a pull request. You stay in control at two gates: you approve the spec before any code is written, and you approve the PR before anything is pushed. Everything in between is automated.
+
+Gate 1 is recorded on approval: `crew-specwriter` stops until the user approves, then runs
+`crew-ls.py --mark-approved "$TASK_DIR"` to move the spec to `APPROVED`. Gate 2 is the push and PR
+creation in `crew-open-pr`, which shows the title, description, base, and target repo first.
+Autopilot chains between gates, never through them.
 
 Works in any git repository. All state lives outside your repos. No cloud sync, no vendor lock-in.
 
@@ -330,16 +335,18 @@ Always-loaded context is kept minimal on purpose:
 
 | File | Lines | Loaded |
 |---|---|---|
-| `agent-output.mdc` | ~41 | Every session |
-| `crew-orchestrator.mdc` | ~108 | Every session |
-| `crew-router.mdc` | ~81 | Every session |
-| `personal.mdc` | ~66 | Every session |
-| `memory-capture.mdc` | ~38 | Every session |
-| `prompt-engineering.mdc` | ~87 | When editing `.md` / `.mdc` files |
-| `typescript.mdc` | ~47 | When editing `.ts` / `.tsx` files |
-| `.claude/CLAUDE.md` | ~74 | Every session (Claude Code) |
+| `agent-output.mdc` | 56 | Every session |
+| `crew-orchestrator.mdc` | 122 | Every session |
+| `crew-router.mdc` | 103 | Every session |
+| `personal.mdc` | 146 | Every session |
+| `memory-capture.mdc` | 38 | Every session |
+| `prompt-engineering.mdc` | 97 | When editing `.md` / `.mdc` files |
+| `typescript.mdc` | 62 | When editing `.ts` / `.tsx` files |
+| `.claude/CLAUDE.md` | 88 | Every session (Claude Code) |
 
-Load conditions are for Cursor. Claude Code imports `prompt-engineering.mdc` and `typescript.mdc` through `.claude/CLAUDE.md`, so both load every Claude session. `crew-lint.py --budget` fails when Cursor's always-on rules exceed about 7,000 tokens.
+Counts are checked by `crew-lint.py --budget`, which also fails when the always-on set exceeds about
+7,000 estimated tokens. Load conditions are for Cursor; Claude Code imports `prompt-engineering.mdc`
+and `typescript.mdc` through `.claude/CLAUDE.md`, so both load every Claude session.
 
 Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` and `.agent/scripts/` — not in agent files.
 
@@ -361,8 +368,9 @@ install time:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| `PreToolUse` / Cursor pre-execution | Bash, Write, Edit | Blocks destructive Git commands, pulling a PR into the local checkout (`gh pr checkout`, fetching `pull/<n>` refs), and writes outside the active worktree |
-| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `check-publish.sh` blocks commits whose staged lines match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists |
+| `PreToolUse` / Cursor pre-execution | Bash, Write, Edit | `block-destructive-git.sh` blocks `git reset --hard`, `git clean -f`, force pushes (including `-f` and through `git -C`/`-c`), pulling a PR into the local checkout (`gh pr checkout`, `pull/<n>` refs), and local PR-ref reads. `check-write-boundary.sh` blocks writes outside the active worktree. Both fail closed: unparsable input or a missing `jq` denies the command. |
+| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `check-publish.sh` blocks commits whose staged lines match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists. It parses the directory from the command, not from text inside a quoted commit message, and falls back to the session `cwd` when the named path is not a repository. |
+| `UserPromptSubmit` / `SessionStart` | Each turn | `mode-anchor.sh` injects the active task, status, branch, and task directory so a long session does not drift out of the pipeline. Fails silent by design. |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
 | `SessionStart` | Session begins | Loads bounded memory context and records session state (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
 | `SessionEnd` / `Stop` | Session ends | Records session telemetry |

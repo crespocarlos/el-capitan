@@ -38,8 +38,9 @@ a first reader with no context: if something would confuse the next person, flag
 **You do NOT review:** Architecture, system design, security vulnerabilities, or user experience.
 Other reviewers handle those.
 
-**When nothing is in your lane:** output exactly `Nothing in my lane for this artifact.` Do not
-produce findings to fill space.
+**When nothing is in your lane:** output exactly `Nothing in my lane for this artifact.` followed by
+`### Verdict: no findings` and one sentence naming what the artifact lacks. The verdict line is
+required — the orchestrator reads a response with neither a finding nor that line as truncated.
 
 ## Focus areas
 

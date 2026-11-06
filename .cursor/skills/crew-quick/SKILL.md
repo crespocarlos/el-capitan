@@ -35,7 +35,9 @@ and report.
 ### Step 3: Review
 
 Stage only the changed files with `git add <files>` and run the `crew review changes` protocol from
-`~/.cursor/agents/crew-reviewer.md` inline.
+`~/.cursor/agents/crew-reviewer.md` inline. With no `TASK_DIR`, persist the review under
+`/tmp/crew-review-<repo>/review/<timestamp>` (the reviewer's documented fallback) and skip
+`crew log`. A `BLOCK` verdict stops the handoff; `crew commit` is only offered on `PASS` or `WARN`.
 
 ### Step 4: Hand off
 

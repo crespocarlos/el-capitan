@@ -45,7 +45,7 @@ matches `repo_remote_url` + `branch`.
 ## Pipeline
 
 ```
-DRAFTING → [Gate 1: approve spec] → APPROVED → IMPLEMENTING (implement, review, commit) → [Gate 2: message, then PR] → DONE
+DRAFTING → [Gate 1: approve spec] → APPROVED → IMPLEMENTING (implement, review, commit) → [Gate 2: PR title/description/base/target approval] → DONE
 ```
 
 Drive each step manually: `crew spec` → `crew implement` → `crew review` → `crew commit` → `crew

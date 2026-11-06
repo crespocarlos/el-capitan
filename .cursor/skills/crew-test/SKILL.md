@@ -44,8 +44,14 @@ CHANGED_FILES=$(git diff --name-only)
 ### Step 3: Extract exported symbols
 
 ```bash
-grep -h "^export " $CHANGED_FILES 2>/dev/null | grep -oP "(?<=export (function|class|const|type|interface) )\w+"
+printf '%s\n' "$CHANGED_FILES" | while IFS= read -r file; do
+  [ -f "$file" ] || continue
+  grep -h '^export ' "$file"
+done | sed -nE 's/^export (async )?(function|class|const|type|interface|enum) ([A-Za-z0-9_]+).*/\3/p'
 ```
+
+`sed -nE` is POSIX and works on BSD and GNU; `grep -oP` is a GNU extension and fails on macOS, which
+silently degraded discovery to file basenames.
 
 If no symbols are found, use the basenames of changed files (without extension) as symbol
 identifiers.

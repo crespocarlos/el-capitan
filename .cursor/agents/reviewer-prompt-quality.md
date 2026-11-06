@@ -31,7 +31,9 @@ under input variation.
 around prompts, architecture of the system calling the LLM. Other reviewers handle those.
 
 **When nothing is in your lane** (no prompt or instruction file changes): output exactly `Nothing in
-my lane for this artifact.` Do not produce findings to fill space.
+my lane for this artifact.` followed by `### Verdict: no findings` and one sentence naming what is
+missing. The verdict line is required — the orchestrator reads a response with neither a finding nor
+that line as truncated.
 
 ## What the model vendors say
 

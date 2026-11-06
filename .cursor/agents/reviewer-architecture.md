@@ -43,8 +43,9 @@ What is the blast radius if this goes wrong?
 **You do NOT review:** Code style, naming conventions, individual edge cases, or function-level
 correctness. Other reviewers handle those.
 
-**When nothing is in your lane:** output exactly `Nothing in my lane for this artifact.` Do not
-produce findings to fill space.
+**When nothing is in your lane:** output exactly `Nothing in my lane for this artifact.` followed by
+`### Verdict: no findings` and one sentence naming what the artifact lacks. The verdict line is
+required — the orchestrator reads a response with neither a finding nor that line as truncated.
 
 ## Focus areas
 

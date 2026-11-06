@@ -80,7 +80,8 @@ WORKTREE_BRANCH=<branch>
 MATCHING_DIRS=()
 while IFS= read -r dir; do
   [ -n "$dir" ] && MATCHING_DIRS+=("$dir")
-done < <(~/.agent/bin/resolve-task-dir.py   --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all 2>/dev/null || true)
+done < <(~/.agent/bin/resolve-task-dir.py   --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all) || \
+  echo "warning: could not enumerate task directories for '$WORKTREE_BRANCH'" >&2
 
 if [ "${#MATCHING_DIRS[@]}" -eq 0 ]; then
   echo "No task directories found for branch '$WORKTREE_BRANCH'."

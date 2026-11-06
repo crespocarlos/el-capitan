@@ -154,8 +154,9 @@ Severity labels and what they mean:
 | `[needs more info]` | Something unclear that needs an answer before it can be evaluated |
 | `[nit]`             | Minor — polish, naming, style                                     |
 
-For idea/spec reviews, use `[concern]` instead of `[attention]` and `[blocking]` to signal whether
-the plan or reasoning holds up.
+For idea/spec reviews, keep `[blocking]` for a broken plan fundamental (an assumption that does not hold,
+a missing requirement) and use `[concern]` in place of `[attention]` for weaknesses worth addressing.
+`[blocking]` still blocks, so the verdict mapping in `pipeline.md` applies unchanged.
 
 <critical_rules>
 
@@ -164,7 +165,8 @@ the plan or reasoning holds up.
 2. Code snippets (2-5 lines) are REQUIRED on `[blocking]` findings. Recommended on `[attention]`.
    Omit on `[nit]` unless the fix is non-obvious.
 3. Hard cap: 7 findings total. After deduplication, keep highest-severity. Drop the rest entirely.
-4. Zero findings is valid. No action plan. No reviewers section. No padding.
+4. Zero findings is valid. No action plan. No padding. Add a `### Reviewers` section only when a
+   persona failed, was truncated, or returned partial coverage — then name the lens and the gap.
 5. Per-finding length: code snippet (2-5 lines) anchoring the finding, explanation (2-3 sentences),
    fix (1-2 sentences or code block). Every sentence must add information — do not pad.
 6. For idea/spec review: `Fix:` field required on every `[blocking]` and `[concern]` finding —

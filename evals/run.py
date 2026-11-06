@@ -19,6 +19,7 @@ Usage:
 Requires: ANTHROPIC_API_KEY env var
 Results written to: results/<timestamp>/<task_id>/<arm>.json
 """
+from __future__ import annotations
 
 import argparse
 import json
@@ -52,16 +53,12 @@ SPEC_TEMPLATE_PATH = pathlib.Path(__file__).parent.parent / ".agent" / "_SPEC_TE
 def load_spec_template() -> str:
     if SPEC_TEMPLATE_PATH.exists():
         return SPEC_TEMPLATE_PATH.read_text()
-    # Fallback: minimal template
-    return """You are crew-specwriter. Given a feature request, produce a SPEC.md with these sections:
-# Spec: [title]
-## Context — Problem, Scope (in/out), Repo touchpoints
-## Goal — one sentence
-## Acceptance Criteria — Requirements + Non-regression checklists
-## Design Constraints — structural rules, verifiable by inspection
-## Tasks — atomic, independently verifiable, each with Change/Files/Acceptance
-## Tests — typed subsections (Unit, Integration, E2E, Validation)
-"""
+    # A missing template would silently measure a hand-typed stub and still report a
+    # structure delta, so fail loudly instead of substituting a different prompt.
+    raise SystemExit(
+        f"spec template missing: {SPEC_TEMPLATE_PATH} "
+        "(run install.sh; .agent/_SPEC_TEMPLATE.md is a symlink into the spec-writing skill)"
+    )
 
 # ---------------------------------------------------------------------------
 # System prompts per arm

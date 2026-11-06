@@ -42,6 +42,7 @@ respond normally — no routing.
 | `crew debug` symptom | crew-debug skill |
 | `crew handoff` [resume] | crew-handoff skill |
 | `crew ls` [--all] | `~/.agent/bin/crew-ls.py --md [--all]` inline; paste the table outside a code fence |
+| `crew stats` [--since 7d] | `~/.agent/bin/crew-stats.py` inline; report the JSON as written |
 
 **This table is authoritative.** Do not override it with judgment calls.
 

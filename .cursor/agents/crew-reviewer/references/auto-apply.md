@@ -66,7 +66,7 @@ action?
   4. Run `git add -u` to re-stage the modified files.
   5. Output a compact summary:
      ```
-     Auto-applied: N fixes (N blocking, N concern, N nit) across M file(s)
+     Auto-applied: N fixes (N blocking, N attention, N nit) across M file(s)
      Sibling fixes: N additional instances fixed
      ```
   6. Then output `crew log` line and: > Next: run `crew commit` to continue, or run `crew review
@@ -113,7 +113,7 @@ After outputting the consolidated report, check:
   7. Output the revised idea under `## Revised Idea`.
   8. Output a compact summary:
      ```
-     Auto-applied: N fixes (N blocking, N concern, N nit)
+     Auto-applied: N fixes (N blocking, N attention, N nit)
      Self-review: clean  ← or: N fixed inline
      ```
   9. Then output the convergence check, `crew log` line, and: > Next: run `crew spec` to turn this
@@ -133,21 +133,3 @@ After outputting the consolidated report, check:
   - **Otherwise:** increment iteration counter, run the full review+apply cycle again on the `##
     Revised Idea` from the previous iteration, prepending each cycle's output with `--- Iteration N
     ---`.
-
-## Step 9: Extensibility
-
-The reviewer roster is extensible. To add a domain-specific reviewer:
-
-1. Create a new `.cursor/agents/reviewer-<name>.md` file with YAML frontmatter (`name`,
-   `description`, `tools: Read, Grep, Glob, SemanticSearch,
-   mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis,
-   mcp__semantic-code-search__discover_directories,
-   mcp__semantic-code-search__read_file_from_chunks`, `readonly: true`, `maxTurns: 12`) and a
-   persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
-   Reviewer personas are analysis-only — set `readonly: false` only if the persona genuinely needs
-   to write files (e.g. auto-applying fixes), and document why.
-2. Add a signal rule in Step 4 of this orchestrator to determine when the reviewer activates
-3. Assign a context tier in the dispatch table (Step 6)
-
-For example, an SRE team could add a `reviewer-observability.md` persona that activates on
-monitoring/alerting files and checks query quality, false positive risk, and alert actionability.
