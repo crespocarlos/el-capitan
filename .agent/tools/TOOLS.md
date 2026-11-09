@@ -28,7 +28,10 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 - `review-findings.py persist --files` records the reviewed paths and gates evidence against them;
   it deliberately does not compare that list with the diff. `persist` runs in three modes with no
   single base ref, so inferring one would be wrong more often than right. Tree identity is carried by
-  `--head` instead: `--mark-done` refuses unless the reviewed commit is an ancestor of HEAD.
+  `--head` instead: `--mark-done` refuses unless the reviewed commit is an ancestor of HEAD. In PR
+  mode `--head` is the GitHub head SHA, which the local checkout never fetches, so `persist` records
+  it without a local existence check and requires it explicitly. A PR review is never a valid
+  `--mark-done` ancestor and `persist` rejects PR artifacts under a task directory.
 - `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally
   rebased; it is never used by a skill on its own initiative.

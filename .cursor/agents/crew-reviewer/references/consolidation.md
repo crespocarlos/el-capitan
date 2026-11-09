@@ -5,10 +5,11 @@ repository: every `[blocking]` and `[attention]` candidate is verified in the so
 kept (see "Verify against the repository"). Never re-review the artifact for new findings.
 
 **Completion check:** Before evaluating a persona response, treat it as incomplete only when the
-harness reports truncation, it ends mid-sentence/list/code fence, or it contains neither a
-`### Verdict: no findings` line nor a complete labeled finding. A short response alone is valid. Relaunch an
-incomplete persona once with a narrower evidence package and a request for a complete verdict; if it
-remains incomplete, persist the failure artifact and name the gap under `### Reviewers`.
+harness reports truncation, it ends mid-sentence/list/code fence, or it contains neither a complete
+`### Verdict: no findings` line, a complete documented finding, nor an explorer section with an
+item. A short response alone is valid. Relaunch an incomplete persona once with a narrower evidence
+package and a request for a complete verdict; if it remains incomplete, persist the failure artifact
+and name the gap under `### Reviewers`.
 
 ### Challenge each finding before keeping it
 
@@ -65,9 +66,12 @@ of whatever the reviewers returned.
 ### Verify against the repository
 
 In PR mode, "the repository" is the PR head read through `gh` (`gh pr diff`, `gh api
-.../contents/<path>?ref=<headSHA>`), never the local working tree and never a checkout of the PR.
-The two targeted reads below mean up to two `gh api` reads at that head SHA. Do not validate a PR
-finding through local `Read`, `Grep`, semantic search, or filesystem commands.
+"repos/.../contents/<path>?ref=<headSHA>"` with the URL quoted), never the local working tree and
+never a checkout of the PR. The two targeted reads below mean up to two `gh api` reads at that head
+SHA. Do not validate a PR finding through the local checkout — no file reads, repository search, or
+other filesystem commands, whatever the harness calls them (Cursor `Read`/`Grep`/`SemanticSearch`,
+Claude Code's native tools, plain shell). When the cited path itself is uncertain, resolve it by
+listing the parent directory in one call rather than fetching guessed paths.
 
 For each `[blocking]` and `[attention]` candidate in a code review, confirm the claim in the current
 source with at most two targeted reads (the cited lines plus one caller, guard, or definition).

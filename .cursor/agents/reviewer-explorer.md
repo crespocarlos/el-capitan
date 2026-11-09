@@ -19,14 +19,16 @@ summary and stop.
 
 ## How to explore
 
-**Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
+**Tool priority and general rules:** follow `crew-explorer-conventions.mdc` when it is loaded.
+Regardless of rule injection, prefer a semantic index when one is available; otherwise search with
+the native search tool, then read only the ranges that search identified. Never read full files.
 
 ### PR validator mode
 
-When the prompt supplies `## PR validation`, do not use any repository tool: `Read`, `Grep`, `Glob`,
-semantic search, and local filesystem state all refer to the reviewer's checkout, not the PR head.
-Use only the supplied `path:line@headSHA` excerpts and contract. If those excerpts cannot settle the
-claim, return:
+When the prompt supplies `## PR validation`, do not use any repository tool: file reads, grep/glob,
+semantic search, and local filesystem state all refer to the reviewer's checkout, not the PR head —
+whatever names this harness gives those tools. Use only the supplied `path:line@headSHA` excerpts and
+contract. If those excerpts cannot settle the claim, return:
 
 ```
 ## PR validation
@@ -36,11 +38,11 @@ claim, return:
 Do not attempt pattern discovery or cross-file tracing in PR validator mode.
 
 **Tool budget (hard limit): ≤12 calls total.**
-- 1 × `mcp__semantic-code-search__list_indices`
-- 4 × semantic search (`mcp__semantic-code-search__semantic_code_search`, `map_symbols_by_query`,
-  `document_symbols`, or `SemanticSearch`)
-- 3 × `Grep` or `Glob`
-- 4 × `Read`
+- 1 × index/availability check (`list_indices`)
+- 4 × semantic search (`semantic_code_search`, `map_symbols_by_query`, `document_symbols`, or the
+  harness's own semantic search)
+- 3 × repository search (path or text: `Grep`/`Glob` in Cursor, the native search tool elsewhere)
+- 4 × file read
 
 Allocate roughly: 6 calls for pattern discovery (items 1–5), 6 calls for cross-file tracing (item
 6).

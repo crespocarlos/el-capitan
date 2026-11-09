@@ -131,6 +131,123 @@ def test_persist_strict_rejects_empty_persona_output(tmp: Path) -> None:
     assert not (tmp / "task" / "REVIEW.md").exists()
 
 
+def test_persist_strict_rejects_placeholder_persona_output(tmp: Path) -> None:
+    """A stub with a plausible status word must not pass as a completed persona.
+
+    2026-11-09: `status: dispatched` stubs survived `--strict` because any word was
+    returned verbatim and only a fixed set of six was treated as unusable.
+    """
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    report = tmp / "report.md"
+    report.write_text("x\n")
+    for persona, body in {
+        "adversarial": "### Verdict: no findings\n",
+        "code-quality": "# code-quality raw response captured\nstatus: dispatched\n",
+    }.items():
+        (review_dir / f"{persona}.in.md").write_text("in")
+        (review_dir / f"{persona}.out.md").write_text(body)
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                 "--strict", "--personas", "adversarial", "code-quality")
+    assert result.returncode == 2 and "no output" in result.stderr, result.stdout + result.stderr
+    assert not (tmp / "task" / "REVIEW.md").exists()
+    # The same placeholder alone must fail too, and a real artifact must still pass.
+    (review_dir / "adversarial.out.md").write_text("status: dispatched\n")
+    assert run("persist", "--review-dir", str(review_dir), "--report", str(report),
+               "--strict", "--personas", "adversarial").returncode == 2
+    for persona in ("adversarial", "code-quality"):
+        (review_dir / f"{persona}.out.md").write_text("### Verdict: no findings\n")
+    assert run("persist", "--review-dir", str(review_dir), "--report", str(report),
+               "--strict", "--personas", "adversarial", "code-quality").returncode == 0
+
+
+def test_persist_pr_mode_accepts_head_absent_from_local_repo(tmp: Path) -> None:
+    """A PR review records the GitHub head SHA, which the local checkout never fetches."""
+    task = tmp / "task"
+    review_dir = task / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    report = tmp / "report.md"
+    report.write_text("## Review: PR\n")
+    absent = "0123456789abcdef0123456789abcdef01234567"
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                 "--mode", "pr", "--head", absent)
+    assert result.returncode == 0, result.stderr
+    assert f"Reviewed at: {absent}" in (task / "REVIEW.md").read_text()
+    # Non-PR modes still reject a SHA the local repository cannot resolve.
+    local = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                "--mode", "self", "--head", absent)
+    assert local.returncode == 2 and "is not a commit" in local.stderr
+
+
+def test_persist_pr_mode_requires_a_head_sha(tmp: Path) -> None:
+    review_dir = tmp / "review-root" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    report = tmp / "report.md"
+    report.write_text("## Review: PR\n")
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "pr")
+    assert result.returncode == 2 and "requires --head" in result.stderr
+    assert not (review_dir / "REVIEW.md").exists()
+
+
+def test_persist_pr_mode_rejects_task_dir(tmp: Path) -> None:
+    """A PR review must never overwrite a task's authoritative REVIEW.md."""
+    task = tmp / "task"
+    (task / "review" / "ts").mkdir(parents=True)
+    (task / "SPEC.md").write_text("# T\n\n## Status\nIMPLEMENTING\n")
+    report = tmp / "report.md"
+    report.write_text("## Review: PR\n")
+    result = run("persist", "--review-dir", str(task / "review" / "ts"), "--report", str(report),
+                 "--mode", "pr", "--head", "0123456789abcdef0123456789abcdef01234567")
+    assert result.returncode == 2 and "outside task state" in result.stderr
+    assert not (task / "REVIEW.md").exists()
+
+
+def test_persona_outcome_accepts_every_documented_persona_format(tmp: Path) -> None:
+    """Every real persona response must classify as `ok`, or `--strict` discards the run.
+
+    The regression this guards: `persona_outcome` once accepted only a verdict line or a
+    numbered `N. [blocking]` finding, so the unnumbered formats documented by
+    reviewer-code-quality, reviewer-product-flow, reviewer-prompt-quality, and
+    reviewer-explorer all classified as `unknown` -- and a stricter coverage gate then
+    refused genuinely complete reviews.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("review_findings", TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    accepted = {
+        # reviewer-adversarial / reviewer-architecture: numbered, labeled
+        "numbered": "1. [blocking] **`file.ts` — line 12** — title\n",
+        # reviewer-code-quality / reviewer-product-flow: anchored, unnumbered, unlabeled
+        "anchored": "**`src/a.ts` — line 42** — missing null guard\n\nFix/Response: add a guard.\n",
+        # reviewer-prompt-quality standalone: concept anchor, no file line
+        "concept": "**Ownership** — two documents claim one rule\n\nFix/Response: drop one.\n",
+        # reviewer-explorer: fixed section set, no findings list
+        "explorer": "## Similar patterns\n- `src/b.ts` (lines 10-18) — same retry loop\n",
+        # every persona: explicit no-findings verdict
+        "verdict": "### Verdict: no findings\n",
+    }
+    rejected = {
+        "dispatched": "# raw response captured\nstatus: dispatched\n",
+        "summary_only": "Findings delivered above, see next.\n",
+        "frontmatter_only": "---\npersona: code-quality\ndispatched: yes\n---\n# raw response captured\n",
+        "verdict_marker_only": "### Verdict:\n",
+        "severity_marker_only": "[nit]\n",
+        "unanchored_label": "[nit] rename this\n",
+        "fix_marker_only": "Fix/Response:\n",
+        "explorer_header_only": "## Similar patterns\n",
+        "empty": "",
+    }
+    for name, body in accepted.items():
+        path = tmp / f"{name}.out.md"
+        path.write_text(body)
+        assert module.persona_outcome(path) == "ok", name
+    for name, body in rejected.items():
+        path = tmp / f"{name}.out.md"
+        path.write_text(body)
+        assert module.persona_outcome(path) == "unknown", name
+
+
 def test_canonical_personas_rejects_comma_string_without_split(tmp: Path) -> None:
     import importlib.util
     spec = importlib.util.spec_from_file_location("review_findings", TOOL)

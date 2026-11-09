@@ -17,7 +17,10 @@ canonical names. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
 `--files` is an evidence allowlist, not a diff check: it records what was reviewed and
 gates evidence paths against it. It is deliberately not compared with `git diff`, because
 `persist` runs in three modes with no single base ref. Tree identity is `--head`, which
-`crew-ls.py --mark-done` requires to be an ancestor of HEAD.
+`crew-ls.py --mark-done` requires to be an ancestor of HEAD. In PR mode the head is the
+GitHub SHA, which the local checkout never fetches, so `--head` is recorded without a
+local existence check; it still belongs in every PR review. A PR review also gets a
+warning when it persists into a task dir that has a SPEC.md, because a PR is not a task.
 """
 from __future__ import annotations
 
@@ -36,6 +39,10 @@ LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
 OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}
 PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prompt-quality", "explorer"}
 LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs still normalize
+# Closed vocabulary for a leading `status:` line in `<persona>.out.md`. Only these three
+# failure words are authoritative; anything else (`dispatched`, `done`) falls through to
+# the content check, so a placeholder cannot claim a persona completed.
+PERSONA_STATUSES = {"failed", "skipped", "truncated"}
 CODE_MODES = {"self", "changes", "pr"}
 MAX_FINDINGS = 7
 EMITTED = {"patch", "decide"}
@@ -177,6 +184,9 @@ def persona_outcome(path: Path) -> str:
     finding it reviews cannot flip a good run. The documented success signal is a
     verdict line or a complete labeled finding; an empty artifact is `unknown`, not
     `ok`, because the failure this guards against is a persona that died silently.
+    Only `failed|skipped|truncated` are read from a `status:` line. Any other word
+    (`dispatched`, `done`, `complete`) is not a success claim, so it falls through to the
+    content check and a placeholder without a verdict stays `unknown`.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -186,23 +196,78 @@ def persona_outcome(path: Path) -> str:
         return "unknown"
     declared = re.match(r"\s*(?:#+[^\n]*\n+\s*)?status:\s*(\w+)", text)
     if declared:
-        return declared.group(1).lower()
-    if "### Verdict:" in text or re.search(r"^\s*\d+\.\s*\[(?:blocking|attention|concern|nit|needs more info)\]", text, re.M):
-        return "ok"
-    return "unknown"
+        word = declared.group(1).lower()
+        # Failure words are authoritative; any other word (`dispatched`, `done`) is
+        # not a success claim, so fall through to the content check below.
+        if word in PERSONA_STATUSES:
+            return word
+    return "ok" if has_review_content(text) else "unknown"
+
+
+# Reviewer personas do not all number their findings. `reviewer-code-quality`,
+# `reviewer-product-flow`, and `reviewer-prompt-quality` document an unnumbered
+# `**path — line N** — title` body closed by `Fix/Response:`, and `reviewer-explorer`
+# returns a fixed set of `##` sections. A classifier that accepts only numbered findings
+# would report every real response from those personas as no output and refuse the review.
+EXPLORER_SECTIONS = (
+    "## Similar patterns",
+    "## Potential duplicates",
+    "## Conflicting implementations",
+    "## Prior art",
+    "## Canonical approach",
+    "## Cross-file consistency",
+)
+VERDICT_NO_FINDINGS = re.compile(r"^### Verdict:\s*no findings\s*$", re.M | re.I)
+LABELED_FINDING = re.compile(
+    r"^\s*(?:\d+\.\s*)?\[(?:blocking|attention|concern|nit|needs more info)\]\s+.*?"
+    r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)",
+    re.M | re.I,
+)
+FIX_RESPONSE_FINDING = re.compile(
+    r"(?ms)^\*\*.+?\*\*\s+—\s+\S.*?^Fix/Response:\s+\S"
+)
+EXPLORER_FINDING = re.compile(
+    r"(?m)^(?:" + "|".join(re.escape(section) for section in EXPLORER_SECTIONS) + r")\s*$\n\s*-\s+\S"
+)
+
+
+def has_review_content(text: str) -> bool:
+    """True when the artifact carries a verdict, a finding, or explorer sections.
+
+    Each accepted shape requires content beyond a marker: a complete no-findings verdict, a
+    labeled finding with a location, an unnumbered documented finding plus a non-empty
+    `Fix/Response:`, or an explorer section plus an item. A placeholder (`raw response
+    captured`, `dispatched: yes`) and marker-only output match none.
+    """
+    if VERDICT_NO_FINDINGS.search(text):
+        return True
+    return bool(
+        LABELED_FINDING.search(text)
+        or FIX_RESPONSE_FINDING.search(text)
+        or EXPLORER_FINDING.search(text)
+    )
 
 
 def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:
     """A review where no persona actually ran proves nothing about the change."""
-    outcomes = [persona_outcome(review_dir / f"{persona}.out.md")
-                for persona in canonical_personas(personas, split_commas=False)]
+    outcomes = {persona: persona_outcome(review_dir / f"{persona}.out.md")
+                for persona in canonical_personas(personas, split_commas=False)}
     # `unknown` counts as usable only when the artifact actually carries review content;
     # persona_outcome already returns `unknown` for an empty file.
     unusable = {"failed", "skipped", "truncated", "missing", "unknown"}
-    if all(outcome in unusable for outcome in outcomes):
+    if all(outcome in unusable for outcome in outcomes.values()):
         raise ValueError(
             "every dispatched persona failed, was skipped, or produced no output; "
             "there is no review to persist"
+        )
+    # A placeholder artifact must not ride along behind one real persona: each declared
+    # persona ends as `ok` or an explicit failure word (pipeline.md step 3). `unknown`
+    # means the file carries no verdict, no labeled finding, and no declared failure.
+    stubs = sorted(name for name, outcome in outcomes.items() if outcome in {"unknown", "missing"})
+    if stubs:
+        raise ValueError(
+            f"{', '.join(stubs)} produced no output or a placeholder; write the real response "
+            "or declare `status: failed|skipped|truncated` before persisting"
         )
 
 
@@ -210,6 +275,13 @@ def persist(args: argparse.Namespace) -> int:
     args.review_dir = args.review_dir.resolve()
     if args.review_dir.parent.name != "review":
         raise ValueError(f"--review-dir must be <task>/review/<timestamp>, got {args.review_dir}")
+    owner = args.review_dir.parent.parent
+    if args.mode == "pr" and not args.head.strip():
+        raise ValueError("--mode pr requires --head with the reviewed GitHub SHA")
+    if args.mode == "pr" and (owner / "SPEC.md").is_file():
+        raise ValueError(
+            "PR reviews must persist outside task state; use /tmp/crew-review-<repo>/review/<timestamp>"
+        )
     if args.strict:
         if not args.personas:
             raise ValueError("--strict requires --personas")
@@ -235,10 +307,14 @@ def persist(args: argparse.Namespace) -> int:
         # Accept a reviewed ancestor: the documented order commits after review, so an
         # exact-HEAD match would fail every first attempt at --mark-done. Verify the SHA
         # exists here so a wrong-repo SHA is rejected at write time, not at close-out.
-        exists = subprocess.run(["git", "cat-file", "-e", f"{head}^{{commit}}"],
-                                capture_output=True)
-        if exists.returncode:
-            raise ValueError(f"--head {head} is not a commit in this repository")
+        # PR mode is the exception: the reviewed tree is the GitHub head and the local
+        # checkout never fetches it, so a local existence check rejects every PR review
+        # *after* the persona artifacts are written. Record the identity; do not resolve it.
+        if args.mode != "pr":
+            exists = subprocess.run(["git", "cat-file", "-e", f"{head}^{{commit}}"],
+                                    capture_output=True)
+            if exists.returncode:
+                raise ValueError(f"--head {head} is not a commit in this repository")
         report = report.rstrip() + f"\n\nReviewed at: {head}\n"
     findings = read_findings(args.findings) if args.findings else []
     if args.strict and args.files:
@@ -246,7 +322,6 @@ def persist(args: argparse.Namespace) -> int:
     rows = [f for f in findings if f.get("disposition") == "defer"]
     args.review_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(args.review_dir / "REVIEW.md", report)
-    owner = args.review_dir.parent.parent
     task_report = "REVIEW.md" if args.mode in CODE_MODES else f"REVIEW.{args.mode}.md"
     atomic_write(owner / task_report, report)
     deferred = len(rows)

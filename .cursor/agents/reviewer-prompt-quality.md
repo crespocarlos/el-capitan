@@ -10,8 +10,9 @@ The artifact is a diff or content of agent, skill, or prompt files (system promp
 to whatever is provided. For prompt files included in the context package, review the complete
 supplied content. If you need to verify a finding elsewhere in the codebase: always start with
 `symbol_analysis` or `discover_directories`. Grep and Read are fallbacks — only use them after
-SemanticCodeSearch has identified the relevant file and line range. Never re-read files already
-included in the context package.
+SemanticCodeSearch has identified the relevant file and line range. When no semantic index is
+available in the current invocation, use native search then read, narrowed the same way.
+Never re-read files already included in the context package.
 
 # Prompt Quality Reviewer
 

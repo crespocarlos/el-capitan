@@ -20,9 +20,16 @@ narration.
   user instructions.
 - PR mode is read-only against the local checkout: never run `gh pr checkout`, `git fetch`/`pull` of
   the PR ref, `git switch`, or `git worktree add` for it. Read the diff with `gh pr diff` and file
-  contents at the head SHA with `gh api repos/<owner>/<repo>/contents/<path>?ref=<headSHA>`;
-  verification in PR mode uses those reads, never the working tree. The shell hook
-  `block-destructive-git.sh` denies `gh pr checkout` and `pull/<n>` fetches.
+  contents at the head SHA with `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"`
+  (quoted: an unquoted `?ref=` is a zsh glob and the command dies before `gh` runs); verification in
+  PR mode uses those reads, never the working tree. The shell hook `block-destructive-git.sh` denies
+  `gh pr checkout` and `pull/<n>` fetches.
+- Keep every `gh` evidence read a single literal command with a quoted URL and redirect output to a
+  file on its own. The `gh`/`git` guard rejects commands that a shell loop or variable expansion
+  produces, so a `for` loop over changed paths fails even though each individual read is allowed.
+  Never guess a path from a symbol name: list the parent first
+  (`gh api "repos/<owner>/<repo>/contents/<dir>?ref=<headSHA>" --jq '.[].name'`) instead of paying a
+  404 per guess.
 - Verify every `[blocking]` and `[attention]` candidate against the repository before keeping it,
   per consolidation; never relay an unverified persona claim.
 
@@ -47,9 +54,10 @@ narration.
 For diff modes, gather names, sizes, and change types before loading a full diff. For spec review,
 resolve the task directory with `~/.agent/bin/resolve-task-dir.py`. For idea review, use the
 supplied idea or current topic. For PR mode, if a read-only `gh` command fails with a known
-sandbox-network denial such as `Forbidden`, retry the same command once with the current harness's
-`full_network` permission. Do not alter the read or fall back to a local PR ref. Authentication,
-authorization, and scope failures remain terminal.
+sandbox-network denial such as `Forbidden`, re-run it with the harness's network elevation
+(`full_network` in Cursor; the equivalent sandbox/allowlist grant elsewhere) and keep it for the rest
+of the review instead of retrying command by command. Do not alter the read or fall back to a local
+PR ref. Authentication, authorization, and scope failures remain terminal.
 
 ## Step 3: size gate
 
@@ -86,15 +94,16 @@ claim, and supplied `path:line@headSHA7` excerpts.
 
 **ES|QL / Elasticsearch docs trigger.** When the reviewed content contains ES|QL (`FROM … |`
 queries, `.esql` files, `esql` identifiers) or Elasticsearch/Kibana API claims, add to every
-persona's context package: "Verify ES|QL syntax, function availability, and API behavior via
-`mcp__elastic-docs__search_docs` then `get_document_by_url`; cite the URL. State `unverified` when
-the docs are unreachable." Include `reviewer-explorer` for this check when no persona has the tool.
+persona's context package: "Verify ES|QL syntax, function availability, and API behavior with the
+Elastic docs MCP server (its search and fetch-by-URL tools); cite the URL. State `unverified` when
+the docs are unreachable or the server is not available in this harness." Include
+`reviewer-explorer` for this check when no persona has those tools.
 
 ## Step 6: dispatch
 
 Use the shared dispatch contract. Give each persona its context package and mode-specific task;
-collect raw output without altering it. Personas may run in Ask mode; follow the evidence rules in
-the shared dispatch instructions.
+collect raw output without altering it. Personas may run read-only, and the `claude -p` fallback
+returns stdout only; follow the evidence rules in the shared dispatch instructions.
 
 ## Step 7: consolidate
 
@@ -114,12 +123,12 @@ Adding a reviewer persona touches four places; the first three are code, not pro
 persona is never dispatched:
 
 1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
-   `description`, `tools: Read, Grep, Glob, SemanticSearch,
-   mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis,
-   mcp__semantic-code-search__discover_directories,
-   mcp__semantic-code-search__read_file_from_chunks`, `readonly: true`, `maxTurns: 12`) and a
+   `description`, the search/read `tools` for this harness, `readonly: true`, `maxTurns: 12`) and a
    persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
-   Reviewers are analysis-only; set `readonly: false` only if the persona must write, and say why.
+   Copy the frontmatter from an existing persona rather than inventing tool names. Claude Code reads
+   `tools` but not `readonly`/`maxTurns`, and neither harness needs tool names in the body: never
+   require a specific tool by name in the prompt. Reviewers are analysis-only; set `readonly: false`
+   only if the persona must write, and say why.
 2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
    `review-findings.py`; `select` is what dispatch reads, so Step 4 prose alone dispatches nothing.
 3. **Context tier** — assign the persona to a tier in `context-tiers.md` (Step 5).

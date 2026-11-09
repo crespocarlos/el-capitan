@@ -11,7 +11,8 @@ criteria and non-goals. For PR reviews, enumerate each criterion and mark it sat
 satisfied, contradicted, or unverified before reporting findings. Apply your lens to whatever is
 provided. If you need to verify a finding in the codebase: always start with `symbol_analysis` or
 `discover_directories`. Grep and Read are fallbacks — only use them after SemanticCodeSearch has
-identified the relevant file and line range. Never read full files.
+identified the relevant file and line range. When no semantic index is available in the current
+invocation, use native search then read, narrowed the same way. Never read full files.
 
 # Product Flow Reviewer
 

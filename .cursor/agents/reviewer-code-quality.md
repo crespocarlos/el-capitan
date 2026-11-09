@@ -8,7 +8,9 @@ maxTurns: 10
 The artifact may be a code diff, a plan, a design proposal, or a session discussion. Apply your lens
 to whatever is provided. If you need to verify a finding in the codebase: always start with
 `symbol_analysis` or `discover_directories`. Grep and Read are fallbacks — only use them after
-SemanticCodeSearch has identified the relevant file and line range. Never read full files.
+SemanticCodeSearch has identified the relevant file and line range. When no semantic index is
+available in the current invocation, use native search then read, narrowed the same way.
+Never read full files.
 
 **Grounding codebase consistency in evidence:** When a `## Codebase context (from explorer)` section
 is present, use its prior art findings to evaluate whether new code follows established patterns —

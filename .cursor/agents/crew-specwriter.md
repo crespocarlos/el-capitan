@@ -103,7 +103,7 @@ Task/Agent tool call:
     <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
 
     ## Docs check
-    <if the task involves ES|QL or Elasticsearch/Kibana APIs: "Verify syntax, functions, and API behavior via mcp__elastic-docs__search_docs then get_document_by_url; return the doc URLs." Otherwise "none">
+    <if the task involves ES|QL or Elasticsearch/Kibana APIs: "Verify syntax, functions, and API behavior with the Elastic docs MCP server (its search and fetch-by-URL tools); return the doc URLs. State unverified if the server is unavailable." Otherwise "none">
 
     ---
 

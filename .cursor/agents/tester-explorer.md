@@ -13,14 +13,16 @@ prompt. Your job is to return a structured discovery summary — not to run test
 
 ## How to explore
 
-**Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
+**Tool priority and general rules:** follow `crew-explorer-conventions.mdc` when it is loaded.
+Regardless of rule injection, prefer a semantic index when one is available; otherwise search with
+the native search tool, then read only what search identified.
 
 **Tool budget (hard limit): ≤8 calls total.**
-- 1 × `mcp__semantic-code-search__list_indices`
+- 1 × index/availability check (`list_indices`)
 - 2 × semantic search
-- 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is
-  found)
-- 2 × `Read` (framework config and test file)
+- 3 × repository search (path or text: `Grep`/`Glob` in Cursor, the native search tool elsewhere; one
+  slot used for Playwright discovery **only if** `playwright.config.*` is found)
+- 2 × file read (framework config and test file)
 
 ## What to find
 
@@ -33,17 +35,19 @@ Jest configs. It often contains the canonical test command. Nearer files overrid
 surface any conflict. If the section is missing, say so in your output. Costs 0 tool calls.
 
 **1. Test files** — files that reference the changed symbols. Discovery strategy:
-- When MCP SemanticCodeSearch is available: use `mcp__semantic-code-search__map_symbols_by_query`
-  with KQL `filePath: *test* AND content: "<symbol>"` per symbol.
-- Fallback: `rg <symbol> --include="*.test.*" --include="*.spec.*" -l` per symbol.
-- Also check `Glob` patterns: `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`.
+- When a semantic index is available: search symbols with KQL `filePath: *test* AND content:
+  "<symbol>"` per symbol.
+- Fallback: a text search for `<symbol>` restricted to test paths (`rg -l --glob '*.{test,spec}.*'
+  <symbol>`; use the harness's search tool where `rg` is unavailable).
+- Also search by path for test directories and filenames: `**/*.test.*`, `**/*.spec.*`,
+  `**/__tests__/**`.
 
 **2. Framework discovery** — discover test frameworks and their commands per layer:
 - **unit** (jest/vitest): check `package.json` `scripts` field (prefer `test:unit`, then `test`);
   jest config: `jest.config.js`, `jest.config.ts`, `jest.config.json`; vitest config:
   `vitest.config.js`, `vitest.config.ts`. For every discovered Jest test path, record its nearest
-  ancestor `jest.config.js` from the single `Glob` `**/jest.config.js` (uses the Grep/Glob slot in the
-  budget above; no extra call). If paths resolve to different configs, return separate `node
+  ancestor `jest.config.js` from the single path search `**/jest.config.js` (uses the search slot in
+  the budget above; no extra call). If paths resolve to different configs, return separate `node
   scripts/jest --config <config> <paths...>` commands; never combine the groups. If multiple options
   exist, return the most specific command scoped to the changed module (e.g., `jest
   --testPathPattern=<dir>`).
@@ -51,10 +55,10 @@ surface any conflict. If the section is missing, say so in your output. Costs 0 
   or integration test directories.
 - **e2e** (playwright): look for `playwright.config.ts`, `playwright.config.js`, or `npx playwright
   test` scripts. When Playwright config is found, discover conventions from actual test files:
-  - Find test files: when MCP available, use `mcp__semantic-code-search__map_symbols_by_query` with
-    `kql: "filePath: *playwright* OR filePath: *.spec.* OR filePath: *.test.*"`; fallback: `Glob`
-    `**/*.spec.*` / `**/*.test.*`.
-  - One `Grep` across found files for selector patterns (attributes appearing in `locator()`,
+  - Find test files: when a semantic index is available, search with `kql: "filePath: *playwright*
+    OR filePath: *.spec.* OR filePath: *.test.*"`; fallback: search by path for `**/*.spec.*` /
+    `**/*.test.*`.
+  - One text search across found files for selector patterns (attributes appearing in `locator()`,
     `getBy*`, `data-test-subj`, `data-testid`, etc.) AND auth setup (`storageState` paths,
     `globalSetup` refs, `process.env.*`).
   - Report `selector-convention` (dominant pattern found) and `auth-approach` (auth mechanism, or

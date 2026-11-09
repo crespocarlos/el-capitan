@@ -11,7 +11,9 @@ prompt, treat its findings as assumption signals — if the artifact assumes it 
 implementation of a concept but the explorer found the same concept elsewhere, that assumption is
 broken and should be flagged. If you need to verify a finding in the codebase: always start with
 `symbol_analysis` or `discover_directories`. Grep and Read are fallbacks — only use them after
-SemanticCodeSearch has identified the relevant file and line range. Never read full files.
+SemanticCodeSearch has identified the relevant file and line range. When no semantic index is
+available in the current invocation, use native search then read, narrowed the same way.
+Never read full files.
 
 **Grounding in evidence:** When a `## Codebase context (from explorer)` section is present, use it
 to strengthen or weaken findings: an assumption the explorer confirms is globally unique carries

@@ -15,14 +15,16 @@ changes, critique the code, or guess at the intended feature. You never write sp
 
 ## How to explore
 
-**Tool priority and general rules:** follow `crew-explorer-conventions.mdc`.
+**Tool priority and general rules:** follow `crew-explorer-conventions.mdc` when it is loaded.
+Regardless of rule injection, prefer a semantic index when one is available; otherwise search with
+the native search tool, then read only the ranges that search identified. Never read full files.
 
 **Tool budget (hard limit): ≤8 calls total.**
-- 1 × `mcp__semantic-code-search__list_indices`
+- 1 × index/availability check (`list_indices`)
 - 2 × semantic search
-- 3 × `Grep` or `Glob` (one slot used for Playwright discovery **only if** `playwright.config.*` is
-  found)
-- 2 × `Read` (code patterns)
+- 3 × repository search (path or text: `Grep`/`Glob` in Cursor, the native search tool elsewhere;
+  one slot used for Playwright discovery **only if** `playwright.config.*` is found)
+- 2 × file read
 
 ## What to find
 
@@ -56,12 +58,12 @@ lines). These show shape — item 2 shows standards.
 **5. Build/config** — relevant tsconfig, jest config, Cargo.toml, pyproject.toml, or equivalent.
 
 **6. Playwright conventions** — only if a Playwright config exists:
-- First: `Glob` `**/playwright.config.*` — if nothing found, **skip this entire section** (no Grep
-  slot consumed).
-- If found: `Glob` `**/*.spec.*` / `**/*.test.*` to find test files (or use MCP
-  `map_symbols_by_query` with `kql: "filePath: *playwright* OR filePath: *.spec.* OR filePath:
-  *.test.*"` if available).
-- One `Grep` across found files for selector patterns (`locator()`, `getBy*`, `data-test-subj`,
+- First: search by path for `**/playwright.config.*` — if nothing found, **skip this entire section**
+  (no text-search slot consumed).
+- If found: search by path for `**/*.spec.*` / `**/*.test.*` to find test files (or use the semantic
+  index with `kql: "filePath: *playwright* OR filePath: *.spec.* OR filePath: *.test.*"` if
+  available).
+- One text search across found files for selector patterns (`locator()`, `getBy*`, `data-test-subj`,
   `data-testid`, etc.) AND auth setup (`storageState` paths, `globalSetup` refs, `process.env.*`).
 - Report `selector-convention` (dominant pattern found) and `auth-approach` (auth mechanism, or "not
   detected").
