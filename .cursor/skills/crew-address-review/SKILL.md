@@ -42,12 +42,15 @@ If no review is visible in context (new session or context reset):
 
 ```bash
 source ~/.agent/bin/task-env.sh
+~/.agent/bin/task-context.py --artifacts spec,review,deferred,handoff --max-chars 4000
 REPO=$(basename $(git rev-parse --show-toplevel))
 OUTPUT_DIR=${TASK_DIR:-/tmp/crew-review-$REPO}
 REVIEW_FILE="$OUTPUT_DIR/REVIEW.md"
 ```
 
-If `$REVIEW_FILE` exists, read it. If neither source is available, stop:
+Use the returned task review when present; otherwise, if `$REVIEW_FILE` exists, read it. If the
+returned review is marked `TRUNCATED`, read `$REVIEW_FILE` in full — a partial review drops findings
+past the cut. If neither source is available, stop:
 
 > "No review found. Run `crew review` first, then `crew review address`."
 
@@ -146,9 +149,35 @@ counts as `deferred`), run `~/.agent/bin/review-findings.py outcome --review-dir
 `<review-dir>/../outcomes.jsonl`. Log `fixed` only in Step 4, after the edit lands.
 
 For each rejected finding, draft a repo-scoped `feedback` candidate into `.inbox/` titled `reviewer
-false positive: <finding>` and include `Don't apply when`. These candidates count toward the Step 4
-limit. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on exit 2 print `warning:
-memory unavailable`.
+false positive: <finding>`. Use this frontmatter, replacing placeholders. `<slug>` is the finding
+title reduced to `[a-z0-9-]`, at most 60 characters; `<repository-key>` is the bare upstream
+repository name (for example `el-capitan`), not the checkout directory:
+
+```yaml
+---
+id: feedback-reviewer-false-positive-<slug>
+type: feedback
+scope: repo:<repository-key>
+title: "reviewer false positive: <finding>"
+paths: []
+keywords: []
+status: active
+created: YYYY-MM-DD
+modified: YYYY-MM-DD
+evidence: ["<review-dir> finding <id>: <rejection reason>"]
+uses: 0
+helped: 0
+misled: 0
+---
+```
+
+Keep the rejection reason to one clause with no double quotes or backslashes; the parser splits an
+invalid inline list at commas without error. With no review directory, cite the `## Review:` heading
+and the finding title instead of `<review-dir>` and `<id>`. Follow the frontmatter with a
+retrieval-ready claim and a `**Don't apply when:**` condition. A file in `.inbox/`
+is only a draft even when its frontmatter has `status: active`; do not import it. These candidates
+count toward the Step 4 limit. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on
+exit 2 print `warning: memory unavailable`.
 
 ### Step 4: Execute approved fixes
 

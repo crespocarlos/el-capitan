@@ -12,10 +12,11 @@ Resolve context:
 
 ```bash
 source ~/.agent/bin/task-env.sh
+~/.agent/bin/task-context.py --artifacts report,progress --max-chars 4000
 ```
 
-Read whatever is available: `$TASK_DIR/REPORT.md`, `$TASK_DIR/PROGRESS.md`, recent `git log -5
---format="%h %s"`. If no active task, synthesize from the current session conversation instead.
+Use the returned available report and progress artifacts, plus recent `git log -5 --format="%h %s"`.
+If no active task, synthesize from the current session conversation instead.
 
 Show the draft and ask: **"Anything to add before I write this?"** If the user says nothing or "no",
 write immediately. Do not prompt for specific fields.

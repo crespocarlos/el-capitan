@@ -27,6 +27,8 @@ Do not proceed with PR creation.
 
 ```bash
 BRANCH=$(git branch --show-current)
+source ~/.agent/bin/task-env.sh
+~/.agent/bin/task-context.py --artifacts spec,review --max-chars 6000
 ```
 
 Detect fork workflow using git remotes — **do not use `gh repo view`** (freezes in VS Code
@@ -64,10 +66,9 @@ fi
 
 Read these sources (in order of priority):
 
-1. **SPEC.md** — resolve `TASK_DIR` using the canonical resolution recipe (see Session Capture block
-   below) and read `$TASK_DIR/SPEC.md` for goal, context, and **Acceptance criteria** to distill
-   **reviewer-sized** "How to test" bullets (max 3–5). Read typed `## Tests` subsection headings
-   only to mention automation (`crew test` / CI).
+1. **SPEC.md** — use the returned SPEC.md when present for goal, context, and **Acceptance
+   criteria** to distill **reviewer-sized** "How to test" bullets (max 3–5). Read typed `## Tests`
+   subsection headings only to mention automation (`crew test` / CI).
 2. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
 3. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if
    the stat is small enough (<30 files)
@@ -138,7 +139,9 @@ last review's `Reviewed at:` commit is an ancestor of HEAD. Because `crew commit
 different branch, or one older than a rebase, must be re-run.
 
 ```bash
-if [ -n "$TASK_DIR" ]; then
+if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
+  echo "error: task state unreadable — PR opened but spec not marked done" >&2
+elif [ -n "$TASK_DIR" ]; then
   ~/.agent/bin/crew-ls.py --mark-done "$TASK_DIR" --pr-url "$PR_URL" \
     --branch "$(git rev-parse --abbrev-ref HEAD)" \
     || echo "warning: PR opened but spec not marked done" >&2

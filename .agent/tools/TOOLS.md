@@ -8,7 +8,7 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 
 | Category | Commands | Purpose |
 | --- | --- | --- |
-| task | `agent-context.py`, `check-spec-typed-tests.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-env.sh`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
+| task | `agent-context.py`, `check-spec-typed-tests.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
 | review | `dispatch_subagents.py`, `get-diff.sh`, `pr-review-actions.py`, `pr-review-threads.graphql`, `review-findings.py` | Review dispatch, diffs, findings, and PR threads |
 | evals | `evals-inspect.py`, `evals-compare.py` | Inspect, compare, and diagnose evaluation runs |
 | memory | `mem.py` | Durable units and immutable observations |
@@ -23,6 +23,13 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 - `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state
   `CREW_TASK_STATE` (`ok`, `none`, `error`). Skills source it instead of copying the resolver block.
   Gates that require a task must abort on `error` rather than treating it as `none`.
+- `task-context.py` is the task-artifact reader. It composes `resolve-task-dir.py` with the task
+  artifacts listed in `ARTIFACTS`, honoring `CREW_TASK_DIR` and `--task-dir` before resolving so it
+  cannot disagree with the shell's cached `$TASK_DIR`. It returns exit 0 with `task.found: false`
+  when no task matches; resolver failures keep their nonzero exit, and resolver warnings reach
+  stderr. `--artifacts` selects a subset and `--max-chars` bounds each artifact, keeping the tail for
+  append-only logs and for reports whose identity fields are appended last. Agents and skills use it
+  for read-side task context; write-side state still goes through `task-env.sh` and `$TASK_DIR`.
 - `crew-ls.py --status-file SPEC.md` is the single reader for the `## Status` contract, implemented
   in `task_status.py`; hooks and other tools import it and must not re-implement it.
 - `review-findings.py persist --files` records the reviewed paths and gates evidence against them;

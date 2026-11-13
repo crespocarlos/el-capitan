@@ -288,7 +288,7 @@ el-capitan/
 │   ├── agent-output.mdc               # Output format for agent replies
 │   ├── memory-capture.mdc             # When to propose durable memory
 │   ├── personal.mdc                   # Personal engineering preferences (always loaded)
-│   ├── prompt-engineering.mdc         # Always-loaded prompt authoring guidance
+│   ├── prompt-engineering.mdc         # Prompt authoring guidance (loaded for *.md, *.mdc)
 │   ├── voice.mdc                      # Writing voice for authored text
 │   └── typescript.mdc                 # TypeScript/React guidance (loaded for *.ts, *.tsx)
 ├── .cursor/
@@ -340,7 +340,7 @@ Always-loaded context is kept minimal on purpose:
 | `crew-router.mdc` | 103 | Every session |
 | `personal.mdc` | 146 | Every session |
 | `memory-capture.mdc` | 38 | Every session |
-| `prompt-engineering.mdc` | 97 | When editing `.md` / `.mdc` files |
+| `prompt-engineering.mdc` | 117 | When editing `.md` / `.mdc` files |
 | `typescript.mdc` | 62 | When editing `.ts` / `.tsx` files |
 | `.claude/CLAUDE.md` | 88 | Every session (Claude Code) |
 

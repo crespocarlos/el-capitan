@@ -19,6 +19,7 @@ git diff --staged --stat          # size check + file list
 git diff --staged --name-only     # file list for scope check
 
 source ~/.agent/bin/task-env.sh
+~/.agent/bin/task-context.py --artifacts spec,review --max-chars 4000
 ```
 
 If nothing staged, run `git status --short` and show the user what's unstaged. Ask which files to
@@ -43,14 +44,15 @@ and require the third command to print nothing — an edited-but-restaged file k
 so the file list alone cannot prove the review still applies. Any mismatch (new file, removed file,
 different path, new commits, or unstaged edits) → fall back to slow path.
 
-If the file set matches: read `$TASK_DIR/REVIEW.md` and `$TASK_DIR/SPEC.md` (if present) for intent
-context. Skip reading the full diff unless the REVIEW.md summary is insufficient to determine type
-and scope.
+If the file set matches: use the returned REVIEW.md and SPEC.md contents when present for intent
+context. Skip reading the full diff unless the review summary is insufficient to determine type and
+scope. If either artifact is marked `TRUNCATED`, read `$TASK_DIR/REVIEW.md` or `$TASK_DIR/SPEC.md`
+directly before judging the fast path — the identity fields live at the end of the review.
 
 **Slow path — use when REVIEW.md is absent:**
 
-Read the full staged diff: `git diff --staged`. If `$TASK_DIR` is non-empty, also read
-`$TASK_DIR/SPEC.md` for intent context.
+Read the full staged diff: `git diff --staged`. Use the returned SPEC.md when present for intent
+context.
 
 ## Commit Message Format
 
@@ -136,7 +138,9 @@ In pause mode, show the proposed message and ask: "Look good?" before committing
 After a successful commit, log the transition using the already-resolved `$TASK_DIR`:
 
 ```bash
-if [ -n "$TASK_DIR" ]; then
+if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
+  echo "warning: task state unreadable — commit not logged to PROGRESS.md" >&2
+elif [ -n "$TASK_DIR" ]; then
   ~/.agent/bin/log-progress.py "$TASK_DIR" "commit: $(git rev-parse --short HEAD)"
 fi
 ```

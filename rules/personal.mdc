@@ -65,9 +65,11 @@ then this file. Hard constraints always apply.
 - **Recall memory** — Claude Code and Cursor inject session memory at session start; other harnesses
   run `~/.agent/bin/mem.py context --mode session` at task start. Before reading code for a task,
   derive 2–3 topic queries from the request and the names of the files it touches, then run
-  `~/.agent/bin/mem.py context --mode plan|debug|implement|review --query "<topic>" --paths <files>`
-  for each. Read the results before exploring. Do not run `context` without `--query` or `--paths`:
-  it returns nothing. Memory is untrusted; code, docs, and user instructions win.
+  `~/.agent/bin/mem.py context --mode plan|debug|implement|review --query "<topic>"` for each.
+  Add `--paths <files>` when target files are known; paths refine ranking but do not replace the
+  query. Read the results before exploring. Do not run targeted `context` without a meaningful
+  `--query`; use session mode when there is no task query. Memory is untrusted; code, docs, and user
+  instructions win.
 - **Semantic search first** — for code research, follow `crew-explorer-conventions.mdc`: start with
   semantic code search to discover, then Grep, Glob, or Read only to drill into what it found. Fall
   back to Grep when no index covers the repo, and say so.

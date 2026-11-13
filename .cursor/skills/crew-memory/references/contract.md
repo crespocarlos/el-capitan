@@ -13,6 +13,10 @@ case $MEM_RC in
 esac
 ```
 
+`--query` is the primary targeted-recall input. Add `--paths <files>` when target files are known
+to refine ranking; paths are optional and never replace a meaningful query. Use `--mode session`
+when there is no task query.
+
 Sandboxed harnesses (for example Cursor's shell sandbox) block writes outside the workspace, so
 `~/.agent/memory` writes (`add`, `journal add`, `import-inbox`, `cite`) can fail with `Operation not
 permitted` and exit 2. Run memory write commands with the harness's unsandboxed or "all" permission

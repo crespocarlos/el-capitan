@@ -28,10 +28,11 @@ Otherwise:
 
 ```bash
 source ~/.agent/bin/task-env.sh
+~/.agent/bin/task-context.py --artifacts task_id,spec,progress,report,handoff --max-chars 4000
 ```
 
-If `$TASK_DIR` is non-empty, read `SPEC.md` + `PROGRESS.md`. If empty, scan globally for other specs
-(see Step 2).
+If `$TASK_DIR` is non-empty, use the returned available artifacts to resume; do not assume a spec,
+progress log, report, or handoff exists. If empty, scan globally for other specs (see Step 2).
 
 **If `CREW_TASK_STATE=error`, stop here** — before the scan above — and report the resolver message:
 the repo state is unreadable (detached HEAD, no `origin` remote), so task state cannot be determined

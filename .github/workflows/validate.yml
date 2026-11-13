@@ -30,6 +30,9 @@ jobs:
       - name: Review-findings tests
         run: python3 evals/reviewer/test_review_findings.py
 
+      - name: Task-context tool tests
+        run: python3 evals/tools/test_task_context.py
+
       - name: Python syntax
         run: python3 -m compileall -q .agent/tools .agent/scripts evals .claude
 
