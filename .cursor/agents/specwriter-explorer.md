@@ -1,7 +1,10 @@
 ---
 name: specwriter-explorer
 description: "Codebase explorer for spec writing. Dispatched by crew-specwriter — do not invoke directly."
-tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
+# Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
+# Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
+# is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
+tools: Read, Grep, Glob, mcp__semantic-code-search__semantic_code_search, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
 readonly: true
 maxTurns: 8
 ---

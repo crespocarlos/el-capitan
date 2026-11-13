@@ -33,6 +33,9 @@ jobs:
       - name: Task-context tool tests
         run: python3 evals/tools/test_task_context.py
 
+      - name: Tool reference lint tests
+        run: python3 evals/tools/test_crew_lint_mcp.py
+
       - name: Python syntax
         run: python3 -m compileall -q .agent/tools .agent/scripts evals .claude
 

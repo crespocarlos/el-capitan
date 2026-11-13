@@ -160,5 +160,37 @@
       "category": "metadata",
       "owner": "repository"
     }
+  ],
+  "mcp_servers": {
+    "semantic-code-search": [
+      "auth_status",
+      "discover_directories",
+      "document_symbols",
+      "list_indices",
+      "map_symbols_by_query",
+      "read_file_from_chunks",
+      "semantic_code_search",
+      "symbol_analysis"
+    ],
+    "elastic-internal-docs": [
+      "get_internal_document_by_url",
+      "search_internal_docs"
+    ]
+  },
+  "native_tools": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "LSP",
+    "NotebookEdit",
+    "Read",
+    "Skill",
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
+    "Write"
   ]
 }

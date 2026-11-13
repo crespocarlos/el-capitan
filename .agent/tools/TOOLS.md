@@ -18,6 +18,11 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 
 - Executable Python tools expose `--help` and use exit code `2` for unavailable infrastructure or
   invalid invocation.
+- `tools.json` also declares the external tool surface that lint resolves. `mcp_servers` maps an MCP
+  server name to the tool names this repository uses on it; `native_tools` lists the harness tool ids
+  an agent may name in a `tools:` line. `crew-lint.py` reports `mcp-tool-unknown` for an
+  `mcp__<server>__<tool>` reference and `tool-id-unknown` for a bare `tools:` id that neither list
+  declares. A project that adds an MCP server or a new native tool id adds it here in the same change.
 - `get-diff.sh` is source-only; it exports review context and intentionally does not implement an
   executable `--help`.
 - `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state

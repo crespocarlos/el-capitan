@@ -117,6 +117,7 @@ parse them for gates or transitions — git/gh plus SPEC.md remain the source of
 - Format: `[YYYY-MM-DD HH:MM:SS] METRIC: <event> [<key=value> ...]`
 - Write with `~/.agent/bin/log-metric.py "$TASK_DIR" <event> [key=value ...]`
 - Events: `implement_start mode=inline`, `implement_complete tasks_passed=N tasks_failed=N`,
-  `completion_protocol phase=ac_check`, `session tool_calls=N`
+ `commit sha=<short>`, `review verdict=pass|block`, `completion_protocol phase=ac_check`,
+ `session tool_calls=N`
 
 See `.agent/tools/TOOLS.md` for the full contract.

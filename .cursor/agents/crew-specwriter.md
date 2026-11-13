@@ -103,7 +103,7 @@ Task/Agent tool call:
     <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
 
     ## Docs check
-    <if the task involves ES|QL or Elasticsearch/Kibana APIs: "Verify syntax, functions, and API behavior with the Elastic docs MCP server (its search and fetch-by-URL tools); return the doc URLs. State unverified if the server is unavailable." Otherwise "none">
+    <if the task involves ES|QL or Elasticsearch/Kibana APIs: "Verify syntax, functions, and API behavior with a docs MCP server if one is configured for this project (its search tool, then its fetch-by-URL tool); return the doc URLs. State unverified if no docs server is available." Otherwise "none">
 
     ---
 
@@ -122,10 +122,11 @@ locations + commands, and build config. Use this summary as the foundation for t
 
 **Thin summary recovery:** If the explorer summary is missing a section (e.g., no patterns found, no
 tests located) or covers fewer than 2 files, do targeted supplementary reads — up to 3 file reads or
-SemanticSearch calls to fill gaps. Don't re-explore broadly; fill the specific holes.
+semantic-search calls to fill gaps. Don't re-explore broadly; fill the specific holes.
 
-**Fallback (no subagent dispatch):** Use SemanticSearch directly. Read at most 2 full files (config
-files or small utilities only). Prefer SemanticSearch scoped to the relevant package.
+**Fallback (no subagent dispatch):** use the semantic index directly: symbol or directory lookup when
+one is available, otherwise a text search followed by a narrowed read. Read at most 2 full files
+(config files or small utilities only).
 
 **Research conventions before drafting.** The exploration summary should include 1–2 canonical
 examples with inline excerpts. The spec's `## Hints` section embeds these — the implementer

@@ -94,11 +94,11 @@ logging.
 ```bash
 # If PASS or WARN:
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-progress.py "$TASK_DIR" "review: passed"
+  ~/.agent/bin/log-metric.py "$TASK_DIR" review verdict=pass
 fi
 # If BLOCK:
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-progress.py "$TASK_DIR" "REVIEW: blocked — critical findings"
+  ~/.agent/bin/log-metric.py "$TASK_DIR" review verdict=block
 fi
 ```
 

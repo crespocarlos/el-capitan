@@ -135,13 +135,14 @@ Show the committed message after: `Committed: <hash> — <message>`
 
 In pause mode, show the proposed message and ask: "Look good?" before committing.
 
-After a successful commit, log the transition using the already-resolved `$TASK_DIR`:
+After a successful commit, log the event using the already-resolved `$TASK_DIR`. A commit does not
+change pipeline state, so this is a `METRIC` audit line, not a `TRANSITION`:
 
 ```bash
 if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
   echo "warning: task state unreadable — commit not logged to PROGRESS.md" >&2
 elif [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-progress.py "$TASK_DIR" "commit: $(git rev-parse --short HEAD)"
+  ~/.agent/bin/log-metric.py "$TASK_DIR" commit sha="$(git rev-parse --short HEAD)"
 fi
 ```
 

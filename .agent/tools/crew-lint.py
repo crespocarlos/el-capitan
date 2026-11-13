@@ -24,6 +24,7 @@ def files(root: Path) -> list[Path]:
         ".cursor/agents/**/*.md",
         ".cursor/skills/**/SKILL.md",
         ".cursor/skills/**/references/*.md",
+        ".agent/tools/*.md",
         ".claude/CLAUDE.md",
         ".claude/settings.json",
         ".cursor/hooks.template.json",
@@ -96,6 +97,95 @@ def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
         if not (tool_dir / str(name)).is_file():
             findings.append((".agent/tools/tools.json", 1, "cataloged-asset-unavailable",
                              f"{name} does not exist"))
+    return findings
+
+
+def load_tool_surface(
+    root: Path,
+) -> tuple[dict[str, list[str]], set[str], list[tuple[str, int, str, str]]]:
+    """Read the MCP-server and native-tool allowlists that tool references are resolved against."""
+    manifest = root / ".agent/tools/tools.json"
+    name = ".agent/tools/tools.json"
+    try:
+        data = json.loads(manifest.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        return {}, set(), [(name, 1, "invalid-tool-catalog", str(error))]
+    findings: list[tuple[str, int, str, str]] = []
+    servers = data.get("mcp_servers")
+    if not isinstance(servers, dict) or not all(
+        isinstance(server, str)
+        and isinstance(tools, list)
+        and all(isinstance(tool, str) for tool in tools)
+        for server, tools in (servers or {}).items()
+    ):
+        findings.append((name, 1, "invalid-tool-catalog",
+                         "mcp_servers must map server names to lists of tool names"))
+        servers = {}
+    native = data.get("native_tools")
+    if not isinstance(native, list) or not all(isinstance(tool, str) for tool in native):
+        findings.append((name, 1, "invalid-tool-catalog",
+                         "native_tools must be a list of tool names"))
+        native = []
+    return servers, set(native), findings
+
+
+def lint_mcp_references(
+    root: Path, paths: list[Path], servers: dict[str, list[str]]
+) -> list[tuple[str, int, str, str]]:
+    """Resolve every mcp__<server>__<tool> reference against the declared allowlist."""
+    findings: list[tuple[str, int, str, str]] = []
+    pattern = re.compile(r"mcp__([a-z0-9-]+)__([a-z0-9_]+)")
+    for path in paths:
+        text = path.read_text(errors="replace")
+        for match in pattern.finditer(text):
+            server, tool = match.group(1), match.group(2)
+            if server not in servers:
+                findings.append((rel(root, path), line_no(text, match.start()), "mcp-tool-unknown",
+                                 f"{match.group(0)}: server {server} is not in mcp_servers"))
+            elif tool not in servers[server]:
+                findings.append((rel(root, path), line_no(text, match.start()), "mcp-tool-unknown",
+                                 f"{match.group(0)}: {server} has no tool {tool} in mcp_servers"))
+    return findings
+
+
+def lint_native_tool_ids(
+    root: Path, paths: list[Path], native: set[str]
+) -> list[tuple[str, int, str, str]]:
+    """Resolve each bare tool name in an agent's `tools:` line against native_tools."""
+    findings: list[tuple[str, int, str, str]] = []
+    agent_dir = root / ".cursor/agents"
+    for path in paths:
+        if agent_dir not in path.parents:
+            continue
+        text = path.read_text(errors="replace")
+        for match in re.finditer(r"^tools:\s*(.+)$", text, re.MULTILINE):
+            for entry in match.group(1).split(","):
+                tool = entry.strip()
+                if not tool or tool.startswith("mcp__"):
+                    continue
+                if tool not in native:
+                    findings.append((rel(root, path), line_no(text, match.start()), "tool-id-unknown",
+                                     f"{tool} is not in native_tools"))
+    return findings
+
+
+def lint_progress_transitions(root: Path, paths: list[Path]) -> list[tuple[str, int, str, str]]:
+    """A log-progress call must pass a state transition, not an event label.
+
+    log-progress.py prefixes `TRANSITION: ` itself, so an event string like "commit: abc123" writes
+    a line that is not a transition. Events belong in log-metric.py, which owns the METRIC line.
+    """
+    findings: list[tuple[str, int, str, str]] = []
+    pattern = re.compile(r"log-progress\.py\"?\s+\"?\$TASK_DIR\"?\s+\"([^\"]*)\"")
+    for path in paths:
+        text = path.read_text(errors="replace")
+        for match in pattern.finditer(text):
+            value = match.group(1)
+            if "→" not in value and "->" not in value:
+                findings.append((rel(root, path), line_no(text, match.start()),
+                                 "progress-not-a-transition",
+                                 f'"{value}" has no state transition; use log-progress for '
+                                 'FROM → TO and log-metric for events'))
     return findings
 
 
@@ -181,6 +271,12 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
     findings.extend(lint_rule_setup(root))
     findings.extend(lint_skill_setup(root))
     all_files = files(root)
+    servers, native, surface_findings = load_tool_surface(root)
+    findings.extend(surface_findings)
+    if not surface_findings:
+        findings.extend(lint_mcp_references(root, all_files, servers))
+        findings.extend(lint_native_tool_ids(root, all_files, native))
+    findings.extend(lint_progress_transitions(root, all_files))
     docs = [root / name for name in ("README.md", "AGENTS.md") if (root / name).is_file()]
     findings.extend(lint_repo_paths(root, all_files + docs))
     rule_dir = root / "rules"

@@ -94,10 +94,11 @@ claim, and supplied `path:line@headSHA7` excerpts.
 
 **ES|QL / Elasticsearch docs trigger.** When the reviewed content contains ES|QL (`FROM … |`
 queries, `.esql` files, `esql` identifiers) or Elasticsearch/Kibana API claims, add to every
-persona's context package: "Verify ES|QL syntax, function availability, and API behavior with the
-Elastic docs MCP server (its search and fetch-by-URL tools); cite the URL. State `unverified` when
-the docs are unreachable or the server is not available in this harness." Include
-`reviewer-explorer` for this check when no persona has those tools.
+persona's context package: "Verify ES|QL syntax, function availability, and API behavior with a docs
+MCP server if one is configured for this project (its search tool, then its fetch-by-URL tool); cite
+the URL. State `unverified` when the docs are unreachable or no docs server is available in this
+harness." Every reviewer persona and `reviewer-explorer` hold a docs server's search and fetch-by-URL
+tools, so this check stays possible when a docs server is configured for the project.
 
 ## Step 6: dispatch
 
@@ -125,10 +126,12 @@ persona is never dispatched:
 1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
    `description`, the search/read `tools` for this harness, `readonly: true`, `maxTurns: 12`) and a
    persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
-   Copy the frontmatter from an existing persona rather than inventing tool names. Claude Code reads
-   `tools` but not `readonly`/`maxTurns`, and neither harness needs tool names in the body: never
-   require a specific tool by name in the prompt. Reviewers are analysis-only; set `readonly: false`
-   only if the persona must write, and say why.
+   Copy the frontmatter from an existing persona rather than inventing tool names. `tools` and
+   `maxTurns` are Claude Code fields and Cursor ignores them — a Cursor subagent inherits every parent
+   tool and is restricted only by `readonly`, which Claude Code ignores — so neither harness needs
+   tool names in the body: never require a specific tool by name in the prompt. Names in `tools` are
+   Claude Code ids (`Read`, `Grep`, `Glob`, `Bash`, `Agent`, …), not Cursor's. Reviewers are
+   analysis-only; set `readonly: false` only if the persona must write, and say why.
 2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
    `review-findings.py`; `select` is what dispatch reads, so Step 4 prose alone dispatches nothing.
 3. **Context tier** — assign the persona to a tier in `context-tiers.md` (Step 5).

@@ -70,6 +70,25 @@ def unresolved(spec_text):
  return bool(UNRESOLVED.search(FENCED.sub('', spec_text)))
 ACTIVITY_FILES = ('SPEC.md','PROGRESS.md','REVIEW.md','REPORT.md')
 LOG_PROGRESS = Path(__file__).resolve().parent/'log-progress.py'
+CHECK_TYPED = Path(__file__).resolve().parent/'check-spec-typed-tests.py'
+
+
+def typed_tests_problem(spec_path):
+ """Return the checker's message when a typed ## Tests block has no runnable Command.
+
+ Approval is when the tests section becomes a commitment, so this runs before Gate 1 is
+ recorded. A spec with no ## Tests section passes: `crew test` reports WARN for it, which is
+ a documented outcome, not an error.
+ """
+ if not CHECK_TYPED.is_file():
+  return f"validator missing: {CHECK_TYPED}"
+ try:
+  r=subprocess.run([sys.executable,str(CHECK_TYPED),str(spec_path)],capture_output=True,text=True)
+ except OSError as error:
+  return f"validator could not run: {error}"
+ if r.returncode==0: return ''
+ detail=(r.stderr or r.stdout).strip().splitlines()
+ return detail[-1] if detail else f"validator exited {r.returncode}"
 
 def name(r):
  return r['meta'].get('slug',r['task'].name)
@@ -162,6 +181,10 @@ def mark_approved(task_dir):
   return 1
  if unresolved(r['text']):
   print(f"error: {name(r)} still has [NEEDS CLARIFICATION] items; a spec with open items cannot be approved",file=sys.stderr)
+  return 1
+ problem=typed_tests_problem(r['task']/'SPEC.md')
+ if problem:
+  print(f"error: {name(r)}: {problem}; fix the ## Tests block before approving",file=sys.stderr)
   return 1
  return 0 if set_status(r,'APPROVED','DRAFTING → APPROVED') else 1
 

@@ -211,6 +211,14 @@ mkspec gate1-open $'# T\n\n## Status\nDRAFTING\n\n## Open questions\n- [NEEDS CL
 fails 'NEEDS CLARIFICATION' python3 "$ls_tool" --mark-approved "$tasks/gate1-open"
 test "$(status_of gate1-open)" = DRAFTING
 
+# A typed ## Tests block with no runnable Command is not approvable: crew test would WARN on it.
+mkspec gate1-notests $'# T\n\n## Status\nDRAFTING\n\n## Tests\n### Unit\n- **Command**: none\n\n- [ ] a\n'
+fails 'spec-typed-tests' python3 "$ls_tool" --mark-approved "$tasks/gate1-notests"
+test "$(status_of gate1-notests)" = DRAFTING
+mkspec gate1-tests $'# T\n\n## Status\nDRAFTING\n\n## Tests\n### Unit\n- **Command**: `pytest`\n\n- [ ] a\n'
+python3 "$ls_tool" --mark-approved "$tasks/gate1-tests" >/dev/null
+test "$(status_of gate1-tests)" = APPROVED
+
 # .task-id records the implementing branch so a worktree still resolves the task.
 mkspec gate1-branch $'# T\n\n## Status\nDRAFTING\n\n- [ ] a\n'
 printf '{"slug":"gate1-branch","branch":"main"}' > "$tasks/gate1-branch/.task-id"

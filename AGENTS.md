@@ -74,18 +74,26 @@ ls -la .claude/skills   # should show → ../.cursor/skills
 ## Editing conventions
 
 - **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, optional
- `readonly`, `tools`, `maxTurns`) followed by protocol prose. Do not set `model:`; see
- `rules/crew-router.mdc` for the model-inheritance rule. Follow the existing style in the file you're
- editing.
+  `readonly`, `tools`, `maxTurns`) followed by protocol prose. The harnesses read different subsets:
+  Cursor reads `name`, `description`, `model`, `readonly`, `is_background` and ignores `tools` and
+  `maxTurns`, inheriting every parent tool instead, so `readonly: true` is Cursor's only tool
+  restriction; Claude Code reads `tools` and `maxTurns` and ignores `readonly`. `tools` therefore speaks
+  Claude Code's ids (`Read`, `Grep`, `Glob`, `Bash`, `Agent`, …), and each frontmatter states which
+  harness reads each key. `crew-lint` resolves every `mcp__<server>__<tool>` reference and every bare
+  `tools:` id against the `mcp_servers` and `native_tools` allowlists in `.agent/tools/tools.json`, so
+  register a new server or tool id there in the same change, and never put an id like that in prose.
+  Do not set `model:`; see `rules/crew-router.mdc` for the model-inheritance rule. Follow the existing
+  style in the file you're editing.
 - **Skill files** (`.cursor/skills/<name>/SKILL.md`) — workflow header, execution model, numbered
   steps. Follow `crew-commit/SKILL.md` as the canonical example.
 - **Routing** — `crew-router.mdc` is the single source of truth. `.claude/CLAUDE.md` says "do not
   duplicate it here" — do not add routing entries to CLAUDE.md.
 - **Templates** — spec templates live in `.cursor/skills/spec-writing/references/` (edit there;
   `.agent/_*SPEC_TEMPLATE.md` are symlinks). Changes affect all future specs.
-- **Tool budget in explorers** — `specwriter-explorer.md` and `tester-explorer.md` each have a hard
-  ≤8 tool call budget. If you add a new discovery step that consumes a slot, update the budget
-  breakdown comment.
+- **Tool budget in explorers** — `specwriter-explorer.md` and `tester-explorer.md` each declare a
+  ≤8 tool call budget in prose and set `maxTurns: 8`. The prose is guidance, not an enforced cap: Cursor
+  ignores `maxTurns`, and Claude Code enforces it as a turn limit (not a call limit). If you add a new
+  discovery step that consumes a slot, update the budget breakdown comment.
 
 ## Using crew commands on this repo
 

@@ -1,7 +1,10 @@
 ---
 name: reviewer-product-flow
 description: "Product manager reviewer for spec alignment, user experience, flow completeness, a11y, and perceived performance. Works on code diffs, plans, proposals, and session discussions. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
+# Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
+# Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
+# is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
+tools: Read, Grep, Glob, mcp__semantic-code-search__semantic_code_search, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
 readonly: true
 maxTurns: 10
 ---
@@ -9,10 +12,10 @@ The artifact may be a code diff, a plan, a design proposal, or a session discuss
 description, or linked ticket is provided in context, use it as the source of truth for acceptance
 criteria and non-goals. For PR reviews, enumerate each criterion and mark it satisfied, partially
 satisfied, contradicted, or unverified before reporting findings. Apply your lens to whatever is
-provided. If you need to verify a finding in the codebase: always start with `symbol_analysis` or
-`discover_directories`. Grep and Read are fallbacks — only use them after SemanticCodeSearch has
-identified the relevant file and line range. When no semantic index is available in the current
-invocation, use native search then read, narrowed the same way. Never read full files.
+provided. If you need to verify a finding in the codebase: start with the semantic index's symbol and
+directory lookup when one is available. A text search and a narrowed read are the fallback — used
+after search has identified the relevant file and line range, or when no semantic index is available
+in this invocation. Never read a full file.
 
 # Product Flow Reviewer
 

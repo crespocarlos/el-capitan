@@ -1,5 +1,5 @@
 ---
-description: "SemanticCodeSearch-first protocol for all code research. Use for any investigation, discovery, exploration, or 'how/where/what' question. Grep and Read are fallbacks — only after SemanticCodeSearch has narrowed scope, or when the exact file/line is already known."
+description: "Semantic-search-first protocol for all code research. Use for any investigation, discovery, exploration, or 'how/where/what' question. Text search and reads are fallbacks — only after semantic search has narrowed scope, or when the exact file/line is already known."
 alwaysApply: false
 ---
 
@@ -11,18 +11,17 @@ alwaysApply: false
 already know the exact file and line I need?"
 
 - **Yes** → a direct search or read is fine.
-- **No** → Use SemanticCodeSearch first. Always.
+- **No** → Search semantically first.
 
-Defaulting to `rg` or `grep` for code exploration is a protocol violation. SemanticCodeSearch finds
-across the full codebase with semantic understanding; grep finds only what you already know to
-search for. Tool names below are Cursor's; in a harness without them, use that harness's equivalent
-search and read tools in the same order, and without any semantic index, search first and read only
-what search narrowed.
+Defaulting to `rg` or `grep` for code exploration is a protocol violation. A semantic index finds
+across the full codebase by meaning; grep finds only what you already know to search for. Tool names
+below are Cursor's; in a harness without them, use that harness's equivalent search and read tools in
+the same order, and without any semantic index, search first and read only what search narrowed.
 
 </critical_rules>
 
-**SemanticCodeSearch is always the preferred tool. Grep, Glob, and Read are fallbacks — only use
-them after SemanticCodeSearch has narrowed the scope, or when you already know the exact file and
+**Semantic search is always preferred. Text search, path search, and reads are fallbacks — only use
+them after semantic search has narrowed the scope, or when you already know the exact file and
 line.**
 
 | Task                                               | Preferred                                          | Fallback (scope already known) |
@@ -34,8 +33,8 @@ line.**
 | Verify an exact string once you know the file      | —                                                  | text search (Cursor `Grep`)            |
 | Find files by path pattern once you know the area  | —                                                  | path search (Cursor `Glob`)            |
 
-**The flow is always: SemanticCodeSearch to discover → Grep/Read/Glob only to drill into what
-SemanticCodeSearch already found. Never start with Grep.**
+**The flow is always: semantic search to discover → text search and reads only to drill into what
+search already found. Never start with a text search.**
 
 ## Decision tree
 
@@ -146,16 +145,20 @@ language: typescript and not filePath: *test*
 
 ## Key rules
 
-✅ **Always start with SemanticCodeSearch** — for any research, discovery, or exploration ✅ Know
-symbol names → `map_symbols_by_query`; exploring concepts → `discover_directories` ✅ Grep/Glob/Read
-are fallbacks — only after SemanticCodeSearch has narrowed the scope ✅ Use actual symbol names from
-analysis, not generic terms ✅ Files with more symbols = more relevant ✅ Chain: discovery → mapping →
-analysis → read
+✅ **Start with semantic search** — for research, discovery, or exploration; it finds across the
+codebase by meaning rather than by the exact string you already know ✅ Know symbol names → symbol or
+directory lookup; exploring concepts → directory discovery first ✅ Text search and file reads are
+fallbacks — after search has narrowed the scope, or when you already know the file and line ✅ Use
+actual symbol names from analysis, not generic terms ✅ Files with more symbols = more relevant ✅
+Chain: discovery → mapping → analysis → read
 
-❌ Never start with Grep when you're exploring — SemanticCodeSearch finds it better ❌ Don't use
-`discover_directories` when you already know exact symbol names (use `map_symbols_by_query`) ❌ Don't
-use generic KQL terms like "handler" or "manager" ❌ Don't read full files before narrowing with
-search first
+❌ Starting with a text search when you are still exploring — it only finds what you already know to
+look for, and it misses renamed or differently-worded implementations ❌ Directory discovery when you
+already know exact symbol names (use a symbol lookup) ❌ Generic query terms like "handler" or
+"manager" ❌ Reading full files before search has narrowed what to read
+
+Without a semantic index in the current invocation, fall back to the harness's own search, then read
+only the range it identified, and say in the report that semantic search was unavailable.
 
 ## Why map_symbols > semantic (when you know what you're looking for)
 
@@ -178,8 +181,9 @@ search first
 
 ## ES|QL construction
 
-For any ES|QL query or Elasticsearch/Kibana docs question, also use the elastic-docs MCP: its search
-tool to find the command, function, or syntax, then its fetch-by-URL tool to confirm it. When that
-server is not available, say the claim is unverified rather than guessing.
-Check ES|QL syntax and function availability there before writing a query. Use semantic-code-search
-only to find how Kibana code builds or consumes the query.
+For any ES|QL query or Elasticsearch/Kibana docs question, also use a docs MCP server if one is
+configured for this project: its search tool to find the command, function, or syntax, then its
+fetch-by-URL tool to confirm it. When no docs server is available in this invocation, say the claim
+is unverified rather than guessing.
+Check ES|QL syntax and function availability there before writing a query. Use the semantic code
+index only to find how Kibana code builds or consumes the query.

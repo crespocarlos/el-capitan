@@ -1,8 +1,11 @@
 ---
 name: specwriter-scope
 description: "Spec scope and implementer critic for PR boundaries, task granularity, and builder compatibility. Dispatched by crew-specwriter — do not invoke directly."
+# Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
+# Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
+# is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
 readonly: true
-tools: Read, Grep, Glob, SemanticSearch, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-docs__search_docs, mcp__elastic-docs__get_document_by_url
+tools: Read, Grep, Glob, mcp__semantic-code-search__semantic_code_search, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
 maxTurns: 5
 ---
 
@@ -10,8 +13,8 @@ maxTurns: 5
 
 Verify spec claims against evidence: code claims (file paths, task granularity, builder feasibility)
 via a semantic index when available (otherwise native search followed by narrowed reads), and ES|QL
-or Elasticsearch/Kibana API claims via the Elastic docs MCP server (its search and fetch-by-URL
-tools). Flag unverifiable claims.
+or Elasticsearch/Kibana API claims via a docs MCP server when one is configured for this project (its
+search tool, then its fetch-by-URL tool). Flag unverifiable claims.
 
 You are both a senior engineer who obsesses over PR boundaries and task granularity, and
 crew-builder's advocate. Your job is to ensure a spec stays within a single coherent PR, that every
