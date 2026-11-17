@@ -22,17 +22,19 @@ No setup required. Skip the bootstrap step in any worktree.
 
 ## Tests
 
-Four hermetic checks, also run in CI (`.github/workflows/validate.yml`):
+Six hermetic checks, also run in CI (`.github/workflows/validate.yml`):
 
 ```bash
 python3 .agent/tools/crew-lint.py --budget          # conventions, catalog, references, token budget
 bash .claude/hooks/fixtures/run.sh                  # guard hooks, crew-ls gates, status reconcile
 python3 evals/memory/run.py                         # memory retrieval and scope isolation
-python3 evals/reviewer/test_review_findings.py      # review-findings normalize/persist/select
+python3 evals/reviewer/test_review_findings.py      # normalize/persist/coverage/validate-map
+python3 evals/tools/test_review_hunks.py            # hunk ids shared by the map and the gate
+python3 evals/tools/test_nightshift_e2e.py          # nightshift e2e client against a stub server
 ```
 
 `crew test` looks for typed `## Tests` commands in a spec; with none it returns WARN. Verification of
-a change means the four commands above plus the **Acceptance criteria** in SPEC.md. Specs use the
+a change means the six commands above plus the **Acceptance criteria** in SPEC.md. Specs use the
 two-line `## Status\n<value>` form.
 
 ## File layout
@@ -44,8 +46,8 @@ two-line `## Status\n<value>` form.
     crew-router.mdc             ← command routing table (single source of truth)
     crew-explorer-conventions.mdc ← shared conventions for explorer subagents
     personal.mdc                ← personal preferences (alwaysApply)
-  agents/       ← canonical agent source files (14 agents)
-  skills/       ← canonical skill source files (17 skills, incl. portable spec-writing)
+  agents/       ← canonical agent source files (15 agents)
+  skills/       ← canonical skill source files (19 skills, incl. portable spec-writing)
 .claude/
   CLAUDE.md     ← Claude Code project context (references @AGENTS.md)
   agents/       ← symlink → ../.cursor/agents
@@ -147,10 +149,13 @@ grep "keyword" .cursor/agents/target-file.md   # presence check
 python3 .agent/tools/crew-lint.py --budget   # routing, catalog, reference integrity, token budget
 bash .claude/hooks/fixtures/run.sh   # hook guards, crew-ls gates, status reconciliation
 python3 evals/memory/run.py   # memory retrieval, scope isolation, conflict handling
-python3 evals/reviewer/test_review_findings.py   # review-findings normalize/persist/select
+python3 evals/reviewer/test_review_findings.py   # normalize/persist/coverage/validate-map
+python3 evals/tools/test_review_hunks.py   # hunk ids shared by the layer map and the gate
+python3 evals/tools/test_nightshift_e2e.py   # nightshift e2e client against a stub server
 ```
 
-All four are hermetic (no network, no API key) and run in CI via `.github/workflows/validate.yml`.
+All six are hermetic (no network, no API key, no nightshift install) and run in CI via
+`.github/workflows/validate.yml`.
 `evals/run.py` and `evals/reviewer/run.py` make model calls and need an API key; they are not part of
 the deterministic gate.
 

@@ -9,7 +9,7 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 | Category | Commands | Purpose |
 | --- | --- | --- |
 | task | `agent-context.py`, `check-spec-typed-tests.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
-| review | `dispatch_subagents.py`, `get-diff.sh`, `pr-review-actions.py`, `pr-review-threads.graphql`, `review-findings.py` | Review dispatch, diffs, findings, and PR threads |
+| review | `dispatch_subagents.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-actions.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | Review dispatch, hunks and layer maps, findings, PR threads, and on-demand e2e runs |
 | evals | `evals-inspect.py`, `evals-compare.py` | Inspect, compare, and diagnose evaluation runs |
 | memory | `mem.py` | Durable units and immutable observations |
 | maintenance | `crew-lint.py`, `crew-stats.py` | Repository validation and operational summaries |
@@ -47,6 +47,18 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 - `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally
   rebased; it is never used by a skill on its own initiative.
+- `review-hunks.py <diff> --out <dir>` writes `hunks.json` and `hunks.md`, numbering every hunk `h1`,
+  `h2`, … in diff order, including one synthetic hunk for a file with no textual change (binary,
+  rename-only, mode change). It owns the ids: the persona Reading map and `review-findings.py
+  coverage` share them. Self-contained by design — hunk parsing is project-agnostic, so it must not
+  depend on another checkout. Its ids, statuses, and lines match nightshift-pr-helper's
+  `parseDiff`; that parity is what lets a crew review and a nightshift review of one PR cite the
+  same `h1`.
+- `nightshift-e2e.py` is the only nightshift-coupled tool: it drives the local nightshift-pr-helper
+  server over HTTP for e2e runs and cannot be generalized. `doctor` is read-only and never calls
+  `/api/state`, which advances the queue and can start a run. It never uses the queue or
+  `post-comment` endpoints, because queued runs post a PR comment by default. Exit 3 means the
+  server is unreachable.
 - `default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the single
   definition used by skills and `manage-worktree.py`.
 - `manage-worktree.py` is stateful. Its usage output is available with `--help`; do not use smoke

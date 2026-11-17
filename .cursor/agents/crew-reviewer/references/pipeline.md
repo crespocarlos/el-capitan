@@ -18,16 +18,20 @@ never `git rev-parse HEAD`; the local checkout never contains the PR head (PR mo
 task's `REVIEW.md`.
 
 1. Write candidate findings to `$REVIEW_ROOT/candidates.json` as a JSON list (or `{"findings":
-   [...]}`) with `{persona, label, title, file, line, disposition, reason, memory_ids}`. `persona`
-   uses the names above (a list when several flagged it); `disposition` is `patch`, `decide`,
-   `defer`, `dropped`, or `merged`.
+   [...]}`) with `{persona, label, title, file, line, disposition, reason, memory_ids, hunks}`.
+   `persona` uses the names above (a list when several flagged it); `disposition` is `patch`,
+   `decide`, `defer`, `dropped`, or `merged`; `hunks` lists the ids from `hunks.json` whose change
+   causes the finding (omit it when there is no hunk index).
 2. Run `~/.agent/bin/review-findings.py normalize "$REVIEW_ROOT/candidates.json" --strict --output
-   "$REVIEW_ROOT/consolidation.json"`. `--strict` fails on an emitted (`patch`/`decide`) `blocking`
+   "$REVIEW_ROOT/consolidation.json"`, adding `--hunks "$REVIEW_ROOT/hunks.json"` when that file
+   exists. With `--hunks`, an emitted `blocking` or `attention` finding must cite at least one hunk,
+   and every cited id must exist; a nit may stay unanchored. `--strict` fails on an emitted (`patch`/`decide`) `blocking`
    or `attention` finding without `verified: true` and an `evidence` location, and on more than 7
    emitted findings; add `verified` and `evidence` to each candidate. In PR mode evidence must use
    the PR-head form `path:line@headSHA7`, and the evidence excerpt belongs in the relevant persona
    `.in.md` or validator prompt. It canonicalizes persona names, assigns SHA-1 fingerprints over
-   `file|label|normalized title`, and merges exact duplicates.
+   `file|label|normalized title`, and merges exact duplicates. When `$REVIEW_ROOT/layers.json`
+   exists, `persist --strict` also runs the hunk coverage gate (step 3).
 3. For every failed, skipped, or truncated dispatch, write `<persona>.out.md` before persistence
    with `status: failed|skipped|truncated`, the failure or coverage gap, and `finding: none`. A
    `.out.md` carrying any other word — or a placeholder summary without a complete no-findings
@@ -46,6 +50,12 @@ task's `REVIEW.md`.
    `--strict` fails when a dispatched persona lacks its `.in.md` or `.out.md`, when every persona
    is failed or skipped, or when a finding's evidence cites a file outside `--files`. `--head`
    records the approved commit so `crew commit` and `--mark-done` can detect a tree that moved.
+   With `layers.json` in `$REVIEW_ROOT`, `--strict` also requires every hunk id in `hunks.json` to
+   sit in exactly one layer (`review-findings.py coverage`, shared with `validate-map`), so a map can
+   never pass validation and then fail coverage. It then appends `### Coverage by layer` to the
+   report: one line per layer with its hunks and the emitted findings that cite them, or `no
+   findings`, so the reader sees which layers drew scrutiny. Do not write that section yourself.
+   With `hunks.json` present, `--strict` repeats the hunk-id check from `normalize`.
    `--strict` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
    directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
 

@@ -116,6 +116,10 @@ Give each kept finding a disposition in the internal record:
   list; append it to the deferred file (see pipeline persistence) and mention the count in one line
   after the list.
 
+When a hunk index exists, carry each finding's hunk ids into its record. Check them against the
+verified location: a persona's id that names a hunk the finding does not depend on is corrected, and
+a `[blocking]` or `[attention]` finding that no hunk causes is pre-existing, so route it to `defer`.
+
 ### Selective empirical verification
 
 After the repository check, classify each remaining `[blocking]` or `[attention]` candidate as

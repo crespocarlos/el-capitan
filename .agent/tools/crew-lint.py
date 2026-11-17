@@ -12,7 +12,12 @@ import re
 import sys
 from pathlib import Path
 
-MAX_ALWAYS_RULE_TOKENS = 7000
+# Always-on rules are paid by every request in every session, so the cap is a ceiling on
+# per-turn context, not a target. 7500 not 7000: the set measured 6972 at the time the cap was
+# raised, leaving 28 tokens of headroom, which forced a correct routing row to be deleted to fit
+# a counter. Headroom has to cover real additions; raise this only with the measurement recorded
+# here, and trim the set instead when it grows without a new rule to justify it.
+MAX_ALWAYS_RULE_TOKENS = 7500
 # The source of truth for skills that may activate without an explicit `crew` command.
 MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test", "spec-writing"}
 

@@ -23,6 +23,10 @@ prompt therefore states this and requires a flat numbered list of findings, each
 severity label and carrying a `path:line` anchor. A conversational summary is never a zero-findings
 verdict; only the `### Verdict: no findings` line is.
 
+When the package has a hunk index, each `[blocking]` and `[attention]` finding also names the hunk
+ids that cause it after its anchor (`src/a.ts:42 (h7)`). A Reading map orders those ids; without
+one, the package still supplies a compact hunk-to-file reference. The dispatch prompt states this.
+
 A persona with no findings ends its response with the line `### Verdict: no findings`.
 
 A persona that judges the artifact outside its lane (no prompt files, no user-facing surface) emits

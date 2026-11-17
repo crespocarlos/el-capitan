@@ -344,9 +344,12 @@ Always-loaded context is kept minimal on purpose:
 | `typescript.mdc` | 62 | When editing `.ts` / `.tsx` files |
 | `.claude/CLAUDE.md` | 88 | Every session (Claude Code) |
 
-Counts are checked by `crew-lint.py --budget`, which also fails when the always-on set exceeds about
-7,000 estimated tokens. Load conditions are for Cursor; Claude Code imports `prompt-engineering.mdc`
-and `typescript.mdc` through `.claude/CLAUDE.md`, so both load every Claude session.
+Counts are checked by `crew-lint.py --budget`, which also fails when the always-on set exceeds
+`MAX_ALWAYS_RULE_TOKENS` in `crew-lint.py`, currently 7,500 estimated tokens (chars ÷ 4). That cap is
+a ceiling on per-request context, not a target: it was raised from 7,000 because the set measured
+6,972 and the 28 remaining tokens could not fit a routing row. Load conditions are for Cursor; Claude
+Code imports `prompt-engineering.mdc` and `typescript.mdc` through `.claude/CLAUDE.md`, so both load
+every Claude session.
 
 Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` and `.agent/scripts/` — not in agent files.
 

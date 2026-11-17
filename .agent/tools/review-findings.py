@@ -9,7 +9,10 @@ to the review directory and to the task-level REVIEW.md (self, changes, pr) or
 REVIEW.<mode>.md (spec, idea) so code verdicts that crew-commit and
 crew-address-review read are never overwritten, and appends deferred findings to DEFERRED.md.
 `outcome` appends an immutable JSONL record whose `persona` is a list of
-canonical names. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
+canonical names. `coverage` fails when a hunk id is unassigned, assigned twice, or
+unknown to the hunk index; `validate-map` applies that rule plus the review-map contract
+to a whole `review.json`, and `persist --strict` runs `coverage` whenever `layers.json`
+sits next to `hunks.json`. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
 `select` prints the reviewer personas a review must dispatch. `normalize
 --strict` rejects emitted blocking/attention findings without `verified` and
 `evidence`, and more than MAX_FINDINGS emitted findings. `persist --strict
@@ -167,6 +170,10 @@ def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
 
 def normalize(args: argparse.Namespace) -> int:
     findings = read_findings(args.input)
+    if args.strict and args.hunks:
+        # Validate every candidate before deduplication: otherwise a duplicate's malformed
+        # attribution is silently discarded, or its valid hunk never reaches the coverage report.
+        check_hunk_refs(findings, hunk_ids(args.hunks))
     kept, duplicates = {}, []
     for finding in findings:
         existing = kept.get(finding["fingerprint"])
@@ -174,6 +181,8 @@ def normalize(args: argparse.Namespace) -> int:
             for persona in finding.get("persona", []):
                 if persona not in existing.setdefault("persona", []):
                     existing["persona"].append(persona)
+            if isinstance(existing.get("hunks", []), list) and isinstance(finding.get("hunks", []), list):
+                existing["hunks"] = list(dict.fromkeys(existing.get("hunks", []) + finding.get("hunks", [])))
             duplicates.append(
                 {"fingerprint": finding["fingerprint"], "duplicate_of": existing["title"], "title": finding["title"]}
             )
@@ -293,6 +302,202 @@ def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:
         )
 
 
+HUNKS_FILE = "hunks.json"
+LAYERS_FILE = "layers.json"
+
+
+def read_json_object(path: Path, key: str) -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ValueError(f"cannot read {path}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path} is not valid JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must be a JSON object")
+    value = payload.get(key)
+    if not isinstance(value, list):
+        raise ValueError(f"{path} has no {key!r} list")
+    return payload
+
+
+SEVERITIES = {"high", "medium", "low", "nit"}
+MAX_LAYERS = 8
+
+
+def hunk_ids(path: Path) -> list[str]:
+    entries = read_json_object(path, "hunks")["hunks"]
+    if not all(isinstance(entry, dict) for entry in entries):
+        raise ValueError(f"{path}: every hunk must be an object")
+    known = [entry.get("id") for entry in entries]
+    if not all(isinstance(hunk_id, str) and hunk_id for hunk_id in known):
+        raise ValueError(f"{path}: every hunk needs a string id")
+    duplicated = sorted({hunk_id for hunk_id in known if known.count(hunk_id) > 1})
+    if duplicated:
+        raise ValueError(f"{path}: duplicate hunk ids: {', '.join(duplicated)}")
+    return known
+
+
+def check_layers(known: list[str], layers: object) -> tuple[list[str], list[str]]:
+    """Every hunk id lands in exactly one layer, and no layer invents an id.
+
+    A hunk nobody was asked to read is a coverage hole that no amount of persona output
+    reveals, so this is an error rather than a warning.
+    """
+    if not isinstance(layers, list) or not layers:
+        return ["layers must be a non-empty array of layer objects"], []
+    errors: list[str] = []
+    warnings: list[str] = []
+    known_set, seen, layer_ids = set(known), {}, set()
+    for index, layer in enumerate(layers, 1):
+        where = f"layers[{index}]"
+        if not isinstance(layer, dict):
+            errors.append(f"{where} is not an object")
+            continue
+        layer_id = layer.get("id")
+        if not isinstance(layer_id, str) or not layer_id.strip():
+            errors.append(f"{where}.id is missing")
+        elif layer_id in layer_ids:
+            errors.append(f"{where}.id {layer_id!r} is duplicated")
+        else:
+            layer_ids.add(layer_id)
+        if not isinstance(layer.get("explainer"), str) or not layer["explainer"].strip():
+            errors.append(f"{where}.explainer is missing")
+        if not isinstance(layer.get("reviewFocus"), str) or not layer["reviewFocus"].strip():
+            errors.append(f"{where}.reviewFocus is missing")
+        assigned = layer.get("hunks")
+        if not isinstance(assigned, list) or not assigned:
+            errors.append(f"{where}.hunks must be a non-empty list of hunk ids")
+            continue
+        for hunk_id in assigned:
+            if not isinstance(hunk_id, str):
+                errors.append(f"{where}.hunks has a non-string id {hunk_id!r}")
+            elif hunk_id not in known_set:
+                errors.append(f"{where} references unknown hunk {hunk_id!r}")
+            elif hunk_id in seen:
+                errors.append(
+                    f"hunk {hunk_id} is in both {seen[hunk_id]} and {where}; "
+                    "each hunk belongs to exactly one layer"
+                )
+            else:
+                seen[hunk_id] = where
+        notes = layer.get("hunkNotes", {})
+        if not isinstance(notes, dict):
+            errors.append(f"{where}.hunkNotes must be an object keyed by hunk id")
+            notes = {}
+        for note_id in notes:
+            if note_id not in assigned:
+                errors.append(f"{where}.hunkNotes has a note for {note_id}, which is not in its hunks")
+    missing = [hunk_id for hunk_id in known if hunk_id not in seen]
+    if missing:
+        errors.append(f"{len(missing)} hunk(s) in no layer: {', '.join(missing)}")
+    if len(layers) > MAX_LAYERS:
+        errors.append(f"{len(layers)} layers exceeds the maximum of {MAX_LAYERS}")
+    return errors, warnings
+
+
+def check_coverage(hunks_path: Path, layers_path: Path) -> dict:
+    """Every hunk id lands in exactly one layer, and no layer invents an id.
+
+    Shared with `validate-map`, so a map that validates for `crew explain` cannot then be
+    rejected by the persist gate.
+    """
+    known = hunk_ids(hunks_path)
+    layers = read_json_object(layers_path, "layers")["layers"]
+    errors, _ = check_layers(known, layers)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return {"hunks": len(known), "layers": len(layers)}
+
+
+def check_hunk_refs(findings: list[dict], known: list[str]) -> None:
+    """Emitted findings name the hunks whose change causes them, and only real ones.
+
+    A blocking or attention finding that no hunk caused is about code the change did not
+    touch, which consolidation routes to `defer`; a nit may stay unanchored.
+    """
+    known_set = set(known)
+    for f in findings:
+        if f.get("disposition") not in EMITTED:
+            continue
+        refs = f.get("hunks", [])
+        if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+            raise ValueError(f"finding {f['title']!r}: hunks must be a list of hunk ids")
+        unknown = [ref for ref in refs if ref not in known_set]
+        if unknown:
+            raise ValueError(f"finding {f['title']!r} cites unknown hunk(s): {', '.join(unknown)}")
+        if f["label"] in {"blocking", "attention"} and not refs:
+            raise ValueError(
+                f"{f['label']} finding {f['title']!r} cites no hunk; name the hunk(s) whose change "
+                "causes it, or route it to defer"
+            )
+
+
+def layer_coverage(layers: list[dict], findings: list[dict]) -> str:
+    emitted = [f for f in findings if f.get("disposition") in EMITTED]
+    lines = ["### Coverage by layer"]
+    for layer in layers:
+        assigned = set(layer["hunks"])
+        hits = [f for f in emitted if assigned & set(f.get("hunks", []))]
+        result = "; ".join(f"[{f['label']}] {f['title']}" for f in hits) or "no findings"
+        lines.append(f"- {layer.get('title') or layer['id']} ({', '.join(layer['hunks'])}): {result}")
+    unmapped = [f for f in emitted if not f.get("hunks")]
+    if unmapped:
+        lines.append("- outside the map: " + "; ".join(f"[{f['label']}] {f['title']}" for f in unmapped))
+    return "\n".join(lines) + "\n"
+
+
+def coverage(args: argparse.Namespace) -> int:
+    print(json.dumps(check_coverage(args.hunks, args.layers), sort_keys=True))
+    return 0
+
+
+def validate_map(args: argparse.Namespace) -> int:
+    """Check a whole review map (summary, layers, concerns) against the hunk index.
+
+    The contract `crew explain` writes and `crew review` reads, in one place, so a map
+    that renders also passes the persist coverage gate.
+    """
+    review = read_json_object(args.review, "layers")
+    known = hunk_ids(args.hunks)
+    errors, warnings = check_layers(known, review["layers"])
+    if not isinstance(review.get("summary"), str) or not review["summary"].strip():
+        errors.append("summary must be a non-empty markdown string")
+    if "context" in review and not isinstance(review["context"], str):
+        errors.append("context must be a markdown string")
+    if review.get("risk") is not None and review["risk"] not in ("low", "medium", "high"):
+        errors.append("risk must be low, medium, or high")
+    for index, concern in enumerate(review.get("concerns") or [], 1):
+        where = f"concerns[{index}]"
+        if not isinstance(concern, dict):
+            errors.append(f"{where} is not an object")
+            continue
+        if not isinstance(concern.get("severity"), str) or concern["severity"] not in SEVERITIES:
+            errors.append(f"{where}.severity must be one of {', '.join(sorted(SEVERITIES))}")
+        for field in ("title", "detail"):
+            if not isinstance(concern.get(field), str) or not concern[field].strip():
+                errors.append(f"{where}.{field} is missing")
+        if concern.get("hunk") is not None and (
+                not isinstance(concern["hunk"], str) or concern["hunk"] not in known):
+            errors.append(f"{where}.hunk {concern['hunk']!r} is not a hunk in the index")
+    for index, reference in enumerate(review.get("references") or [], 1):
+        where = f"references[{index}]"
+        if not isinstance(reference, dict) or not isinstance(reference.get("title"), str):
+            errors.append(f"{where}.title is missing")
+        elif not reference.get("url") and not reference.get("path"):
+            warnings.append(f"{where} has neither url nor path")
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    if errors:
+        for error in errors:
+            print(f"review-findings: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps({"ok": True, "hunks": len(known),
+                      "layers": len(review["layers"]), "warnings": len(warnings)},
+                     sort_keys=True))
+    return 0
+
+
 def persist(args: argparse.Namespace) -> int:
     args.review_dir = args.review_dir.resolve()
     if args.review_dir.parent.name != "review":
@@ -304,6 +509,8 @@ def persist(args: argparse.Namespace) -> int:
         raise ValueError(
             "PR reviews must persist outside task state; use /tmp/crew-review-<repo>/review/<timestamp>"
         )
+    findings = read_findings(args.findings) if args.findings else []
+    coverage_section = ""
     if args.strict:
         if not args.personas:
             raise ValueError("--strict requires --personas")
@@ -316,7 +523,25 @@ def persist(args: argparse.Namespace) -> int:
         if missing:
             raise ValueError(f"missing persona artifacts in {args.review_dir}: {', '.join(missing)}")
         check_persona_coverage(args.review_dir, args.personas)
+        # A layer map is what proves the personas were pointed at the whole diff: a hunk
+        # nobody was asked to read is a silent coverage hole. Strict only, so a plain
+        # persist never fails on a stray map.
+        layers_path = args.review_dir / LAYERS_FILE
+        hunks_path = args.review_dir / HUNKS_FILE
+        if layers_path.is_file():
+            if not hunks_path.is_file():
+                raise ValueError(
+                    f"{layers_path} has no sibling {HUNKS_FILE}; a layer map without a hunk index cannot be checked"
+                )
+            check_coverage(hunks_path, layers_path)
+            coverage_section = layer_coverage(read_json_object(layers_path, "layers")["layers"], findings)
+        elif hunks_path.is_file():
+            print(f"warning: {HUNKS_FILE} has no {LAYERS_FILE}; hunk coverage not enforced", file=sys.stderr)
+        if hunks_path.is_file():
+            check_hunk_refs(findings, hunk_ids(hunks_path))
     report = args.report.read_text()
+    if coverage_section:
+        report = report.rstrip() + "\n\n" + coverage_section
     if args.files:
         report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(f"- `{name}`\n" for name in args.files)
     # Bind the verdict to the tree it approved. `crew commit` moves HEAD past it, so the
@@ -338,7 +563,6 @@ def persist(args: argparse.Namespace) -> int:
             if exists.returncode:
                 raise ValueError(f"--head {head} is not a commit in this repository")
         report = report.rstrip() + f"\n\nReviewed at: {head}\n"
-    findings = read_findings(args.findings) if args.findings else []
     if args.strict and args.files:
         check_strict([f for f in findings if f.get("disposition") in EMITTED], args.files)
     rows = [f for f in findings if f.get("disposition") == "defer"]
@@ -411,6 +635,8 @@ def main() -> int:
     normalize_parser.add_argument("input", type=Path)
     normalize_parser.add_argument("--output", type=Path)
     normalize_parser.add_argument("--strict", action="store_true")
+    normalize_parser.add_argument("--hunks", type=Path,
+                                  help="hunks.json; with --strict, emitted findings must cite real hunk ids")
     normalize_parser.add_argument("--files", nargs="*", default=[],
                                   help="reviewed paths; strict evidence must point inside this set")
     persist_parser = commands.add_parser("persist")
@@ -429,6 +655,16 @@ def main() -> int:
     select_parser.add_argument("--paths", nargs="*", default=[])
     select_parser.add_argument("--contract", action="store_true", help="a spec or PR contract supplies acceptance criteria")
     select_parser.add_argument("--compat", action="store_true", help="the change alters behavior of an existing consumer")
+    coverage_parser = commands.add_parser("coverage")
+    coverage_parser.add_argument("--hunks", required=True, type=Path,
+                                 help="hunks.json from review-hunks.py")
+    coverage_parser.add_argument("--layers", required=True, type=Path,
+                                 help="layers.json written by the reviewer-layers pre-pass")
+    validate_parser = commands.add_parser("validate-map")
+    validate_parser.add_argument("--review", required=True, type=Path,
+                                 help="review.json written by crew explain")
+    validate_parser.add_argument("--hunks", required=True, type=Path,
+                                 help="hunks.json the map was built from")
     outcome_parser = commands.add_parser("outcome")
     outcome_parser.add_argument("--review-dir", required=True, type=Path)
     outcome_parser.add_argument("--fingerprint", required=True)
@@ -438,7 +674,8 @@ def main() -> int:
     outcome_parser.add_argument("--reason", required=True)
     outcome_parser.add_argument("--memory-id", action="append", default=[])
     args = parser.parse_args()
-    handlers = {"normalize": normalize, "persist": persist, "select": select, "outcome": outcome}
+    handlers = {"normalize": normalize, "persist": persist, "select": select,
+                "outcome": outcome, "coverage": coverage, "validate-map": validate_map}
     try:
         return handlers[args.command](args)
     except (OSError, ValueError, json.JSONDecodeError) as error:

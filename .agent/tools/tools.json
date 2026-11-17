@@ -58,6 +58,20 @@
       "smoke": "--help"
     },
     {
+      "name": "review-hunks.py",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
+      "name": "nightshift-e2e.py",
+      "category": "review",
+      "owner": "crew-e2e",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
       "name": "evals-compare.py",
       "category": "evals",
       "owner": "crew-evals",

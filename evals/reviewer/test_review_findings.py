@@ -16,6 +16,18 @@ def run(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True)
 
 
+def write_map(tmp: Path, known: list[str], mapping: list) -> tuple[Path, Path]:
+    """Write a hunk index and a layer map, so coverage can be exercised without a real diff."""
+    hunks = tmp / "hunks.json"
+    hunks.write_text(json.dumps({"files": [], "hunks": [{"id": hunk_id} for hunk_id in known]}))
+    layers = tmp / "layers.json"
+    layers.write_text(json.dumps({"layers": [
+        {"id": f"L{index}", "explainer": "why", "reviewFocus": "- verify", "hunks": assigned}
+        for index, assigned in enumerate(mapping, 1)
+    ]}))
+    return hunks, layers
+
+
 def test_normalize_canonicalizes_and_merges_duplicate_personas(tmp: Path) -> None:
     source = tmp / "candidates.json"
     source.write_text(json.dumps([
@@ -343,6 +355,248 @@ def test_persist_spec_mode_keeps_code_review(tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (task / "REVIEW.md").read_text() == "## Verdict: PASS\n"
     assert (task / "REVIEW.spec.md").read_text() == "## Review: Spec\n"
+
+
+def test_coverage_accepts_a_fully_mapped_diff(tmp: Path) -> None:
+    hunks, layers = write_map(tmp, ["h1", "h2", "h3"],
+                              [["h1", "h2"], ["h3"]])
+    result = run("coverage", "--hunks", str(hunks), "--layers", str(layers))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"hunks": 3, "layers": 2}
+
+
+def test_coverage_rejects_missing_duplicated_and_unknown_hunks(tmp: Path) -> None:
+    """Each failure is a hunk nobody was asked to read, or one claimed twice.
+
+    A layer map that passes validation but skips a hunk is the failure mode this gate exists
+    for: the review looks complete and one part of the diff was never reviewed.
+    """
+    known = ["h1", "h2", "h3"]
+    cases = {
+        "unassigned": [[["h1", "h2"]], "h3"],
+        "duplicated": [[["h1", "h2"], ["h2", "h3"]], "both"],
+        "unknown": [[["h1", "h2", "h3", "h9"]], "unknown hunk"],
+        "empty layer": [[["h1", "h2", "h3"], []], "non-empty"],
+        "no layers": [[], "non-empty"],
+        "non-string id": [[["h1", ["h2"], "h3"]], "non-string id"],
+    }
+    for name, (mapping, needle) in cases.items():
+        hunks, layers = write_map(tmp, known, mapping)
+        result = run("coverage", "--hunks", str(hunks), "--layers", str(layers))
+        assert result.returncode == 2, f"{name}: expected failure, got {result.stdout}"
+        assert needle in result.stderr, f"{name}: {result.stderr}"
+
+
+def test_coverage_rejects_non_object_hunk_entries_and_malformed_notes(tmp: Path) -> None:
+    hunks = tmp / "hunks.json"
+    layers = tmp / "layers.json"
+    hunks.write_text(json.dumps({"files": [], "hunks": [None]}))
+    layers.write_text(json.dumps({"layers": []}))
+    result = run("coverage", "--hunks", str(hunks), "--layers", str(layers))
+    assert result.returncode == 2 and "every hunk must be an object" in result.stderr, result.stderr
+
+    hunks.write_text(json.dumps({"files": [], "hunks": [{"id": "h1"}]}))
+    layers.write_text(json.dumps({"layers": [{
+        "id": "L1", "explainer": "why", "reviewFocus": "- verify", "hunks": ["h1"], "hunkNotes": []
+    }]}))
+    result = run("coverage", "--hunks", str(hunks), "--layers", str(layers))
+    assert result.returncode == 2 and "hunkNotes must be an object" in result.stderr, result.stderr
+
+
+def test_persist_strict_runs_coverage_only_when_layers_exist(tmp: Path) -> None:
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    report = tmp / "report.md"
+    report.write_text("## Verdict: PASS\n")
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
+            "--strict", "--personas", "adversarial")
+    # No hunk index and no layer map: nothing to cover, so the gate stays out of the way.
+    assert run(*args).returncode == 0, run(*args).stderr
+    (review_dir / "hunks.json").write_text(json.dumps({"files": [], "hunks": [{"id": "h1"}]}))
+    (review_dir / "layers.json").write_text(
+        json.dumps({"layers": [{"id": "L1", "explainer": "why", "reviewFocus": "- verify", "hunks": ["h1"]}]}))
+    assert run(*args).returncode == 0
+    # An unmapped hunk must block persistence, not warn.
+    (review_dir / "hunks.json").write_text(
+        json.dumps({"files": [], "hunks": [{"id": "h1"}, {"id": "h2"}]}))
+    blocked = run(*args)
+    assert blocked.returncode == 2 and "h2" in blocked.stderr, blocked.stderr
+    # A layer map without an index cannot be checked at all.
+    (review_dir / "hunks.json").unlink()
+    orphan = run(*args)
+    assert orphan.returncode == 2 and "hunk index" in orphan.stderr, orphan.stderr
+    # Without --strict a stray map is ignored, so plain callers never see the gate.
+    plain = run("persist", "--review-dir", str(review_dir), "--report", str(report))
+    assert plain.returncode == 0, plain.stderr
+    # A hunk index with no map means the pre-pass failed: persist, but say coverage was skipped.
+    (review_dir / "layers.json").unlink()
+    (review_dir / "hunks.json").write_text(json.dumps({"files": [], "hunks": [{"id": "h1"}]}))
+    skipped = run(*args)
+    assert skipped.returncode == 0 and "coverage not enforced" in skipped.stderr, skipped.stderr
+
+
+def test_normalize_strict_requires_real_hunk_ids_on_emitted_findings(tmp: Path) -> None:
+    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1", "h2"]])
+    source = tmp / "c.json"
+    base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
+            "verified": True, "evidence": "a.ts:3"}
+    cases = [
+        ({**base, "hunks": ["h2"]}, 0, ""),
+        (base, 2, "cites no hunk"),
+        ({**base, "hunks": ["h9"]}, 2, "unknown hunk"),
+        ({**base, "hunks": "h1"}, 2, "list of hunk ids"),
+        ({**base, "label": "nit"}, 0, ""),
+        ({**base, "disposition": "defer"}, 0, ""),
+    ]
+    for finding, code, message in cases:
+        source.write_text(json.dumps([finding]))
+        result = run("normalize", str(source), "--strict", "--hunks", str(hunks))
+        assert result.returncode == code and message in result.stderr, (finding, result.stderr)
+    # Without an index there is nothing to check against, so unanchored findings still pass.
+    source.write_text(json.dumps([base]))
+    assert run("normalize", str(source), "--strict").returncode == 0
+
+
+def test_normalize_strict_merges_duplicate_hunks_and_validates_each_candidate(tmp: Path) -> None:
+    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1", "h2"]])
+    source = tmp / "c.json"
+    base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
+            "verified": True, "evidence": "a.ts:3", "persona": ["adversarial"]}
+    source.write_text(json.dumps([
+        {**base, "hunks": ["h1"]},
+        {**base, "persona": ["code-quality"], "hunks": ["h2", "h1"]},
+    ]))
+    result = run("normalize", str(source), "--strict", "--hunks", str(hunks))
+    assert result.returncode == 0, result.stderr
+    normalized = json.loads(result.stdout)
+    assert normalized["findings"][0]["hunks"] == ["h1", "h2"]
+    assert normalized["findings"][0]["persona"] == ["adversarial", "code-quality"]
+
+    # Validation happens before deduplication, so a malformed duplicate cannot disappear.
+    source.write_text(json.dumps([{**base, "hunks": ["h1"]}, {**base, "hunks": "h2"}]))
+    malformed = run("normalize", str(source), "--strict", "--hunks", str(hunks))
+    assert malformed.returncode == 2 and "list of hunk ids" in malformed.stderr, malformed.stderr
+
+
+def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "hunks.json").write_text(
+        json.dumps({"files": [], "hunks": [{"id": "h1"}, {"id": "h2"}]}))
+    (review_dir / "layers.json").write_text(json.dumps({"layers": [
+        {"id": "L1", "title": "Contract", "explainer": "why", "reviewFocus": "- verify", "hunks": ["h1"]},
+        {"id": "L2", "explainer": "why", "reviewFocus": "- verify", "hunks": ["h2"]},
+    ]}))
+    report = tmp / "report.md"
+    report.write_text("## Review: changes\n")
+    findings = tmp / "findings.json"
+    findings.write_text(json.dumps([
+        {"title": "Guard missing", "label": "attention", "disposition": "patch", "hunks": ["h1"]},
+        {"title": "Rename", "label": "nit", "disposition": "patch"},
+        {"title": "Old bug", "label": "attention", "disposition": "defer"},
+    ]))
+    args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
+            "--findings", str(findings), "--strict", "--personas", "adversarial")
+    result = run(*args)
+    assert result.returncode == 0, result.stderr
+    written = (review_dir / "REVIEW.md").read_text()
+    assert "### Coverage by layer" in written
+    assert "- Contract (h1): [attention] Guard missing" in written
+    assert "- L2 (h2): no findings" in written
+    assert "- outside the map: [nit] Rename" in written
+    assert "Old bug" not in written.split("### Coverage by layer", 1)[1]
+    # The same gate rejects an emitted finding that cites a hunk outside the index.
+    findings.write_text(json.dumps([
+        {"title": "Ghost", "label": "attention", "disposition": "patch", "hunks": ["h7"]}]))
+    blocked = run(*args)
+    assert blocked.returncode == 2 and "unknown hunk" in blocked.stderr, blocked.stderr
+
+
+def test_validate_map_reports_contract_errors_with_layer_index(tmp: Path) -> None:
+    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
+    review = tmp / "review.json"
+    review.write_text(json.dumps({
+        "summary": "what happens",
+        "risk": "high",
+        "layers": [{"id": "L1", "explainer": "why", "reviewFocus": "- verify", "hunks": ["h1", "h9"]}],
+        "concerns": [{"severity": "urgent", "title": "t", "detail": "d", "hunk": "h7"}],
+    }))
+    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
+    assert result.returncode == 1
+    assert "unknown hunk 'h9'" in result.stderr
+    assert "h2" in result.stderr                      # reported as in no layer
+    assert "concerns[1].severity" in result.stderr
+    assert "concerns[1].hunk 'h7'" in result.stderr
+
+
+def test_validate_map_accepts_a_complete_map(tmp: Path) -> None:
+    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
+    review = tmp / "review.json"
+    review.write_text(json.dumps({
+        "summary": "what happens",
+        "risk": "low",
+        "layers": [
+            {"id": "foundation", "kind": "foundation", "title": "types",
+             "explainer": "why", "reviewFocus": "- look", "hunks": ["h1"]},
+            {"id": "core", "title": "logic", "explainer": "why", "reviewFocus": "- check", "hunks": ["h2"],
+             "hunkNotes": {"h2": "the fix"}},
+        ],
+        "concerns": [{"severity": "nit", "title": "t", "detail": "d", "hunk": "h2"}],
+        "references": [{"title": "docs", "url": "https://example.invalid"}],
+    }))
+    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["ok"] is True
+
+
+def test_validate_map_requires_review_focus_and_at_most_eight_layers(tmp: Path) -> None:
+    known = [f"h{index}" for index in range(1, 10)]
+    hunks, _ = write_map(tmp, known, [[hunk] for hunk in known])
+    review = tmp / "review.json"
+    review.write_text(json.dumps({
+        "summary": "what happens",
+        "layers": [
+            {"id": f"L{index}", "explainer": "why", "reviewFocus": "- verify", "hunks": [hunk]}
+            for index, hunk in enumerate(known, 1)
+        ],
+    }))
+    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
+    assert result.returncode == 1 and "exceeds the maximum of 8" in result.stderr, result.stderr
+
+    review.write_text(json.dumps({
+        "summary": "what happens",
+        "layers": [{"id": "L1", "explainer": "why", "hunks": known}],
+    }))
+    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
+    assert result.returncode == 1 and "reviewFocus is missing" in result.stderr, result.stderr
+
+
+def test_validate_map_rejects_a_note_for_a_foreign_hunk(tmp: Path) -> None:
+    """A hunkNotes entry must belong to the layer that carries it, or the note is unreachable."""
+    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
+    review = tmp / "review.json"
+    review.write_text(json.dumps({
+        "summary": "s",
+        "layers": [{"id": "L1", "explainer": "e", "hunks": ["h1"], "hunkNotes": {"h2": "note"}}],
+    }))
+    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
+    assert result.returncode == 1 and "not in its hunks" in result.stderr, result.stderr
+
+
+def test_validate_map_accepts_a_note_for_its_own_hunk(tmp: Path) -> None:
+    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
+    review = tmp / "review.json"
+    review.write_text(json.dumps({
+        "summary": "s",
+        "layers": [{"id": "L1", "explainer": "e", "reviewFocus": "- verify", "hunks": ["h1", "h2"],
+                    "hunkNotes": {"h2": "note"}}],
+    }))
+    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
+    assert result.returncode == 0, result.stderr
 
 
 def main() -> int:

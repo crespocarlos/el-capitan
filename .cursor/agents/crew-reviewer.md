@@ -87,6 +87,37 @@ Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.m
 changed or reviewed path, run `~/.agent/bin/agent-context.py` and include its returned guidance
 content in the context package, from repository root to nearest folder.
 
+**Layer map (diff modes only).** Before packaging, split the diff into numbered hunks and order them
+into layers:
+
+```bash
+# self: ~/.agent/bin/get-diff.sh > "$REVIEW_ROOT/diff.patch"
+# changes: git diff --cached > "$REVIEW_ROOT/diff.patch"
+# PR: gh pr diff <n> -R <owner/repo> > "$REVIEW_ROOT/diff.patch"
+python3 ~/.agent/bin/review-hunks.py "$REVIEW_ROOT/diff.patch" --out "$REVIEW_ROOT"
+```
+
+Then dispatch `reviewer-layers` with `hunks.md`. Extract the contents of its one fenced `json` block
+(without the opening or closing backticks) and write that raw JSON to `$REVIEW_ROOT/layers.json`.
+No block, more than one block, or any text outside the required block is invalid output. It reports no
+findings and is not a persona, so never add it to `--personas`; it only orders the diff. In PR mode
+the diff comes only from `gh pr diff`, never from the local checkout.
+
+Check the map before any persona runs: `review-findings.py coverage --hunks "$REVIEW_ROOT/hunks.json"
+--layers "$REVIEW_ROOT/layers.json"`. On failure (no JSON block, invalid JSON, or hunks left out),
+re-dispatch `reviewer-layers` once with the error text. If it still fails, delete `layers.json` and
+continue without a map, and name the gap in the report.
+
+If `review-hunks.py` exits non-zero the diff is empty or malformed: report that and continue without a
+layer map. Personas then get their normal size-gated package without the `## Reading map` section:
+the full diff below the size gate, spine files plus hunks above it. Without a `layers.json`, `persist --strict` skips
+the coverage gate and warns when `hunks.json` exists, so an unmapped review is never silent. With one,
+`persist --strict` rejects any hunk left out, so a map is never partially applied.
+
+When `hunks.json` exists, append a compact hunk reference to every diff-mode package whether or not
+the layer map exists: each id, file, and changed-line range from `hunks.md`. Without a Reading map it
+does not impose reading order, but it lets every persona cite the ids strict persistence requires.
+
 In PR mode, `agent-context.py` is allowed only for repository guidance. Fetch reviewed code and all
 claim-supporting excerpts from the PR head with `gh`; do not use the local checkout to assemble code
 context. Before a PR validator dispatch, add `## PR validation` with the repository, head SHA, exact

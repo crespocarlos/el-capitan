@@ -37,6 +37,52 @@ never embed a full file in a context package unless the file is under 50 lines. 
 explicit exception above. For large diffs under the spine-focused strategy, limit Tier 3 to spine
 files + their consumers.
 
+## Reading map
+
+When `$REVIEW_ROOT/layers.json` exists, append a `## Reading map` section to **every** persona
+package, after the mode-specific content and before `## Repo memory`. It tells the persona what order
+to read the diff in, which is the one thing a size-tier package cannot express:
+
+```markdown
+## Reading map
+
+Hunks are nightshift-style ids (`h1`, `h2`, …) from `hunks.md`. Read layers in this order; earlier
+layers explain later ones.
+
+Your primary layers: 1, 3
+
+### 1. foundation — Types and the config contract
+Explain: <layer explainer, verbatim>
+Focus: <layer reviewFocus, verbatim>
+Hunks: h1, h4
+  - h4: <hunk note when present>
+  - h4: lines omitted (diff too large); read the file if this hunk matters to your lens
+
+### 2. core — …
+```
+
+**Primary layers.** Name the layers whose `kind` matches the persona's lens, in reading order. The
+persona still reads every layer, but spends its fetch budget on the primary ones first. Omit the line
+when no layer matches.
+
+| Persona | Primary kinds |
+| --- | --- |
+| Adversarial | `core`, `foundation`, `wiring` |
+| Architecture | `foundation`, `wiring` |
+| Code Quality | `core`, `tests`, `mechanical` |
+| Product Flow | `ui`, `wiring`, `docs` |
+| Prompt Quality | `prompts` |
+
+**Omitted lines.** For each hunk that `hunks.json` marks `suppressed` (lines dropped for size) or
+belongs to a file marked `generated`, add a sub-bullet saying so, as in `h4` above. A persona must
+not report a hunk with omitted lines as clean.
+
+Every `[blocking]` and `[attention]` finding cites the hunk ids whose change causes it, next to the
+`file:line` anchor (`[attention] src/a.ts:42 (h7) — …`, or `(h3, h7)`). A finding no hunk causes is
+pre-existing, which consolidation routes to `defer`. The map is orientation, never evidence: a claim
+still needs a verified `path:line` from the package. Do not treat layer boundaries as review
+boundaries — a finding that spans two layers cites hunks from both.
+
 ### Spine files (size-gate strategy)
 
 A diff over roughly 30 changed files or 1,500 changed lines uses the spine strategy. The **spine** is

@@ -37,6 +37,8 @@ respond normally — no routing.
 | `crew create issue` description | crew-create-issue |
 | `crew cleanup` | crew-cleanup |
 | `crew evals` | crew-evals skill |
+| `crew explain` PR\|URL | crew-explain skill |
+| `crew e2e` [PR\|status\|setup] | crew-e2e skill |
 | `crew idp` | crew-idp skill |
 | `crew diagnose` transcript | crew-diagnose skill |
 | `crew debug` symptom | crew-debug skill |
