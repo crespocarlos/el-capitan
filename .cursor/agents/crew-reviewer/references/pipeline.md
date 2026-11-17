@@ -49,10 +49,16 @@ task's `REVIEW.md`.
    `--strict` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
    directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
 
-Build scratch JSON, scripts, and assembled context packages with a shell heredoc
-(`python3 - <<'PY' … PY`). Do not rely on the file-write tool for a path outside the workspace: the
-Cursor `Write` tool refuses paths outside the workspace worktrees, including `/tmp`, while Claude
-Code writes what the sandbox allows. A heredoc works in both.
+Write scratch JSON, scripts, and assembled context packages with the harness's edit or write tool at a
+path that tool permits. Measure the permitted set, do not assume it: the Cursor `Write` tool refuses
+`/tmp` and other paths outside the workspace worktrees, but accepts the task directory under
+`~/.agent/tasks/` and `~/.agent/` generally. `check-write-boundary.sh` allows `$HOME/.agent/`,
+`$HOME/.claude/`, `$HOME/.cursor/`, and `/tmp` — a superset of what the tool allows, so the tool is
+the binding constraint and a `/tmp` path fails before the hook is consulted.
+
+When a scratch file has no permitted home, produce it and consume it in one shell command with a
+heredoc (`python3 - <<'PY' … PY`). A heredoc is the fallback for content that never needs to persist,
+not the default for writing files.
 
 Creating `$REVIEW_ROOT` under `~/.agent/tasks/` fails with `Operation not permitted` in a sandboxed
 shell (Cursor; Claude Code writes it directly). Run the `mkdir`, `normalize`, and `persist` commands

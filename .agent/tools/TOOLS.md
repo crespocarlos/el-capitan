@@ -59,6 +59,44 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 - The repository is standard-library-only. `requirements.txt` documents that deliberate absence of
   third-party dependencies.
 
+## Sandboxed network and `gh`
+
+Every `gh` command needs `api.github.com`, which Cursor's sandbox allowlist does not include, while
+`github.com`, `codeload.github.com`, and `*.githubusercontent.com` are included. In a Cursor-sandboxed
+shell `gh` therefore fails with `Get "https://api.github.com/…": Forbidden` and exits 1, and `gh auth
+status` reports `X Failed to log in … (keyring)` / `The token in keyring is invalid`. Both are the
+network gap, not credentials: `git ls-remote` and `git fetch` work in the same shell, and the same
+commands succeed with `required_permissions: ["full_network"]`.
+
+Run any `gh` call that must reach GitHub with network elevation from the start, and do not suggest
+`gh auth refresh` on the strength of that keyring message. The durable fix is per-workspace state —
+add `api.github.com` to the allowlist in `~/.cursor/sandbox-policies/` — which no repository file can
+set. `curl -s -o /dev/null -w "%{http_code}" https://api.github.com` returns `000` when blocked and a
+real status when allowed, which distinguishes the two cases in one call.
+
+This section is Cursor-specific. Claude Code does not sandbox the shell, so `gh` works there
+unmodified; the harness difference is recorded below so neither guide gets applied where it does not
+hold.
+
+## Harness differences that change what an agent may assume
+
+The two harnesses differ in ways that produce false conclusions if you generalize from one:
+
+- **Network.** Cursor sandboxes the shell against an allowlist (see above). Claude Code does not, so
+  `gh`, `curl`, and API reachability questions have different answers in each. Never diagnose a
+  Claude Code network failure from Cursor's symptoms or the reverse.
+- **Workspace trust.** Claude Code ignores every `permissions.allow` entry in `.claude/settings.json`
+  until the workspace is trusted in that harness (`projects["<path>"].hasTrustDialogAccepted` in
+  `~/.claude.json`). Untrusted, `gh`, `git`, and `python3` calls need per-command approval, and in a
+  non-interactive `claude -p` run they are simply refused. Cursor has no equivalent gate.
+- **Write boundary.** Cursor's `Write` tool refuses `/tmp` and other paths outside the workspace
+  worktree; Claude Code writes wherever the OS allows. `check-write-boundary.sh` allows
+  `$HOME/.agent`, `$HOME/.claude`, `$HOME/.cursor`, and `/tmp` in both, so the tool is the stricter
+  gate in Cursor.
+
+When a guide says "elevate the command" or "the write was blocked", the advice is scoped to the
+harness that produces that failure.
+
 ## Adding or retiring a tool
 
 1. Add or remove the executable in `.agent/tools/` or `.agent/scripts/` and its `tools.json` entry

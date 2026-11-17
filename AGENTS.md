@@ -71,6 +71,18 @@ ls -la .claude/agents   # should show → ../.cursor/agents
 ls -la .claude/skills   # should show → ../.cursor/skills
 ```
 
+## Editing files
+
+Edit text files with the edit tool (`StrReplace`/`Edit`) or the write tool (`Write`), never through a
+shell command. A `python3 - <<'PY'` script, `sed -i`, `perl -i`, `tee`, or a redirect that rewrites a
+file hides the change from the edit log, defeats review diffs, and turns a wrong `str.replace` into a
+silent no-op when the anchor text has moved. The same applies under a permission escalation: turning
+the sandbox off to make a script run is not a reason to use a script.
+
+Shell heredocs remain correct for their documented purpose — building a scratch artifact, a context
+package, or JSON that is consumed in the same command, and writing to a task directory from a skill.
+They are not a substitute for editing a tracked file.
+
 ## Editing conventions
 
 - **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, optional

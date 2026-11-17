@@ -39,12 +39,12 @@ if grep -Eqi -- "$RESET_OR_CLEAN" <<<"$INSPECT"; then
   msg='Destructive git command blocked.'
 elif grep -Eqi -- "$FORCE_PUSH" <<<"$INSPECT" && ! grep -q -- '--force-with-lease' <<<"$INSPECT"; then
   msg='Force push blocked. Use --force-with-lease, or ask the user to confirm.'
-elif grep -Eqi '(^|[;&| ]+)gh[[:space:]]+pr[[:space:]]+(checkout|co)([[:space:]]|$)|(^|[;&| ]+)git[[:space:]].*(fetch|pull)[[:space:]].*(refs/)?pull/[0-9]+' <<<"$cmd"; then
+elif grep -Eqi '(^|[;&| ]+)gh[[:space:]]+pr[[:space:]]+(checkout|co)([[:space:]]|$)|(^|[;&| ]+)git[[:space:]].*(fetch|pull)[[:space:]].*(refs/)?pull/[^[:space:];&|]+' <<<"$cmd"; then
   msg='Pulling a PR into the local checkout is blocked. Read it with `gh pr diff <n>` and `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"`.'
 elif grep -Eqi '(^|[;&| ]+)git[[:space:]].*(show|diff|log|cat-file|rev-parse|fetch|pull).*(refs/)?pull/' <<<"$cmd"; then
   msg='Reading a local PR ref is blocked. Read PR-head content with `gh pr diff <n>` or `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"`.'
-elif grep -Eq '(^|[;&| ]+)(gh|git)[^;&|]*[\\$]' <<<"$cmd"; then
-  msg='Shell-expanded or escaped gh/git commands are blocked. Use the literal form so the guard can read it.'
+elif grep -Eq '(^|[;&| ]+)(gh|git)[^;&|]*\\' <<<"$cmd"; then
+  msg='Escaped gh/git commands are blocked. Use the literal command form so the guard can read it.'
 fi
 
 if [ -n "$msg" ]; then

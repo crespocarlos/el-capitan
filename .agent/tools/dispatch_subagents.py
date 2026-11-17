@@ -50,6 +50,17 @@ def timeout_prefix() -> list[str]:
     return []
 
 
+# Every persona this script dispatches is analysis-only: it reads the supplied evidence and returns
+# findings. `claude -p` receives the persona file as prompt text, not as an agent definition, so its
+# frontmatter (`readonly: true`, `tools`) is never applied. Allow only the repository-read tools
+# needed by the personas; an allowlist also covers stateful tools added by a future Claude release.
+READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
+
+
+def read_only_flags() -> list[str]:
+    return ["--allowedTools", ",".join(READ_ONLY_TOOLS)]
+
+
 def run_persona(
     claude: str,
     timeout_cmd: list[str],
@@ -58,7 +69,7 @@ def run_persona(
     stderr_path: Path,
     model_flag: list[str],
 ) -> int:
-    cmd = [*timeout_cmd, claude, "-p", *model_flag]
+    cmd = [*timeout_cmd, claude, "-p", *model_flag, *read_only_flags()]
     with open(prompt_path, "rb") as stdin_f, \
          open(output_path, "wb") as stdout_f, \
          open(stderr_path, "wb") as stderr_f:
@@ -149,8 +160,16 @@ def dispatch_reviewers(claude: str, timeout_cmd: list[str], repo_root: Path) -> 
     repo = repo_root.name
     branch = git_output("branch", "--show-current")
 
-    reviewers = ["code-quality", "adversarial", "architecture", "product-flow"]
+    reviewers = ["code-quality", "adversarial", "architecture", "product-flow", "prompt-quality"]
     fast_reviewers = {"code-quality", "product-flow"}
+
+    if review_mode == "pr" and not diff_content:
+        print(
+            "dispatch: REVIEW_MODE=pr requires immutable DIFF_CONTENT; "
+            "refusing to review the local checkout",
+            file=sys.stderr,
+        )
+        return 1
 
     if review_mode == "spec" and task_dir:
         dispatch_base = Path(task_dir) / "personas"
@@ -164,6 +183,18 @@ def dispatch_reviewers(claude: str, timeout_cmd: list[str], repo_root: Path) -> 
         source = diff_content
     elif review_mode == "spec" and task_dir and (Path(task_dir) / "SPEC.md").exists():
         source = (Path(task_dir) / "SPEC.md").read_text(encoding="utf-8")
+    elif review_mode == "changes":
+        r = subprocess.run(
+            ["git", "-C", str(repo_root), "diff", "--cached"],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0 or not r.stdout:
+            print(
+                "dispatch: REVIEW_MODE=changes requires a non-empty staged diff",
+                file=sys.stderr,
+            )
+            return 1
+        source = r.stdout
     else:
         r = subprocess.run(
             ["git", "-C", str(repo_root), "diff", "main...HEAD"],

@@ -16,6 +16,13 @@ checkout — no file reads, repository search, semantic search, or Explorer outp
 harness names those tools — to verify a PR claim. It may return `[needs more info]` only when it
 names the missing PR-head path or excerpt.
 
+**The reply text is the only thing the orchestrator receives.** A persona that writes findings into a
+file, a scratch artifact, or a summary block ("findings delivered above", "see next") hands back
+nothing, and the orchestrator must treat that run as incomplete and relaunch it. Every dispatch
+prompt therefore states this and requires a flat numbered list of findings, each beginning with its
+severity label and carrying a `path:line` anchor. A conversational summary is never a zero-findings
+verdict; only the `### Verdict: no findings` line is.
+
 A persona with no findings ends its response with the line `### Verdict: no findings`.
 
 A persona that judges the artifact outside its lane (no prompt files, no user-facing surface) emits

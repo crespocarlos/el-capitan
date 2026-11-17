@@ -35,9 +35,19 @@ normalized=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$
   || normalized=""
 [ -n "$normalized" ] && path="$normalized"
 
-case "$path" in "$HOME/.agent/"*|"$HOME/.claude/"*|"$HOME/.cursor/"*|/tmp/*)
-  jq -n '{permission:"allow"}'; exit 0 ;;
-esac
+# The allowlist must be normalized the same way. On macOS /tmp is a symlink to /private/tmp, so
+# matching the raw `/tmp/*` prefix against an already-resolved path never fires and every temp write
+# was denied. Each prefix is resolved through the same interpreter so both sides are comparable.
+allowed_prefix_resolved() {
+  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null
+}
+for prefix in "$HOME/.agent" "$HOME/.claude" "$HOME/.cursor" "/tmp"; do
+  resolved_prefix=$(allowed_prefix_resolved "$prefix")
+  [ -n "$resolved_prefix" ] || continue
+  case "$path" in "$resolved_prefix"/*)
+    jq -n '{permission:"allow"}'; exit 0 ;;
+  esac
+done
 
 # Probe the nearest existing ancestor; a missing directory is not evidence of an escape.
 probe=$(dirname "$path")

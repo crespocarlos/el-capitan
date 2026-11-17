@@ -44,6 +44,19 @@ LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs sti
 # the content check, so a placeholder cannot claim a persona completed.
 PERSONA_STATUSES = {"failed", "skipped", "truncated"}
 CODE_MODES = {"self", "changes", "pr"}
+
+
+def mode_arg(value: str) -> str:
+    """Normalize a mode before the choices check, so `--mode PR` is accepted.
+
+    The protocol names the mode `PR` while the CLI enumerates lowercase values, which made a
+    correct review fail on an argparse error before any persona was dispatched. Accept the
+    documented casing and the `auto`/`auto-loop` modifiers instead of failing the run.
+    """
+    normalized = value.strip().lower()
+    for modifier in (" auto-loop", " auto", "-auto-loop", "-auto"):
+        normalized = normalized.replace(modifier, "")
+    return normalized
 MAX_FINDINGS = 7
 EMITTED = {"patch", "decide"}
 EVIDENCE_LOCATION = re.compile(r"^[^:\s][^:]*:\d+(?:@[0-9a-f]{7,40})?$")
@@ -218,9 +231,18 @@ EXPLORER_SECTIONS = (
     "## Cross-file consistency",
 )
 VERDICT_NO_FINDINGS = re.compile(r"^### Verdict:\s*no findings\s*$", re.M | re.I)
+# A severity label plus a location anchor, in either order. Personas write the label at the start of
+# the line (the mandated shape), inside leading bold, or after the anchor as
+# "`path:line` — [label] …"; all three carry the same content, and rejecting one aborts the whole
+# review at persist time. The anchor must still be a real path:line, so a bare label or a marker
+# alone never matches.
+_SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)"
+_ANCHOR = r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)"
 LABELED_FINDING = re.compile(
-    r"^\s*(?:\d+\.\s*)?\[(?:blocking|attention|concern|nit|needs more info)\]\s+.*?"
-    r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)",
+    # label first: `1. [blocking] … path.ts:42` and `1. **[blocking]** … path.ts:42`
+    r"^\s*(?:\d+\.\s*)?(?:\*\*)?\s*\[" + _SEVERITY + r"\][^\n]*?" + _ANCHOR
+    # anchor first: `` 1. `path.ts:42` — [blocking] … ``
+    + r"|^\s*(?:\d+\.\s*)?(?:\*\*)?`?[^`\n\s\[\]]+`?\s*:\s*\d+[^\n]*?\[" + _SEVERITY + r"\]",
     re.M | re.I,
 )
 FIX_RESPONSE_FINDING = re.compile(
@@ -395,13 +417,15 @@ def main() -> int:
     persist_parser.add_argument("--review-dir", required=True, type=Path)
     persist_parser.add_argument("--report", required=True, type=Path)
     persist_parser.add_argument("--findings", type=Path)
-    persist_parser.add_argument("--mode", choices=sorted(CODE_MODES | {"spec", "idea"}), default="self")
+    persist_parser.add_argument("--mode", type=mode_arg,
+                                choices=sorted(CODE_MODES | {"spec", "idea"}), default="self")
     persist_parser.add_argument("--files", nargs="*", default=[])
     persist_parser.add_argument("--strict", action="store_true")
     persist_parser.add_argument("--personas", nargs="*", default=[])
     persist_parser.add_argument("--head", default="", help="reviewed commit SHA recorded as `Reviewed at:`")
     select_parser = commands.add_parser("select")
-    select_parser.add_argument("--mode", required=True, choices=sorted(CODE_MODES | {"spec", "idea"}))
+    select_parser.add_argument("--mode", required=True, type=mode_arg,
+                               choices=sorted(CODE_MODES | {"spec", "idea"}))
     select_parser.add_argument("--paths", nargs="*", default=[])
     select_parser.add_argument("--contract", action="store_true", help="a spec or PR contract supplies acceptance criteria")
     select_parser.add_argument("--compat", action="store_true", help="the change alters behavior of an existing consumer")

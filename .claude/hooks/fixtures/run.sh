@@ -35,6 +35,7 @@ test "$(guard 'git fetch origin refs/pull/$PR/head')" = deny
 test "$(guard 'git show refs/pull/42/head:path')" = deny
 test "$(guard 'git diff refs/pull/42/head')" = deny
 test "$(guard 'gh pr diff 301097')" = allow
+test "$(guard 'gh pr diff "$PR"')" = allow
 test "$(guard 'git fetch upstream main')" = allow
 test "$(guard 'gh pr view 1 --json headRefOid')" = allow
 test "$(guard 'git -C /tmp/repo reset --hard')" = deny
@@ -53,6 +54,8 @@ test "$(guard 'git push --force-if-includes origin x')" = deny
 test "$(guard 'git clean -n')" = allow
 test "$(guard 'git reset --soft HEAD~1')" = allow
 test "$(guard 'git status')" = allow
+test "$(guard 'git -C "$REPO" status')" = allow
+test "$(guard 'gh pr view 1 --jq "$.headRefOid"')" = allow
 # A quoted message is data, not a command.
 test "$(guard 'git commit -m "please do not git reset --hard here"')" = allow
 large_command="git reset --hard; # $(head -c 70000 < /dev/zero | tr '\0' x)"
@@ -69,6 +72,13 @@ test "$(boundary "$repo/deep/a/b/c.ts")" = allow
 test "$(boundary "$repo/../outside.md")" = deny
 test "$(boundary "$repo/sub/../../outside.md")" = deny
 test "$(boundary "$home/outside.md")" = deny
+# The hook allows the home agent directories and /tmp. It compares against the real $HOME, not the
+# fixture home, so these paths are classified relative to the invoking user. The harness write tool
+# is stricter than the hook (it refuses /tmp), so a passing hook is necessary but not sufficient.
+test "$(boundary "$HOME/.agent/tasks/x/SPEC.md")" = allow
+test "$(boundary "$HOME/.claude/agents/x.md")" = allow
+test "$(boundary "$HOME/.cursor/skills/x/SKILL.md")" = allow
+test "$(boundary "/tmp/scratch.json")" = allow
 
 publish() { jq -n --arg c "$1" --arg d "${2:-$repo}" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | bash "$root/.claude/hooks/check-publish.sh" | jq -r '.permission'; }
 repo="$home/repo"

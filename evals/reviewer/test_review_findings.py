@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -159,6 +160,57 @@ def test_persist_strict_rejects_placeholder_persona_output(tmp: Path) -> None:
         (review_dir / f"{persona}.out.md").write_text("### Verdict: no findings\n")
     assert run("persist", "--review-dir", str(review_dir), "--report", str(report),
                "--strict", "--personas", "adversarial", "code-quality").returncode == 0
+
+
+def test_mode_argument_accepts_documented_casing(tmp: Path) -> None:
+    """`--mode PR` must select, not fail on argparse before any persona is dispatched.
+
+    2026-11-04 PR #302200: `select --mode PR` exited with `invalid choice: 'PR'` while the
+    protocol names the mode `PR`. Rejecting the documented spelling wastes a review run.
+    """
+    for mode in ("PR", "pr", "PR auto", "self auto-loop", "CHANGES"):
+        result = run("select", "--mode", mode, "--paths", "README.md")
+        assert result.returncode == 0, f"{mode}: {result.stdout}{result.stderr}"
+        assert json.loads(result.stdout), f"{mode} selected no persona"
+    invalid = run("select", "--mode", "bogus", "--paths", "README.md")
+    assert invalid.returncode != 0 and "invalid choice" in invalid.stderr
+
+
+def test_labeled_finding_accepts_every_shape_personas_write(tmp: Path) -> None:
+    """A complete finding must pass whatever order a persona put the label and anchor in.
+
+    2026-11-16: personas wrote `1. **[attention]** path:42` and `` `path:42` — [attention] ``;
+    both carried real findings yet `persist --strict` called them placeholders and aborted the
+    whole review. Only shapes without a real `path:line` anchor stay rejected.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "review_findings_mod", TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    labeled = module.LABELED_FINDING
+
+    accepted = [
+        "[attention] src/a.ts:42 — missing guard",              # mandated, label first
+        "1. [blocking] **`file.ts` — line 42** — title",         # persona output_format
+        "1. **[attention]** src/a.ts:42 — missing guard",        # label inside leading bold
+        "1. **[attention] src/a.ts:42 — missing guard**",        # label and anchor both bold
+        "1. `src/a.ts:42` — [attention] missing guard",          # anchor before label
+        "2. [nit] src/b.tsx:7 tweak",                            # numbered, no bold
+        "3. [needs more info] src/c.ts:9 — stakes?",             # multi-word severity
+    ]
+    for text in accepted:
+        assert labeled.search(text), f"rejected a real finding: {text!r}"
+
+    rejected = [
+        "[attention] missing guard",                             # no anchor
+        "[attention] src/a.ts — missing guard",                  # path, no line
+        "1. [major] src/a.ts:42 — unknown severity",             # not a severity label
+        "The code is [attention] but fine src/a.ts:42",          # label not line-leading
+        "raw response captured",                                 # placeholder
+        "status: dispatched",                                    # marker only
+    ]
+    for text in rejected:
+        assert not labeled.search(text), f"accepted a non-finding: {text!r}"
 
 
 def test_persist_pr_mode_accepts_head_absent_from_local_repo(tmp: Path) -> None:

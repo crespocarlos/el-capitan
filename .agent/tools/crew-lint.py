@@ -189,6 +189,35 @@ def lint_progress_transitions(root: Path, paths: list[Path]) -> list[tuple[str, 
     return findings
 
 
+def lint_edit_discipline(root: Path, paths: list[Path]) -> list[tuple[str, int, str, str]]:
+    """Flag guidance that tells an agent to rewrite a tracked file from a shell command.
+
+    `python3 - <<'PY'` for a scratch artifact is fine. A script, `sed -i`, or `perl -i` aimed at
+    editing repository prose or code is not: it bypasses the edit log and review diffs, and a moved
+    anchor silently no-ops instead of failing. The rules name the correct tool once; this catches a
+    later reference that reintroduces the shell habit.
+
+    A rule that documents the prohibition names those commands in backticks, which the lookbehind
+    excludes. A real instruction is prose, so it is still caught.
+    """
+    findings: list[tuple[str, int, str, str]] = []
+    offenders = (
+        (re.compile(r"(?<!`)\bsed\s+-[a-zA-Z]*i"), "sed -i rewrites a file in place; use the edit tool"),
+        (re.compile(r"(?<!`)\bperl\s+-[a-zA-Z]*i"), "perl -i rewrites a file in place; use the edit tool"),
+        (re.compile(r"str\.replace\(.*\)\.write_text|\.write_text\(.*\.replace\("),
+         "replace-then-write as an edit; use the edit tool"),
+    )
+    for path in paths:
+        if path.suffix not in {".md", ".mdc"}:
+            continue
+        text = path.read_text(errors="replace")
+        for line_index, line in enumerate(text.splitlines()):
+            for pattern, message in offenders:
+                for match in pattern.finditer(line):
+                    findings.append((rel(root, path), line_index + 1, "shell-file-edit", message))
+    return findings
+
+
 def lint_rule_setup(root: Path) -> list[tuple[str, int, str, str]]:
     findings: list[tuple[str, int, str, str]] = []
     rule_dir = root / "rules"
@@ -277,6 +306,7 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
         findings.extend(lint_mcp_references(root, all_files, servers))
         findings.extend(lint_native_tool_ids(root, all_files, native))
     findings.extend(lint_progress_transitions(root, all_files))
+    findings.extend(lint_edit_discipline(root, all_files))
     docs = [root / name for name in ("README.md", "AGENTS.md") if (root / name).is_file()]
     findings.extend(lint_repo_paths(root, all_files + docs))
     rule_dir = root / "rules"

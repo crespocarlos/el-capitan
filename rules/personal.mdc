@@ -59,6 +59,13 @@ then this file. Hard constraints always apply.
   researching files, run `~/.agent/bin/agent-context.py` for the targets and apply every returned
   guidance file. The nearer file wins on conflict; report the conflict. In multi-file requests, do
   not skip guidance because other files use different languages or formats.
+- **Edit files with the edit tool, not a shell script** — use `StrReplace`/`Edit` or `Write` for any
+  text-file change. A `python3 - <<'PY'`, `sed -i`, `perl -i`, `tee`, or a redirect that rewrites a
+  file bypasses the edit log and review diffs, and a wrong anchor becomes a silent no-op instead of
+  an error. A permission escalation to stop the sandbox blocking a script is not a reason to use one:
+  the edit and write tools already work outside the workspace. Reserve shell writes for the
+  documented cases — scratch artifacts consumed in the same command, and task-directory writes from
+  a skill.
 
 ## Research
 
@@ -94,11 +101,29 @@ then this file. Hard constraints always apply.
   plain line or a link. Don't narrate code, restate names or types, describe your change, or leave
   commented-out code; prefer a clearer name. Follow the repo's convention for public API docs, and
   don't remove comments unless they became wrong.
+- **Bulk edits need a verified backup** — before rewriting many files, confirm each backup file exists
+  and is non-empty, stop on the first failure, and commit or stash pending edits first. A backup loop
+  that prints `Operation not permitted` and continues loses the originals silently.
+- **Storage questions enumerate every store** — when asked whether something is stored, list every
+  hook registration (`.claude/settings.json`, `~/.claude/settings.json`, `.cursor/hooks.template.json`)
+  and every store directory before answering, and state the scope you searched. One writer found does
+  not mean nothing is stored.
 - **GitHub access** — use `gh` or the repository's approved tool for ordinary PR, issue, and
   metadata reads. Use `pr-review-actions.py` for review-thread operations. Use raw GraphQL only when
   the approved tool/query requires it, not as a shortcut for standard reads. Retry a read-only
   command only after a known sandbox-network denial, using the current harness's elevation
   mechanism; report authentication, authorization, and scope failures.
+- **`gh` in a sandbox means elevation, not auth (Cursor only)** — Cursor's sandbox allowlist omits
+  `api.github.com` while allowing `github.com`, so a sandboxed `gh` call fails with `Forbidden` (exit
+  1) and `gh auth status` misreports `The token in keyring is invalid`. Run it with network elevation
+  from the start; never diagnose credentials or suggest `gh auth refresh` from that message. `git` is
+  unaffected. Claude Code does not sandbox the shell, so this failure does not occur there — do not
+  apply the elevation advice to a harness that never blocked the call.
+- **Check workspace trust before reading a Claude Code failure** — Claude Code ignores every
+  `permissions.allow` entry in `.claude/settings.json` until that workspace is trusted in that
+  harness. Untrusted, individual commands are refused, and a `claude -p` run cannot ask for approval,
+  so it reports "needs approval" instead of running. That is a trust gate, not a permissions bug and
+  not a code defect; say so rather than retrying or rewriting the command.
 
 ## Testing
 
