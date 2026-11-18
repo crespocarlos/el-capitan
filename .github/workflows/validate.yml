@@ -42,6 +42,9 @@ jobs:
       - name: Nightshift e2e client tests
         run: python3 evals/tools/test_nightshift_e2e.py
 
+      - name: Install managed-block tests
+        run: python3 evals/tools/test_install_blocks.py
+
       - name: Task-context tool tests
         run: python3 evals/tools/test_task_context.py
 

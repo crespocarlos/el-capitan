@@ -1,12 +1,12 @@
 # Shared reviewer contract
 
-Every reviewer persona loads this file. It holds the parts of a review that do not depend on the
-lens — the label vocabulary, the finding shape, the abstention line, and the evidence rules — so they
-are defined once instead of copied into five persona files.
+This file comes first in your prompt, ahead of your persona file. It defines the output every
+reviewer produces: the labels and what each one obliges, the finding shape, the abstention wording,
+the search order, the evidence rules, and the fetch budget.
 
-A persona file describes what its lens looks at. This file describes what its output must be. When
-the two disagree about output, this file wins, because `review-findings.py` and `consolidation.md`
-read the format described here.
+Your persona file describes what your lens looks at. This file describes what your output must be.
+Where the two disagree about output, this file wins, because `review-findings.py` and
+`consolidation.md` read the format defined here.
 
 ## Labels
 

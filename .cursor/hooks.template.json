@@ -7,7 +7,11 @@
       {"command": "bash \"$HOME/.claude/hooks/check-publish.sh\"", "failClosed": true},
       {"command": "bash \"$HOME/.claude/hooks/block-shell-source-edits.sh\"", "failClosed": true}
     ],
-    "preToolUse": [{"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": true}],
+    "preToolUse": [
+      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": true},
+      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/review-address-gate.sh\"", "failClosed": true}
+    ],
+    "beforeSubmitPrompt": [{"command": "bash \"$HOME/.claude/hooks/review-address-approval.sh\"", "failClosed": false}],
     "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "postToolUseFailure": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "stop": [{"command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\"", "loop_limit": 1}]

@@ -66,6 +66,10 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/review-address-gate.sh\""
           }
         ]
       }
@@ -164,6 +168,10 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/mode-anchor.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/review-address-approval.sh\"; exit 0"
           }
         ]
       }

@@ -100,12 +100,16 @@ def check_personas_do_not_restate_the_shared_contract() -> None:
         "the verdict line": "### Verdict: no findings",
         "the one-issue rule": "One issue per finding.",
         "the pre-existing rule": "pre-exists this change",
-        "[concern] definition": "Replaces `[attention]`",
+        "the nit-in-disguise rule": "nit in disguise",
+        "[concern] definition": "replaces `[attention]`",
+        "the fetch budget": "Tool-call budget: ≤",
+        "the search order": "map_symbols_by_query",
     }
     for name in PERSONAS:
-        text = flat(persona(name))
+        # Body only: the tool name legitimately appears in the frontmatter `tools:` line.
+        text = flat(re.sub(r"^---\n.*?\n---\n", "", persona(name), count=1, flags=re.S)).lower()
         for label, phrase in restatements.items():
-            assert phrase not in text, f"{name} restates {label}; it belongs in the shared contract"
+            assert phrase.lower() not in text, f"{name} restates {label}; it belongs in the shared contract"
 
 
 def check_fix_field_is_the_one_the_gate_accepts() -> None:
@@ -127,18 +131,51 @@ def check_no_duplicated_directive_line() -> None:
 
 
 def check_shared_sections_present() -> None:
-    """Each persona needs the lens-specific sections the dispatch contract depends on."""
+    """Each persona needs the lens-specific sections, and exactly one pointer to the contract.
+
+    The pointer is a path, not a phrase: while four personas said "the shared reviewer contract" and
+    one linked a file, nothing named the file a reader could open, and the test could not tell a real
+    pointer from a mention.
+    """
     required = {
         "severity or labels": r"^## Severity|^<severity>",
-        "label mapping": r"^## Label mapping",
         "output format": r"^## Output format|^<output_format>",
         "coverage mapping": r"^## Coverage mapping",
-        "pointer to the contract": r"reviewer-contract\.md",
+        "output contract pointer": r"^\*\*Output contract\.\*\* `~/\.cursor/agents/references/reviewer-contract\.md`",
     }
     for name in PERSONAS:
         text = persona(name)
         missing = [label for label, pattern in required.items() if not re.search(pattern, text, re.M)]
         assert not missing, f"{name} is missing: {', '.join(missing)}"
+
+
+def check_contract_is_referenced_once() -> None:
+    """A pointer, then silence. Repeated "see the contract" lines are the meta-noise they replaced.
+
+    One opening statement wins over the file, and the rest of the persona describes this lens without
+    narrating where its output rules live.
+    """
+    for name in PERSONAS:
+        text = persona(name)
+        mentions = len(re.findall(r"reviewer-contract\.md", text))
+        assert mentions == 1, f"{name} references the contract {mentions} times; one pointer is enough"
+
+
+def check_each_persona_uses_one_label_vocabulary() -> None:
+    """A persona naming `Critical`/`Important` alongside `[blocking]` makes the reader translate.
+
+    Severity words were a second vocabulary in parallel with the labels, and the two disagreed on
+    obligation: the file said `Important — should fix before merge` while the contract said
+    `[attention] — not required`. One table per artifact kind, keyed by the label itself.
+    """
+    legacy = ["Critical", "Important", "Consider", "Suspected", "Unlikely", "Unclear", "Minor"]
+    for name in PERSONAS:
+        text = persona(name)
+        used = [word for word in legacy if re.search(rf"\*\*{word}\*\* —", text)]
+        assert not used, f"{name} still uses the parallel severity words: {', '.join(used)}"
+        assert re.search(r"^\|\s*`\[blocking\]`", text, re.M), (
+            f"{name} has no label-keyed severity table"
+        )
 
 
 def check_every_persona_can_be_composed_by_the_harness() -> None:
@@ -158,6 +195,30 @@ def check_every_persona_can_be_composed_by_the_harness() -> None:
         # The rule appears as the `## One issue per finding` heading; assert the wording, not a period.
         assert "one issue per finding" in composed, f"{name} prompt lacks the one-issue rule"
         assert "pre-exists" in composed, f"{name} prompt lacks the pre-existing rule"
+
+
+def check_non_reviewer_persona_gets_no_contract() -> None:
+    """The exclusion must be observable, or deleting the branch leaves the suite green.
+
+    Every test otherwise composes one of the five reviewers, so the early return for a persona
+    outside `PERSONAS_WITH_CONTRACT` would never run. That is the branch that keeps the label
+    contract out of a persona returning prior-art sections or a JSON map.
+    """
+    import importlib.util
+
+    harness = Path(__file__).resolve().parent / "run.py"
+    spec = importlib.util.spec_from_file_location("reviewer_run_for_exclusion", harness)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.PERSONAS_WITH_CONTRACT, "the contract set is empty"
+    for name in module.PERSONAS_WITH_CONTRACT:
+        assert "Tool-call budget: ≤" in module.load_persona_prompt(name), (
+            f"{name} is in PERSONAS_WITH_CONTRACT but its prompt has no contract"
+        )
+    # reviewer-layers emits a JSON map, not findings, and states no labels.
+    bare = module.load_persona_prompt("reviewer-layers")
+    assert "Tool-call budget: ≤" not in bare, "reviewer-layers received the reviewer contract"
+    assert "## Labels" not in bare, "reviewer-layers received the label vocabulary"
 
 
 def check_budget_matches_the_packaging_contract() -> None:
@@ -269,7 +330,10 @@ CHECKS = [
     check_fix_field_is_the_one_the_gate_accepts,
     check_no_duplicated_directive_line,
     check_shared_sections_present,
+    check_contract_is_referenced_once,
+    check_each_persona_uses_one_label_vocabulary,
     check_every_persona_can_be_composed_by_the_harness,
+    check_non_reviewer_persona_gets_no_contract,
     check_budget_matches_the_packaging_contract,
     check_context_package_states_the_hunk_requirement,
     check_every_declared_mcp_tool_is_named_in_the_contract,

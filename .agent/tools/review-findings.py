@@ -168,9 +168,17 @@ def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
                 "(or path:line@headSHA), "
                 "or downgrade to 'needs more info'"
             )
-        if files:
+        if evidence is not None and not isinstance(evidence, str):
+            # A type error is a caller bug, not an absent location: fail loudly rather than let the
+            # file gate below skip a malformed value as though the finding had cited nothing.
+            raise ValueError(
+                f"finding {f['title']!r}: evidence must be a string path:line, got {type(evidence).__name__}"
+            )
+        if files and evidence:
             # Shape is not enough: evidence must point at something under review, or a
-            # finding about an untouched file is reported as verified.
+            # finding about an untouched file is reported as verified. A finding with no
+            # evidence is allowed here — `blocking`/`attention` were already required to have
+            # it above, and a nit may stay unanchored, so there is nothing to check.
             location = evidence.split("@", 1)[0].rsplit(":", 1)[0]
             matches = [name for name in files
                        if name == location or name.endswith("/" + location) or location.endswith("/" + name)]
@@ -403,6 +411,26 @@ def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:
 
 HUNKS_FILE = "hunks.json"
 LAYERS_FILE = "layers.json"
+# The two sections `persist` appends. A report must not carry either, or it renders twice.
+GENERATED_SECTIONS = ("### Coverage by layer", "### Files reviewed")
+
+
+def heading_lines(text: str) -> set[str]:
+    """The level-3 heading lines of a report, ignoring fenced blocks.
+
+    A finding may quote a heading verbatim (the contract requires quoting, not paraphrasing), and a
+    sub-heading such as `#### Files reviewed` is a different section. Only an exact level-3 heading
+    outside a fence means the caller wrote the generated section themselves.
+    """
+    headings: set[str] = set()
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and line.startswith("### "):
+            headings.add(line.rstrip())
+    return headings
 
 
 def read_json_object(path: Path, key: str) -> dict:
@@ -650,6 +678,21 @@ def persist(args: argparse.Namespace) -> int:
         if hunks_path.is_file():
             check_hunk_refs(findings, hunk_ids(hunks_path))
     report = args.report.read_text()
+    # Two sections are generated from the inputs below, so a report carrying its own copy would
+    # render the same table twice — once verbatim in the body, once at the end — and a reader
+    # cannot tell which is authoritative when they disagree. Refuse rather than strip: the
+    # generated copy is derived from --findings and --files, so the hand-written one is always
+    # wrong and its removal should be the caller's visible decision.
+    #
+    # Match a real level-3 heading only. A finding that quotes the heading — the contract requires
+    # verbatim quoting — or a deeper `#### Files reviewed` is not a duplicate section, and the
+    # substring test that preceded this rejected both.
+    generated = [heading for heading in GENERATED_SECTIONS if heading in heading_lines(report)]
+    if generated:
+        raise ValueError(
+            f"{args.report} already contains {', '.join(generated)}, which persist appends; "
+            "delete it from the report and let persist write it"
+        )
     if coverage_section:
         report = report.rstrip() + "\n\n" + coverage_section
     if coverage_gap:

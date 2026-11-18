@@ -16,3 +16,11 @@ those snippets get dropped.
 A reply that shows findings as prose with inline `` `file:line` `` and no fenced block has failed
 this step even when `report.md` on disk is correct. Before sending, check that the reply holds every
 fence `report.md` holds and that each `[blocking]` finding shows its anchored snippet.
+
+## Do not write the generated sections
+
+`persist` appends `### Coverage by layer` and `### Files reviewed` itself, from the layer map and
+`--files`. Write the report body — heading, findings, verdict, next step — but not those two sections:
+a report carrying either as a real heading is rejected rather than merged, so the section cannot
+appear twice with the reader unable to tell which copy is authoritative. Quoting a heading inside a
+finding, or using a deeper `####` heading, is not a duplicate.

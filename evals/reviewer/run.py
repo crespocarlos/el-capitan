@@ -43,7 +43,7 @@ _FIXTURES_PATH = _THIS_DIR / "fixtures.json"
 _RESULTS_ROOT = _THIS_DIR / "results"
 
 # ---------------------------------------------------------------------------
-# Personas — all reviewer persona files present in the agents dir
+# Personas — the five that emit labeled findings
 # ---------------------------------------------------------------------------
 
 REVIEWER_PERSONAS = [
@@ -53,6 +53,13 @@ REVIEWER_PERSONAS = [
     "reviewer-product-flow",
     "reviewer-prompt-quality",
 ]
+
+# Personas that emit labeled findings and therefore load the shared reviewer contract. Listed
+# literally rather than derived, so the exclusion is data rather than a comment: `reviewer-explorer`
+# returns prior-art sections with its own longer fetch budget, `reviewer-layers` returns a JSON map,
+# and composing the label contract into either contradicts the file it is appended to. Adding a
+# persona to `REVIEWER_PERSONAS` does not silently grant it the contract — add it here too.
+PERSONAS_WITH_CONTRACT = frozenset(REVIEWER_PERSONAS)
 
 # Scope violation denylist: only applied when persona is reviewer-code-quality
 # Use specific architecture-lane terms; avoid bare words that appear in testing language
@@ -85,13 +92,17 @@ _INTER_REQUEST_DELAY = 8.0
 # ---------------------------------------------------------------------------
 
 def load_persona_prompt(persona_name: str) -> str:
-    """Read .cursor/agents/<persona_name>.md and strip YAML frontmatter.
+    """Read .cursor/agents/<persona_name>.md and, for a reviewer, compose the shared contract.
 
-    The persona file describes one lens. The output contract every persona shares — labels, finding
-    shape, the one-issue and pre-existing rules, the abstention line, evidence rules — lives once in
-    `references/reviewer-contract.md` and is composed here, because a subagent cannot load another
-    file. Without this, each persona restated the contract in its own words and the copies drifted:
-    `[concern]` was missing from all five, and the fix field had three spellings.
+    The persona file describes one lens. The output contract every reviewer shares — labels, finding
+    shape, the one-issue and pre-existing rules, the abstention line, search order, evidence rules —
+    lives once in `references/reviewer-contract.md` and is composed here, because a subagent cannot
+    load another file. Without this, each persona restated the contract in its own words and the
+    copies drifted: `[concern]` was missing from all five, and the fix field had three spellings.
+
+    Only personas that emit labeled findings load it. `reviewer-explorer` returns prior-art sections
+    and states its own longer fetch budget; `reviewer-layers` returns a JSON map and needs no labels.
+    Composing the contract into either contradicts the file it is appended to.
     """
     path = _AGENTS_DIR / f"{persona_name}.md"
     if not path.exists():
@@ -102,7 +113,11 @@ def load_persona_prompt(persona_name: str) -> str:
     text = path.read_text()
     # Strip YAML frontmatter between the first and second '---' delimiters
     lens = re.sub(r'^---\n.*?\n---\n', '', text, count=1, flags=re.DOTALL)
-    return f"{lens}\n\n---\n\n{load_shared_contract()}"
+    if persona_name not in PERSONAS_WITH_CONTRACT:
+        return lens
+    # Contract first, then the lens: the shared output rules frame the persona, matching the
+    # dispatcher's "prepend … as the package's first section" in crew-reviewer.md.
+    return f"{load_shared_contract()}\n\n---\n\n{lens}"
 
 
 def load_shared_contract() -> str:
@@ -123,9 +138,10 @@ def load_output_rules() -> str:
     """
     return (
         "Produce your review now. Output a numbered list of findings. Each finding "
-        "starts with a label in brackets — [blocking], [attention], [nit], or "
+        "starts with a label in brackets — [blocking], [attention], [concern], [nit], or "
         "[needs more info] — then a bold title, the file and line, and the "
-        "evidence. Report zero findings if none are grounded in the artifact."
+        "evidence. Use [concern] instead of [attention] when reviewing a spec or idea. "
+        "Report zero findings if none are grounded in the artifact."
     )
 
 

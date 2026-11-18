@@ -13,11 +13,26 @@ import sys
 from pathlib import Path
 
 # Always-on rules are paid by every request in every session, so the cap is a ceiling on
-# per-turn context, not a target. 7500 not 7000: the set measured 6972 at the time the cap was
-# raised, leaving 28 tokens of headroom, which forced a correct routing row to be deleted to fit
-# a counter. Headroom has to cover real additions; raise this only with the measurement recorded
-# here, and trim the set instead when it grows without a new rule to justify it.
-MAX_ALWAYS_RULE_TOKENS = 7500
+# per-turn context, not a target.
+#
+# The number is the *larger* of the two harnesses' payloads. Claude Code ignores `alwaysApply` and
+# `globs`, loading CLAUDE.md plus every `@` import whatever its glob says, so an imported glob rule
+# costs it every turn while costing Cursor only on matching files. Measured 2026-11-18 at the
+# maximum: 13,874 tokens — 6,997 of always-on rules, 2,963 AGENTS.md, 990 .claude/CLAUDE.md, and
+# 2,924 of `@`-imported rules that the previous counter missed entirely (it reported 11,225 while
+# Claude Code loaded 13,874).
+#
+# Two corrections produced the rise from 7,500: the counter learned about AGENTS.md and CLAUDE.md,
+# then learned about imports. Neither added a rule — both stopped under-reporting rules that were
+# already loaded. Raise this only with a new measurement recorded here; when the set grows without
+# a new rule to justify it, trim the set instead. The first trim candidates are
+# `crew-orchestrator.mdc` and `crew-router.mdc` (2,819 combined), whose routing and state-machine
+# detail is read once per pipeline step rather than needed on every turn.
+MAX_ALWAYS_RULE_TOKENS = 14500
+# Loaded by every request in every session alongside the always-on rules, so they belong in the
+# same budget. `AGENTS.md` arrives through `@AGENTS.md` in CLAUDE.md and through the repo context
+# file; `.claude/CLAUDE.md` is loaded directly by that harness.
+ALWAYS_LOADED_PROJECT_FILES = ("AGENTS.md", ".claude/CLAUDE.md")
 # The source of truth for skills that may activate without an explicit `crew` command.
 MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test", "spec-writing"}
 
@@ -256,7 +271,37 @@ def lint_rule_setup(root: Path) -> list[tuple[str, int, str, str]]:
             findings.append(
                 (name, 1, "invalid-rule-frontmatter", "set alwaysApply true or false")
             )
+        if re.search(r"^alwaysApply:\s*true\s*$", frontmatter_text, re.MULTILINE):
+            unreachable = always_on_unreachable(root, path.name)
+            if unreachable:
+                findings.append(
+                    (name, 1, "always-on-rule-unreachable", unreachable)
+                )
     return findings
+
+
+def claude_imports(root: Path) -> set[str]:
+    """Rule filenames `@`-imported by a CLAUDE.md this harness can see."""
+    names: set[str] = set()
+    for candidate in (root / "CLAUDE.md", root / ".claude/CLAUDE.md", Path.home() / ".claude/CLAUDE.md"):
+        if not candidate.is_file():
+            continue
+        for target in re.findall(r"@(\S+\.mdc)", candidate.read_text(errors="replace")):
+            names.add(Path(target).name)
+    return names
+
+
+def always_on_unreachable(root: Path, rule: str) -> str:
+    """Why an `alwaysApply: true` rule never reaches Claude Code, or "" when it does.
+
+    Cursor honours `alwaysApply`; Claude Code does not know the field and loads only `CLAUDE.md`
+    plus its `@` imports. A rule marked always-on but not imported therefore applies in one harness
+    and silently vanishes in the other, which is a behavior difference no other check can see.
+    """
+    if rule in claude_imports(root):
+        return ""
+    return (f"alwaysApply is true but CLAUDE.md never imports it, so Claude Code does not load it; "
+            f"add `@~/.cursor/rules/{rule}` to {rel(root, root / '.claude/CLAUDE.md')}")
 
 
 def lint_skill_setup(root: Path) -> list[tuple[str, int, str, str]]:
@@ -407,10 +452,30 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
 
     if budget:
         always = 0
+        # Measure the larger of the two harnesses' payloads, not Cursor's `alwaysApply` set alone.
+        # Claude Code ignores `alwaysApply` and `globs` entirely, loading CLAUDE.md plus its `@`
+        # imports whatever their globs say — so an `@`-imported glob rule costs this harness every
+        # turn while costing Cursor only on matching files. Counting only `alwaysApply: true`
+        # undercounted by 2,649 tokens, which is exactly the blind spot that let the ceiling drift.
+        cursor_payload = set()
         for rule in rule_dir.glob("*.mdc"):
             text = rule.read_text(errors="replace")
             if re.search(r"alwaysApply:\s*true", text):
-                always += len(text) // 4
+                cursor_payload.add(rule.name)
+        claude_payload = claude_imports(root)
+        for name in sorted(cursor_payload | claude_payload):
+            path = rule_dir / name
+            if path.is_file():
+                always += len(path.read_text(errors="replace")) // 4
+        # AGENTS.md and .claude/CLAUDE.md are always loaded too, through `@AGENTS.md` and the
+        # repo context file, so counting only `rules/*.mdc` measured a fraction of the real
+        # per-turn payload: the five rules below it reported 6,997 tokens while the true
+        # always-on set was over 10,000. A budget that omits the two largest files cannot
+        # constrain anything.
+        for name in ALWAYS_LOADED_PROJECT_FILES:
+            path = root / name
+            if path.is_file():
+                always += len(path.read_text(errors="replace")) // 4
         if always > MAX_ALWAYS_RULE_TOKENS:
             findings.append(("rules", 1, "budget",
                              f"always-on rules estimate {always} tokens (>{MAX_ALWAYS_RULE_TOKENS})"))

@@ -1,9 +1,15 @@
 # Shared rules
 
-Canonical rule files, shared with Cursor:
+Canonical rule files, shared with Cursor. Claude Code has no glob support and does not read
+`alwaysApply`, so a rule that applies unconditionally to every request must be imported here as well
+as marked `alwaysApply: true`; without the import it is invisible to this harness. Situational rules
+(`voice.mdc`, `crew-explorer-conventions.mdc`) stay out of this list on purpose — Cursor loads them
+when its glob matches and otherwise the model requests them.
 
 @~/.cursor/rules/personal.mdc @~/.cursor/rules/prompt-engineering.mdc
 @~/.cursor/rules/typescript.mdc
+@~/.cursor/rules/agent-output.mdc @~/.cursor/rules/crew-router.mdc
+@~/.cursor/rules/crew-orchestrator.mdc @~/.cursor/rules/memory-capture.mdc
 
 ---
 

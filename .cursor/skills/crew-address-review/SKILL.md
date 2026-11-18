@@ -17,9 +17,10 @@ description: "Work through findings from the most recent crew review inline. Tri
 
 - **Code mode** (self-review, changes review, PR review): silent file-check → verdict table → apply
   edits. 3 turns.
-- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): no files to edit — findings are
-  conceptual. Evaluate inline → present acceptance table → synthesize revised idea if approved. 3
-  turns.
+- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): the artifact is a plan, not code.
+  Findings are conceptual: evaluate inline → present acceptance table → synthesize the revision if
+  approved. The revision is an edit to the spec file when the artifact is one, and emitted text when
+  it is pasted. 3 turns.
 
 Never mix modes. If the review heading contains "Idea" or "Spec" (case-insensitive), use idea mode
 throughout.
@@ -36,7 +37,8 @@ throughout.
 Carry this mode through Steps 2–4 without re-detecting.
 
 Check if a `## Review:` heading is visible in the current session conversation. If yes, use those
-findings directly — do not read any file.
+findings directly — do not read a review artifact from disk. That prohibition covers the review only:
+the artifact under review (a `SPEC.md`, say) is a separate read, and idea mode requires it at Step 2.
 
 If no review is visible in context (new session or context reset):
 
@@ -83,7 +85,12 @@ Keep the returned ids for `--memory-id` in Step 3b.
 4. For `[needs more info]` findings: answer the question inline if you can determine the answer from
    the code; otherwise surface it for user input
 
-**Idea mode:** No files to read. For each finding:
+**Idea mode:** the artifact under review is what each finding is judged against, so read it before
+evaluating. For a `## Review: Spec` heading the artifact is the task's `SPEC.md`; for an
+`## Review: Idea` of pasted text there is nothing to read and the text is in the conversation. Do not
+ask the user to paste a file that is on disk.
+
+For each finding:
 
 1. **Assess whether the critique holds**: does the reviewer's concern actually apply to the idea as
    stated?
@@ -100,7 +107,17 @@ Never apply any change during this step. Collect all verdicts first.
 
 ### Step 3: Report and ask for approval
 
-**Code mode** — present the verdict table:
+**Both modes** — write the pending marker first, then present the table. The marker is what arms
+`review-address-gate.sh`: while it exists and no newer user approval does, every `Edit`/`Write` is
+denied, so the table below cannot be skipped. Create it immediately before the table, never after the
+edits.
+
+In idea mode the marker is required only when the target is a file, because only then can an approved
+revision write to disk; a pasted-text idea edits nothing and the marker would deny nothing.
+
+```bash
+mkdir -p "$HOME/.agent/review-address" && : > "$HOME/.agent/review-address/pending"
+```
 
 | #   | Label             | Finding | Verdict  | Proposed Fix                     |
 | --- | ----------------- | ------- | -------- | -------------------------------- |
@@ -132,10 +149,12 @@ Then ask:
 > **"Which of these should I incorporate? (`all` = all Accept/Nit rows; `none` = skip; numbers =
 > cherry-pick). For any 'Needs Input' rows, answer them here."**
 
-### Step 3b: Log non-applied outcomes (code mode only)
+### Step 3b: Log non-applied outcomes
 
-Idea mode has no review run directory or fingerprints; skip Step 3b and the `fixed` logging in Step
-4.
+Applies to both modes whenever a review run directory exists. A spec review has one: `pipeline.md`
+sets `REVIEW_ROOT` for "self, changes, spec, and idea reviews" and `persist` writes `REVIEW.spec.md`
+beside `SPEC.md`, while `normalize` assigns every finding a fingerprint. Skip Step 3b only when
+`$TASK_DIR` is empty and no review directory exists, and say so.
 
 Run after the user responds, before any edit. `<review-dir>` is the newest directory under
 `$TASK_DIR/review/` (it holds the persona outputs and `candidates.json`). If `$TASK_DIR` is empty or
@@ -181,12 +200,34 @@ exit 2 print `warning: memory unavailable`.
 
 ### Step 4: Execute approved fixes
 
-Only after the user responds.
+Only after the user responds. Clear the gate marker in the same command that starts the edits —
+leaving it in place denies every edit, and clearing it before the user answers defeats the gate:
+
+```bash
+rm -f "$HOME/.agent/review-address/pending" "$HOME/.agent/review-address/approved"
+```
 
 **Code mode:** Apply each approved edit. Read the file immediately before editing if it wasn't
 already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; if an
 edit fails, log `skipped` with a reason that starts `edit-failed:`, so failures are distinguishable
 from user decisions.
+
+**When the edit changes what a step, mode, or skill is allowed to do, sweep the file it lives in.**
+A capability change falsifies every sentence that described the old limit, and a reader meets them
+before the corrected step. After the approved edits land, search that file for the *specific*
+constraint the edit replaced — the phrase that stated the old limit, plus its close paraphrases — and
+report each surviving sentence with its line, in the review reply. A fixed keyword list is too blunt:
+`only` and `never` appear on dozens of unrelated lines in any rule file, and a report of unrelated hits
+is one a reader skips.
+
+This is the sibling sweep from idea mode, described in step 5 of its synthesis procedure, applied to
+the instructions themselves.
+
+**Idea mode with a file target:** the same edit hygiene applies — read the file immediately before
+writing, and after the write lands log it with the Step 3b command and `--outcome fixed`. The write
+happens once, at step 7 below, after verification and self-review; nothing is written to disk before
+then. Idea mode's "synthesis, not implementation" rule means it does not touch code the spec
+describes; it does write the spec.
 
 After all edits are applied, print the summary and the mode-aware next step (see below).
 
@@ -196,45 +237,56 @@ candidates from Step 3b. Do not draft facts already derivable from the changed f
 record; do not import any candidate. Show the candidate titles (or `none`) with the summary and
 require a later explicit batch approval through `crew memory seed` or `mem.py import-inbox`.
 
-**Idea mode:** Do not edit any files. Instead:
+**Idea mode:** synthesis, not implementation. The artifact is usually pasted text, but a spec review
+targets a `SPEC.md` file; in that case the "revised idea" is an edit to that file, not a chat reply.
 
 1. If the user chose `none`, skip synthesis entirely — go straight to the summary.
 2. Collect all accepted/nit items plus any user answers to Needs Input items.
-3. Locate the original idea text — it is in the session conversation (the pasted text or the output
-   of the prior `crew review idea` turn). If the original idea is not recoverable from context
-   (scrolled out or session reset), ask: `"I can't locate the original idea text in context — please
-   paste it and I'll produce the revised version."` Then wait.
-4. Produce a **revised idea** that incorporates all accepted changes. Match the original structure
-   and heading levels. Do not add new sections; do not remove content unless a finding specifically
-   called it out.
-5. **Verify before presenting** — internal pass, no tool calls:
-   - Each accepted finding is reflected in the revision. Use the finding's `Fix:` field as the
-     check: if the fix was "add X to section Y", confirm X is present in section Y. If not, add it
-     now.
+3. Locate the original artifact:
+   - **Spec review** (`## Review: Spec`): the artifact is `<task>/SPEC.md` — read it. A finding that
+     cites a different path overrides this. Do not ask the user to paste what is already on disk.
+   - **Idea review** (`## Review: Idea`): the artifact is the pasted text in the session conversation
+     (or the output of the prior `crew review idea` turn). If it is not recoverable from context
+     (scrolled out or session reset), ask: `"I can't locate the original idea text in context — please
+     paste it and I'll produce the revised version."` Then wait.
+4. Draft the **revision** in memory that incorporates all accepted changes. Do not write it yet: for
+   a file target this step produces the text to write, for pasted text the text to emit. Match the
+   original structure and heading levels. Do not add new sections; do not remove content unless a
+   finding specifically called it out.
+5. **Verify the draft** — compare it against the accepted set:
+   - Each accepted finding is reflected. Use the finding's `Fix:` field as the check where it has one;
+     a `[nit]` or an answered `[needs more info]` row carries no `Fix:`, so check it against the change
+     named in its title clause. If the fix was "add X to section Y", confirm X is present in section Y,
+     and add it now.
    - **Sibling-check:** for every accepted fix that addresses a specific pattern (a condition, a
      field, a step, a flow branch), scan the full idea text for structurally identical instances of
      the same pattern — same type of condition in a different branch, same field missing in a
      parallel step, same gap in a sibling flow. If found, apply the same fix to each sibling. Do not
-     require a separate finding per sibling.
+     require a separate finding per sibling. When the artifact is also the file that defines a mode or
+     skill's own rules, the sweep covers those rules too — the same rule code mode's Step 4 states.
    - No new structural contradiction was introduced by the revision — if one is obvious, fix it
      inline.
    - Rejected findings are NOT present in the revision (don't silently re-introduce what was
      explicitly dismissed).
-6. Append a `## Decisions` section at the end of the revised idea listing every Rejected or Deferred
+6. Append a `## Decisions` section at the end of the revision listing every Rejected or Deferred
    finding with a one-line reason. Use the format: `- [rejected] <finding title>: <reason>` or `-
-   [deferred] <finding title>: <reason>`. This section is a prior-decisions log for the next
-   reviewer — do not omit it when any findings were rejected or deferred.
-7. **Self-review pass** — before presenting, re-evaluate the revised idea using the same adversarial
-   and product-flow lenses (internal reasoning only, no subagent dispatch, no tool calls). Cap at 1
-   pass. For each lens ask:
+   [deferred] <finding title>: <reason>`. In a file target this is a new section in that file; in
+   pasted text it goes at the end of the emitted revision. This section is a prior-decisions log for
+   the next reviewer — do not omit it when any findings were rejected or deferred.
+7. **Self-review pass** — re-evaluate the draft, still before anything is written, using the same
+   adversarial and product-flow lenses (internal reasoning only, no subagent dispatch, no tool calls).
+   Cap at 1 pass. For each lens ask:
    - *Adversarial*: does the revision introduce any new assumption, gap, or failure mode that wasn't
      in the original?
    - *Product Flow*: does any accepted fix break a user journey or leave a new empty/error state
-     unaddressed? If a new `[blocking]` or `[concern]` is found: fix it inline and note it in the
-     summary as `(self-review: fixed inline)`. If a new `[needs more info]` is found that requires
-     user input: surface it as a question before presenting the revision — do not present a revision
-     with an open blocker. If nothing new is found: proceed.
-8. Present the revised idea inline under a heading like `## Revised Idea`.
+     unaddressed? If a new `[blocking]` or `[concern]` is found: fix it in the draft and note it in the
+     summary as `(self-review: fixed inline)`. If a new `[needs more info]` is found that needs user
+     input, ask it now, before the write — nothing is on disk yet, so the answer shapes the one write
+     rather than requiring a revert.
+8. **Write or emit the verified revision.** For a file target, write the draft to the file in one
+   pass, log each landing with Step 3b `--outcome fixed`, and show a diff of the changed sections
+   rather than pasting the whole file. For pasted text, emit it inline under a heading like
+   `## Revised Idea`.
 
 After revision (or if the user chose `none`), print the summary.
 
@@ -262,10 +314,15 @@ Idea updated:
 
 Detect the review mode from the `## Review: <mode>` heading in context (case-insensitive match):
 
-- **Idea** (heading contains "idea" or "spec"): if revision was produced and self-review found
-  nothing new, say `> Next: run \`crew spec\` to turn this into a spec, or run \`crew review idea\`
-  for a full multi-reviewer pass first.` If the user chose none, say `> Next: run \`crew review
-  idea\` again, or proceed with the original idea.`
+- **Idea or spec** (heading contains "idea" or "spec") — split by which one, because the artifact
+  differs. Under a `## Review: Spec` heading the artifact is already `<task>/SPEC.md`, so `crew spec`
+  has nothing to draft:
+  - **Spec review**, revision produced and self-review clean: `> Next: approve the revised SPEC.md
+    (Gate 1), then run \`crew implement\`.`
+  - **Idea review**, revision produced and self-review clean: `> Next: run \`crew spec\` to turn this
+    into a spec, or run \`crew review idea\` for a full multi-reviewer pass first.`
+  - Either, user chose none: keep the artifact as it is and say so; for a spec review the next step is
+    Gate 1 or another `crew review spec`, for an idea it is `crew review idea` again.
 - **Changes** (heading contains "changes"): `> Next: run \`crew review\` to verify the fixes are
   clean.`
 - **Self-review / anything else**: `> Next: run \`crew review\` to verify, or \`crew commit\` if

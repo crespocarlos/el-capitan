@@ -146,6 +146,105 @@ def test_normalize_strict_caps_nits_separately_from_total(tmp: Path) -> None:
     assert write(full[:12] + full[13:]).returncode == 0
 
 
+def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
+    """Step 2 requires `verified` + `evidence` of emitted blocking/attention only, so a nit may carry
+    none — and the `--files` gate must not dereference a missing location.
+
+    2026-11-18: every emitted finding went through that gate, which called `evidence.split("@")`
+    unconditionally. A nit with no evidence raised AttributeError instead of persisting, and the
+    traceback made it look as though strict mode *required* evidence on nits.
+    """
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    report = tmp / "report.md"
+    report.write_text("## Verdict: PASS\n")
+    findings = tmp / "findings.json"
+    findings.write_text(json.dumps([
+        {"title": "An unanchored nit", "label": "nit", "disposition": "patch"},
+    ]))
+    # `persist` prints no per-finding output and writes no findings file, so retention is proved at
+    # `normalize`, which is the stage that hands `persist` its list.
+    consolidated = tmp / "consolidation.json"
+    normalized = run("normalize", str(findings), "--output", str(consolidated))
+    assert normalized.returncode == 0, normalized.stderr
+    assert [f["title"] for f in json.loads(consolidated.read_text())["findings"]] == ["An unanchored nit"]
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                 "--findings", str(consolidated), "--mode", "changes", "--files", "a.ts",
+                 "--personas", "adversarial", "--strict")
+    assert result.returncode == 0, result.stderr
+    assert (review_dir / "REVIEW.md").is_file()
+
+    def persist_with(extra: dict) -> subprocess.CompletedProcess:
+        findings.write_text(json.dumps([{"title": "probe", "label": "nit", "disposition": "patch", **extra}]))
+        return run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                   "--findings", str(findings), "--mode", "changes", "--files", "a.ts",
+                   "--personas", "adversarial", "--strict")
+
+    # A nit that does cite a location still has to cite one under review.
+    result = persist_with({"evidence": "other.ts:4"})
+    assert result.returncode == 2 and "not in the reviewed file set" in result.stderr, result.stderr
+    # A malformed evidence value is a caller bug, not an absent location — reject it, do not skip it.
+    for malformed in (True, {}, 7):
+        result = persist_with({"evidence": malformed})
+        assert result.returncode == 2 and "evidence must be a string" in result.stderr, (
+            f"{malformed!r}: {result.stderr}"
+        )
+    # The severity rule still binds at this call site: an unverified attention finding fails here.
+    findings.write_text(json.dumps([
+        {"title": "An unverified attention finding", "label": "attention", "disposition": "patch"},
+    ]))
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                 "--findings", str(findings), "--mode", "changes", "--files", "a.ts",
+                 "--personas", "adversarial", "--strict")
+    assert result.returncode == 2 and "unverified attention finding" in result.stderr, result.stderr
+
+
+def test_persist_rejects_a_report_carrying_a_generated_section(tmp: Path) -> None:
+    """`persist` appends `### Coverage by layer` and `### Files reviewed`, so a report that already
+    carries one would render it twice — the second copy indistinguishable from the first.
+
+    2026-11-18: two consecutive reviews hand-wrote both sections into `report.md`, and each REVIEW.md
+    carried the coverage table and the file list twice.
+    """
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True)
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    report = tmp / "report.md"
+
+    def persist() -> subprocess.CompletedProcess:
+        return run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                   "--mode", "changes", "--files", "a.ts", "--personas", "adversarial")
+
+    for heading in ("### Coverage by layer", "### Files reviewed"):
+        report.write_text(f"## Review: changes\n\n{heading}\n- something\n")
+        result = persist()
+        assert result.returncode == 2, f"{heading}: {result.stdout}"
+        assert heading in result.stderr and "delete it from the report" in result.stderr, result.stderr
+        assert not (tmp / "task" / "REVIEW.md").exists(), f"{heading} persisted anyway"
+
+    # A finding may quote a heading verbatim (the contract requires quoting) — that is not a
+    # duplicate section. Verified against the 2026-11-18 report that quoted one inside a fence.
+    report.write_text(
+        "## Review: changes\n\n1. [attention] **a.md — line 2** — the doc says\n\n"
+        "```text\n### Files reviewed\n- a.ts\n```\n"
+    )
+    assert persist().returncode == 0, "a quoted heading was rejected as a duplicate section"
+    # A deeper heading is a different section: `#### Files reviewed` is not `### Files reviewed`.
+    report.write_text("## Review: changes\n\n#### Files reviewed by hand\n")
+    assert persist().returncode == 0, "a level-4 heading was rejected as a duplicate section"
+
+    # A clean report still persists, and persist supplies both sections itself.
+    report.write_text("## Review: changes\n")
+    result = persist()
+    assert result.returncode == 0, result.stderr
+    text = (tmp / "task" / "REVIEW.md").read_text()
+    assert text.count("### Files reviewed") == 1, text
+    assert "### Coverage by layer" not in text  # no layer map, so nothing generated
+
+
 def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)

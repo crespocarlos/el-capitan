@@ -168,10 +168,11 @@ a missing requirement) and use `[concern]` in place of `[attention]` for weaknes
    are unactionable — drop them or trace the file before emitting.
 2. Code snippets (2-5 lines) are REQUIRED on `[blocking]` findings. Recommended on `[attention]`.
    Omit on `[nit]` unless the fix is non-obvious.
-3. Hard cap: 12 findings total, of which at most 2 may be `[nit]`. After deduplication, keep
-   highest-severity. Nits never compete with a `[blocking]`, `[attention]`, `[needs more info]`, or
-   `[concern]` finding for a slot: fill severity slots first, then add nits only if fewer than 2.
-   Drop the rest entirely.
+3. Hard cap: 12 non-nit findings plus at most 4 `[nit]`. After deduplication, keep highest-severity.
+   Nits never compete with a `[blocking]`, `[attention]`, `[needs more info]`, or `[concern]` finding
+   for a slot: fill severity slots first, then add nits only within their own budget. Drop the rest
+   entirely. Both numbers are defined once, in `review-findings.py` as `MAX_FINDINGS` and `MAX_NITS`,
+   which count the two budgets separately; read them there rather than copying them into other files.
 4. Zero findings is valid. No action plan. No padding. Add a `### Reviewers` section only when a
    persona failed, was truncated, or returned partial coverage — then name the lens and the gap.
 5. Per-finding length: code snippet (2-5 lines) anchoring the finding, explanation (2-3 sentences),

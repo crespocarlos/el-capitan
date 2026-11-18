@@ -80,26 +80,66 @@ test "$(boundary "$HOME/.claude/agents/x.md")" = allow
 test "$(boundary "$HOME/.cursor/skills/x/SKILL.md")" = allow
 test "$(boundary "/tmp/scratch.json")" = allow
 
-source_edit_guard() { jq -n --arg c "$1" --arg d "$2" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission'; }
+source_edit_guard() { local h=${3:-$home}; jq -n --arg c "$1" --arg d "$2" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | HOME="$h" bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission'; }
 source_repo="$home/source-repo"; git init -q "$source_repo"
 mkdir -p "$source_repo/src"; printf 'export const value = 1;\n' > "$source_repo/src/handler.ts"
 git -C "$source_repo" add src/handler.ts
 tracked_write=$'python3 - <<\'PY\'\nfrom pathlib import Path\nPath("src/handler.ts").write_text("export const value = 2;\\n")\nPY'
 scratch_write=$'python3 - <<\'PY\'\nfrom pathlib import Path\nPath("/tmp/review.json").write_text("{}\\n")\nPY'
-test "$(source_edit_guard "$tracked_write" "$source_repo")" = deny
-test "$(source_edit_guard "$scratch_write" "$source_repo")" = allow
+test "$(source_edit_guard "$tracked_write" "$source_repo" "$home")" = deny
+test "$(source_edit_guard "$scratch_write" "$source_repo" "$home")" = allow
+# A tracked write issued after `cd`-ing into a subdirectory must still deny: the guard resolves
+# its candidate paths against the session cwd instead of substring-matching `git ls-files`.
+cwd_write=$'python3 - <<\'PY\'\nfrom pathlib import Path\nPath("handler.ts").write_text("x")\nPY'
+test "$(source_edit_guard "$cwd_write" "$source_repo/src" "$home")" = deny
+# An absolute interpreter path is the routine venv invocation, not an edge case.
+abs_write=$'python3 - <<\'PY\'\nfrom pathlib import Path\nPath("src/handler.ts").write_text("x")\nPY'
+abs_write=${abs_write/python3//usr/bin/python3}
+test "$(source_edit_guard "$abs_write" "$source_repo" "$home")" = deny
 jq -n --arg c "$tracked_write" --arg d "$source_repo" \
   '{hook_event_name:"PreToolUse",tool_input:{command:$c},cwd:$d}' \
-  | bash "$root/.claude/hooks/block-shell-source-edits.sh" \
+  | HOME="$home" bash "$root/.claude/hooks/block-shell-source-edits.sh" \
   | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 # `preToolUse` (lowercase) is Cursor's shape, distinct from Claude Code's `PreToolUse` and from
 # `beforeShellExecution`; exercise its own command-extraction path in both directions.
 test "$(jq -n --arg c "$tracked_write" --arg d "$source_repo" \
   '{hook_event_name:"preToolUse",tool_input:{command:$c},cwd:$d}' \
-  | bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission')" = deny
+  | HOME="$home" bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission')" = deny
 test "$(jq -n --arg c "$scratch_write" --arg d "$source_repo" \
   '{hook_event_name:"preToolUse",tool_input:{command:$c},cwd:$d}' \
-  | bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission')" = allow
+  | HOME="$home" bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission')" = allow
+
+# review-address gate: no pending marker means an ordinary edit, so the hook must allow rather
+# than block every write in the session. This is the direction that fails silently if wrong.
+gate() { jq -n --arg e "$1" '{hook_event_name:$e,tool_input:{file_path:"/x"}}' \
+  | HOME="$home" bash "$root/.claude/hooks/review-address-gate.sh" | jq -r '.permission'; }
+rm -rf "$home/.agent/review-address"
+test "$(gate preToolUse)" = allow
+test "$(gate PreToolUse)" = allow
+# Pending without approval denies — the state the gate exists for.
+mkdir -p "$home/.agent/review-address"; : > "$home/.agent/review-address/pending"
+test "$(gate preToolUse)" = deny
+# A later approval from a user turn opens it...
+sleep 1; : > "$home/.agent/review-address/approved"
+test "$(gate preToolUse)" = allow
+# ...but a stale approval (older than the current pending) does not, so an earlier run's "all"
+# cannot authorize the next one.
+sleep 1; : > "$home/.agent/review-address/pending"
+test "$(gate preToolUse)" = deny
+# The approval writer ignores anything that is not an answer to the table.
+rm -f "$home/.agent/review-address/approved"
+printf '%s' '{"prompt":"what does this function do?"}' \
+  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
+test ! -f "$home/.agent/review-address/approved"
+printf '%s' '{"prompt":"all"}' \
+  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
+test -f "$home/.agent/review-address/approved"
+# A bare number list is the cherry-pick answer the table asks for.
+rm -f "$home/.agent/review-address/approved"
+printf '%s' '{"prompt":"1, 3"}' \
+  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
+test -f "$home/.agent/review-address/approved"
+rm -rf "$home/.agent/review-address"
 
 publish() { jq -n --arg c "$1" --arg d "${2:-$repo}" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | bash "$root/.claude/hooks/check-publish.sh" | jq -r '.permission'; }
 repo="$home/repo"

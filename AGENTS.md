@@ -22,7 +22,7 @@ No setup required. Skip the bootstrap step in any worktree.
 
 ## Tests
 
-Eight hermetic checks, also run in CI (`.github/workflows/validate.yml`):
+Nine hermetic checks, also run in CI (`.github/workflows/validate.yml`):
 
 ```bash
 python3 .agent/tools/crew-lint.py --budget          # conventions, catalog, references, token budget
@@ -33,6 +33,7 @@ python3 evals/reviewer/test_scoring.py              # reviewer eval scoring and 
 python3 evals/reviewer/test_personas.py             # persona contract, labels, tools, budgets
 python3 evals/tools/test_review_hunks.py            # hunk ids shared by the map and the gate
 python3 evals/tools/test_nightshift_e2e.py          # nightshift e2e client against a stub server
+python3 evals/tools/test_install_blocks.py          # install.sh managed blocks stay idempotent
 ```
 
 `crew test` looks for typed `## Tests` commands in a spec; with none it returns WARN. Verification of
@@ -54,7 +55,7 @@ two-line `## Status\n<value>` form.
   CLAUDE.md     ← Claude Code project context (references @AGENTS.md)
   agents/       ← symlink → ../.cursor/agents
   skills/       ← symlink → ../.cursor/skills
-  hooks/        ← PostToolUse, Notification, SessionStart hooks
+  hooks/        ← guard hooks (edit/shell/git/publish/review-address) plus session and telemetry
 .agent/
   _SPEC_TEMPLATE.md      ← symlink → ../.cursor/skills/spec-writing/references/spec-template.md
   _BUG_SPEC_TEMPLATE.md  ← symlink → ../.cursor/skills/spec-writing/references/bug-spec-template.md
@@ -110,6 +111,12 @@ They are not a substitute for editing a tracked file.
   ≤8 tool call budget in prose and set `maxTurns: 8`. The prose is guidance, not an enforced cap: Cursor
   ignores `maxTurns`, and Claude Code enforces it as a turn limit (not a call limit). If you add a new
   discovery step that consumes a slot, update the budget breakdown comment.
+- **Guards are hooks, not prose** — a rule that must hold every time belongs in
+  `.claude/hooks/`, registered in both `.claude/settings.json` and `.cursor/hooks.template.json`. Add
+  it to `.claude/hooks/fixtures/run.sh` with an allow case as well as a deny case: a gate that denies
+  unconditionally passes every deny test while breaking the session. `crew-lint` fails an
+  unregistered hook, and a rule whose violation a hook already blocks should not also carry a
+  paragraph of rationale in `personal.mdc`.
 - **Adding a reviewer persona** — four changes, two of them in code (steps 2 and 4), or the persona
   is never dispatched:
   1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
@@ -177,9 +184,10 @@ python3 evals/reviewer/test_scoring.py   # reviewer eval scoring, fixture covera
 python3 evals/reviewer/test_personas.py   # persona contract, labels, tools, budgets
 python3 evals/tools/test_review_hunks.py   # hunk ids shared by the layer map and the gate
 python3 evals/tools/test_nightshift_e2e.py   # nightshift e2e client against a stub server
+python3 evals/tools/test_install_blocks.py   # install.sh managed blocks stay idempotent
 ```
 
-All eight are hermetic (no network, no API key, no nightshift install) and run in CI via
+All nine are hermetic (no network, no API key, no nightshift install) and run in CI via
 `.github/workflows/validate.yml`.
 `evals/run.py` and `evals/reviewer/run.py` make model calls and need an API key; they are not part of
 the deterministic gate.

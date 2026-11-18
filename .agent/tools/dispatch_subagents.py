@@ -17,6 +17,7 @@ critics:
 """
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -78,12 +79,29 @@ def run_persona(
 
 
 def read_persona(repo_root: Path, subdir: str, name: str) -> str:
+    """Read a persona file, composing the shared output contract for reviewers.
+
+    Reviewer personas no longer restate the labels, finding shape, abstention lines or evidence
+    rules: those live once in `.cursor/agents/references/reviewer-contract.md`, which
+    `evals/reviewer/run.py` prepends. A dispatch that read the persona file alone therefore handed
+    each reviewer a lens with no output contract, so this path must compose the same two halves.
+
+    `specwriter` critics are not reviewers: they emit no labeled findings and do not load it.
+    """
     p = repo_root / ".cursor" / "agents" / f"{subdir}-{name}.md"
     if not p.is_file():
         # An empty system prompt still produces plausible output and a zero exit, so a
         # missing persona would be reported as a successful review.
         raise FileNotFoundError(f"persona file missing: {p}")
-    return p.read_text(encoding="utf-8")
+    text = p.read_text(encoding="utf-8")
+    if subdir != "reviewer":
+        return text
+    contract = repo_root / ".cursor" / "agents" / "references" / "reviewer-contract.md"
+    if not contract.is_file():
+        # Silently dispatching without it produces reviews judged against no shared rules, which
+        # reads as a successful run — the failure mode this whole file exists to avoid.
+        raise FileNotFoundError(f"shared reviewer contract missing: {contract}")
+    return f"{contract.read_text(encoding='utf-8')}\n\n---\n\n{text}"
 
 
 def dispatch_all(
@@ -162,6 +180,28 @@ def dispatch_reviewers(claude: str, timeout_cmd: list[str], repo_root: Path) -> 
 
     reviewers = ["code-quality", "adversarial", "architecture", "product-flow", "prompt-quality"]
     fast_reviewers = {"code-quality", "product-flow"}
+
+    # Honour the same selector `crew-reviewer` Step 4 uses, so a degraded dispatch runs the personas
+    # the protocol would have run. Reviewing everything unconditionally reports findings against
+    # lenses this change never asked for, and inflates a small diff to five reports.
+    if diff_content or review_mode != "spec":
+        changed = [line.split("\t", 1)[1].strip()
+                   for line in git_output("diff", "--cached", "--numstat").splitlines()
+                   if "\t" in line]
+        if changed:
+            selection = subprocess.run(
+                [sys.executable, str(Path.home() / ".agent/bin/review-findings.py"),
+                 "select", "--mode", "changes", "--paths", *changed],
+                capture_output=True, text=True,
+            )
+            if selection.returncode != 0:
+                print(f"dispatch: selector failed: {selection.stderr.strip()}", file=sys.stderr)
+                return 1
+            selected = set(json.loads(selection.stdout)["required"])
+            reviewers = [name for name in reviewers if name in selected]
+            if not reviewers:
+                print("dispatch: selector returned no reviewers", file=sys.stderr)
+                return 1
 
     if review_mode == "pr" and not diff_content:
         print(

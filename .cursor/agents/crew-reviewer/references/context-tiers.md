@@ -6,12 +6,14 @@ targeted file reads, by whatever name the harness exposes them) to ground a find
 verify from the provided context alone — but they must not re-read files already included in their
 package.
 
-**Every package states its output contract, including the hunk requirement.** The persona file
-defines the finding format; the package must also carry the hunk-citation rule, because a persona
-never reads this file. Without that sentence in the package, personas do not cite hunk ids — only 7
-of 511 recorded candidates carried one — and strict persistence then fails on every
-`[blocking]`/`[attention]` finding for a reason the persona was never told about. Use the one format
-the rest of the pipeline reads (`review-findings.py` parses the ids from the record, and the layer
+**Every package states its output contract, including the hunk requirement.** The shared reviewer
+contract already carries the hunk-citation rule, but a package assembles the rule's *inputs*: without
+the `## Hunk reference` section below, a persona has no ids to cite. Restate the sentence verbatim
+anyway, because a package is what the persona reads and the ids it cites must be the ids in front of
+it. Without either half, personas do not cite hunk ids — only 7 of 511 recorded candidates carried
+one — and strict persistence then fails on every `[blocking]`/`[attention]` finding for a reason the
+persona was never told about. Use the one format the rest of the pipeline reads (`review-findings.py`
+parses the ids from the record, and the layer
 coverage section matches them), stated verbatim:
 
 > Every `[blocking]` and `[attention]` finding cites the hunk ids whose change causes it, next to the
