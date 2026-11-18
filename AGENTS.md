@@ -108,6 +108,27 @@ They are not a substitute for editing a tracked file.
   ≤8 tool call budget in prose and set `maxTurns: 8`. The prose is guidance, not an enforced cap: Cursor
   ignores `maxTurns`, and Claude Code enforces it as a turn limit (not a call limit). If you add a new
   discovery step that consumes a slot, update the budget breakdown comment.
+- **Adding a reviewer persona** — four changes, two of them in code (steps 2 and 4), or the persona
+  is never dispatched:
+  1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
+     `description`, the search/read `tools` for this harness, `readonly: true`, `maxTurns: 12`) and a
+     persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
+     Copy the frontmatter from an existing persona rather than inventing tool names; see the
+     harness-split note above for which harness reads which key. Never require a specific tool by
+     name in the prompt body: the two harnesses' tool surfaces differ, one inherits every parent
+     tool while the other honours a declared subset, and a named tool may not exist on the other
+     side. Reviewers are analysis-only; set `readonly: false` only if the persona must write, and
+     say why.
+  2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
+     `review-findings.py`; `select` is what dispatch reads, so `crew-reviewer` Step 4's prose alone
+     dispatches nothing. `select` never returns `explorer`, so that persona stays manually dispatched.
+  3. **Context tier** — assign the persona to a tier in
+     `.cursor/agents/crew-reviewer/references/context-tiers.md`.
+  4. **Fixture** — add the persona to an `evals/reviewer/fixtures.json` case, or its prompt is
+     unmeasured.
+
+  For example, an SRE team could add `reviewer-observability.md`, selected on monitoring/alerting
+  paths, checking query quality, false-positive risk, and alert actionability.
 
 ## Using crew commands on this repo
 

@@ -43,22 +43,18 @@ position holds.
 a reviewer says "X will cause Y", is X actually present and does it actually cause Y? If the chain
 breaks anywhere, mark it: `(ungrounded: [where the chain breaks])` and either repair it or drop it.
 
-**Is it internally consistent within this review?** Does this finding contradict another finding
-from the same reviewer in this same run? Contradiction is a signal that the reviewer was
-pattern-matching rather than reasoning. Surface it: `(note: conflicts with [other finding] — kept
-the stronger one)`.
+**Is it specific enough to act on, with proportionate stakes?** A finding must name a concrete
+target and say what breaks if the answer is wrong; if it does neither, either sharpen it or drop it.
+Ignore the persona's own label and assign one from the verified harm — a `[blocking]` must name a
+concrete failure path, and speculative harm or an unlikely chain downgrades it. Mark a downgrade
+`(downgraded: harm is speculative — no direct failure path in this artifact)`, and a drop `(dropped:
+too vague to act on)`.
 
-**Is the severity proportionate to actual impact?** Ignore the persona's label and assign one from
-the verified harm. A `[blocking]` must name a concrete failure path. If the harm is speculative or
-relies on an unlikely chain of events, downgrade: `(downgraded: harm is speculative — no direct
-failure path in this artifact)`.
-
-**Is it specific enough to act on?** Vague findings ("this could be improved", "consider handling
-this case") with no concrete target are noise. Either sharpen with what you know of the artifact, or
-drop: `(dropped: too vague to act on)`.
-
-**Do the stakes hold up?** Every question must name what breaks if the answer is wrong. If it
-doesn't, add the stakes or convert to a nit.
+**Does it contradict another finding in this same run?** Two findings can each be grounded and still
+be mutually exclusive ("the guard is unreachable" versus "the guard fires before validation"), which
+per-finding traceability cannot see. Compare findings against each other and surface it:
+`(note: conflicts with [other finding] — kept the stronger one)`. Deduplication handles the same
+issue flagged twice; this handles two issues that cannot both be true.
 
 The goal is a report where every finding has a traceable, defensible reason to exist — not a relay
 of whatever the reviewers returned.
@@ -172,7 +168,10 @@ a missing requirement) and use `[concern]` in place of `[attention]` for weaknes
    are unactionable — drop them or trace the file before emitting.
 2. Code snippets (2-5 lines) are REQUIRED on `[blocking]` findings. Recommended on `[attention]`.
    Omit on `[nit]` unless the fix is non-obvious.
-3. Hard cap: 7 findings total. After deduplication, keep highest-severity. Drop the rest entirely.
+3. Hard cap: 12 findings total, of which at most 2 may be `[nit]`. After deduplication, keep
+   highest-severity. Nits never compete with a `[blocking]`, `[attention]`, `[needs more info]`, or
+   `[concern]` finding for a slot: fill severity slots first, then add nits only if fewer than 2.
+   Drop the rest entirely.
 4. Zero findings is valid. No action plan. No padding. Add a `### Reviewers` section only when a
    persona failed, was truncated, or returned partial coverage — then name the lens and the gap.
 5. Per-finding length: code snippet (2-5 lines) anchoring the finding, explanation (2-3 sentences),

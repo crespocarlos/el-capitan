@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Split a unified diff into numbered hunks for the reviewer layer map.
 
-Writes `hunks.json` and `hunks.md` to `--out`. Every hunk gets a stable id (`h1`, `h2`, …) in
-diff order, and a file with no textual hunk (binary, pure rename, mode change) still gets one, so
-every changed file can be placed in a layer. Ids are assigned here and nowhere else: they are the
-vocabulary the persona Reading map and the `review-findings.py coverage` gate share.
+Writes `hunks.json`, `hunks.md`, and `hunks.index.md` to `--out`. Every hunk gets a stable id
+(`h1`, `h2`, …) in diff order, and a file with no textual hunk (binary, pure rename, mode change)
+still gets one, so every changed file can be placed in a layer. Ids are assigned here and nowhere
+else: they are the vocabulary the persona Reading map and the `review-findings.py coverage` gate
+share. `hunks.md` carries the index plus each hunk body and feeds the layer-mapping pass;
+`hunks.index.md` is the index alone, for a persona package that already holds the diff.
 
 Self-contained on purpose. Hunk parsing is project-agnostic, so it must not depend on another
 checkout being installed; a review that silently loses its layer map because an external tool is
@@ -196,19 +198,34 @@ def apply_limits(files: list[dict], hunks: list[dict]) -> None:
                     line["s"] = line["s"][:MAX_LINE_CHARS]
 
 
-def markdown(parsed: dict) -> str:
-    """Hunk index plus bodies, in the shape a mapping pass reads."""
+def index_markdown(parsed: dict) -> str:
+    """The hunk index alone: ids, files, changed-line ranges, and size flags.
+
+    This is the compact reference a persona package carries alongside the diff. It orientates
+    without re-quoting lines the package already holds, so it costs tens of lines instead of a
+    second copy of the patch. Each id carries its new-file start line and span, because a persona
+    citing an id in a multi-hunk file otherwise has no way to confirm which hunk a finding belongs
+    to, and the coverage gate accepts any real id.
+    """
     by_id = {hunk["id"]: hunk for hunk in parsed["hunks"]}
     out = [f"# Hunk index ({len(parsed['hunks'])} hunks in {len(parsed['files'])} files)\n"]
     for entry in parsed["files"]:
         flags = [entry["status"] if entry["status"] != "modified" else "",
                  "likely-generated" if entry["generated"] else "",
                  "diff-too-large" if entry.get("suppressed") else ""]
-        ids = ", ".join(f"{hunk_id} (+{by_id[hunk_id]['additions']}/-{by_id[hunk_id]['deletions']})"
-                        for hunk_id in entry["hunkIds"])
+        ids = ", ".join(
+            f"{hunk_id} @{by_id[hunk_id]['newStart']}"
+            f"(+{by_id[hunk_id]['additions']}/-{by_id[hunk_id]['deletions']})"
+            for hunk_id in entry["hunkIds"])
         label = f" [{', '.join(f for f in flags if f)}]" if any(flags) else ""
         out.append(f"- `{entry['path']}`{label}: {ids}")
-    out.append("\n# Hunks\n")
+    return "\n".join(out)
+
+
+def markdown(parsed: dict) -> str:
+    """Hunk index plus bodies, in the shape the layer-mapping pass reads."""
+    by_id = {hunk["id"]: hunk for hunk in parsed["hunks"]}
+    out = [index_markdown(parsed), "\n# Hunks\n"]
     for entry in parsed["files"]:
         suffix = f" (renamed from {entry['oldPath']})" if entry["status"] == "renamed" else ""
         if entry["status"] not in {"modified", "renamed"}:
@@ -239,7 +256,8 @@ def markdown(parsed: dict) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("diff", type=Path, help="unified diff file, or - for stdin")
-    parser.add_argument("--out", type=Path, required=True, help="directory for hunks.json and hunks.md")
+    parser.add_argument("--out", type=Path, required=True,
+                        help="directory for hunks.json, hunks.md, and hunks.index.md")
     args = parser.parse_args()
 
     if str(args.diff) == "-":
@@ -266,6 +284,7 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "hunks.json").write_text(json.dumps(parsed, indent=2) + "\n", encoding="utf-8")
     (args.out / "hunks.md").write_text(markdown(parsed), encoding="utf-8")
+    (args.out / "hunks.index.md").write_text(index_markdown(parsed) + "\n", encoding="utf-8")
     print(json.dumps({"hunks": len(parsed["hunks"]), "files": len(parsed["files"]),
                       "out": str(args.out)}))
     return 0

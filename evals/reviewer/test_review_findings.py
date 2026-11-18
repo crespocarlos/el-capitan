@@ -108,6 +108,38 @@ def test_normalize_strict_requires_verified_evidence_and_cap(tmp: Path) -> None:
     assert result.returncode == 2 and "cap" in result.stderr
 
 
+def test_normalize_strict_caps_nits_separately_from_total(tmp: Path) -> None:
+    source = tmp / "c.json"
+    ok = {"verified": True, "evidence": "a.ts:3", "file": "a.ts", "disposition": "patch"}
+
+    def write(items: list[dict]) -> subprocess.CompletedProcess:
+        source.write_text(json.dumps(items))
+        return run("normalize", str(source), "--strict")
+
+    # Nits are capped on their own, so three nits fail even though three is far under the total cap.
+    result = write([{**ok, "title": f"nit {i}", "label": "nit"} for i in range(3)])
+    assert result.returncode == 2 and "nits" in result.stderr
+
+    # The budgets are independent, so both maxima can be reached at once: 12 severity findings plus
+    # the 2-nits allowance.
+    full = [{**ok, "title": f"a {i}", "label": "attention"} for i in range(12)]
+    full += [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(2)]
+    assert write(full).returncode == 0
+
+    # One more severity finding exceeds the non-nit cap, and the message names the constant so the
+    # cap and this test cannot drift apart silently.
+    result = write(full + [{**ok, "title": "a 12", "label": "attention"}])
+    assert result.returncode == 2 and "cap of 12" in result.stderr
+
+    # A nit over budget fails on its own even when severity findings are well under their cap,
+    # which is the regression this tiering exists to prevent: polish cannot evict severity.
+    assert write([{**ok, "title": "only", "label": "blocking"}]
+                 + [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(2)]).returncode == 0
+    result = write([{**ok, "title": "only", "label": "blocking"}]
+                   + [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(3)])
+    assert result.returncode == 2 and "cap of 2" in result.stderr
+
+
 def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)

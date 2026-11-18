@@ -15,7 +15,8 @@ to a whole `review.json`, and `persist --strict` runs `coverage` whenever `layer
 sits next to `hunks.json`. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
 `select` prints the reviewer personas a review must dispatch. `normalize
 --strict` rejects emitted blocking/attention findings without `verified` and
-`evidence`, and more than MAX_FINDINGS emitted findings. `persist --strict
+`evidence`, more than MAX_FINDINGS emitted findings, and more than MAX_NITS
+emitted nits (so polish cannot occupy a severity slot). `persist --strict
 --personas ...` requires each dispatched persona's `.in.md` and `.out.md`.
 `--files` is an evidence allowlist, not a diff check: it records what was reviewed and
 gates evidence paths against it. It is deliberately not compared with `git diff`, because
@@ -60,7 +61,15 @@ def mode_arg(value: str) -> str:
     for modifier in (" auto-loop", " auto", "-auto-loop", "-auto"):
         normalized = normalized.replace(modifier, "")
     return normalized
-MAX_FINDINGS = 7
+
+
+# Tiered output cap, counted separately so polish cannot evict severity. A flat cap of 7 counted a
+# nit as equal to a blocking finding: measured over 65 persisted reviews it bound on 42% of runs, and
+# one review emitted three nits while dropping an [attention] finding. Non-nit volume never exceeded
+# 11 in that sample, so 12 is a ceiling against runaway output that does not truncate real findings,
+# and the nit budget keeps the tail short. Total emitted output is at most 14.
+MAX_FINDINGS = 12
+MAX_NITS = 2
 EMITTED = {"patch", "decide"}
 EVIDENCE_LOCATION = re.compile(r"^[^:\s][^:]*:\d+(?:@[0-9a-f]{7,40})?$")
 SELECT_RULES = {
@@ -164,8 +173,20 @@ def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
                 raise ValueError(
                     f"finding {f['title']!r} cites {location}, which is not in the reviewed file set"
                 )
-    if len(emitted) > MAX_FINDINGS:
-        raise ValueError(f"{len(emitted)} emitted findings exceed the cap of {MAX_FINDINGS}; drop the lowest severity")
+    nits = [f for f in emitted if f["label"] == "nit"]
+    findings_only = len(emitted) - len(nits)
+    # Counted separately: a nit must never consume a severity slot, so the two budgets do not
+    # trade against each other.
+    if findings_only > MAX_FINDINGS:
+        raise ValueError(
+            f"{findings_only} emitted non-nit findings exceed the cap of {MAX_FINDINGS}; "
+            "drop the lowest severity or route pre-existing findings to 'defer'"
+        )
+    if len(nits) > MAX_NITS:
+        raise ValueError(
+            f"{len(nits)} emitted nits exceed the cap of {MAX_NITS}; keep the ones with a stated cost "
+            "and drop the rest, so polish cannot occupy a severity slot"
+        )
 
 
 def normalize(args: argparse.Namespace) -> int:

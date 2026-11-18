@@ -51,7 +51,10 @@ narration.
 
 ## Step 2: gather metadata
 
-For diff modes, gather names, sizes, and change types before loading a full diff. For spec review,
+For diff modes, gather names, sizes, and change types before loading a full diff. `gh pr diff` has no
+`--name-status`; that is a plain `git diff` flag. For PR mode, get names with `gh pr diff --name-only`
+and change types by parsing the same diff's headers (`new file mode`, `deleted file mode`, `rename
+from`/`rename to`, `Binary files`) — the same signal `review-hunks.py` already derives. For spec review,
 resolve the task directory with `~/.agent/bin/resolve-task-dir.py`. For idea review, use the
 supplied idea or current topic. For PR mode, if a read-only `gh` command fails with a known
 sandbox-network denial such as `Forbidden`, re-run it with the harness's network elevation
@@ -73,19 +76,25 @@ modifier (`PR` → `pr`; `self auto` → `self`). Run
 `~/.agent/bin/review-findings.py select --mode <selector-mode> --paths <changed paths> [--contract]
 [--compat]` and dispatch every persona it returns; pass `--contract` when a spec or PR contract
 supplies acceptance criteria and `--compat` when the change alters behavior of an existing consumer.
-Skipping a returned persona is not allowed; adding one is. The rules below describe the same
-signals. Always dispatch Code Quality and Adversarial for code reviews. Dispatch Architecture for
-routing, installation, compatibility, or cross-harness changes; Product Flow for user-visible flows
-and whenever a spec or PR contract supplies acceptance criteria to check; and Prompt Quality for
-files under `agents/`, `skills/`, `rules/**/*.mdc`, or prompt/eval configuration. Dispatch Explorer
-only when one of those lenses needs repository discovery. Dispatch independent personas in parallel
-with a bounded context package.
+Skipping a returned persona is not allowed; adding one is.
+
+`select` is authoritative for what must run. It always returns Code Quality and Adversarial for code
+modes, adds Prompt Quality and Architecture from path patterns, and adds Product Flow only under
+`--contract` or for spec and idea reviews. It never selects Explorer — dispatch that one yourself,
+and only when a lens below cannot ground a claim from its package. The prose rules here describe
+when to add a persona beyond the selector's output, not a second copy of its logic. Prompt Quality
+applies to files under `agents/`, `skills/`, `rules/**/*.mdc`, or prompt/eval configuration;
+Architecture to routing, installation, compatibility, or cross-harness changes; Product Flow is
+worth adding unprompted when the change has a user-visible flow.
 
 ## Step 5: build context
 
-Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md). For every
-changed or reviewed path, run `~/.agent/bin/agent-context.py` and include its returned guidance
-content in the context package, from repository root to nearest folder.
+Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md). Call
+`~/.agent/bin/agent-context.py` **once**, passing every changed or reviewed path as an argument — it
+takes `paths ...` and returns each distinct guidance file's content exactly once under `files`. One
+call per path re-reads the same `AGENTS.md` for every file in the same directory, which is how a
+handful of lines of guidance becomes tens of kilobytes of package. Include the returned guidance in
+the context package, from repository root to nearest folder.
 
 **Layer map (diff modes only).** Before packaging, split the diff into numbered hunks and order them
 into layers:
@@ -96,6 +105,9 @@ into layers:
 # PR: gh pr diff <n> -R <owner/repo> > "$REVIEW_ROOT/diff.patch"
 python3 ~/.agent/bin/review-hunks.py "$REVIEW_ROOT/diff.patch" --out "$REVIEW_ROOT"
 ```
+
+That writes `hunks.json` (the ids the coverage gate checks), `hunks.md` (index plus bodies, for the
+mapping pass only), and `hunks.index.md` (the index alone, for persona packages).
 
 Then dispatch `reviewer-layers` with `hunks.md`. Extract the contents of its one fenced `json` block
 (without the opening or closing backticks) and write that raw JSON to `$REVIEW_ROOT/layers.json`.
@@ -115,8 +127,10 @@ the coverage gate and warns when `hunks.json` exists, so an unmapped review is n
 `persist --strict` rejects any hunk left out, so a map is never partially applied.
 
 When `hunks.json` exists, append a compact hunk reference to every diff-mode package whether or not
-the layer map exists: each id, file, and changed-line range from `hunks.md`. Without a Reading map it
-does not impose reading order, but it lets every persona cite the ids strict persistence requires.
+the layer map exists: each id, file, and changed-line range, taken from `hunks.index.md` — the index
+alone, never the `hunks.md` bodies, because the package already holds the diff and re-quoting it
+roughly doubles the package for no added signal. Without a Reading map the index does not impose
+reading order, but it lets every persona cite the ids strict persistence requires.
 
 In PR mode, `agent-context.py` is allowed only for repository guidance. Fetch reviewed code and all
 claim-supporting excerpts from the PR head with `gh`; do not use the local checkout to assemble code
@@ -137,6 +151,12 @@ Use the shared dispatch contract. Give each persona its context package and mode
 collect raw output without altering it. Personas may run read-only, and the `claude -p` fallback
 returns stdout only; follow the evidence rules in the shared dispatch instructions.
 
+**Persist both artifacts at dispatch time, not at persist time.** Write the exact package sent to
+each persona to `$REVIEW_ROOT/<persona>.in.md` and its raw reply to `$REVIEW_ROOT/<persona>.out.md`
+as each returns. `persist --strict` requires both files, and reconstructing either afterwards from a
+one-line summary satisfies the gate while destroying the audit trail — the recorded package must be
+the one the persona actually read.
+
 ## Step 7: consolidate
 
 Follow [consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.md).
@@ -145,36 +165,23 @@ Follow [consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.m
 
 Follow [output formats](~/.cursor/agents/crew-reviewer/references/output-formats.md),
 [auto-apply](~/.cursor/agents/crew-reviewer/references/auto-apply.md), and [pipeline
-persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md). Add a `### Reviewers` section
+persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md). The reply is `report.md`
+rendered verbatim — never a rewrite of it from your own notes. Add a `### Reviewers` section
 only when a persona failed, was truncated, or returned partial coverage (blocked reads, unread
 files); name the lens and the gap.
 
 ## Step 9: extensibility
 
-Adding a reviewer persona touches four places; the first three are code, not prose, or the
-persona is never dispatched:
-
-1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
-   `description`, the search/read `tools` for this harness, `readonly: true`, `maxTurns: 12`) and a
-   persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
-   Copy the frontmatter from an existing persona rather than inventing tool names. `tools` and
-   `maxTurns` are Claude Code fields and Cursor ignores them — a Cursor subagent inherits every parent
-   tool and is restricted only by `readonly`, which Claude Code ignores — so neither harness needs
-   tool names in the body: never require a specific tool by name in the prompt. Names in `tools` are
-   Claude Code ids (`Read`, `Grep`, `Glob`, `Bash`, `Agent`, …), not Cursor's. Reviewers are
-   analysis-only; set `readonly: false` only if the persona must write, and say why.
-2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
-   `review-findings.py`; `select` is what dispatch reads, so Step 4 prose alone dispatches nothing.
-3. **Context tier** — assign the persona to a tier in `context-tiers.md` (Step 5).
-4. **Fixture** — add the persona to an `evals/reviewer/fixtures.json` case, or its prompt is
-   unmeasured.
-
-For example, an SRE team could add `reviewer-observability.md`, selected on monitoring/alerting
-paths, checking query quality, false-positive risk, and alert actionability.
+Adding a reviewer persona, or a field to the layer map, touches code and not only prose. The
+persona procedure and its four required changes live in `AGENTS.md` under "Adding a reviewer
+persona", next to the harness frontmatter rules they depend on; read it before adding one, since
+nothing is dispatched from this file alone. A layer-map field is a different change: it needs the
+kind vocabulary in `reviewer-layers.md`, the Primary-kinds table in `context-tiers.md`, and
+`check_layers` in `review-findings.py`, then `coverage` to confirm the map still validates.
 
 ## Rules
 
-- Never skip consolidation.
-- Do not pad reviews with filler.
-- Zero findings is valid.
-- Preserve the mode table above when extending review behavior.
+The rule set for this protocol lives in [pipeline
+persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md) under "Rules" — read it there and
+do not keep a second copy here. One rule is specific to this file: the mode table in Step 1 stays
+authoritative when extending review behavior.

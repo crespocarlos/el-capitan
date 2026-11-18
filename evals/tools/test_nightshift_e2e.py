@@ -11,10 +11,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -272,6 +274,77 @@ def test_dev_stack_note_flags_a_script_that_ignores_eis(tmp: Path) -> None:
     assert module.dev_stack_current(root, None)[0] is True
 
 
+def test_status_tails_the_last_fatal_line_on_failure(tmp: Path) -> None:
+    stub = Stub()
+    try:
+        worktree = tmp / "worktree"
+        (worktree / ".dev-stack").mkdir(parents=True)
+        (worktree / ".dev-stack" / "kibana.log").write_text(
+            "INFO starting\nFATAL first failure\nINFO retry\nFATAL real cause: missing connector\n")
+        stub.route("GET", f"/api/e2e/{KEY}", 200, {
+            "status": {"state": "failed", "error": "build_package.js missing"}, "meta": {}})
+        result = json.loads(run(stub, "status", KEY, "--worktree-path", str(worktree)).stdout)
+        assert result["fatal"] == "FATAL real cause: missing connector"
+        # No path, or a done/running state: never attempt to read a log.
+        no_path = json.loads(run(stub, "status", KEY).stdout)
+        assert "fatal" not in no_path
+        stub.route("GET", f"/api/e2e/{KEY}", 200, {"status": {"state": "running"}, "meta": {}})
+        running = json.loads(run(stub, "status", KEY, "--worktree-path", str(worktree)).stdout)
+        assert "fatal" not in running
+    finally:
+        stub.close()
+
+
+def test_port_in_use_detects_a_bound_local_port(tmp: Path) -> None:
+    module = load_module()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        assert module.port_in_use(port) is True
+    # Nothing should still be listening right after the socket closes and the OS frees it;
+    # retry briefly in case TIME_WAIT races the check.
+    for _ in range(20):
+        if not module.port_in_use(port):
+            break
+        time.sleep(0.05)
+    assert module.port_in_use(port) is False
+
+
+def test_duplicate_config_keys_flags_a_repeated_key_only(tmp: Path) -> None:
+    module = load_module()
+    clean = tmp / "clean.json"
+    clean.write_text('{"a": 1, "b": {"c": 2}}')
+    assert module.duplicate_config_keys(clean) == []
+    dupes = tmp / "dupes.json"
+    dupes.write_text('{"a": 1, "a": 2, "b": {"c": 3, "c": 4}}')
+    assert sorted(module.duplicate_config_keys(dupes)) == ["a", "c"]
+    assert module.duplicate_config_keys(tmp / "missing.json") == []
+    broken = tmp / "broken.json"
+    broken.write_text("{not json")
+    assert module.duplicate_config_keys(broken) == []
+
+
+def test_doctor_reports_ports_and_config_duplicate_notes(tmp: Path) -> None:
+    stub = Stub()
+    checkout = fake_checkout(tmp)
+    (checkout / "config.local.json").write_text('{"e2e": {"enabled": true}, "e2e": false}')
+    try:
+        stub.route("GET", "/api/e2e/queue", 200, {
+            "queued": [], "auto": [], "errors": {}, "worktree": None,
+            "machines": [{"id": "default", "label": "kibana", "enabled": True}],
+        })
+        result = run(stub, "doctor", checkout=str(checkout))
+        payload = json.loads(result.stdout)
+        notes = {note["check"]: note for note in payload["notes"]}
+        assert "ports_free" in notes
+        assert notes["config_duplicate_keys"]["ok"] is False
+        assert "e2e" in notes["config_duplicate_keys"]["detail"]
+        assert notes["helper_up_to_date"]["ok"] is True  # no remote on this checkout: skipped
+    finally:
+        stub.close()
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location("nightshift_e2e", TOOL)
     module = importlib.util.module_from_spec(spec)
@@ -357,11 +430,18 @@ def test_worktrees_lists_designated_ones(tmp: Path) -> None:
         stub.route("GET", "/api/deploy", 200, {"worktrees": [
             {"id": "kibana", "label": "main", "branch": "main", "kibanaPort": 5601,
              "kibanaRunning": True, "dirty": ["x.ts"], "deploy": {"state": "ready"}},
+            {"id": "e2e-1", "label": "dedicated", "branch": "feature/x", "kibanaPort": 5602,
+             "kibanaRunning": False, "path": "/Users/x/worktrees/kibana-e2e-1"},
         ]})
         payload = json.loads(run(stub, "worktrees").stdout)
-        assert payload["worktrees"] == [{"id": "kibana", "label": "main", "name": None,
-                                         "branch": "main", "kibanaPort": 5601,
-                                         "kibanaRunning": True}]
+        assert payload["worktrees"] == [
+            {"id": "kibana", "label": "main", "name": None, "branch": "main", "kibanaPort": 5601,
+             "kibanaRunning": True, "path": None, "dirty": ["x.ts"], "dirtyCount": 1,
+             "mainRepoRisk": True},
+            {"id": "e2e-1", "label": "dedicated", "name": None, "branch": "feature/x",
+             "kibanaPort": 5602, "kibanaRunning": False, "path": "/Users/x/worktrees/kibana-e2e-1",
+             "dirty": [], "dirtyCount": 0, "mainRepoRisk": False},
+        ]
         assert "GET", "/api/deploy" in [(i["method"], i["path"].split("?")[0]) for i in stub.requests]
     finally:
         stub.close()

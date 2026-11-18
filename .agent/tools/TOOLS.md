@@ -47,10 +47,13 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 - `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally
   rebased; it is never used by a skill on its own initiative.
-- `review-hunks.py <diff> --out <dir>` writes `hunks.json` and `hunks.md`, numbering every hunk `h1`,
+- `review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, and `hunks.index.md`,
+  numbering every hunk `h1`,
   `h2`, … in diff order, including one synthetic hunk for a file with no textual change (binary,
   rename-only, mode change). It owns the ids: the persona Reading map and `review-findings.py
-  coverage` share them. Self-contained by design — hunk parsing is project-agnostic, so it must not
+  coverage` share them. `hunks.md` carries index plus bodies for the layer-mapping pass;
+  `hunks.index.md` is the index alone, for a persona package that already holds the diff.
+  Self-contained by design — hunk parsing is project-agnostic, so it must not
   depend on another checkout. Its ids, statuses, and lines match nightshift-pr-helper's
   `parseDiff`; that parity is what lets a crew review and a nightshift review of one PR cite the
   same `h1`.

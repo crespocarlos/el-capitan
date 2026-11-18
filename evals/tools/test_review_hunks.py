@@ -77,7 +77,8 @@ def parse(diff: str, tmp: Path) -> dict:
     result = run([str(source), "--out", str(out)])
     assert result.returncode == 0, result.stderr
     return {"json": json.loads((out / "hunks.json").read_text()),
-            "md": (out / "hunks.md").read_text()}
+            "md": (out / "hunks.md").read_text(),
+            "index": (out / "hunks.index.md").read_text()}
 
 
 def test_numbered_ids_in_diff_order(tmp: Path) -> None:
@@ -110,9 +111,9 @@ def test_hunk_bodies_carry_line_numbers_and_order(tmp: Path) -> None:
 def test_markdown_indexes_every_hunk(tmp: Path) -> None:
     text = parse(MIXED, tmp)["md"]
     assert "# Hunk index (5 hunks in 4 files)" in text
-    assert "- `src/a.ts`: h1 (+2/-1), h2 (+1/-1)" in text
+    assert "- `src/a.ts`: h1 @10(+2/-1), h2 @41(+1/-1)" in text
     # A binary file is called out by status, not mislabeled as generated.
-    assert "- `img/logo.png` [binary]: h4 (+0/-0)" in text
+    assert "- `img/logo.png` [binary]: h4 @0(+0/-0)" in text
     assert "### h4 — (binary file)" in text
     assert "### h5 — (renamed, no content change)" in text
     assert "## FILE new/name.ts (renamed from old/name.ts)" in text
@@ -124,6 +125,21 @@ def test_generated_file_is_flagged(tmp: Path) -> None:
     entry = parse(GENERATED, tmp)["json"]["files"][0]
     assert entry["generated"] is True
     assert "likely-generated" in parse(GENERATED, tmp)["md"]
+
+
+def test_index_is_the_hunk_list_without_diff_bodies(tmp: Path) -> None:
+    """A persona package already holds the diff; re-quoting it doubles the package for no gain."""
+    result = parse(MIXED, tmp)
+    index = result["index"]
+    # Identity, not containment: the standalone index must be exactly the head of hunks.md, so the
+    # two renderers cannot drift while a length heuristic still holds.
+    assert index.rstrip("\n") == result["md"].split("\n# Hunks\n")[0].rstrip("\n")
+    assert index.startswith("# Hunk index (5 hunks in 4 files)")
+    # ...and it carries no hunk bodies and none of the diff's own lines.
+    assert "```diff" not in index
+    assert "### h" not in index
+    assert "+const b = 3;" not in index
+    assert "-const b = 2;" not in index
 
 
 def test_stdin_and_empty_input(tmp: Path) -> None:

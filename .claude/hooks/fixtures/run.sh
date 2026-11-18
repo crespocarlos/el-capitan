@@ -80,6 +80,27 @@ test "$(boundary "$HOME/.claude/agents/x.md")" = allow
 test "$(boundary "$HOME/.cursor/skills/x/SKILL.md")" = allow
 test "$(boundary "/tmp/scratch.json")" = allow
 
+source_edit_guard() { jq -n --arg c "$1" --arg d "$2" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission'; }
+source_repo="$home/source-repo"; git init -q "$source_repo"
+mkdir -p "$source_repo/src"; printf 'export const value = 1;\n' > "$source_repo/src/handler.ts"
+git -C "$source_repo" add src/handler.ts
+tracked_write=$'python3 - <<\'PY\'\nfrom pathlib import Path\nPath("src/handler.ts").write_text("export const value = 2;\\n")\nPY'
+scratch_write=$'python3 - <<\'PY\'\nfrom pathlib import Path\nPath("/tmp/review.json").write_text("{}\\n")\nPY'
+test "$(source_edit_guard "$tracked_write" "$source_repo")" = deny
+test "$(source_edit_guard "$scratch_write" "$source_repo")" = allow
+jq -n --arg c "$tracked_write" --arg d "$source_repo" \
+  '{hook_event_name:"PreToolUse",tool_input:{command:$c},cwd:$d}' \
+  | bash "$root/.claude/hooks/block-shell-source-edits.sh" \
+  | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+# `preToolUse` (lowercase) is Cursor's shape, distinct from Claude Code's `PreToolUse` and from
+# `beforeShellExecution`; exercise its own command-extraction path in both directions.
+test "$(jq -n --arg c "$tracked_write" --arg d "$source_repo" \
+  '{hook_event_name:"preToolUse",tool_input:{command:$c},cwd:$d}' \
+  | bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission')" = deny
+test "$(jq -n --arg c "$scratch_write" --arg d "$source_repo" \
+  '{hook_event_name:"preToolUse",tool_input:{command:$c},cwd:$d}' \
+  | bash "$root/.claude/hooks/block-shell-source-edits.sh" | jq -r '.permission')" = allow
+
 publish() { jq -n --arg c "$1" --arg d "${2:-$repo}" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | bash "$root/.claude/hooks/check-publish.sh" | jq -r '.permission'; }
 repo="$home/repo"
 git init -q "$repo"

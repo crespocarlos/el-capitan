@@ -21,6 +21,7 @@ import os
 import plistlib
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -185,6 +186,89 @@ def dev_stack_current(root: Path, stack: str | None) -> tuple[bool, str]:
     return False, f"{installed} ignores DEV_STACK_EIS, so a deploy can start a stack with no LLM connector"
 
 
+PORTS_TO_CHECK = (5601, 9200)
+
+
+def port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex((host, port)) == 0
+
+
+def ports_status() -> tuple[bool, str]:
+    """A deploy that lands on an already-bound port clashes with whatever is listening there
+    (a prior stack, Scout, a local ES). This is a note, not a hard gate: a worktree that
+    legitimately already has its own stack running is the normal case, not a problem."""
+    busy = [str(port) for port in PORTS_TO_CHECK if port_in_use(port)]
+    if not busy:
+        return True, f"{', '.join(str(p) for p in PORTS_TO_CHECK)} are free"
+    return False, f"port(s) {', '.join(busy)} already have a listener"
+
+
+def duplicate_config_keys(path: Path) -> list[str]:
+    """A hand-edited config.local.json can carry two keys with the same name; JSON parsing
+    silently keeps only the last one, so the duplicate never surfaces unless something scans
+    the raw pairs before they collapse."""
+    if not path.is_file():
+        return []
+    duplicates: list[str] = []
+
+    def hook(pairs: list[tuple[str, object]]) -> dict:
+        seen: dict[str, object] = {}
+        for key, value in pairs:
+            if key in seen:
+                duplicates.append(key)
+            seen[key] = value
+        return seen
+
+    try:
+        json.loads(path.read_text(errors="replace"), object_pairs_hook=hook)
+    except (json.JSONDecodeError, OSError):
+        return []
+    return duplicates
+
+
+def helper_up_to_date(root: Path, remote: str) -> tuple[bool, str]:
+    """Best-effort only: a `git fetch` failure (offline, auth) must never block or hang the
+    preflight, so any error here is reported as unknown, not as a failing check."""
+    if not remote:
+        return True, "no elastic remote to compare against"
+    try:
+        fetch = subprocess.run(["git", "-C", str(root), "fetch", remote, "--quiet"],
+                               capture_output=True, text=True, timeout=20)
+        if fetch.returncode:
+            return True, "could not reach the remote to check; skipping"
+        head = subprocess.run(["git", "-C", str(root), "symbolic-ref", "--short", "-q", "HEAD"],
+                              capture_output=True, text=True, timeout=5)
+        branch = head.stdout.strip() if head.returncode == 0 else ""
+        if not branch:
+            return True, "detached HEAD; skipping"
+        behind = subprocess.run(
+            ["git", "-C", str(root), "rev-list", "--count", f"HEAD..{remote}/{branch}"],
+            capture_output=True, text=True, timeout=5)
+        if behind.returncode or not behind.stdout.strip().isdigit():
+            return True, "could not compute how far behind HEAD is; skipping"
+        count = int(behind.stdout.strip())
+        if count == 0:
+            return True, f"up to date with {remote}/{branch}"
+        return False, f"{count} commit(s) behind {remote}/{branch}"
+    except (subprocess.TimeoutExpired, OSError) as error:
+        return True, f"check failed ({error}); skipping"
+
+
+def tail_fatal(worktree_path: str) -> str:
+    """The dev-stack log often buries the real failure under an earlier, harmless-looking
+    line (e.g. a missing build artifact); the last FATAL line is the one worth surfacing."""
+    log = Path(worktree_path).expanduser() / ".dev-stack" / "kibana.log"
+    if not log.is_file():
+        return ""
+    try:
+        fatal = [line for line in log.read_text(errors="replace").splitlines() if "FATAL" in line]
+    except OSError:
+        return ""
+    return fatal[-1] if fatal else ""
+
+
 def agent_check(cli: str) -> tuple[bool, str]:
     """Ask nightshift whether the harness works; a 502 carries its own install message."""
     try:
@@ -225,6 +309,18 @@ def doctor(_args: argparse.Namespace) -> int:
     checks.append(check("repo", bool(remote), why or f"{remote} -> {CANONICAL_REMOTE}",
                         f"add the canonical remote: git -C {root} remote add elastic "
                         f"https://github.com/{CANONICAL_REMOTE}"))
+    fresh, why = helper_up_to_date(root, remote)
+    notes.append(check("helper_up_to_date", fresh, why,
+                       f"cd {root} && git pull {remote}"))
+    dupes = duplicate_config_keys(root / "config.local.json")
+    notes.append(check("config_duplicate_keys", not dupes,
+                       f"duplicate key(s) in config.local.json: {', '.join(sorted(set(dupes)))}"
+                       if dupes else "no duplicate keys in config.local.json",
+                       "remove the duplicate key(s); the later one silently wins over the earlier one"))
+    free, why = ports_status()
+    notes.append(check("ports_free", free, why,
+                       f"a process already listens on that port; stop it, or pick a worktree "
+                       "that is not already using it"))
     modules = root / "node_modules"
     checks.append(check("node_modules", modules.is_dir(), str(modules), f"cd {root} && npm install"))
 
@@ -333,10 +429,21 @@ def _configured_cli(root: Path) -> dict | None:
 def worktrees(_args: argparse.Namespace) -> int:
     payload = request("GET", "/api/deploy?scope=designated")
     items = payload.get("worktrees") or []
-    print(json.dumps({"worktrees": [
-        {key: item.get(key) for key in ("id", "label", "name", "branch", "kibanaPort", "kibanaRunning")}
-        for item in items if isinstance(item, dict)
-    ]}, indent=2))
+    result = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        entry = {key: item.get(key)
+                 for key in ("id", "label", "name", "branch", "kibanaPort", "kibanaRunning", "path")}
+        dirty = item.get("dirty")
+        entry["dirty"] = dirty if isinstance(dirty, list) else []
+        entry["dirtyCount"] = len(entry["dirty"])
+        # Port 5601 is the documented convention for the user's own dev checkout (this skill's
+        # Known limits say so); a dedicated e2e worktree normally runs elsewhere. A heuristic,
+        # not a fact from the API, so it is named as risk, not as a verdict.
+        entry["mainRepoRisk"] = entry.get("kibanaPort") == 5601
+        result.append(entry)
+    print(json.dumps({"worktrees": result}, indent=2))
     return 0
 
 
@@ -354,7 +461,7 @@ def status(args: argparse.Namespace) -> int:
     check_key(args.key)
     payload = request("GET", f"/api/e2e/{args.key}")
     state = (payload.get("status") or {}).get("state")
-    print(json.dumps({
+    result = {
         "key": args.key,
         "state": state,
         "finished": state in {"done", "failed"},
@@ -364,7 +471,14 @@ def status(args: argparse.Namespace) -> int:
         "worktree": (payload.get("meta") or {}).get("worktreeLabel")
         or (payload.get("meta") or {}).get("worktree"),
         "run": f"{base_url()}/pr/{args.key}/e2e",
-    }, indent=2))
+    }
+    # Nightshift's own `error` field is often the first thing that went wrong (a missing build
+    # artifact), not the real cause; the dev-stack log's last FATAL line usually is.
+    if state == "failed" and args.worktree_path:
+        fatal = tail_fatal(args.worktree_path)
+        if fatal:
+            result["fatal"] = fatal
+    print(json.dumps(result, indent=2))
     return 0
 
 
@@ -455,6 +569,9 @@ def main() -> int:
     ):
         sub = commands.add_parser(name, help=help_text)
         sub.add_argument("key")
+        if name == "status":
+            sub.add_argument("--worktree-path", default="",
+                             help="local path to the deployed worktree, to tail its log on failure")
 
     stack_parser = commands.add_parser("stack-stop", help="stop the Kibana/ES stack in a worktree")
     stack_parser.add_argument("--worktree", required=True)
