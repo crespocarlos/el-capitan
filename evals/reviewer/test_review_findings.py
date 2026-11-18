@@ -779,6 +779,119 @@ def test_validate_map_accepts_a_note_for_its_own_hunk(tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+SPEC = """# Spec
+## Status
+IMPLEMENTING
+## Summary
+Make the parser reject an empty token instead of returning null.
+## Acceptance criteria
+- [ ] parse("") raises EmptyTokenError
+## Tasks
+- [ ] Task 1: add EmptyTokenError to src/parser/errors.ts and export it
+- [ ] Task 2: throw it from parseToken in src/parser/parse.ts before lookup
+```md
+## Tasks inside a fence is quoted, not a section
+```
+## Hints
+- The lexer already strips whitespace before parseToken sees the token text
+"""
+
+
+def test_spec_context_keeps_builder_sections_for_product_flow_only(tmp: Path) -> None:
+    spec = tmp / "SPEC.md"
+    spec.write_text(SPEC)
+    flow = run("spec-context", "--persona", "product-flow", str(spec))
+    assert flow.returncode == 0 and flow.stdout == SPEC
+    other = run("spec-context", "--persona", "reviewer-adversarial", str(spec))
+    assert other.returncode == 0, other.stderr
+    assert "## Acceptance criteria" in other.stdout and "parse(\"\") raises" in other.stdout
+    assert "Task 1" not in other.stdout and "lexer already strips" not in other.stdout
+    assert "Tasks and Hints omitted" in other.stdout
+
+
+def write_packages(tmp: Path, packages: dict[str, str]) -> Path:
+    task = tmp / "task"
+    review_dir = task / "review" / "20261118150000"
+    review_dir.mkdir(parents=True)
+    (task / "SPEC.md").write_text(SPEC)
+    for persona, text in packages.items():
+        (review_dir / f"{persona}.in.md").write_text(text)
+    return review_dir
+
+
+def test_check_packages_rejects_copied_tasks_outside_product_flow(tmp: Path) -> None:
+    review_dir = write_packages(tmp, {"product-flow": SPEC, "adversarial": SPEC,
+                                      "code-quality": "## Spec\n## Summary\nshort\n"})
+    result = run("check-packages", "--review-dir", str(review_dir),
+                 "--personas", "product-flow", "adversarial", "code-quality")
+    assert result.returncode == 1
+    assert "adversarial.in.md carries the spec's Tasks/Hints" in result.stderr
+    assert "product-flow" not in result.stderr and "code-quality" not in result.stderr
+    # A spec review sends every persona the whole spec, so the rule does not apply there.
+    assert run("check-packages", "--review-dir", str(review_dir), "--mode", "spec",
+               "--personas", "adversarial").returncode == 0
+
+
+def test_check_packages_rejects_generated_hunks_and_persist_strict_agrees(tmp: Path) -> None:
+    lock = "diff --git a/yarn.lock b/yarn.lock\n--- a/yarn.lock\n+++ b/yarn.lock\n@@ -1 +1 @@\n-a\n+b\n"
+    review_dir = write_packages(tmp, {"adversarial": lock})
+    (review_dir / "hunks.json").write_text(json.dumps({
+        "files": [{"path": "yarn.lock", "generated": True, "hunkIds": ["h1"]}],
+        "hunks": [{"id": "h1", "file": "yarn.lock"}]}))
+    result = run("check-packages", "--review-dir", str(review_dir), "--personas", "adversarial")
+    assert result.returncode == 1 and "generated file yarn.lock" in result.stderr
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    report = tmp / "report.md"
+    report.write_text("## Verdict: PASS\n")
+    persist = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--strict",
+               "--personas", "adversarial")
+    # A directory packaged before package.diff existed is not held to the package rules.
+    assert run(*persist).returncode == 0
+    (review_dir / "package.diff").write_text("")
+    strict = run(*persist)
+    assert strict.returncode == 2 and "generated file yarn.lock" in strict.stderr
+    collapsed = lock.split("@@")[0] + "# yarn.lock: likely generated, +1/-1 lines omitted (h1)\n"
+    (review_dir / "adversarial.in.md").write_text(collapsed)
+    assert run("check-packages", "--review-dir", str(review_dir),
+               "--personas", "adversarial").returncode == 0
+
+
+def test_check_packages_copied_line_threshold_is_two(tmp: Path) -> None:
+    one = "- [ ] Task 1: add EmptyTokenError to src/parser/errors.ts and export it"
+    two = one + "\n- [ ] Task 2: throw it from parseToken in src/parser/parse.ts before lookup"
+    review_dir = write_packages(tmp, {"adversarial": one})
+    assert run("check-packages", "--review-dir", str(review_dir),
+               "--personas", "adversarial").returncode == 0
+    (review_dir / "adversarial.in.md").write_text(two)
+    assert run("check-packages", "--review-dir", str(review_dir),
+               "--personas", "adversarial").returncode == 1
+
+
+def test_check_packages_reports_skipped_checks_and_rejects_a_wrong_directory(tmp: Path) -> None:
+    review_dir = write_packages(tmp, {"adversarial": "clean"})
+    ok = run("check-packages", "--review-dir", str(review_dir), "--personas", "adversarial", "code-quality")
+    payload = json.loads(ok.stdout)
+    assert ok.returncode == 0 and payload["packages"] == 1, "a persona with no package is not counted"
+    assert payload["skipped"] == {"hunks": "no hunks.json"}
+    elsewhere = tmp / "scratch"
+    elsewhere.mkdir()
+    (elsewhere / "adversarial.in.md").write_text("clean")
+    wrong = run("check-packages", "--review-dir", str(elsewhere), "--personas", "adversarial")
+    assert wrong.returncode == 2 and "<task>/review/<timestamp>" in wrong.stderr
+    empty = run("check-packages", "--review-dir", str(review_dir), "--personas", "architecture")
+    assert empty.returncode == 1 and "no <persona>.in.md found" in empty.stderr
+
+
+def test_check_packages_matches_git_quoted_header_paths(tmp: Path) -> None:
+    quoted = 'diff --git "a/lock files/yarn.lock" "b/lock files/yarn.lock"\n@@ -1 +1 @@\n-a\n+b\n'
+    review_dir = write_packages(tmp, {"adversarial": quoted})
+    (review_dir / "hunks.json").write_text(json.dumps({
+        "files": [{"path": "lock files/yarn.lock", "byName": True, "generated": True, "hunkIds": ["h1"]}],
+        "hunks": [{"id": "h1", "file": "lock files/yarn.lock"}]}))
+    result = run("check-packages", "--review-dir", str(review_dir), "--personas", "adversarial")
+    assert result.returncode == 1 and "generated file lock files/yarn.lock" in result.stderr
+
+
 def main() -> int:
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0

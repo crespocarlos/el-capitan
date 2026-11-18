@@ -107,7 +107,9 @@ python3 ~/.agent/bin/review-hunks.py "$REVIEW_ROOT/diff.patch" --out "$REVIEW_RO
 ```
 
 That writes `hunks.json` (the ids the coverage gate checks), `hunks.md` (index plus bodies, for the
-mapping pass only), and `hunks.index.md` (the index alone, for persona packages).
+mapping pass only), `hunks.index.md` (the index alone, for persona packages), and `package.diff`
+(the diff with each generated file's hunks collapsed to one note line). Persona packages embed
+`package.diff`, never `diff.patch`.
 
 Then dispatch `reviewer-layers` with `hunks.md`. Extract the contents of its one fenced `json` block
 (without the opening or closing backticks) and write that raw JSON to `$REVIEW_ROOT/layers.json`.
@@ -167,9 +169,19 @@ live only in that file, so a package without it leaves the persona without them.
 composes the same file (`load_persona_prompt` in `evals/reviewer/run.py`), which is what keeps the
 measured prompt and the dispatched prompt the same shape.
 
-**Persist both artifacts at dispatch time, not at persist time.** Write the exact package sent to
-each persona to `$REVIEW_ROOT/<persona>.in.md` and its raw reply to `$REVIEW_ROOT/<persona>.out.md`
-as each returns. `persist --strict` requires both files, and reconstructing either afterwards from a
+**Check the packages before the first dispatch.** Write every `$REVIEW_ROOT/<persona>.in.md`, then
+run `~/.agent/bin/review-findings.py check-packages --review-dir "$REVIEW_ROOT" --mode
+<selector-mode> --personas <names>`, where `<selector-mode>` is the value passed to `select` in
+Step 4. Dispatch only on exit 0; on a non-zero exit, rewrite the named package and check again. The
+generated-hunk rule applies in every mode; the Tasks/Hints rule (see "Spec in every code-mode
+package" in context-tiers.md) applies in code modes only. The output lists any check it skipped
+for a missing `SPEC.md` or `hunks.json`; a skipped check is not a pass. `persist --strict` repeats
+the check for a directory that holds a `package.diff`, so skipping it fails the review after its
+cost is spent.
+
+**Persist both artifacts at dispatch time, not at persist time.** The package sent to each persona
+is the `.in.md` just checked; write its raw reply to `$REVIEW_ROOT/<persona>.out.md` as each
+returns. `persist --strict` requires both files, and reconstructing either afterwards from a
 one-line summary satisfies the gate while destroying the audit trail — the recorded package must be
 the one the persona actually read.
 

@@ -33,7 +33,7 @@ The size gate (see "Spine files" below) decides which of two packaging strategie
 checked first, and the two never both apply:
 
 - **At or above the threshold** — spine strategy: spine files and their consumers only.
-- **Below the threshold** — the complete diff is the hunk source for every persona, so do not
+- **Below the threshold** — the complete diff (`package.diff`, generated files collapsed) is the hunk source for every persona, so do not
   re-extract hunks or function boundaries to rebuild what it already holds. The tiers still supply
   what a diff never carries and are not optional: Tier 1's surrounding lines and signatures, Tier
   2's spec heading, Tier 3's consumers, the prompt tier, and the server-response contract
@@ -44,8 +44,14 @@ checked first, and the two never both apply:
 signatures of changed functions. Assigned to: **Code Quality**
 
 **Tier 2 — Function scope + spec** (~40–50% of full context): Full functions containing changes +
-type definitions + import statements. If a SPEC.md is present in the task dir, append it under a `##
-Spec` heading. Assigned to: **Product Flow** (and the contract summary to all reviewers)
+type definitions + import statements. Assigned to: **Product Flow**
+
+**Spec in every code-mode package.** Code modes are self, changes, and PR (`CODE_MODES` in
+`review-findings.py`); spec and idea reviews already send every persona the whole artifact and are
+unaffected. This section owns the rule; other files point here. When the task dir has a SPEC.md, append the output of
+`review-findings.py spec-context --persona <name> "$TASK_DIR/SPEC.md"` under a `## Spec` heading.
+Product Flow gets the whole spec; every other persona gets it without `## Tasks` and `## Hints`,
+which are implementation steps only Product Flow checks against the diff.
 
 **Tier 3 — Function-scoped + consumers**: For each changed file: use Grep to locate changed
 function/class boundaries, then Read only those line ranges (not the full file). Include import

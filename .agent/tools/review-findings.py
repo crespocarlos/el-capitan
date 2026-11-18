@@ -433,6 +433,92 @@ def heading_lines(text: str) -> set[str]:
     return headings
 
 
+# Implementation steps in a spec. Product Flow checks them against the diff; every other lens
+# judges the change against the summary and acceptance criteria, so these sections are pure cost
+# in its package (18 KB of a measured 156 KB package, sent to every persona).
+SPEC_BUILDER_SECTION = re.compile(r"^## (Tasks|Hints)\b")
+SPEC_FULL_PERSONAS = frozenset({"product-flow"})
+# A copied task line is long; a shorter line could match the diff by accident.
+SPEC_LINE_MIN = 40
+
+
+def spec_sections(spec: str) -> tuple[list[str], list[str]]:
+    """Split a spec into the lines every persona gets and the builder-section lines it does not."""
+    kept: list[str] = []
+    builder: list[str] = []
+    in_fence = in_builder = False
+    for line in spec.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        elif not in_fence and line.startswith("## "):
+            in_builder = bool(SPEC_BUILDER_SECTION.match(line))
+        (builder if in_builder else kept).append(line)
+    return kept, builder
+
+
+def spec_for(persona: str, spec: str) -> str:
+    if persona in SPEC_FULL_PERSONAS:
+        return spec
+    kept, builder = spec_sections(spec)
+    text = "\n".join(kept).rstrip() + "\n"
+    if builder:
+        text += "\n_Tasks and Hints omitted: implementation steps are Product Flow's to check._\n"
+    return text
+
+
+# A single qualifying line can recur legitimately in repository guidance or memory, so one match is
+# not proof the spec's builder sections were copied; two are.
+SPEC_COPIED_LINES = 2
+
+
+def package_violations(review_dir: Path, personas: list[str], mode: str,
+                       spec_path: Path | None, hunks_path: Path | None) -> tuple[list[str], dict]:
+    """Packaging rules a persona package must meet before it is worth dispatching.
+
+    Returns the violations and a report of what the check could not do: a check whose input is
+    absent is skipped, and the caller must be able to say so rather than report a clean pass.
+    """
+    errors: list[str] = []
+    report: dict = {"read": [], "skipped": {}}
+    builder_lines: set[str] = set()
+    if mode not in CODE_MODES:
+        report["skipped"]["spec"] = f"not applied in {mode} mode"
+    elif spec_path and spec_path.is_file():
+        builder_lines = {line.strip() for line in spec_sections(spec_path.read_text(encoding="utf-8"))[1]
+                         if len(line.strip()) >= SPEC_LINE_MIN and not line.startswith("## ")}
+    else:
+        report["skipped"]["spec"] = "no SPEC.md"
+    generated: set[str] = set()
+    if hunks_path and hunks_path.is_file():
+        # Only a filename match is collapsed into package.diff; older hunks.json lacks `byName`.
+        generated = {entry["path"] for entry in read_json_object(hunks_path, "files")["files"]
+                     if entry.get("byName", entry.get("generated"))}
+    else:
+        report["skipped"]["hunks"] = "no hunks.json"
+    for persona in canonical_personas(personas, split_commas=False):
+        package = review_dir / f"{persona}.in.md"
+        if not package.is_file():
+            continue
+        report["read"].append(package.name)
+        lines = package.read_text(encoding="utf-8", errors="replace").splitlines()
+        if persona not in SPEC_FULL_PERSONAS and builder_lines:
+            copied = builder_lines.intersection(line.strip() for line in lines)
+            if len(copied) >= SPEC_COPIED_LINES:
+                errors.append(f"{package.name} carries the spec's Tasks/Hints ({len(copied)} lines); "
+                              "build its spec with `review-findings.py spec-context`")
+        current = ""
+        for line in lines:
+            if line.startswith("diff --git "):
+                # git quotes a header whose path has spaces or non-ASCII characters.
+                current = next((path for path in generated
+                                if line.endswith((f" b/{path}", f' "b/{path}"'))), "")
+            elif current and line.startswith("@@"):
+                errors.append(f"{package.name} embeds hunks of generated file {current}; "
+                              "embed package.diff instead of diff.patch")
+                current = ""
+    return errors, report
+
+
 def read_json_object(path: Path, key: str) -> dict:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -677,6 +763,13 @@ def persist(args: argparse.Namespace) -> int:
             )
         if hunks_path.is_file():
             check_hunk_refs(findings, hunk_ids(hunks_path))
+        # Directories written before package.diff existed hold diff.patch and the full spec, so the
+        # package rules only apply to a review that was packaged under them.
+        if (args.review_dir / "package.diff").is_file():
+            violations, _ = package_violations(args.review_dir, args.personas, args.mode,
+                                               owner / "SPEC.md", hunks_path)
+            if violations:
+                raise ValueError("; ".join(violations))
     report = args.report.read_text()
     # Two sections are generated from the inputs below, so a report carrying its own copy would
     # render the same table twice — once verbatim in the body, once at the end — and a reader
@@ -767,6 +860,31 @@ def select(args: argparse.Namespace) -> int:
     return 0
 
 
+def spec_context(args: argparse.Namespace) -> int:
+    persona = canonical_personas([args.persona], split_commas=False)[0]
+    sys.stdout.write(spec_for(persona, args.spec.read_text(encoding="utf-8")))
+    return 0
+
+
+def check_packages(args: argparse.Namespace) -> int:
+    review_dir = args.review_dir.resolve()
+    if review_dir.parent.name != "review" and not args.spec:
+        raise ValueError(
+            f"--review-dir must be <task>/review/<timestamp> (got {review_dir}); "
+            "pass --spec when the directory is laid out differently"
+        )
+    spec = args.spec or review_dir.parent.parent / "SPEC.md"
+    violations, report = package_violations(review_dir, args.personas, args.mode, spec,
+                                            review_dir / HUNKS_FILE)
+    if not report["read"]:
+        violations.append(f"no <persona>.in.md found in {review_dir} for {', '.join(args.personas)}")
+    for violation in violations:
+        print(f"review-findings: {violation}", file=sys.stderr)
+    if not violations:
+        print(json.dumps({"ok": True, "packages": len(report["read"]), "skipped": report["skipped"]}))
+    return 1 if violations else 0
+
+
 def outcome(args: argparse.Namespace) -> int:
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -823,6 +941,17 @@ def main() -> int:
                                  help="review.json written by crew explain")
     validate_parser.add_argument("--hunks", required=True, type=Path,
                                  help="hunks.json the map was built from")
+    spec_parser = commands.add_parser("spec-context",
+                                      help="print the part of SPEC.md one persona's package carries")
+    spec_parser.add_argument("--persona", required=True)
+    spec_parser.add_argument("spec", type=Path)
+    packages_parser = commands.add_parser("check-packages",
+                                          help="check written <persona>.in.md packages before dispatch")
+    packages_parser.add_argument("--review-dir", required=True, type=Path)
+    packages_parser.add_argument("--personas", nargs="+", required=True)
+    packages_parser.add_argument("--mode", type=mode_arg,
+                                 choices=sorted(CODE_MODES | {"spec", "idea"}), default="self")
+    packages_parser.add_argument("--spec", type=Path, help="defaults to <task>/SPEC.md")
     outcome_parser = commands.add_parser("outcome")
     outcome_parser.add_argument("--review-dir", required=True, type=Path)
     outcome_parser.add_argument("--fingerprint", required=True)
@@ -833,7 +962,8 @@ def main() -> int:
     outcome_parser.add_argument("--memory-id", action="append", default=[])
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
-                "outcome": outcome, "coverage": coverage, "validate-map": validate_map}
+                "outcome": outcome, "coverage": coverage, "validate-map": validate_map,
+                "spec-context": spec_context, "check-packages": check_packages}
     try:
         return handlers[args.command](args)
     except (OSError, ValueError, json.JSONDecodeError) as error:

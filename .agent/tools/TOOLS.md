@@ -44,10 +44,17 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
   mode `--head` is the GitHub head SHA, which the local checkout never fetches, so `persist` records
   it without a local existence check and requires it explicitly. A PR review is never a valid
   `--mark-done` ancestor and `persist` rejects PR artifacts under a task directory.
+- `review-findings.py spec-context --persona <name> SPEC.md` prints the spec one persona's package
+  carries (rule: "Spec in every code-mode package" in `context-tiers.md`).
+  `check-packages --review-dir <task>/review/<ts> --personas <names>` rejects written `.in.md`
+  packages that break that rule or embed filename-generated hunks, and reports any check it skipped
+  for a missing `SPEC.md` or `hunks.json`; `persist --strict` runs it only for a directory holding
+  a `package.diff`.
 - `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally
   rebased; it is never used by a skill on its own initiative.
-- `review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, and `hunks.index.md`,
+- `review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
+  `package.diff` (the diff persona packages embed, generated files' hunks collapsed to one note),
   numbering every hunk `h1`,
   `h2`, … in diff order, including one synthetic hunk for a file with no textual change (binary,
   rename-only, mode change). It owns the ids: the persona Reading map and `review-findings.py

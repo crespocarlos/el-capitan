@@ -12,7 +12,8 @@ dispatched context package as `<persona>.in.md` and raw response as `<persona>.o
 **Command surface — read it, do not probe it.** A failed invocation plus a `--help` round trip costs
 two tool calls to learn an argument shape this section already states. Two entry points are easy to
 confuse: `review-hunks.py` takes the diff as a **positional** argument (there is no `--diff` flag),
-and `review-findings.py normalize` takes its input positionally (there is no `--input` flag).
+and `review-findings.py normalize` takes its input positionally (there is no `--input` flag), as
+does `spec-context` (the SPEC.md path, with `--persona`).
 `coverage` is the gate for a reviewer `layers.json`; `validate-map` belongs to `crew explain` and
 rejects a `layers.json` for lacking `--review`. Every remaining argument shape is specified in the
 numbered steps below, next to the invocation that uses it.

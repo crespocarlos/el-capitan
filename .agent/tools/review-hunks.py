@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Split a unified diff into numbered hunks for the reviewer layer map.
 
-Writes `hunks.json`, `hunks.md`, and `hunks.index.md` to `--out`. Every hunk gets a stable id
+Writes `hunks.json`, `hunks.md`, `hunks.index.md`, and `package.diff` to `--out`. Every hunk gets a stable id
 (`h1`, `h2`, …) in diff order, and a file with no textual hunk (binary, pure rename, mode change)
 still gets one, so every changed file can be placed in a layer. Ids are assigned here and nowhere
 else: they are the vocabulary the persona Reading map and the `review-findings.py coverage` gate
 share. `hunks.md` carries the index plus each hunk body and feeds the layer-mapping pass;
-`hunks.index.md` is the index alone, for a persona package that already holds the diff.
+`hunks.index.md` is the index alone, for a persona package that already holds the diff, and
+`package.diff` is that diff with generated files' bodies omitted.
 
 Self-contained on purpose. Hunk parsing is project-agnostic, so it must not depend on another
 checkout being installed; a review that silently loses its layer map because an external tool is
@@ -77,7 +78,8 @@ def header_paths(line: str) -> tuple[str, str]:
 
 def new_file(path: str, old_path: str) -> dict:
     return {"path": path, "oldPath": old_path, "status": "modified",
-            "generated": bool(GENERATED.search(path)), "hunkIds": []}
+            "generated": bool(GENERATED.search(path)), "byName": bool(GENERATED.search(path)),
+            "hunkIds": []}
 
 
 def parse(diff: str) -> dict:
@@ -253,11 +255,41 @@ def markdown(parsed: dict) -> str:
     return "\n".join(out)
 
 
+def package_diff(diff: str, parsed: dict) -> str:
+    """The diff a persona package embeds: generated files keep their headers, not their bodies.
+
+    A lockfile or snapshot hunk costs every persona its full size and carries no reviewable
+    intent. Each generated file's hunks collapse to one note naming its ids, so the file stays
+    citable and the Reading map's "lines omitted" bullet still matches what the persona sees.
+    Only a filename match (`byName`) collapses: the content heuristic that also sets `generated`
+    fires on any long-lined prompt or JSON file, which is exactly what a review must read.
+    """
+    by_id = {hunk["id"]: hunk for hunk in parsed["hunks"]}
+    out: list[str] = []
+    file_index = -1
+    skipping = False
+    for line in diff.split("\n"):
+        if line.startswith("diff --git "):
+            file_index += 1
+            skipping = False
+        elif (not skipping and 0 <= file_index < len(parsed["files"])
+                and parsed["files"][file_index]["byName"] and HUNK_HEADER.match(line)):
+            entry = parsed["files"][file_index]
+            added = sum(by_id[i]["additions"] for i in entry["hunkIds"])
+            removed = sum(by_id[i]["deletions"] for i in entry["hunkIds"])
+            out.append(f"# {entry['path']}: likely generated, +{added}/-{removed} lines omitted "
+                       f"({', '.join(entry['hunkIds'])}); read it only if it matters")
+            skipping = True
+        if not skipping:
+            out.append(line)
+    return "\n".join(out)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("diff", type=Path, help="unified diff file, or - for stdin")
     parser.add_argument("--out", type=Path, required=True,
-                        help="directory for hunks.json, hunks.md, and hunks.index.md")
+                        help="directory for hunks.json, hunks.md, hunks.index.md, and package.diff")
     args = parser.parse_args()
 
     if str(args.diff) == "-":
@@ -285,8 +317,11 @@ def main() -> int:
     (args.out / "hunks.json").write_text(json.dumps(parsed, indent=2) + "\n", encoding="utf-8")
     (args.out / "hunks.md").write_text(markdown(parsed), encoding="utf-8")
     (args.out / "hunks.index.md").write_text(index_markdown(parsed) + "\n", encoding="utf-8")
+    (args.out / "package.diff").write_text(package_diff(text, parsed), encoding="utf-8")
+    omitted = [entry["path"] for entry in parsed["files"] if entry["byName"]]
+    heuristic = [entry["path"] for entry in parsed["files"] if entry["generated"] and not entry["byName"]]
     print(json.dumps({"hunks": len(parsed["hunks"]), "files": len(parsed["files"]),
-                      "out": str(args.out)}))
+                      "omitted": omitted, "keptDespiteContentFlag": heuristic, "out": str(args.out)}))
     return 0
 
 

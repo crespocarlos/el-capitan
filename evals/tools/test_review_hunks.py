@@ -127,6 +127,33 @@ def test_generated_file_is_flagged(tmp: Path) -> None:
     assert "likely-generated" in parse(GENERATED, tmp)["md"]
 
 
+def test_package_diff_collapses_generated_files_only(tmp: Path) -> None:
+    """A lockfile's lines cost every persona and carry no intent; a source file must survive intact."""
+    source = tmp / "x.diff"
+    source.write_text(SIMPLE + GENERATED)
+    result = run([str(source), "--out", str(tmp / "out")])
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["omitted"] == ["package-lock.json"]
+    package = (tmp / "out" / "package.diff").read_text()
+    assert package.startswith(SIMPLE), "a non-generated file must be embedded byte for byte"
+    assert "diff --git a/package-lock.json b/package-lock.json" in package
+    assert "# package-lock.json: likely generated, +2/-0 lines omitted (h2)" in package
+    assert '+{"lock": true}' not in package and "@@ -0,0 +1,2 @@" not in package
+
+
+def test_package_diff_keeps_source_files_the_content_heuristic_flags(tmp: Path) -> None:
+    """Long-lined prompts and TS constants trip the content heuristic; a review must still read them."""
+    long_line = "x" * 3000
+    diff = ("diff --git a/src/constants.ts b/src/constants.ts\n--- a/src/constants.ts\n"
+            f"+++ b/src/constants.ts\n@@ -1 +1 @@\n-old\n+{long_line}\n")
+    source = tmp / "x.diff"
+    source.write_text(diff)
+    result = run([str(source), "--out", str(tmp / "out")])
+    payload = json.loads(result.stdout)
+    assert payload["omitted"] == [] and payload["keptDespiteContentFlag"] == ["src/constants.ts"]
+    assert (tmp / "out" / "package.diff").read_text() == diff
+
+
 def test_index_is_the_hunk_list_without_diff_bodies(tmp: Path) -> None:
     """A persona package already holds the diff; re-quoting it doubles the package for no gain."""
     result = parse(MIXED, tmp)
