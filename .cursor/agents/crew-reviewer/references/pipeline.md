@@ -47,8 +47,11 @@ task's `REVIEW.md`.
    with `status: failed|skipped|truncated`, the failure or coverage gap, and `finding: none`. A
    `.out.md` carrying any other word — or a placeholder summary without a complete no-findings
    verdict, complete finding, or documented explorer section with an item — is read as no output,
-   and `--strict` refuses the whole run. Write each real response as it returns; never substitute a
-   stub. Keep that persona in `--personas` and name it under `### Reviewers` in the report. Then
+   and persistence refuses the whole run. Write each real response as it returns; never substitute a
+   stub, and never write a condensed digest in its place: an artifact whose opening says
+   `condensed` or `summarized` is classified as an orchestrator summary and refused, because nothing
+   in it is attributable to the persona or re-verifiable later. Keep that persona in `--personas`
+   and name it under `### Reviewers` in the report. Then
    write the emitted report to `$REVIEW_ROOT/report.md`,
    and run `~/.agent/bin/review-findings.py persist --review-dir "$REVIEW_ROOT" --report
    "$REVIEW_ROOT/report.md" --findings "$REVIEW_ROOT/consolidation.json" --mode
@@ -58,8 +61,11 @@ task's `REVIEW.md`.
    `adversarial,code-quality` are invalid. `<HEAD SHA>` is `$(git rev-parse HEAD)` for self, changes,
    spec, and idea; for PR it is the head SHA from `gh pr view`, which the local checkout does not
    contain and `--head` therefore records without resolving.
-   `--strict` fails when a dispatched persona lacks its `.in.md` or `.out.md`, when every persona
-   is failed or skipped, or when a finding's evidence cites a file outside `--files`. `--files` takes
+   `--personas` is required on every call, and persona coverage is checked whether or not you pass
+   `--strict`: each named persona must have a real `.in.md` and `.out.md`, and the run fails when
+   every persona produced nothing or when any artifact is empty, a placeholder, or a condensed
+   digest. `--strict` adds the diff gates: hunk coverage below, and evidence paths checked against
+   `--files`. `--files` takes
    `nargs="*"`: pass every reviewed path as its own shell argument — quoting them all as one string
    makes strict persistence treat that string as one nonexistent path and reject otherwise valid
    evidence. `--head`
@@ -70,7 +76,7 @@ task's `REVIEW.md`.
    report: one line per layer with its hunks and the emitted findings that cite them, or `no
    findings`, so the reader sees which layers drew scrutiny. Do not write that section yourself.
    With `hunks.json` present, `--strict` repeats the hunk-id check from `normalize`.
-   `--strict` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
+   `persist` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
    directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
 
 Write scratch JSON, scripts, and assembled context packages with the harness's edit or write tool at a

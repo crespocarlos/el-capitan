@@ -13,11 +13,15 @@ canonical names. `coverage` fails when a hunk id is unassigned, assigned twice, 
 unknown to the hunk index; `validate-map` applies that rule plus the review-map contract
 to a whole `review.json`, and `persist --strict` runs `coverage` whenever `layers.json`
 sits next to `hunks.json`. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
-`select` prints the reviewer personas a review must dispatch. `normalize
---strict` rejects emitted blocking/attention findings without `verified` and
-`evidence`, more than MAX_FINDINGS emitted findings, and more than MAX_NITS
-emitted nits (so polish cannot occupy a severity slot). `persist --strict
---personas ...` requires each dispatched persona's `.in.md` and `.out.md`.
+`select` prints the reviewer personas a review must dispatch. `persist` always
+enforces persona coverage: a dispatched persona must have a real `.in.md` and
+`.out.md`, and no artifact may be empty, a placeholder, or an orchestrator
+summary in place of the persona's response. `normalize --strict` rejects emitted blocking/attention
+findings without `verified` and `evidence`, more than MAX_FINDINGS emitted
+findings, and more than MAX_NITS emitted nits (so polish cannot occupy a
+severity slot). `--strict` adds the hunk-coverage and evidence-path gates, which
+need a clean diff to check. `--personas` is separate from `--strict` so a PR
+review can skip the diff gates while still proving every persona ran.
 `--files` is an evidence allowlist, not a diff check: it records what was reviewed and
 gates evidence paths against it. It is deliberately not compared with `git diff`, because
 `persist` runs in three modes with no single base ref. Tree identity is `--head`, which
@@ -66,10 +70,11 @@ def mode_arg(value: str) -> str:
 # Tiered output cap, counted separately so polish cannot evict severity. A flat cap of 7 counted a
 # nit as equal to a blocking finding: measured over 65 persisted reviews it bound on 42% of runs, and
 # one review emitted three nits while dropping an [attention] finding. Non-nit volume never exceeded
-# 11 in that sample, so 12 is a ceiling against runaway output that does not truncate real findings,
-# and the nit budget keeps the tail short. Total emitted output is at most 14.
+# 11 in that sample, and emitted nits never exceeded 4, so 12 + 4 binds on none of the 65 recorded
+# reviews: a ceiling against runaway output that does not truncate real findings. Total output is at
+# most 16.
 MAX_FINDINGS = 12
-MAX_NITS = 2
+MAX_NITS = 4
 EMITTED = {"patch", "decide"}
 EVIDENCE_LOCATION = re.compile(r"^[^:\s][^:]*:\d+(?:@[0-9a-f]{7,40})?$")
 SELECT_RULES = {
@@ -221,7 +226,7 @@ def normalize(args: argparse.Namespace) -> int:
 
 
 def persona_outcome(path: Path) -> str:
-    """Classify a persona artifact: ok, failed, skipped, truncated, missing, unknown.
+    """Classify a persona artifact: ok, failed, skipped, truncated, summarized, missing, unknown.
 
     Only the leading block is read, so a persona quoting `status: failed` from the
     finding it reviews cannot flip a good run. The documented success signal is a
@@ -230,6 +235,11 @@ def persona_outcome(path: Path) -> str:
     Only `failed|skipped|truncated` are read from a `status:` line. Any other word
     (`dispatched`, `done`, `complete`) is not a success claim, so it falls through to the
     content check and a placeholder without a verdict stays `unknown`.
+
+    `summarized` is an orchestrator's condensed digest written in place of the persona's
+    response. It is a separate outcome from `unknown` because the artifact does contain
+    findings, but nothing in it is attributable to the persona or re-verifiable later, so
+    persistence refuses it and names the real cause instead of "no output".
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -237,6 +247,10 @@ def persona_outcome(path: Path) -> str:
         return "missing"
     if not text.strip():
         return "unknown"
+    # An orchestrator summary is not the persona's response, whatever it says. Checked before the
+    # status line so `status: ok (condensed) …` cannot pass as a completed persona.
+    if SUMMARY_ARTIFACT.search(text[:SUMMARY_HEADER_CHARS]):
+        return "summarized"
     declared = re.match(r"\s*(?:#+[^\n]*\n+\s*)?status:\s*(\w+)", text)
     if declared:
         word = declared.group(1).lower()
@@ -262,24 +276,68 @@ EXPLORER_SECTIONS = (
 )
 VERDICT_NO_FINDINGS = re.compile(r"^### Verdict:\s*no findings\s*$", re.M | re.I)
 # A severity label plus a location anchor, in either order. Personas write the label at the start of
-# the line (the mandated shape), inside leading bold, or after the anchor as
-# "`path:line` — [label] …"; all three carry the same content, and rejecting one aborts the whole
+# the line (the mandated shape), inside leading bold, after a list bullet, or after the anchor as
+# "`path:line` — [label] …"; all of these carry the same content, and rejecting one aborts the whole
 # review at persist time. The anchor must still be a real path:line, so a bare label or a marker
 # alone never matches.
 _SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)"
 _ANCHOR = r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)"
+# Optional list bullet, number, or bare ordinal. Personas use `-`, `*`, `1.`, `1)`, and `2 ` (no
+# punctuation) interchangeably, and nine real review outputs were scored as no output purely for not
+# using `1.`.
+_BULLET = r"(?:[-*+]\s+)?(?:\d+[.)]?\s*)?"
 LABELED_FINDING = re.compile(
-    # label first: `1. [blocking] … path.ts:42` and `1. **[blocking]** … path.ts:42`
-    r"^\s*(?:\d+\.\s*)?(?:\*\*)?\s*\[" + _SEVERITY + r"\][^\n]*?" + _ANCHOR
+    # label first: `1. [blocking] … path.ts:42`, `- **[attention]** … path.ts:42`
+    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[" + _SEVERITY + r"\][^\n]*?" + _ANCHOR
     # anchor first: `` 1. `path.ts:42` — [blocking] … ``
-    + r"|^\s*(?:\d+\.\s*)?(?:\*\*)?`?[^`\n\s\[\]]+`?\s*:\s*\d+[^\n]*?\[" + _SEVERITY + r"\]",
+    + r"|^[ \t]*" + _BULLET + r"(?:\*\*)?`?[^`\n\s\[\]]+`?\s*:\s*\d+[^\n]*?\[" + _SEVERITY + r"\]",
     re.M | re.I,
 )
+# Findings whose anchor sits outside the label's line, so a line-local pattern cannot see them: a
+# label followed by an `Anchor: path:line` line. Both shapes were scored as "no output" in real runs,
+# and the artifact was then refused as a placeholder.
+LABEL_LINE = re.compile(
+    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[(" + _SEVERITY + r")\]([^\n]*)", re.M | re.I
+)
+ANCHOR_ANYWHERE = re.compile(_ANCHOR, re.I)
 FIX_RESPONSE_FINDING = re.compile(
-    r"(?ms)^\*\*.+?\*\*\s+—\s+\S.*?^Fix/Response:\s+\S"
+    # The fix field has three documented spellings: `Fix:` is the consolidator's contract,
+    # `Fix/Response:` is what code-quality and prompt-quality print, and `Suggested fix:` is what
+    # adversarial and architecture printed until 2026-11-18. All three mark a documented finding, so
+    # rejecting one refused real reviews as placeholders.
+    r"(?ms)^\*\*.+?\*\*\s+—\s+\S.*?^(?:Suggested fix|Fix/Response|Fix):\s+\S"
 )
 EXPLORER_FINDING = re.compile(
     r"(?m)^(?:" + "|".join(re.escape(section) for section in EXPLORER_SECTIONS) + r")\s*$\n\s*-\s+\S"
+)
+# An orchestrator's own summary of a persona, written in place of the persona's response. The
+# protocol forbids it ("never substitute a stub"), and it cannot be verified or re-graded later, so
+# it is refused rather than accepted as output. 57 of 220 recorded artifacts were such digests, and
+# they announced themselves in the opening 300 characters under five wordings: `(condensed)`,
+# `# … (condensed relay)`, `Condensed record of …`, `status: complete (condensed; …)`, and
+# `status: ok (condensed)`. The marker must read as an announcement — bare at the start, in
+# parentheses/brackets, in a heading, or on a `status:` line — so a persona reviewing a prompt that
+# happens to contain the word is unaffected.
+SUMMARY_ARTIFACT = re.compile(
+    r"\A\s*(?:#{1,6}[^\n]*)?\s*[(\[]?\s*(?:condensed|summari[sz]ed)\b"
+    r"|^[ \t]*(?:#{1,6}[ \t]*)?[(\[]\s*(?:condensed|summari[sz]ed)\b"
+    r"|^[ \t]*status:.*\b(?:condensed|summari[sz]ed)\b",
+    re.I | re.M,
+)
+SUMMARY_HEADER_CHARS = 300
+# A spec or idea review has one artifact under review, so its findings anchor by quoting the
+# sentence they attack rather than by a path:line into a diff. Four real spec reviews were scored as
+# "no output" for this alone.
+QUOTED_EVIDENCE = re.compile(r"[\"“][^\"”\n]{20,}[\"”]")
+# A spec or idea review cites the one artifact under review, so a finding may anchor to a bare line
+# number or range instead of a path. Requiring a path there would reject a correct spec review, but
+# the line number is still required: without it a long unanchored label line would pass as a finding.
+# What separates a finding from a marker is described content past the number, so `[nit] 611` stays
+# out while `2 [blocking] 611 (570-571): unscoped example contradicts the rule` is accepted.
+SPEC_FINDING = re.compile(
+    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[" + _SEVERITY + r"\][\s*:—–-]*"
+    r"\(?\s*\d[\d,\s–-]*\)?[\d,\s–\-:()]*\**\s*[A-Za-z\"“][^\n]{40,}",
+    re.M | re.I,
 )
 
 
@@ -287,17 +345,31 @@ def has_review_content(text: str) -> bool:
     """True when the artifact carries a verdict, a finding, or explorer sections.
 
     Each accepted shape requires content beyond a marker: a complete no-findings verdict, a
-    labeled finding with a location, an unnumbered documented finding plus a non-empty
-    `Fix/Response:`, or an explorer section plus an item. A placeholder (`raw response
+    labeled finding with a location, an unnumbered documented finding closed by any of the three
+    fix-field spellings, or an explorer section plus an item. A placeholder (`raw response
     captured`, `dispatched: yes`) and marker-only output match none.
+
+    A finding is credited by evidence, not by layout: a `path:line` anchor in the same block, an
+    `Anchor:` line, a quoted sentence from the artifact under review, or a bare line number with a
+    body. Four real spec reviews and five bullet-style code reviews were refused as placeholders
+    because the accepted shape was narrower than the format the persona documents.
     """
     if VERDICT_NO_FINDINGS.search(text):
         return True
-    return bool(
-        LABELED_FINDING.search(text)
-        or FIX_RESPONSE_FINDING.search(text)
-        or EXPLORER_FINDING.search(text)
-    )
+    if LABELED_FINDING.search(text) or FIX_RESPONSE_FINDING.search(text) or EXPLORER_FINDING.search(text):
+        return True
+    if SPEC_FINDING.search(text):
+        return True
+    # The anchor sits outside the label's line: an `Anchor: path:line` line, a quoted sentence, or a
+    # body line naming a path:line. Bound the search to the finding's own block so a stray anchor
+    # elsewhere in the artifact cannot rescue a marker-only file.
+    labels = list(LABEL_LINE.finditer(text))
+    for index, match in enumerate(labels):
+        end = labels[index + 1].start() if index + 1 < len(labels) else len(text)
+        block = text[match.start():end]
+        if ANCHOR_ANYWHERE.search(block) or QUOTED_EVIDENCE.search(block):
+            return True
+    return False
 
 
 def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:
@@ -306,15 +378,21 @@ def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:
                 for persona in canonical_personas(personas, split_commas=False)}
     # `unknown` counts as usable only when the artifact actually carries review content;
     # persona_outcome already returns `unknown` for an empty file.
-    unusable = {"failed", "skipped", "truncated", "missing", "unknown"}
+    unusable = {"failed", "skipped", "truncated", "summarized", "missing", "unknown"}
     if all(outcome in unusable for outcome in outcomes.values()):
         raise ValueError(
-            "every dispatched persona failed, was skipped, or produced no output; "
+            "every dispatched persona failed, was skipped, was summarized, or produced no output; "
             "there is no review to persist"
         )
     # A placeholder artifact must not ride along behind one real persona: each declared
     # persona ends as `ok` or an explicit failure word (pipeline.md step 3). `unknown`
     # means the file carries no verdict, no labeled finding, and no declared failure.
+    summarized = sorted(name for name, outcome in outcomes.items() if outcome == "summarized")
+    if summarized:
+        raise ValueError(
+            f"{', '.join(summarized)} holds an orchestrator summary, not the persona's response; "
+            "write the raw response as it returned, never a condensed digest"
+        )
     stubs = sorted(name for name, outcome in outcomes.items() if outcome in {"unknown", "missing"})
     if stubs:
         raise ValueError(
@@ -532,23 +610,31 @@ def persist(args: argparse.Namespace) -> int:
         )
     findings = read_findings(args.findings) if args.findings else []
     coverage_section = ""
+    # Persona evidence is not a strict-only gate. A report persisted without proof that each
+    # dispatched persona ran is indistinguishable from a full review, and 18 recorded reviews
+    # reached REVIEW.md that way while a persona had produced nothing. Requiring --personas at
+    # every call makes the coverage check unconditional; --strict only adds the diff gates
+    # (hunk coverage, evidence paths) that need a clean tree to check.
+    if not args.personas:
+        raise ValueError(
+            "--personas is required: a persisted review must name the personas that produced it"
+        )
+    missing = [
+        f"{persona}.{kind}.md"
+        for persona in canonical_personas(args.personas, split_commas=False)
+        for kind in ("in", "out")
+        if not (args.review_dir / f"{persona}.{kind}.md").is_file()
+    ]
+    if missing:
+        raise ValueError(f"missing persona artifacts in {args.review_dir}: {', '.join(missing)}")
+    check_persona_coverage(args.review_dir, args.personas)
+    layers_path = args.review_dir / LAYERS_FILE
+    hunks_path = args.review_dir / HUNKS_FILE
+    coverage_gap = ""
     if args.strict:
-        if not args.personas:
-            raise ValueError("--strict requires --personas")
-        missing = [
-            f"{persona}.{kind}.md"
-            for persona in canonical_personas(args.personas, split_commas=False)
-            for kind in ("in", "out")
-            if not (args.review_dir / f"{persona}.{kind}.md").is_file()
-        ]
-        if missing:
-            raise ValueError(f"missing persona artifacts in {args.review_dir}: {', '.join(missing)}")
-        check_persona_coverage(args.review_dir, args.personas)
         # A layer map is what proves the personas were pointed at the whole diff: a hunk
         # nobody was asked to read is a silent coverage hole. Strict only, so a plain
         # persist never fails on a stray map.
-        layers_path = args.review_dir / LAYERS_FILE
-        hunks_path = args.review_dir / HUNKS_FILE
         if layers_path.is_file():
             if not hunks_path.is_file():
                 raise ValueError(
@@ -557,12 +643,20 @@ def persist(args: argparse.Namespace) -> int:
             check_coverage(hunks_path, layers_path)
             coverage_section = layer_coverage(read_json_object(layers_path, "layers")["layers"], findings)
         elif hunks_path.is_file():
-            print(f"warning: {HUNKS_FILE} has no {LAYERS_FILE}; hunk coverage not enforced", file=sys.stderr)
+            coverage_gap = (
+                f"{HUNKS_FILE} has no {LAYERS_FILE}: hunk coverage was not enforced, so no layer of "
+                "this diff is proven to have been read"
+            )
         if hunks_path.is_file():
             check_hunk_refs(findings, hunk_ids(hunks_path))
     report = args.report.read_text()
     if coverage_section:
         report = report.rstrip() + "\n\n" + coverage_section
+    if coverage_gap:
+        # stderr alone is invisible in the persisted artifact: 80 of 83 recorded reviews carried
+        # hunks with no map and the report never said so. The gap belongs where the reader is.
+        print(f"warning: {coverage_gap}", file=sys.stderr)
+        report = report.rstrip() + f"\n\n### Coverage\n- {coverage_gap}\n"
     if args.files:
         report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(f"- `{name}`\n" for name in args.files)
     # Bind the verdict to the tree it approved. `crew commit` moves HEAD past it, so the

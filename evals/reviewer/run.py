@@ -85,7 +85,14 @@ _INTER_REQUEST_DELAY = 8.0
 # ---------------------------------------------------------------------------
 
 def load_persona_prompt(persona_name: str) -> str:
-    """Read .cursor/agents/<persona_name>.md and strip YAML frontmatter."""
+    """Read .cursor/agents/<persona_name>.md and strip YAML frontmatter.
+
+    The persona file describes one lens. The output contract every persona shares — labels, finding
+    shape, the one-issue and pre-existing rules, the abstention line, evidence rules — lives once in
+    `references/reviewer-contract.md` and is composed here, because a subagent cannot load another
+    file. Without this, each persona restated the contract in its own words and the copies drifted:
+    `[concern]` was missing from all five, and the fix field had three spellings.
+    """
     path = _AGENTS_DIR / f"{persona_name}.md"
     if not path.exists():
         raise FileNotFoundError(
@@ -94,15 +101,25 @@ def load_persona_prompt(persona_name: str) -> str:
         )
     text = path.read_text()
     # Strip YAML frontmatter between the first and second '---' delimiters
-    return re.sub(r'^---\n.*?\n---\n', '', text, count=1, flags=re.DOTALL)
+    lens = re.sub(r'^---\n.*?\n---\n', '', text, count=1, flags=re.DOTALL)
+    return f"{lens}\n\n---\n\n{load_shared_contract()}"
+
+
+def load_shared_contract() -> str:
+    """The shared output contract, composed into every persona prompt."""
+    path = _AGENTS_DIR / "references" / "reviewer-contract.md"
+    if not path.exists():
+        raise FileNotFoundError(f"Shared reviewer contract not found: {path}")
+    return path.read_text()
 
 
 def load_output_rules() -> str:
-    """Return the persona-level output contract used by the scorer.
+    """Return the per-dispatch output rules, appended to the user message.
 
-    The orchestrator's consolidation.md describes multi-persona merging, not a
-    single persona's output, so the persona contract is defined here. Scores
-    produced before this change are not directly comparable; re-baseline.
+    The orchestrator's consolidation.md describes multi-persona merging, not a single persona's
+    output, so the per-run contract is defined here. The stable half of that contract lives in
+    `references/reviewer-contract.md` and is composed into the system prompt; this is the part that
+    varies per dispatch. Scores produced before 2026-11-18 are not comparable; re-baseline.
     """
     return (
         "Produce your review now. Output a numbered list of findings. Each finding "
@@ -123,12 +140,15 @@ def load_fixtures() -> list[dict]:
 def get_applicable_personas(fixture: dict, requested_persona: Optional[str] = None) -> list:
     """Return personas to run for a fixture.
 
-    'Applicable' means: all personas named in any expected_findings entry,
-    plus reviewer-code-quality unconditionally (for scope-violation checks).
+    'Applicable' means: all personas named in any expected_findings entry, plus
+    reviewer-code-quality unconditionally for diff fixtures (scope-violation check), plus any
+    persona in `also_run` — the field that gives a lens a negative-control fixture, where the
+    expected outcome is "no findings" and `clean_for` scores it.
     If requested_persona is set, intersect with that.
     """
     named = {ef["persona"] for ef in fixture.get("expected_findings", [])}
     named.update(fixture.get("clean_for", []))
+    named.update(fixture.get("also_run", []))
     if fixture.get("input_type", "diff") != "spec":
         named.add("reviewer-code-quality")  # always run for scope discipline check (diffs only)
     if requested_persona:
@@ -143,10 +163,10 @@ def get_applicable_personas(fixture: dict, requested_persona: Optional[str] = No
 def score_finding_match(raw_output: str, expected: dict) -> bool:
     """Check if raw_output contains a finding matching expected severity + match_hint.
 
-    Splits by numbered finding header ('^\\d+\\.') so that label + hint within the
-    same numbered finding are always in the same unit, even if separated by code fences
-    or blank lines. This avoids false matches where label from one finding and hint
-    from an unrelated finding happen to both appear in the output.
+    Splits into findings by the markers personas actually use (`1.`, `1)`, `- `, `* `) so that label
+    and hint within the same finding are always in the same unit, even if separated by code fences or
+    blank lines. This avoids false matches where a label from one finding and a hint from an
+    unrelated finding both appear in the output.
     """
     hint = expected["match_hint"].lower()
     severity = expected.get("severity")
@@ -154,12 +174,20 @@ def score_finding_match(raw_output: str, expected: dict) -> bool:
         # Spec-type fixture: no label required, just check hint presence in full output
         return hint in raw_output.lower()
     label = f"[{severity.lower()}]"
-    # Split on numbered list markers that start a finding (1., 2., etc.)
-    units = re.split(r'(?m)^(?=\d+\.)', raw_output)
-    for unit in units:
+    for unit in finding_units(raw_output):
         if label in unit.lower() and hint in unit.lower():
             return True
     return False
+
+
+# A finding starts at a list marker or a bare label, which is how personas in this pipeline write
+# them. Scoring that only split on `N.` produced false negatives on every bulleted response.
+FINDING_START = re.compile(r"(?m)^(?=\s*(?:[-*+]\s+|\d+[.)]?\s+|\[(?:blocking|attention|concern|nit|needs more info)\]))", re.I)
+LABELS_IN_UNIT = re.compile(r"\[(blocking|attention|concern|needs more info|nit)\]", re.I)
+
+
+def finding_units(raw_output: str) -> list[str]:
+    return [unit for unit in FINDING_START.split(raw_output) if unit.strip()]
 
 
 def score_scope_violations(raw_output: str, persona_name: str) -> int:
@@ -179,6 +207,11 @@ def compute_precision_recall(
 
     Returns (None, None, ...) when no expected findings exist for this persona
     (pair excluded from aggregation).
+
+    A finding is produced once per list marker, whatever it says, and is *correct* only when it
+    carries both the expected severity label and the expected hint. Scoring the two separately let a
+    right issue under the wrong severity count as precision, so a persona that mislabels everything
+    still scored 1.0.
     """
     expected_for_persona = [
         ef for ef in fixture.get("expected_findings", [])
@@ -187,8 +220,9 @@ def compute_precision_recall(
     if not expected_for_persona:
         return None, None, [], []
 
-    matched = []
-    unmatched = []
+    units = finding_units(raw_output)
+
+    matched, unmatched = [], []
     for ef in expected_for_persona:
         if score_finding_match(raw_output, ef):
             matched.append(ef)
@@ -201,13 +235,25 @@ def compute_precision_recall(
     if all(ef.get("severity") is None for ef in expected_for_persona):
         return None, recall, matched, unmatched
 
-    # Precision: of all label occurrences in output, how many correspond to expected findings
-    # Simple heuristic: count [blocking]/[attention]/[needs more info]/[nit] labels in output
-    label_count = len(re.findall(r'\[(blocking|attention|needs more info|nit)\]', raw_output, re.IGNORECASE))
-    if label_count == 0:
+    produced = sum(len(LABELS_IN_UNIT.findall(unit)) for unit in units)
+    # A unit counts as correct only when it carries the expected hint *and* the expected severity for
+    # that hint. Crediting on the hint alone let a right issue under the wrong label score as
+    # precision, which is exactly the mislabelling a persona must lose points for.
+    credited = 0
+    for unit in units:
+        lowered = unit.lower()
+        labels = {label.lower() for label in LABELS_IN_UNIT.findall(unit)}
+        correct = sum(
+            1 for ef in expected_for_persona
+            if ef["match_hint"].lower() in lowered and str(ef["severity"]).lower() in labels
+        )
+        if correct:
+            credited += min(correct, len(labels))
+    if produced == 0:
+        # No finding at all is perfect precision and zero recall; on a clean fixture it is correct.
         precision = 1.0 if not expected_for_persona else 0.0
     else:
-        precision = min(len(matched), label_count) / label_count
+        precision = min(credited, produced) / produced
 
     return precision, recall, matched, unmatched
 
@@ -411,8 +457,16 @@ def save_baseline(run_dir: pathlib.Path, model: str) -> None:
     """Write per-persona summary metrics from run_dir to baseline.json."""
     stats = _compute_persona_stats(run_dir)
     manifest_path = run_dir / "manifest.json"
-    run_at = json.loads(manifest_path.read_text()).get("run_at", "") if manifest_path.exists() else ""
-    out: dict = {"model": model, "run_at": run_at, "personas": {}}
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    run_at = manifest.get("run_at", "")
+    # Record the fixture set with the scores: a baseline without it silently compares runs that
+    # measured different things.
+    out: dict = {
+        "model": model,
+        "run_at": run_at,
+        "fixtures": manifest.get("fixtures", []),
+        "personas": {},
+    }
     for persona, s in stats.items():
         n = s["fixtures_run"]
         entry: dict = {
@@ -428,14 +482,31 @@ def save_baseline(run_dir: pathlib.Path, model: str) -> None:
     print(f"Baseline saved to {_BASELINE_PATH}")
 
 
-def compare_to_baseline(persona_stats: dict[str, dict]) -> bool:
-    """Print delta table vs baseline.json if it exists. Returns True if any regression found."""
+def compare_to_baseline(persona_stats: dict, model: str = "", fixtures: Optional[list] = None) -> bool:
+    """Print delta table vs baseline.json if it exists. Returns True if any regression found.
+
+    A baseline is only comparable when it came from the same model and the same fixture set. The
+    recorded baseline was produced 2026-04-26 on a different model, before 19 commits to the persona
+    files and before most fixtures existed; comparing against it reports movement that is mostly the
+    model changing, not the personas. Refuse the comparison and say so rather than printing deltas
+    that invite a wrong conclusion.
+    """
     if not _BASELINE_PATH.exists():
         return False
     baseline = json.loads(_BASELINE_PATH.read_text())
     b_personas = baseline.get("personas", {})
     b_model = baseline.get("model", "unknown")
     b_run_at = baseline.get("run_at", "")
+    b_fixtures = baseline.get("fixtures")
+    if b_model != model:
+        print(f"\n=== baseline not comparable: recorded on {b_model} @ {b_run_at}, this run used {model or 'unknown'} ===")
+        print("Re-record it with --save-baseline on the current model, or pass --model to match it.")
+        return False
+    if b_fixtures is not None and fixtures is not None and sorted(b_fixtures) != sorted(fixtures):
+        missing = sorted(set(fixtures) - set(b_fixtures))
+        print(f"\n=== baseline not comparable: {len(missing)} fixture(s) absent from it ({', '.join(missing)}) ===")
+        print("Scores cover different fixtures, so a delta would mix coverage growth with quality. Re-record with --save-baseline.")
+        return False
     print(f"\n=== vs baseline ({b_model} @ {b_run_at}) ===")
     col_w = 28
     print(f"{'persona':<{col_w}} {'recall Δ':>10} {'precision Δ':>13} {'violations Δ':>14}")
@@ -476,7 +547,7 @@ def compare_to_baseline(persona_stats: dict[str, dict]) -> bool:
     return has_regression
 
 
-def summarize(results_root: pathlib.Path, compare: bool = False) -> int:
+def summarize(results_root: pathlib.Path, compare: bool = False, model: str = "") -> int:
     """Print summary of most recent run. Returns exit code (1 if violations found)."""
     runs = sorted(
         (d for d in results_root.iterdir() if d.is_dir()),
@@ -528,7 +599,7 @@ def summarize(results_root: pathlib.Path, compare: bool = False) -> int:
         print("\nFAIL: scope violations detected (see *** FAIL *** rows above)")
 
     if compare:
-        if compare_to_baseline(persona_stats):
+        if compare_to_baseline(persona_stats, model=model, fixtures=manifest.get("fixtures")):
             exit_code = 1
     else:
         print()
@@ -646,7 +717,7 @@ def main() -> None:
 
     write_manifest(run_dir, all_fixture_ids, sorted(all_personas), all_results)
     print(f"\nResults written to: {run_dir}")
-    sys.exit(summarize(_RESULTS_ROOT, compare=args.compare))
+    sys.exit(summarize(_RESULTS_ROOT, compare=args.compare, model=args.model))
 
 
 if __name__ == "__main__":

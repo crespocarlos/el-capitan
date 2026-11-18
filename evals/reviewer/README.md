@@ -71,6 +71,12 @@ Fixtures live in `evals/reviewer/fixtures.json`:
 | `expected_findings[].severity` | string | Expected label: `blocking`, `attention`, `needs more info`, or `nit` |
 | `expected_findings[].match_hint` | string | Short phrase (3–8 words) that must appear in any correct finding |
 | `clean_for` | array | Optional. Personas that must produce no `[blocking]`/`[attention]` finding on this diff; they run on the fixture and count toward false positives |
+| `also_run` | array | Optional. Personas to dispatch on this fixture with no expected finding, used to give a lens a negative control it is scored against via `clean_for` |
+| `input_type` | string | Optional. `diff` (default), `pr`, or `spec`. `spec` fixtures carry `content` instead of `diff` and skip precision |
+
+Every reviewer persona needs at least one fixture that scores it and at least one `clean_for`
+negative control; `evals/reviewer/test_scoring.py` enforces both, so a new lens cannot land with no
+way to regress visibly or to catch out-of-lane noise.
 
 ---
 
@@ -78,9 +84,13 @@ Fixtures live in `evals/reviewer/fixtures.json`:
 
 ### Matching
 
-A finding is **matched** when both of the following are true in the raw output (case-insensitive):
+A finding is **matched** when both of the following are true in the same finding (case-insensitive):
 1. The label `[<severity>]` appears (e.g. `[blocking]`)
-2. The `match_hint` substring appears anywhere in the text
+2. The `match_hint` substring appears in that finding's text
+
+A finding starts at any list marker the harness accepts — `1.`, `1)`, `1 `, `- `, `* `, or a bare
+`[label]` — because personas write all of them, and splitting only on `1.` scored every bulleted
+response as zero recall.
 
 `match_hint` is a plain substring — not a regex, not semantic similarity.
 
@@ -95,10 +105,13 @@ If a persona has no `expected_findings` for a fixture, that pair is **excluded f
 ### Precision
 
 ```
-precision = matched_expected / total_labeled_findings_produced
+precision = correct_findings / total_labeled_findings_produced
 ```
 
-Where `total_labeled_findings_produced` is the count of `[blocking]`, `[attention]`, `[needs more info]`, and `[nit]` labels in the raw output.
+Where `total_labeled_findings_produced` is the count of `[blocking]`, `[attention]`, `[needs more info]`, and `[nit]`
+labels in the raw output, and a finding is correct only when it carries the expected hint **and** the
+expected severity for that hint. Crediting on the hint alone previously let a right issue under the
+wrong label score as full precision.
 
 ### Scope violations
 
@@ -161,5 +174,12 @@ Current fixtures:
 | r10 | Spec task granularity violation — one task touches 5 files | `specwriter-scope` | any |
 | r11 | Clean — guard visible in hunk context; an absence claim is a false positive | `clean_for`: adversarial, code-quality | — |
 | r12 | Clean — small, tested, conventional refactor | `clean_for`: code-quality | — |
+| r13 | PR-head isolation — local checkout disagrees with the PR head | `reviewer-adversarial` | `attention` |
+| r14 | Export removed from a package entry point with no migration path | `reviewer-architecture` | `blocking` |
+| r15 | Checkout error state drops the user on a blank screen with no retry | `reviewer-product-flow` | `blocking` |
+| r16 | Rule with no stated reason or scope, so the reader cannot tell where it stops | `reviewer-prompt-quality` | `attention` |
+| r17 | Clean control — README typo fix; product flow and architecture must abstain | `clean_for`: product-flow, architecture | — |
+| r18 | Clean control — test-only rename; prompt quality and architecture stay out of lane | `clean_for`: prompt-quality, architecture | — |
+| r19 | Prior-art lookup — an equivalent helper already exists | `reviewer-explorer` | any |
 
 `baseline.json` predates the Fresh Eyes merge and the clean fixtures; re-run and re-baseline before comparing.

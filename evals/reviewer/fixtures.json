@@ -169,6 +169,82 @@
           "match_hint": "fallback"
         }
       ]
+    },
+    {
+      "id": "r14",
+      "description": "Architecture: exported symbol removed from a package entry point with no deprecation or migration path — every downstream importer breaks at build time.",
+      "diff": "--- a/packages/core/src/index.ts\n+++ b/packages/core/src/index.ts\n@@ -1,6 +1,4 @@\n-export { Widget, createWidget, LEGACY_WIDGET_API } from './widget';\n-export { renderWidget } from './render';\n+export { Widget, createWidget } from './widget';\n+export { renderWidget } from './render';\n+export { buildWidget } from './build';\n",
+      "expected_findings": [
+        {
+          "persona": "reviewer-architecture",
+          "severity": "blocking",
+          "match_hint": "LEGACY_WIDGET_API"
+        }
+      ]
+    },
+    {
+      "id": "r15",
+      "description": "Product flow: a checkout error state that drops the user on a blank screen with no message, no retry, and no route back.",
+      "diff": "--- a/src/checkout/Checkout.tsx\n+++ b/src/checkout/Checkout.tsx\n@@ -40,9 +40,7 @@ export function Checkout({ cart }: Props) {\n   const submit = async () => {\n     const result = await pay(cart);\n     if (!result.ok) {\n-      setError(result.message);\n-      setRetryable(true);\n+      return;\n     }\n     goToConfirmation(result.receipt);\n   };\n",
+      "expected_findings": [
+        {
+          "persona": "reviewer-product-flow",
+          "severity": "blocking",
+          "match_hint": "no error"
+        }
+      ]
+    },
+    {
+      "id": "r16",
+      "description": "Prompt quality: an instruction that gives a rule with no reason and no scope, so the reader cannot tell when it stops applying.",
+      "diff": "--- a/.cursor/skills/crew-test/SKILL.md\n+++ b/.cursor/skills/crew-test/SKILL.md\n@@ -12,6 +12,7 @@\n ## Steps\n+\n+Always run the full test suite. Never skip tests.\n \n 1. Read the diff to find affected test files.\n",
+      "expected_findings": [
+        {
+          "persona": "reviewer-prompt-quality",
+          "severity": "attention",
+          "match_hint": "scope"
+        }
+      ]
+    },
+    {
+      "id": "r17",
+      "description": "Negative control: a README-only typo fix. Product flow must find no user-journey change and say so rather than manufacturing a UX finding.",
+      "diff": "--- a/README.md\n+++ b/README.md\n@@ -3,7 +3,7 @@\n Install the package:\n \n ```bash\n-npm instal el-capitan\n+npm install el-capitan\n ```\n",
+      "clean_for": [
+        "reviewer-product-flow",
+        "reviewer-architecture"
+      ],
+      "also_run": [
+        "reviewer-product-flow",
+        "reviewer-architecture"
+      ],
+      "expected_findings": []
+    },
+    {
+      "id": "r18",
+      "description": "Negative control: a test-only rename with no behavior change. Prompt quality and architecture must stay out of a lane they do not own.",
+      "diff": "--- a/src/format.test.ts\n+++ b/src/format.test.ts\n@@ -4,7 +4,7 @@ import { formatBytes } from './format';\n \n describe('formatBytes', () => {\n-  it('formats sizes', () => {\n+  it('formats byte counts', () => {\n     expect(formatBytes(1024)).toBe('1 KiB');\n   });\n });\n",
+      "clean_for": [
+        "reviewer-prompt-quality",
+        "reviewer-architecture"
+      ],
+      "also_run": [
+        "reviewer-prompt-quality",
+        "reviewer-architecture"
+      ],
+      "expected_findings": []
+    },
+    {
+      "id": "r19",
+      "description": "Explorer: prior-art lookup where an equivalent helper already exists, which the explorer must surface as similar patterns rather than a finding.",
+      "diff": "--- a/src/retry.ts\n+++ b/src/retry.ts\n@@ -0,0 +1,14 @@\n+export async function retry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {\n+  let lastError: unknown;\n+  for (let index = 0; index < attempts; index += 1) {\n+    try {\n+      return await fn();\n+    } catch (error) {\n+      lastError = error;\n+    }\n+  }\n+  throw lastError;\n+}\n",
+      "expected_findings": [
+        {
+          "persona": "reviewer-explorer",
+          "severity": null,
+          "match_hint": "retry"
+        }
+      ]
     }
   ]
 }

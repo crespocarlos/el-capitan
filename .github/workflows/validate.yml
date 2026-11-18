@@ -30,6 +30,12 @@ jobs:
       - name: Review-findings tests
         run: python3 evals/reviewer/test_review_findings.py
 
+      - name: Reviewer eval scorer tests
+        run: python3 evals/reviewer/test_scoring.py
+
+      - name: Reviewer persona contract tests
+        run: python3 evals/reviewer/test_personas.py
+
       - name: Review-hunks parser tests
         run: python3 evals/tools/test_review_hunks.py
 

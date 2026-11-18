@@ -6,6 +6,25 @@ targeted file reads, by whatever name the harness exposes them) to ground a find
 verify from the provided context alone — but they must not re-read files already included in their
 package.
 
+**Every package states its output contract, including the hunk requirement.** The persona file
+defines the finding format; the package must also carry the hunk-citation rule, because a persona
+never reads this file. Without that sentence in the package, personas do not cite hunk ids — only 7
+of 511 recorded candidates carried one — and strict persistence then fails on every
+`[blocking]`/`[attention]` finding for a reason the persona was never told about. Use the one format
+the rest of the pipeline reads (`review-findings.py` parses the ids from the record, and the layer
+coverage section matches them), stated verbatim:
+
+> Every `[blocking]` and `[attention]` finding cites the hunk ids whose change causes it, next to the
+> `file:line` anchor: `[attention] src/a.ts:42 (h7) — …`, or `(h3, h7)`. A finding no hunk causes is
+> pre-existing; say so instead of citing a hunk that does not cause it.
+
+That sentence sits directly under the `## Hunk reference` heading the orchestrator appends, so the
+ids the persona cites are the ids in front of it.
+
+Also state the review mode in the same preamble (self, changes, PR, spec, or idea) together with the
+label vocabulary for that mode: `[concern]` replaces `[attention]` in a spec or idea review. A
+persona whose file lists only code labels otherwise has no legal label for a plan weakness.
+
 ### Self and changes review modes
 
 The size gate (see "Spine files" below) decides which of two packaging strategies applies. It is

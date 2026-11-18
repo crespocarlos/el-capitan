@@ -68,9 +68,16 @@ def test_persist_writes_both_reports_and_appends_deferred(tmp: Path) -> None:
         {"title": "Old flaky helper", "label": "attention", "file": "b.ts", "line": 4, "disposition": "defer"},
         {"title": "Rename var", "label": "nit", "disposition": "patch"},
     ]))
+    # Persistence always names its personas and proves each one ran; a report with no
+    # persona evidence is indistinguishable from a full review that skipped a lens.
+    for persona in ("adversarial", "code-quality"):
+        (review_dir / f"{persona}.in.md").parent.mkdir(parents=True, exist_ok=True)
+        (review_dir / f"{persona}.in.md").write_text("in")
+        (review_dir / f"{persona}.out.md").write_text("### Verdict: no findings\n")
     for _ in range(2):
         result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
-                     "--findings", str(findings), "--files", "b.ts")
+                     "--findings", str(findings), "--files", "b.ts",
+                     "--personas", "adversarial", "code-quality")
         assert result.returncode == 0, result.stderr
     for path in (review_dir / "REVIEW.md", task / "REVIEW.md"):
         text = path.read_text()
@@ -116,14 +123,17 @@ def test_normalize_strict_caps_nits_separately_from_total(tmp: Path) -> None:
         source.write_text(json.dumps(items))
         return run("normalize", str(source), "--strict")
 
-    # Nits are capped on their own, so three nits fail even though three is far under the total cap.
-    result = write([{**ok, "title": f"nit {i}", "label": "nit"} for i in range(3)])
-    assert result.returncode == 2 and "nits" in result.stderr
+    # Nits are capped on their own: even one nit over budget fails while the severity findings are
+    # far under their cap. This is the regression the tiering exists to prevent, so polish cannot
+    # evict severity.
+    result = write([{**ok, "title": "only", "label": "blocking"}]
+                   + [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(5)])
+    assert result.returncode == 2 and "cap of 4" in result.stderr
 
     # The budgets are independent, so both maxima can be reached at once: 12 severity findings plus
-    # the 2-nits allowance.
+    # the 4-nits allowance, which is also the largest nit count any recorded review emitted.
     full = [{**ok, "title": f"a {i}", "label": "attention"} for i in range(12)]
-    full += [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(2)]
+    full += [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(4)]
     assert write(full).returncode == 0
 
     # One more severity finding exceeds the non-nit cap, and the message names the constant so the
@@ -131,13 +141,9 @@ def test_normalize_strict_caps_nits_separately_from_total(tmp: Path) -> None:
     result = write(full + [{**ok, "title": "a 12", "label": "attention"}])
     assert result.returncode == 2 and "cap of 12" in result.stderr
 
-    # A nit over budget fails on its own even when severity findings are well under their cap,
-    # which is the regression this tiering exists to prevent: polish cannot evict severity.
-    assert write([{**ok, "title": "only", "label": "blocking"}]
-                 + [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(2)]).returncode == 0
-    result = write([{**ok, "title": "only", "label": "blocking"}]
-                   + [{**ok, "title": f"nit {i}", "label": "nit"} for i in range(3)])
-    assert result.returncode == 2 and "cap of 2" in result.stderr
+    # Dropping a nit to make room for a severity finding is accepted: the nit budget bounds polish,
+    # never severity.
+    assert write(full[:12] + full[13:]).returncode == 0
 
 
 def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
@@ -262,16 +268,19 @@ def test_persist_pr_mode_accepts_head_absent_from_local_repo(tmp: Path) -> None:
     task = tmp / "task"
     review_dir = task / "review" / "ts"
     review_dir.mkdir(parents=True)
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
     report = tmp / "report.md"
     report.write_text("## Review: PR\n")
     absent = "0123456789abcdef0123456789abcdef01234567"
-    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
-                 "--mode", "pr", "--head", absent)
+    args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
+            "--mode", "pr", "--head", absent, "--personas", "adversarial")
+    result = run(*args)
     assert result.returncode == 0, result.stderr
     assert f"Reviewed at: {absent}" in (task / "REVIEW.md").read_text()
     # Non-PR modes still reject a SHA the local repository cannot resolve.
     local = run("persist", "--review-dir", str(review_dir), "--report", str(report),
-                "--mode", "self", "--head", absent)
+                "--mode", "self", "--head", absent, "--personas", "adversarial")
     assert local.returncode == 2 and "is not a commit" in local.stderr
 
 
@@ -280,7 +289,8 @@ def test_persist_pr_mode_requires_a_head_sha(tmp: Path) -> None:
     review_dir.mkdir(parents=True)
     report = tmp / "report.md"
     report.write_text("## Review: PR\n")
-    result = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "pr")
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "pr",
+                 "--personas", "adversarial")
     assert result.returncode == 2 and "requires --head" in result.stderr
     assert not (review_dir / "REVIEW.md").exists()
 
@@ -293,7 +303,8 @@ def test_persist_pr_mode_rejects_task_dir(tmp: Path) -> None:
     report = tmp / "report.md"
     report.write_text("## Review: PR\n")
     result = run("persist", "--review-dir", str(task / "review" / "ts"), "--report", str(report),
-                 "--mode", "pr", "--head", "0123456789abcdef0123456789abcdef01234567")
+                 "--mode", "pr", "--head", "0123456789abcdef0123456789abcdef01234567",
+                 "--personas", "adversarial")
     assert result.returncode == 2 and "outside task state" in result.stderr
     assert not (task / "REVIEW.md").exists()
 
@@ -322,6 +333,25 @@ def test_persona_outcome_accepts_every_documented_persona_format(tmp: Path) -> N
         "explorer": "## Similar patterns\n- `src/b.ts` (lines 10-18) — same retry loop\n",
         # every persona: explicit no-findings verdict
         "verdict": "### Verdict: no findings\n",
+        # bullet-style findings: 5 recorded reviews used `- [label]` and were refused as placeholders
+        "bulleted": "- [blocking] src/a.ts:47 leaves the retry loop unbounded\n",
+        "bulleted_bold": "- **[attention]** src/a.ts:12 drops the timeout\n",
+        # an `Anchor:` line carries the location outside the label's line
+        "anchor_line": (
+            "[attention] Missing regression coverage for a manage-without-configure user.\n"
+            "Anchor: public/sources/sources_table.tsx:162-164@be06db4\n"
+        ),
+        # a spec review quotes the sentence it attacks instead of citing a diff path
+        "spec_quote": (
+            "1. [blocking] **Separate path still fires in the exact case the spec fixes**\n"
+            "   Spec anchors: Breach \"continues the candidate unless the pair is a Separate path\".\n"
+        ),
+        # a spec review whose finding carries only a line number against the one artifact. Text is the
+        # real 2026-11-04 record: `611 (570-571, 328-329, 606): unscoped example says …`.
+        "spec_line_only": (
+            "2 [blocking] 611 (570-571, 328-329, 606): unscoped example says \"not measured: share, "
+            "attempts per day\", contradicting the rule that a non-applicable figure is left out\n"
+        ),
     }
     rejected = {
         "dispatched": "# raw response captured\nstatus: dispatched\n",
@@ -334,10 +364,23 @@ def test_persona_outcome_accepts_every_documented_persona_format(tmp: Path) -> N
         "explorer_header_only": "## Similar patterns\n",
         "empty": "",
     }
+    # An orchestrator digest is not the persona's response, so it gets its own outcome rather than
+    # being reported as "no output". All five wordings come from the 57 recorded artifacts.
+    summarised = {
+        "paren": "(condensed) 1 [blocking] a.ts:1 breaks\n",
+        "relay_header": "# adversarial output (condensed relay)\n1 [blocking] a.ts:1 breaks\n",
+        "record": "Condensed record of the persona response (13 findings).\n1 [blocking] a.ts:1 breaks\n",
+        "status_complete": "status: complete (condensed; the full raw report is in the session transcript)\n",
+        "status_ok": "status: ok (condensed)\nverdict: revisit\n",
+    }
     for name, body in accepted.items():
         path = tmp / f"{name}.out.md"
         path.write_text(body)
         assert module.persona_outcome(path) == "ok", name
+    for name, body in summarised.items():
+        path = tmp / f"{name}.out.md"
+        path.write_text(body)
+        assert module.persona_outcome(path) == "summarized", name
     for name, body in rejected.items():
         path = tmp / f"{name}.out.md"
         path.write_text(body)
@@ -380,10 +423,13 @@ def test_persist_spec_mode_keeps_code_review(tmp: Path) -> None:
     task = tmp / "task"
     review_dir = task / "review" / "20261102"
     review_dir.mkdir(parents=True)
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
     (task / "REVIEW.md").write_text("## Verdict: PASS\n")
     report = tmp / "report.md"
     report.write_text("## Review: Spec\n")
-    result = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "spec")
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "spec",
+                 "--personas", "adversarial")
     assert result.returncode == 0, result.stderr
     assert (task / "REVIEW.md").read_text() == "## Verdict: PASS\n"
     assert (task / "REVIEW.spec.md").read_text() == "## Review: Spec\n"
@@ -460,13 +506,16 @@ def test_persist_strict_runs_coverage_only_when_layers_exist(tmp: Path) -> None:
     orphan = run(*args)
     assert orphan.returncode == 2 and "hunk index" in orphan.stderr, orphan.stderr
     # Without --strict a stray map is ignored, so plain callers never see the gate.
-    plain = run("persist", "--review-dir", str(review_dir), "--report", str(report))
+    plain = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+                "--personas", "adversarial")
     assert plain.returncode == 0, plain.stderr
     # A hunk index with no map means the pre-pass failed: persist, but say coverage was skipped.
     (review_dir / "layers.json").unlink()
     (review_dir / "hunks.json").write_text(json.dumps({"files": [], "hunks": [{"id": "h1"}]}))
     skipped = run(*args)
-    assert skipped.returncode == 0 and "coverage not enforced" in skipped.stderr, skipped.stderr
+    assert skipped.returncode == 0 and "not enforced" in skipped.stderr, skipped.stderr
+    # The gap must reach the persisted artifact, not only stderr: a reader never sees stderr.
+    assert "hunk coverage was not enforced" in (review_dir / "REVIEW.md").read_text()
 
 
 def test_normalize_strict_requires_real_hunk_ids_on_emitted_findings(tmp: Path) -> None:
