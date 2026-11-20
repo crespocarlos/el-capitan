@@ -154,35 +154,56 @@ test "$(jq -n --arg c 'echo =====' '{hook_event_name:"beforeShellExecution",comm
 
 # review-address gate: no pending marker means an ordinary edit, so the hook must allow rather
 # than block every write in the session. This is the direction that fails silently if wrong.
-gate() { jq -n --arg e "$1" '{hook_event_name:$e,tool_input:{file_path:"/x"}}' \
+# `gate` sends a session id, because a marker is scoped to the session that armed it.
+gate() { jq -n --arg e "$1" --arg s "${2:-sess-A}" '{hook_event_name:$e,session_id:$s,tool_input:{file_path:"/x"}}' \
   | HOME="$home" bash "$root/.claude/hooks/review-address-gate.sh" | jq -r '.permission'; }
-rm -rf "$home/.agent/review-address"
+arm() { jq -n --arg s "$1" --arg r "${2:-/review/1}" '{session:$s,review_dir:$r}' \
+  > "$home/.agent/review-address/pending"; }
+gate_state="$home/.agent/review-address"
+rm -rf "$gate_state"
 test "$(gate preToolUse)" = allow
 test "$(gate PreToolUse)" = allow
 # Pending without approval denies — the state the gate exists for.
-mkdir -p "$home/.agent/review-address"; : > "$home/.agent/review-address/pending"
+mkdir -p "$gate_state"; arm sess-A
 test "$(gate preToolUse)" = deny
-# A later approval from a user turn opens it...
-sleep 1; : > "$home/.agent/review-address/approved"
+# A legacy bare-text marker belongs to a version with no session scoping, so it is stale.
+: > "$gate_state/pending"
 test "$(gate preToolUse)" = allow
-# ...but a stale approval (older than the current pending) does not, so an earlier run's "all"
-# cannot authorize the next one.
-sleep 1; : > "$home/.agent/review-address/pending"
-test "$(gate preToolUse)" = deny
+# A marker armed by another session is stale too: the table it answered is not on screen. This is
+# the case that blocked an unrelated edit in practice.
+arm sess-OTHER
+test "$(gate preToolUse sess-A)" = allow
+# Arm again for this session, then approve through the real user-turn hook.
+arm sess-A
+printf '%s' '{"prompt":"all","session_id":"sess-A"}' \
+  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
+test "$(gate preToolUse sess-A)" = allow
+# An approval from a different review in the same session does not authorize this one.
+rm -f "$gate_state/approved"
+jq -n --arg s sess-A --arg r /review/OTHER '{session:$s,review_dir:$r,prompt:"all"}' > "$gate_state/approved"
+test "$(gate preToolUse sess-A)" = deny
+# An approval written for another session does not authorize this one either.
+jq -n --arg s sess-OTHER --arg r /review/1 '{session:$s,review_dir:$r,prompt:"all"}' > "$gate_state/approved"
+test "$(gate preToolUse sess-A)" = deny
 # The approval writer ignores anything that is not an answer to the table.
-rm -f "$home/.agent/review-address/approved"
-printf '%s' '{"prompt":"what does this function do?"}' \
+rm -f "$gate_state/approved"
+arm sess-A
+printf '%s' '{"prompt":"what does this function do?","session_id":"sess-A"}' \
   | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test ! -f "$home/.agent/review-address/approved"
-printf '%s' '{"prompt":"all"}' \
+test ! -f "$gate_state/approved"
+printf '%s' '{"prompt":"all","session_id":"sess-A"}' \
   | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test -f "$home/.agent/review-address/approved"
+test -f "$gate_state/approved"
+# A user turn from a session that did not arm the gate records nothing.
+rm -f "$gate_state/approved"
+printf '%s' '{"prompt":"all","session_id":"sess-OTHER"}' \
+  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
+test ! -f "$gate_state/approved"
 # A bare number list is the cherry-pick answer the table asks for.
-rm -f "$home/.agent/review-address/approved"
-printf '%s' '{"prompt":"1, 3"}' \
+printf '%s' '{"prompt":"1, 3","session_id":"sess-A"}' \
   | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test -f "$home/.agent/review-address/approved"
-rm -rf "$home/.agent/review-address"
+test -f "$gate_state/approved"
+rm -rf "$gate_state"
 
 publish() { jq -n --arg c "$1" --arg d "${2:-$repo}" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission'; }
 repo="$home/repo"

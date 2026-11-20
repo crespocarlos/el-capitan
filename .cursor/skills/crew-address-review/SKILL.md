@@ -108,16 +108,25 @@ Never apply any change during this step. Collect all verdicts first.
 ### Step 3: Report and ask for approval
 
 **Both modes** — write the pending marker first, then present the table. The marker is what arms
-`review-address-gate.sh`: while it exists and no newer user approval does, every `Edit`/`Write` is
-denied, so the table below cannot be skipped. Create it immediately before the table, never after the
-edits.
+`review-address-gate.sh`: while it names this session and this review and no matching user approval
+exists, every `Edit`/`Write` is denied, so the table below cannot be skipped. Create it immediately
+before the table, never after the edits.
 
 In idea mode the marker is required only when the target is a file, because only then can an approved
 revision write to disk; a pasted-text idea edits nothing and the marker would deny nothing.
 
 ```bash
-mkdir -p "$HOME/.agent/review-address" && : > "$HOME/.agent/review-address/pending"
+# The marker carries its identity: a session id and the review directory. The gate ignores a marker
+# from another session, so a forgotten one cannot block unrelated work — which is exactly what a
+# single unscoped file did. Write JSON, not a bare `: >` empty file.
+mkdir -p "$HOME/.agent/review-address"
+jq -n --arg session "${CLAUDE_SESSION_ID:-$CURSOR_CONVERSATION_ID}" --arg review "$REVIEW_ROOT" \
+  '{session:$session, review_dir:$review}' > "$HOME/.agent/review-address/pending"
 ```
+
+If neither session variable is set in this harness, the marker records an empty session and the gate
+treats it as stale, so the table has no structural protection — say so rather than pretending the
+gate is armed.
 
 | #   | Label             | Finding | Verdict  | Proposed Fix                     |
 | --- | ----------------- | ------- | -------- | -------------------------------- |
