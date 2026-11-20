@@ -227,10 +227,7 @@ name. The main session can dispatch subagents natively.
 
 ### Degraded fallback (no Task tool, no Agent tool)
 
-Run `~/.agent/bin/dispatch_subagents.py --type critics` with `TASK_DIR` and `REPO_ROOT` set. The
-script handles parallel critic dispatch via `claude -p`.
-
-If `claude` is not on PATH either: run critics inline sequentially (ordering bias; last resort).
+Run the critics inline sequentially (ordering bias; last resort).
 
 ### Step 5: Surface open questions
 

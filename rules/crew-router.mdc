@@ -44,7 +44,6 @@ respond normally — no routing.
 | `crew debug` symptom | crew-debug skill |
 | `crew handoff` [resume] | crew-handoff skill |
 | `crew ls` [--all] | `~/.agent/bin/crew-ls.py --md [--all]` inline; paste the table outside a code fence |
-| `crew stats` [--since 7d] | `~/.agent/bin/crew-stats.py` inline; report the JSON as written |
 
 **This table is authoritative.** Do not override it with judgment calls.
 
@@ -79,8 +78,6 @@ except multi-persona orchestrators that must remain in the main session.
   after completion.
 - **Retry once asynchronously** when a dispatch ends without its durable report; do not restart a
   task that already produced its report.
-- **Use the documented degraded fallback** (`~/.agent/bin/dispatch_subagents.py`) only when native
-  subagent dispatch is unavailable, not as a model override.
 
 Multi-persona orchestrators dispatch persona subagents in parallel. All agents at
 `~/.claude/agents/` — orchestrators as `crew-<name>.md`, personas as `<orchestrator>-<persona>.md`.

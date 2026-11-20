@@ -43,7 +43,7 @@ silently during evaluation.
 
 ### Step 2: Fetch review threads
 
-Fetch threads with `~/.agent/bin/pr-review-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER` (add
+Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER` (add
 `--cursor CURSOR` on later pages). Loop until `pageInfo.hasNextPage` is false, merging returned
 threads into the running list and updating the cursor to `endCursor` on each iteration.
 
@@ -144,14 +144,14 @@ written under Carlos's name. If the file is unreadable, stop and report.
    every code symbol, path, command, field, API, and identifier in inline backticks; leave
    natural-language prose unquoted. Use the `databaseId` from the first comment in the thread:
    ```bash
-   ~/.agent/bin/pr-review-actions.py reply --repo OWNER/REPO --pr PR_NUMBER \
+   ~/.agent/bin/crew-pr-actions.py reply --repo OWNER/REPO --pr PR_NUMBER \
      --thread-id THREAD_NODE_ID --comment-id DATABASE_ID \
      --body "Fixed in <commit>: <what changed and why>." --execute
    ```
 
 2. **Resolve** the thread using the GraphQL node `id` from the thread:
    ```bash
-   ~/.agent/bin/pr-review-actions.py resolve --repo OWNER/REPO --pr PR_NUMBER \
+   ~/.agent/bin/crew-pr-actions.py resolve --repo OWNER/REPO --pr PR_NUMBER \
      --thread-id THREAD_NODE_ID --execute
    ```
 

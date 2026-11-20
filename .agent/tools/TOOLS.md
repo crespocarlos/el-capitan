@@ -8,11 +8,12 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 
 | Category | Commands | Purpose |
 | --- | --- | --- |
-| task | `agent-context.py`, `check-spec-typed-tests.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
-| review | `dispatch_subagents.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-actions.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | Review dispatch, hunks and layer maps, findings, PR threads, and on-demand e2e runs |
+| task | `agent-context.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
+| review | `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | Hunks and layer maps, findings, PR threads, and on-demand e2e runs |
+| review (deprecated) | `pr-review-actions.py` | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
 | evals | `evals-inspect.py`, `evals-compare.py` | Inspect, compare, and diagnose evaluation runs |
 | memory | `mem.py` | Durable units and immutable observations |
-| maintenance | `crew-lint.py`, `crew-stats.py` | Repository validation and operational summaries |
+| maintenance | `crew-lint.py` | Repository validation |
 
 ## Contracts
 
@@ -57,6 +58,13 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
 - `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally
   rebased; it is never used by a skill on its own initiative.
+- `crew-pr-actions.py` is the only tool that mutates GitHub. `--execute` is the single mutation
+  switch: `reply` and `resolve` without it print a plan and exit 0 without invoking `gh`, and
+  `--dry-run` names that behavior explicitly (the two are mutually exclusive). The plan's `command`
+  field is the exact `gh` argv, so an operator can read or run it by hand. `fetch` takes `--dry-run`
+  as well and defaults `--query` to the `pr-review-threads.graphql` asset, so the query text has one
+  source. `pr-review-actions.py` is the deprecated basename: it prints one stderr line naming the
+  replacement and execs it, and stays until the rename completes one release cycle.
 - `review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
   `package.diff` (the diff persona packages embed, generated files' hunks collapsed to one note),
   numbering every hunk `h1`, `h2`, … in diff order, including one synthetic hunk for a file with no

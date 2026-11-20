@@ -110,7 +110,7 @@ then this file. Hard constraints always apply.
   and every store directory before answering, and state the scope you searched. One writer found does
   not mean nothing is stored.
 - **GitHub access** — use `gh` or the repository's approved tool for ordinary PR, issue, and
-  metadata reads. Use `pr-review-actions.py` for review-thread operations. Use raw GraphQL only when
+  metadata reads. Use `crew-pr-actions.py` for review-thread operations. Use raw GraphQL only when
   the approved tool/query requires it, not as a shortcut for standard reads. Retry a read-only
   command only after a known sandbox-network denial, using the current harness's elevation
   mechanism; report authentication, authorization, and scope failures.

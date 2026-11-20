@@ -9,13 +9,6 @@
       "smoke": "--help"
     },
     {
-      "name": "check-spec-typed-tests.py",
-      "category": "task",
-      "owner": "crew-specwriter",
-      "help": "argparse",
-      "smoke": "--help"
-    },
-    {
       "name": "crew-lint.py",
       "category": "maintenance",
       "owner": "repository",
@@ -30,21 +23,16 @@
       "smoke": "--help"
     },
     {
-      "name": "crew-stats.py",
-      "category": "maintenance",
-      "owner": "crew-orchestrator",
-      "help": "argparse",
-      "smoke": "--help"
-    },
-    {
-      "name": "dispatch_subagents.py",
-      "category": "review",
-      "owner": "crew-router",
-      "help": "argparse",
-      "smoke": "--help"
-    },
-    {
       "name": "pr-review-actions.py",
+      "category": "review",
+      "owner": "crew-pr-resolver",
+      "help": "argparse",
+      "smoke": "--help",
+      "status": "deprecated",
+      "replacement": "crew-pr-actions.py"
+    },
+    {
+      "name": "crew-pr-actions.py",
       "category": "review",
       "owner": "crew-pr-resolver",
       "help": "argparse",

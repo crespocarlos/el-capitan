@@ -70,25 +70,57 @@ def unresolved(spec_text):
  return bool(UNRESOLVED.search(FENCED.sub('', spec_text)))
 ACTIVITY_FILES = ('SPEC.md','PROGRESS.md','REVIEW.md','REPORT.md')
 LOG_PROGRESS = Path(__file__).resolve().parent/'log-progress.py'
-CHECK_TYPED = Path(__file__).resolve().parent/'check-spec-typed-tests.py'
+TYPED_LAYERS = ('Unit','Integration','E2E','Validation')
+TYPED_COMMAND = re.compile(
+ r'^\s*-\s*\*\*Command\*\*:\s*(.+)$|^\s*\*\*Command\*\*:\s*(.+)$|^\s*-\s*Command:\s*(.+)$|^\s*Command:\s*(.+)$',
+ re.M | re.IGNORECASE,
+)
+
+
+def typed_tests_block_problem(text):
+ """Return the [fail] message when a typed ## Tests block has no runnable Command, else ''.
+
+ Specs in the wild write `### unit` and `### E2E tests`, so layer headings match
+ case-insensitively: a case-sensitive pattern skipped both the layer and its Command check,
+ making an unapprovable block pass vacuously. A bare `none` Command documents an intentional
+ absence for `crew test` (which reports WARN) but must not be approved as a commitment.
+ """
+ m = re.search(r"^## Tests", text, re.MULTILINE)
+ if not m: return ''
+ rest = text[m.end():]
+ nxt = re.search(r"^## [^#\s]", rest, re.MULTILINE)
+ block = rest[:nxt.start()] if nxt else rest
+ seen = 0
+ for layer in TYPED_LAYERS:
+  matches = list(re.finditer(rf"^### {layer}\b[^\n]*$", block, re.MULTILINE | re.IGNORECASE))
+  if not matches: continue
+  seen += len(matches)
+  for sm in matches:
+   tail = block[sm.end():]
+   nm = re.search(r"^### ", tail, re.MULTILINE)
+   sub = tail[:nm.start()] if nm else tail
+   cmd_m = TYPED_COMMAND.search(sub)
+   if not cmd_m:
+    return f"[fail] spec-typed-tests: ### {layer} missing Command line"
+   val = next((g for g in cmd_m.groups() if g), '').strip()
+   if not val or val.lower() == 'none' or val == '<test command or "none">':
+    return f"[fail] spec-typed-tests: ### {layer} Command empty or none-only"
+ if not seen:
+  return "[fail] spec-typed-tests: ## Tests has no recognized layer heading"
+ return ''
 
 
 def typed_tests_problem(spec_path):
- """Return the checker's message when a typed ## Tests block has no runnable Command.
+ """Return the check's message when a typed ## Tests block has no runnable Command.
 
  Approval is when the tests section becomes a commitment, so this runs before Gate 1 is
  recorded. A spec with no ## Tests section passes: `crew test` reports WARN for it, which is
  a documented outcome, not an error.
  """
- if not CHECK_TYPED.is_file():
-  return f"validator missing: {CHECK_TYPED}"
  try:
-  r=subprocess.run([sys.executable,str(CHECK_TYPED),str(spec_path)],capture_output=True,text=True)
+  return typed_tests_block_problem(Path(spec_path).read_text(encoding='utf-8'))
  except OSError as error:
   return f"validator could not run: {error}"
- if r.returncode==0: return ''
- detail=(r.stderr or r.stdout).strip().splitlines()
- return detail[-1] if detail else f"validator exited {r.returncode}"
 
 def name(r):
  return r['meta'].get('slug',r['task'].name)

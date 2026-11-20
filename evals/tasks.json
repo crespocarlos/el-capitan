@@ -15,11 +15,11 @@
     },
     {
       "id": "t4",
-      "description": "Improve `crew stats` so telemetry uses timestamps and event names, honors a `--since` window, and distinguishes invalid legacy lines from current records."
+      "description": "Add a `crew-lint.py` rule that enforces the naming and layout convention for tools: every executable in `.agent/tools/` must expose `--help` or a documented exception, every source-only helper must live in `.agent/scripts/`, and the name suffix must match its kind. Report a finding naming the file and its expected location."
     },
     {
       "id": "t5",
-      "description": "The `dispatch_subagents.py` degraded fallback currently times out silently when a claude -p subprocess hangs. Add a per-persona timeout of 120 seconds after which the process is killed and the persona is added to the failures list with a 'timeout' label."
+      "description": "Cover the typed `## Tests` validation that now lives inline in `crew-ls.py` with fixture cases in `.claude/hooks/fixtures/run.sh`: a `### Unit` block with no Command line at all, a `## Tests` section whose only heading is an unrecognized layer name, and a lowercase `### unit` heading that must still be checked. Each case asserts `--mark-approved` refuses with the existing `spec-typed-tests` message and leaves the task in DRAFTING."
     },
     {
       "id": "t6",
