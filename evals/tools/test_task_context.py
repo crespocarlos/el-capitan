@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermetic checks for task-context.py: resolution, subsetting, truncation, rendering."""
+"""Hermetic checks for crew-task-context.py: resolution, subsetting, truncation, rendering."""
 import json
 import os
 import subprocess
@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "task" / "task-context.py"
+TOOL = ROOT / ".agent" / "tools" / "task" / "crew-task-context.py"
 
 SPEC = "# Spec: demo\n\n## Status\nAPPROVED\n" + ("body line\n" * 40)
 PROGRESS = "".join(f"[2026-11-{day:02d} 10:00] TRANSITION: step {day}\n" for day in range(1, 29))

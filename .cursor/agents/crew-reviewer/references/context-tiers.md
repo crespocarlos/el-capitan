@@ -12,7 +12,7 @@ the `## Hunk reference` section below, a persona has no ids to cite. Restate the
 anyway, because a package is what the persona reads and the ids it cites must be the ids in front of
 it. Without either half, personas do not cite hunk ids — only 7 of 511 recorded candidates carried
 one — and strict persistence then fails on every `[blocking]`/`[attention]` finding for a reason the
-persona was never told about. Use the one format the rest of the pipeline reads (`review-findings.py`
+persona was never told about. Use the one format the rest of the pipeline reads (`crew-review-findings.py`
 parses the ids from the record, and the layer
 coverage section matches them), stated verbatim:
 
@@ -47,9 +47,9 @@ signatures of changed functions. Assigned to: **Code Quality**
 type definitions + import statements. Assigned to: **Product Flow**
 
 **Spec in every code-mode package.** Code modes are self, changes, and PR (`CODE_MODES` in
-`review-findings.py`); spec and idea reviews already send every persona the whole artifact and are
+`crew-review-findings.py`); spec and idea reviews already send every persona the whole artifact and are
 unaffected. This section owns the rule; other files point here. When the task dir has a SPEC.md, append the output of
-`review-findings.py spec-context --persona <name> "$TASK_DIR/SPEC.md"` under a `## Spec` heading.
+`crew-review-findings.py spec-context --persona <name> "$TASK_DIR/SPEC.md"` under a `## Spec` heading.
 Product Flow gets the whole spec; every other persona gets it without `## Tasks` and `## Hints`,
 which are implementation steps only Product Flow checks against the diff.
 

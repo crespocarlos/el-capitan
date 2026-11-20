@@ -12,7 +12,7 @@ Produces a reading map for a human reviewer: the diff regrouped into layers that
 bottom-up, each with an explainer and a focus list. It never posts to GitHub and never changes the PR;
 the map is rendered in chat.
 
-Self-contained. The hunk parser is `review-hunks.py` and the validator is `review-findings.py
+Self-contained. The hunk parser is `crew-review-hunks.py` and the validator is `crew-review-findings.py
 validate-map`, both in this repository, so no external checkout has to be installed for a map to exist
 or to be checked.
 
@@ -36,7 +36,7 @@ gh repo view --json nameWithOwner
 WS="/tmp/crew-explain-$(basename "$(pwd)")-<number>"
 mkdir -p "$WS"
 gh pr diff <number> -R <owner/repo> > "$WS/pr.diff"
-python3 ~/.agent/bin/review-hunks.py "$WS/pr.diff" --out "$WS"
+python3 ~/.agent/bin/crew-review-hunks.py "$WS/pr.diff" --out "$WS"
 ```
 
 A non-zero exit means the diff is empty or is not a unified diff; stop and report it, because there is
@@ -88,7 +88,7 @@ Every markdown field is a JSON string, so bullets live inside the string with `\
 array. Then:
 
 ```bash
-python3 ~/.agent/bin/review-findings.py validate-map --review "$WS/review.json" --hunks "$WS/hunks.json"
+python3 ~/.agent/bin/crew-review-findings.py validate-map --review "$WS/review.json" --hunks "$WS/hunks.json"
 ```
 
 It reports each problem with its layer index — an unassigned hunk, an unknown or duplicated id, a

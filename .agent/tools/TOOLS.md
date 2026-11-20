@@ -1,26 +1,33 @@
 # Agent tool catalog
 
 Source lives under `.agent/tools/`, grouped by responsibility into subdirectories. `install.sh`
-links every file into `~/.agent/bin/`, which stays a flat, stable command surface, so installed
-paths do not change. `tools.json` is the machine-readable source of truth: each entry records the
-`dir` it lives in. `crew-lint.py` validates it.
+links every cataloged command (each `kind: command` entry in `tools.json`) into `~/.agent/bin/`,
+which stays a flat, stable command surface, so installed paths do not change. A module is imported
+and an asset is read, so neither is linked. `tools.json` is the machine-readable source of truth:
+each entry records the `dir` it lives in and what it is. `crew-lint.py` validates it.
 
 ## Naming and layout
 
-- **Executables are kebab-case** — `^[a-z0-9]+(-[a-z0-9]+)*\.(py|sh)$`, for example
-  `crew-ls.py` or `default-branch.sh`. A new command that is not kebab-case is a defect, not a
-  style choice.
+- **Executables are kebab-case** — `^crew-[a-z0-9-]+\.(py|sh)$`, for example `crew-ls.py` or
+  `crew-default-branch.sh`. A new command that does not follow it is a defect, not a style choice.
+  Two exemptions, both declared rather than inferred: a deprecated wrapper keeps its old basename
+  until it is removed (`status: deprecated` plus `replacement`), and `task-env.sh` is sourced, so it
+  cannot be renamed — `source` needs a real file at a fixed path and a wrapper cannot supply one.
 - **A Python module imported by another tool is snake_case** — `^[a-z0-9_]+\.py$`. Python cannot
   import a hyphenated module, so `task_status.py` stays snake_case while its siblings are CLIs. A
-  module is an exception the catalog must declare: list it under `modules` in `tools.json`, never
-  leave it to be inferred from the file extension.
+  module is an exception the catalog must declare: list it under `modules` in `tools.json` with
+  `kind: module`, never leave it to be inferred from the file extension.
 - **A module name is namespaced to its tool** — `memory_store.py`, `review_findings.py`, never a
   bare `store.py` or `findings.py`. Generic names collided once a tool put its directory on
   `sys.path`, so a shared name is now a defect: prefix it with the package it belongs to.
-- **`crew-` is reserved for the commands a user types** — the `crew` subcommands such as `crew ls`.
-  A tool behind one of those commands carries the prefix (`crew-ls.py`, `crew-lint.py`,
-  `crew-mem.py`); an internal helper the user never types does not (`log-progress.py`,
-  `review-hunks.py`, `task_status.py`).
+- **Every installable command takes the `crew-` prefix** — a command is what `~/.agent/bin` links,
+  and every one of them is something a person or prompt invokes, whether or not a `crew` subcommand
+  fronts it (`crew-ls.py` and `crew-review-hunks.py` alike). A module the user never types is not a
+  command and is not installed; it stays snake_case and unprefixed (`task_status.py`).
+- **`kind` is what tells them apart** — every `tools.json` entry declares `kind: command`, `module`,
+  or `asset`. `install.sh` links `kind: command` and nothing else, and `crew-lint.py` fails a command
+  whose basename lacks the prefix, a module that carries a command's basename, and a deprecated
+  entry with no `replacement`.
 - **One subdirectory per responsibility** — `lib/`, `task/`, `review/`, `memory/`, `evals/`,
   `maintenance/`. `tools.json`, `TOOLS.md`, and `requirements.txt` stay at the root of
   `.agent/tools/`, because they describe the whole tree rather than belonging to one group.
@@ -36,23 +43,23 @@ paths do not change. `tools.json` is the machine-readable source of truth: each 
 | Directory | Commands | Modules (imported, not run) | Purpose |
 | --- | --- | --- | --- |
 | `lib/` | — | `files.py`, `git.py`, `cli.py` | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
-| `task/` | `agent-context.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | `task_status.py` | Guidance context, task state, validation, worktrees, and artifacts |
-| `review/` | `assemble-packages.py`, `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py` | Guidance context, task state, validation, worktrees, and artifacts |
+| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
 | `review/` (deprecated name) | `pr-review-actions.py` | — | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
-| `evals/` | `evals-compare.py`, `evals-inspect.py` | — | Inspect, compare, and diagnose evaluation runs |
+| `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py` | `memory_store.py`, `memory_units.py`, `memory_recall.py`, `memory_maintenance.py` | Durable units and immutable observations |
 | `memory/` (deprecated name) | `mem.py` | — | Renamed to `crew-mem.py`; wrapper kept for one release cycle |
 | `maintenance/` | `crew-lint.py` | — | Repository validation |
 | root | `tools.json`, `TOOLS.md`, `requirements.txt` | — | The catalog and the dependency note |
 
-`crew-mem.py` and `review-findings.py` are argparse entry points over their modules: each parses the
+`crew-mem.py` and `crew-review-findings.py` are argparse entry points over their modules: each parses the
 command line and dispatches, and holds no command logic. Modules import each other by their
 namespaced name in dependency order (`memory_store` → `memory_units` → `memory_recall` →
 `memory_maintenance`, and `review_findings` → `review_personas`/`review_layers` → `review_report`),
 so a module never imports back into one that imports it. A hyphenated entry point cannot be a
 module, so it puts its own directory and `.agent/tools` on `sys.path` once, which is also what makes
 `lib` importable. Both entry points re-export the names their public contract names, so
-`assemble-packages.py` and the tests can keep importing them from the command file rather than
+`crew-assemble-packages.py` and the tests can keep importing them from the command file rather than
 reaching into a private module.
 
 ## Contracts
@@ -64,12 +71,13 @@ reaching into a private module.
   an agent may name in a `tools:` line. `crew-lint.py` reports `mcp-tool-unknown` for an
   `mcp__<server>__<tool>` reference and `tool-id-unknown` for a bare `tools:` id that neither list
   declares. A project that adds an MCP server or a new native tool id adds it here in the same change.
-- `get-diff.sh` is source-only; it exports review context and intentionally does not implement an
-  executable `--help`.
+- `crew-diff.sh` is source-only; it exports review context and intentionally does not implement an
+  executable `--help`. `get-diff.sh` is its deprecated alias: `source`d it warns and sources the
+  replacement, so the caller still receives `BASE`, `DIFF_SOURCE`, and `CHANGED_FILES`.
 - `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state
   `CREW_TASK_STATE` (`ok`, `none`, `error`). Skills source it instead of copying the resolver block.
   Gates that require a task must abort on `error` rather than treating it as `none`.
-- `task-context.py` is the task-artifact reader. It composes `resolve-task-dir.py` with the task
+- `crew-task-context.py` is the task-artifact reader. It composes `crew-resolve-task-dir.py` with the task
   artifacts listed in `ARTIFACTS`, honoring `CREW_TASK_DIR` and `--task-dir` before resolving so it
   cannot disagree with the shell's cached `$TASK_DIR`. It returns exit 0 with `task.found: false`
   when no task matches; resolver failures keep their nonzero exit, and resolver warnings reach
@@ -78,18 +86,18 @@ reaching into a private module.
   for read-side task context; write-side state still goes through `task-env.sh` and `$TASK_DIR`.
 - `crew-ls.py --status-file SPEC.md` is the single reader for the `## Status` contract, implemented
   in `task_status.py`; hooks and other tools import it and must not re-implement it.
-- `review-findings.py` records two optional fields on a finding — `kind` (what sort of defect: its
+- `crew-review-findings.py` records two optional fields on a finding — `kind` (what sort of defect: its
   values are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
   `other`) and `validation` (one sentence on what a `verified: true` check read and concluded, required
   under `--strict` in every mode).
-- `review-findings.py persist --files` records the reviewed paths and gates evidence against them;
+- `crew-review-findings.py persist --files` records the reviewed paths and gates evidence against them;
   it deliberately does not compare that list with the diff. `persist` runs in three modes with no
   single base ref, so inferring one would be wrong more often than right. Tree identity is carried by
   `--head` instead: `--mark-done` refuses unless the reviewed commit is an ancestor of HEAD. In PR
   mode `--head` is the GitHub head SHA, which the local checkout never fetches, so `persist` records
   it without a local existence check and requires it explicitly. A PR review is never a valid
   `--mark-done` ancestor and `persist` rejects PR artifacts under a task directory.
-- `review-findings.py spec-context --persona <name> SPEC.md` prints the spec one persona's package
+- `crew-review-findings.py spec-context --persona <name> SPEC.md` prints the spec one persona's package
   carries (rule: "Spec in every code-mode package" in `context-tiers.md`).
   `check-packages --review-dir <task>/review/<ts> --personas <names>` rejects written `.in.md`
   packages that break that rule or embed filename-generated hunks, and reports any check it skipped
@@ -105,37 +113,37 @@ reaching into a private module.
   as well and defaults `--query` to the `pr-review-threads.graphql` asset, so the query text has one
   source. `pr-review-actions.py` is the deprecated basename: it prints one stderr line naming the
   replacement and execs it, and stays until the rename completes one release cycle.
-- `review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
+- `crew-review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
   `package.diff` (the diff persona packages embed, generated files' hunks collapsed to one note),
   numbering every hunk `h1`, `h2`, … in diff order, including one synthetic hunk for a file with no
   textual change (binary, rename-only, mode change). It owns the ids: the persona Reading map and
-  `review-findings.py coverage` share them. `hunks.md` carries index plus bodies for the
+  `crew-review-findings.py coverage` share them. `hunks.md` carries index plus bodies for the
   layer-mapping pass; `hunks.index.md` is the index alone, for a persona package that already holds
   the diff. Self-contained by design — hunk parsing is project-agnostic, so it must not
   depend on another checkout. Its ids, statuses, and lines match nightshift-pr-helper's
   `parseDiff`; that parity is what lets a crew review and a nightshift review of one PR cite the
   same `h1`.
-- `assemble-packages.py <review-dir> [--config <file>]` composes one `<persona>.in.md` package per
+- `crew-assemble-packages.py <review-dir> [--config <file>]` composes one `<persona>.in.md` package per
   reviewer from files the run already wrote — contract, mode, hunk reference, guidance, memory, spec,
   reading map, `package.diff`, and the consumer and prompt extras. Per-run judgement (mode text,
   consumer excerpts, prompt files, size-gate line) comes from `assemble.json` in the review directory,
   so the shared parts cannot drift between personas. Consumer excerpts and prompt files are read from
   the git index, not the working tree, and `mode_kind: "pr"` refuses both because a PR review may not
-  read the local checkout at all. The persona list is derived from `review-findings.py`, and a persona
+  read the local checkout at all. The persona list is derived from `crew-review-findings.py`, and a persona
   with no `PRIMARY_KINDS` entry stops the run instead of shipping without a package.
-- `nightshift-e2e.py` is the only nightshift-coupled tool: it drives the local nightshift-pr-helper
+- `crew-nightshift-e2e.py` is the only nightshift-coupled tool: it drives the local nightshift-pr-helper
   server over HTTP for e2e runs and cannot be generalized. `doctor` is read-only and never calls
   `/api/state`, which advances the queue and can start a run. It never uses the queue or
   `post-comment` endpoints, because queued runs post a PR comment by default. Exit 3 means the
   server is unreachable.
-- `default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the single
-  definition used by skills and `manage-worktree.py`.
-- `manage-worktree.py` is stateful. Its usage output is available with `--help`; do not use smoke
+- `crew-default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the single
+  definition used by skills and `crew-worktree.py`.
+- `crew-worktree.py` is stateful. Its usage output is available with `--help`; do not use smoke
   tests that create worktrees.
-- `manage-worktree.py` auto-prunes only worktrees whose remote branch is gone and that are clean. It
+- `crew-worktree.py` auto-prunes only worktrees whose remote branch is gone and that are clean. It
   deletes the local branch with `git branch -d` and keeps unmerged ones; merged branches with a live
   remote are left to `crew cleanup`.
-- The Elasticsearch tools are read-only. `evals-inspect.py` and `evals-compare.py` use `ES_URL`,
+- The Elasticsearch tools are read-only. `crew-evals-inspect.py` and `crew-evals-compare.py` use `ES_URL`,
   plus `ES_API_KEY` or `ES_USER`/`ES_PASS`.
 - The repository is standard-library-only. `requirements.txt` documents that deliberate absence of
   third-party dependencies.
@@ -181,7 +189,9 @@ harness that produces that failure.
 ## Adding or retiring a tool
 
 1. Add or remove the executable in its `.agent/tools/<dir>/` subdirectory and its `tools.json` entry
-   — with the matching `dir` — in the same change.
+   — with the matching `dir` and `kind` — in the same change. A `kind: command` entry must be
+   `crew-`-prefixed and executable; a `kind: module` entry is snake_case, not executable, and never
+   linked.
 2. Give it `--help`, or document a specific exception in `help`.
 3. Assign one category and one owning skill, agent, or `repository`.
 4. Add a deterministic smoke command if the CLI is safe to invoke.
@@ -191,6 +201,9 @@ harness that produces that failure.
 
 Command basenames are public because installation creates matching `~/.agent/bin/<name>` symlinks.
 Rename a command only by adding a compatible wrapper for one release cycle, documenting the
-replacement in this catalog, and adding the old basename to the catalog with `status: deprecated`.
-Remove the wrapper only after all repository references and installed migration cleanup entries are
-gone.
+replacement in this catalog, and adding the old basename to the catalog with `status: deprecated`
+plus `replacement: <new name>`. `evals/tools/test_command_names.py` asserts output parity between
+each wrapper and its replacement, so a wrapper that drops a flag or changes an exit code fails the
+gate instead of surprising a caller. Remove the wrapper only after all repository references and
+installed migration cleanup entries are gone; `install.sh`'s `prune_retired_tool_links` removes the
+stale link from `~/.agent/bin` on the next install.

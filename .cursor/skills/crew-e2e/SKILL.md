@@ -21,7 +21,7 @@ unless the user opts in (Step 3), so say that in the start message instead of wa
 ## Step 0: preflight (always first)
 
 ```bash
-python3 ~/.agent/bin/nightshift-e2e.py doctor
+python3 ~/.agent/bin/crew-nightshift-e2e.py doctor
 ```
 
 Exit 0 means every blocking check passed. Exit 1 means stop here and print the failing check's `fix`
@@ -83,7 +83,7 @@ always the same link.
 ## Step 2: pick the worktree
 
 ```bash
-python3 ~/.agent/bin/nightshift-e2e.py worktrees
+python3 ~/.agent/bin/crew-nightshift-e2e.py worktrees
 ```
 
 Each entry has an `id`, a `label`, a `branch`, `kibanaPort`, `kibanaRunning`, `path` (when nightshift
@@ -150,7 +150,7 @@ list and require an answer per number.
 ## Step 3: start
 
 ```bash
-python3 ~/.agent/bin/nightshift-e2e.py start <key> --worktree <id> [--deploy] [--instructions "<focus>"]
+python3 ~/.agent/bin/crew-nightshift-e2e.py start <key> --worktree <id> [--deploy] [--instructions "<focus>"]
 ```
 
 Report the run page by copying the `run` field of the output exactly (never retype or rebuild the
@@ -166,8 +166,8 @@ nothing else runs in the background. Otherwise end with one line: nothing is pol
 ## Step 4: read the result (`crew e2e status`)
 
 ```bash
-python3 ~/.agent/bin/nightshift-e2e.py status <key> [--worktree-path <path from Step 2>]
-python3 ~/.agent/bin/nightshift-e2e.py report <key>
+python3 ~/.agent/bin/crew-nightshift-e2e.py status <key> [--worktree-path <path from Step 2>]
+python3 ~/.agent/bin/crew-nightshift-e2e.py report <key>
 ```
 
 `status` gives `state` (`waiting-deploy`, `running`, `done`, `failed`), whether the tested head is

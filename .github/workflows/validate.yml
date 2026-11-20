@@ -60,6 +60,9 @@ jobs:
       - name: Python structural shape
         run: python3 evals/tools/test_python_shape.py
 
+      - name: Command surface (catalog kinds, wrappers, install links)
+        run: python3 evals/tools/test_command_names.py
+
       - name: Python syntax
         run: python3 -m compileall -q .agent/tools evals .claude
 

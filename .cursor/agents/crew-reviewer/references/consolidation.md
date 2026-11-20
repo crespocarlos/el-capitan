@@ -124,7 +124,7 @@ Two things are recorded beyond each finding's label and anchor, each under its o
 
 - **`kind`** (optional, per finding) — what sort of defect, independent of severity. Record it when the
   finding clearly fits one; omit it rather than defaulting to `other`, which would destroy the triage
-  separation the field exists for. The values are the `KINDS` set in `review-findings.py` — a security
+  separation the field exists for. The values are the `KINDS` set in `crew-review-findings.py` — a security
   hole and a doc inaccuracy can both be `[attention]`, and this is how a reader tells them apart. Read
   the set there rather than copying it here, and do not invent a value: `normalize` rejects one outside
   it. The boundaries that matter, because the names alone do not separate them: `correctness` produces
@@ -196,7 +196,7 @@ a missing requirement) and use `[concern]` in place of `[attention]` for weaknes
 3. Hard cap: 12 non-nit findings plus at most 4 `[nit]`. After deduplication, keep highest-severity.
    Nits never compete with a `[blocking]`, `[attention]`, `[needs more info]`, or `[concern]` finding
    for a slot: fill severity slots first, then add nits only within their own budget. Drop the rest
-   entirely. Both numbers are defined once, in `review-findings.py` as `MAX_FINDINGS` and `MAX_NITS`,
+   entirely. Both numbers are defined once, in `crew-review-findings.py` as `MAX_FINDINGS` and `MAX_NITS`,
    which count the two budgets separately; read them there rather than copying them into other files.
 4. Zero findings is valid. No action plan. No padding. `### Reviewers` always names how each package
    was delivered, and adds a lens with its gap only when a persona failed, was truncated, or returned

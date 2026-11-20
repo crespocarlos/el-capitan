@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract checks for .agent/tools/review/review-findings.py normalize and persist."""
+"""Contract checks for .agent/tools/review/crew-review-findings.py normalize and persist."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "review-findings.py"
+TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
 
 
 def run(*args: str) -> subprocess.CompletedProcess:

@@ -1,7 +1,7 @@
 # Shared reviewer contract
 
 Your persona file sets your lens; this file sets your output. Where they disagree about output, this
-file wins: `review-findings.py` and `consolidation.md` parse the format defined here.
+file wins: `crew-review-findings.py` and `consolidation.md` parse the format defined here.
 
 ## Labels
 

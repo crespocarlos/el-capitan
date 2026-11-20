@@ -25,7 +25,7 @@ PERSONAS = [
     "reviewer-product-flow",
     "reviewer-prompt-quality",
 ]
-# Labels the tool accepts, from `LABELS` in review-findings.py.
+# Labels the tool accepts, from `LABELS` in crew-review-findings.py.
 LABELS = ["blocking", "attention", "nit", "needs more info", "concern"]
 
 

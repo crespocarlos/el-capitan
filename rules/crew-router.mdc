@@ -14,7 +14,7 @@ respond normally — no routing.
   `<orchestrator>-<persona>.md`
 - Skill files: `~/.cursor/skills/<name>/SKILL.md`
 - Bin tools: `~/.agent/bin/`
-- Task state: `~/.agent/tasks/<uuid>/` (resolve via `resolve-task-dir.py`)
+- Task state: `~/.agent/tasks/<uuid>/` (resolve via `crew-resolve-task-dir.py`)
 - Journal: `~/.agent/journal/`
 
 ## Routing table

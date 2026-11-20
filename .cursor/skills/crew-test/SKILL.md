@@ -26,7 +26,7 @@ Do not use `exit`; it can close the agent shell.
 ### Step 2: Get changed files
 
 ```bash
-source ~/.agent/bin/get-diff.sh --full
+source ~/.agent/bin/crew-diff.sh --full
 ```
 
 If that exits 1 (no committed changes on branch), fall back:
@@ -76,7 +76,7 @@ Otherwise, launch `tester-explorer` as a subagent with a structured prompt:
 <one symbol per line>
 
 ## Project guidance
-<output of `~/.agent/bin/agent-context.py <changed files>`>
+<output of `~/.agent/bin/crew-agent-context.py <changed files>`>
 ```
 
 Wait for tester-explorer to return its discovery summary.

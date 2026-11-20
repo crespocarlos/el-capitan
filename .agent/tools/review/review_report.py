@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Report concerns: persist a review report and append outcome records.
 
-Split out of `review-findings.py`. `persist` writes the consolidated report to the review
+Split out of `crew-review-findings.py`. `persist` writes the consolidated report to the review
 directory and the task-level REVIEW file, appends deferred findings, and enforces the persona and
 layer gates. Depends on `findings.py`, `personas.py`, and `layers.py`.
 """

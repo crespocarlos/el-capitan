@@ -33,7 +33,7 @@ You receive two sections in the dispatch prompt: `## Changed files` (one path pe
 Exported symbols` (one symbol per line). Use these as your search targets.
 
 **0. Project context** — Use the `## Project guidance` section in the dispatch prompt (output of
-`agent-context.py`, repository root to nearest folder) **before** probing `package.json` scripts or
+`crew-agent-context.py`, repository root to nearest folder) **before** probing `package.json` scripts or
 Jest configs. It often contains the canonical test command. Nearer files override farther ones;
 surface any conflict. If the section is missing, say so in your output. Costs 0 tool calls.
 

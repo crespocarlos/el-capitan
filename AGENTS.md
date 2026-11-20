@@ -10,8 +10,8 @@ Python utilities — there is no build step and no package manager. It contains:
 - **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md` (symlinks to the
   portable `spec-writing` skill's `references/`)
 - **Tools** — `.agent/tools/` (CLIs grouped into `task/`, `review/`, `memory/`, `evals/`,
-  `maintenance/`, cataloged in `TOOLS.md` / `tools.json`). Every file installs flat into
-  `~/.agent/bin/`.
+  `maintenance/`, cataloged in `TOOLS.md` / `tools.json`). Every `kind: command` entry installs flat
+  into `~/.agent/bin/`; modules are imported and never linked.
 
 ## Bootstrap
 
@@ -62,7 +62,7 @@ two-line `## Status\n<value>` form.
   _SPEC_TEMPLATE.md      ← symlink → ../.cursor/skills/spec-writing/references/spec-template.md
   _BUG_SPEC_TEMPLATE.md  ← symlink → ../.cursor/skills/spec-writing/references/bug-spec-template.md
   _JOURNAL_TEMPLATE.md
-  tools/        ← every command and module, grouped by responsibility; all install flat into ~/.agent/bin/
+  tools/        ← every command and module, grouped by responsibility; commands install flat into ~/.agent/bin/
     lib/        ← `.agent/tools/lib/` shared helpers: files.py (atomic_write, read_json), git.py (run_git, gh), cli.py
     task/       ← task state, guidance context, worktrees, and the task_status.py status contract
     review/     ← hunks, layer maps, findings, packages, PR threads, and the e2e client
@@ -138,11 +138,11 @@ They are not a substitute for editing a tracked file.
      side. Reviewers are analysis-only; set `readonly: false` only if the persona must write, and
      say why.
   2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
-     `review-findings.py`; `select` is what dispatch reads, so `crew-reviewer` Step 4's prose alone
+     `crew-review-findings.py`; `select` is what dispatch reads, so `crew-reviewer` Step 4's prose alone
      dispatches nothing. `select` never returns `explorer`, so that persona stays manually dispatched.
   3. **Context tier** — assign the persona to a tier in
      `.cursor/agents/crew-reviewer/references/context-tiers.md`.
-  4. **Package assembly** — add the name to `PRIMARY_KINDS` in `assemble-packages.py` with the layer
+  4. **Package assembly** — add the name to `PRIMARY_KINDS` in `crew-assemble-packages.py` with the layer
      kinds its lens reads first. The tool derives its persona list from `PERSONAS`, so a name missing
      from `PRIMARY_KINDS` stops the run with a message naming it instead of silently writing no
      package.

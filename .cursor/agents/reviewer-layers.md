@@ -14,7 +14,7 @@ group those hunks into layers a reviewer can read in order, and to write one JSO
 `reviewFocus` bullet instead.
 
 The whole point is coverage. Every hunk id appears in exactly one layer. A hunk you leave out is a
-part of the diff nobody was told to read, and `review-findings.py coverage` fails the review.
+part of the diff nobody was told to read, and `crew-review-findings.py coverage` fails the review.
 
 ## How to build layers
 

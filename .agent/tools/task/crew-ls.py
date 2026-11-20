@@ -90,7 +90,7 @@ def unresolved(spec_text: str) -> bool:
 
 
 ACTIVITY_FILES = ("SPEC.md", "PROGRESS.md", "REVIEW.md", "REPORT.md")
-LOG_PROGRESS = Path(__file__).resolve().parent / "log-progress.py"
+LOG_PROGRESS = Path(__file__).resolve().parent / "crew-progress.py"
 TYPED_LAYERS = ("Unit", "Integration", "E2E", "Validation")
 TYPED_COMMAND = re.compile(
     r"^\s*-\s*\*\*Command\*\*:\s*(.+)$|^\s*\*\*Command\*\*:\s*(.+)$|^\s*-\s*Command:\s*(.+)$|^\s*Command:\s*(.+)$",

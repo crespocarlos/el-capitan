@@ -47,7 +47,7 @@ The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch.
 **All file operations use absolute paths rooted at `WORK_DIR`.** If a task says "edit `src/foo.ts`",
 read and write `<WORK_DIR>/src/foo.ts`.
 
-**Read project context before starting.** Run `~/.agent/bin/agent-context.py` for every task file
+**Read project context before starting.** Run `~/.agent/bin/crew-agent-context.py` for every task file
 and use the returned guidance content, from repository root to the nearest folder. Apply it silently
 throughout the task loop — do not re-read on each iteration. Record each guidance file you applied in
 the report's `### Guidance applied` section. If an applicable file defines a test
@@ -128,7 +128,7 @@ Write to **`$TASK_DIR/REPORT.md`** and return it:
 - `<command>` — `<pass/fail/skipped>` — `<reason if failed or skipped>`.
 
 ### Guidance applied
-- `<AGENTS.md or CLAUDE.md path returned by agent-context.py>` — `<constraint honored, or "no additional guidance">`, or `none` — `<reason>`.
+- `<AGENTS.md or CLAUDE.md path returned by crew-agent-context.py>` — `<constraint honored, or "no additional guidance">`, or `none` — `<reason>`.
 
 ### Memory used
 [mem:id] values cited during implementation, or `none`.

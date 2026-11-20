@@ -63,8 +63,17 @@ def parse_frontmatter(text: str) -> tuple[str | None, str | None, str | None]:
 
 # The naming standard in TOOLS.md. A hyphen cannot appear in a Python import, so the two shapes
 # are disjoint by construction rather than by convention an author has to remember.
-EXECUTABLE_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.(py|sh)$")
+COMMAND_NAME = re.compile(r"^crew-[a-z0-9-]+\.(py|sh)$")
 MODULE_NAME = re.compile(r"^[a-z0-9_]+\.py$")
+# What a catalog entry is. `kind` is the field that separates the installable commands from the
+# helpers that used to leak into `~/.agent/bin` as fake ones, so the installer and the lint read it
+# instead of inferring intent from the directory a file sits in.
+CATALOG_KINDS = ("command", "module", "asset")
+CATALOG_SECTIONS = (("tools", "command"), ("scripts", "command"),
+                    ("modules", "module"), ("assets", "asset"))
+# Sourced, never executed. `source` needs a real file at a fixed path and a wrapper cannot supply
+# one, so this one command keeps a name the `crew-` rule would otherwise reject.
+SOURCE_ONLY_COMMANDS = {"task-env.sh"}
 
 
 def tool_tree_files(root: Path) -> list[Path]:
@@ -83,20 +92,23 @@ def catalog_path(root: Path, entry: dict) -> Path:
     return root / ".agent/tools" / str(entry.get("dir", ".")) / str(entry.get("name"))
 
 
-def lint_tool_naming(root: Path, modules: set[str]) -> list[tuple[str, int, str, str]]:
-    """Every executable is kebab-case; a module another tool imports is snake_case and declared.
+def lint_tool_naming(root: Path, modules: set[str], cataloged: set[str]) -> list[tuple[str, int, str, str]]:
+    """An undeclared executable is `crew-`-prefixed; a module another tool imports is snake_case.
 
     Checked over the tree rather than the catalog alone, so a file added without a catalog entry is
-    still judged by the rule it violates instead of only by its missing entry.
+    still judged by the rule it violates instead of only by its missing entry. Cataloged names are
+    skipped here because the catalog judges them: a deprecated wrapper keeps its old, non-prefixed
+    basename on purpose, and a source-only script cannot be renamed at all.
     """
     findings: list[tuple[str, int, str, str]] = []
     for path in tool_tree_files(root):
-        if path.suffix not in {".py", ".sh"} or path.name in modules:
+        if path.suffix not in {".py", ".sh"} or path.name in modules | cataloged:
             continue
-        if not EXECUTABLE_NAME.match(path.name):
+        if not COMMAND_NAME.match(path.name) and not MODULE_NAME.match(path.name):
             findings.append((rel(root, path), 1, "tool-name",
-                             f"{path.name} is not kebab-case; rename it like crew-ls.py, or declare "
-                             f"it under `modules` when another tool imports it"))
+                             f"{path.name} is neither ^crew-[a-z0-9-]+\\.(py|sh)$ nor a snake_case "
+                             f"module; rename it like crew-ls.py, or declare it under `modules` "
+                             f"when another tool imports it"))
     return findings
 
 
@@ -130,23 +142,103 @@ def lint_tool_modules(root: Path, modules: list) -> list[tuple[str, int, str, st
 
 
 def installed_tool_names(root: Path) -> set[str]:
-    """Basenames the installer links into `~/.agent/bin` before any migration cleanup.
+    """Basenames the installer links into `~/.agent/bin`: every `kind: command` catalog entry.
 
-    Every file in the tree is linked, cataloged or not, so a `~/.agent/bin/<name>` reference
-    resolves against the tree rather than against the catalog.
+    Read from the manifest rather than from the tree, because that is what `install.sh` links. A
+    module's basename is deliberately absent: it is imported, never installed, so a
+    `~/.agent/bin/<module>` reference is a broken invocation and now reports as one.
     """
-    return {path.name for path in tool_tree_files(root)}
+    manifest = root / ".agent/tools/tools.json"
+    try:
+        data = json.loads(manifest.read_text())
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return {entry.get("name") for section, _ in CATALOG_SECTIONS
+            for entry in data.get(section, [])
+            if isinstance(entry, dict) and entry.get("kind") == "command"
+            and isinstance(entry.get("name"), str)}
+
+
+def lint_catalog_kinds(data: dict) -> tuple[list[tuple[str, int, str, str]], set[str]]:
+    """`kind` is declared on every entry; a module never carries a command's basename.
+
+    One manifest, one rule: what `~/.agent/bin` links is a command, everything importable is a
+    module, and everything else is an asset. The section an entry sits in fixes its kind, so a
+    command cannot hide among the modules, which is exactly how eleven of them installed as fake
+    commands. Returns the declared command names for the wrapper check.
+    """
+    name = ".agent/tools/tools.json"
+    findings: list[tuple[str, int, str, str]] = []
+    commands: set[str] = set()
+    for section, expected in CATALOG_SECTIONS:
+        for entry in data.get(section, []):
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+                continue
+            entry_name, kind = entry["name"], entry.get("kind")
+            if kind is None:
+                findings.append((name, 1, "catalog-kind-missing",
+                                 f"{entry_name}: add kind: {' or '.join(CATALOG_KINDS)}"))
+            elif kind not in CATALOG_KINDS:
+                findings.append((name, 1, "catalog-kind-invalid",
+                                 f"{entry_name}: kind {kind!r} is not one of "
+                                 f"{', '.join(CATALOG_KINDS)}"))
+            elif kind != expected:
+                findings.append((name, 1, "catalog-kind-invalid",
+                                 f"{entry_name}: listed under {section} so its kind is {expected}, "
+                                 f"not {kind}"))
+            elif kind == "module" and COMMAND_NAME.match(entry_name):
+                findings.append((name, 1, "installable-module",
+                                 f"{entry_name}: a module is imported, never installed, so it must "
+                                 f"not carry a command basename"))
+            elif kind == "command":
+                commands.add(entry_name)
+    return findings, commands
+
+
+def lint_command_names(data: dict, commands: set[str]) -> list[tuple[str, int, str, str]]:
+    """Every command basename follows `^crew-[a-z0-9-]+\\.(py|sh)$`, and a wrapper names its target.
+
+    Two explicit exemptions: a deprecated wrapper keeps its old basename until it is removed, and
+    `task-env.sh` is sourced — `source` needs a real file at a fixed path, which a wrapper cannot
+    provide, so it cannot be renamed at all.
+    """
+    name = ".agent/tools/tools.json"
+    findings: list[tuple[str, int, str, str]] = []
+    for section, _ in CATALOG_SECTIONS:
+        for entry in data.get(section, []):
+            if not isinstance(entry, dict) or entry.get("kind") != "command":
+                continue
+            entry_name = entry.get("name")
+            if entry_name in SOURCE_ONLY_COMMANDS:
+                continue
+            if entry.get("status") == "deprecated":
+                replacement = entry.get("replacement")
+                if not isinstance(replacement, str):
+                    findings.append((name, 1, "catalog-kind-invalid",
+                                     f"{entry_name}: a deprecated entry names its `replacement`"))
+                elif replacement not in commands:
+                    findings.append((name, 1, "catalog-kind-invalid",
+                                     f"{entry_name}: replacement {replacement} is not a cataloged "
+                                     f"command"))
+            elif not COMMAND_NAME.match(str(entry_name)):
+                findings.append((name, 1, "command-name",
+                                 f"{entry_name}: a command matches ^crew-[a-z0-9-]+\\.(py|sh)$"))
+    return findings
 
 
 def lint_catalog_entries(
     root: Path, entries: list, scripts: list, modules: list
 ) -> list[tuple[str, int, str, str]]:
-    """Each catalog entry carries the required fields and resolves to an executable file."""
+    """Each catalog entry carries the required fields and resolves to a file.
+
+    Only commands need the execute bit: they are what `~/.agent/bin` runs. A module is imported, so
+    existence is enough, and `install.sh` never links one because it links `kind: command` only.
+    """
     findings: list[tuple[str, int, str, str]] = []
-    for listed in (entries, scripts, modules):
+    for listed, require_exec in ((entries, True), (scripts, True), (modules, False)):
         for entry in listed:
             name = entry.get("name")
-            required = {"name", "dir", "category", "owner", "help", "smoke"}
+            required = {"name", "dir", "kind", "category", "owner", "help", "smoke"}
             missing = required - entry.keys()
             if not isinstance(name, str):
                 findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
@@ -156,10 +248,13 @@ def lint_catalog_entries(
                                  f"{name}: missing {', '.join(sorted(missing))}"))
             else:
                 path = catalog_path(root, entry)
-                if not path.is_file() or not os.access(path, os.X_OK):
+                if require_exec and (not path.is_file() or not os.access(path, os.X_OK)):
                     findings.append((".agent/tools/tools.json", 1, "cataloged-tool-unavailable",
                                      f"{name} does not exist or is not executable at "
                                      f"{rel(root, path)}"))
+                elif not require_exec and not path.is_file():
+                    findings.append((".agent/tools/tools.json", 1, "cataloged-module-unavailable",
+                                     f"{name} does not exist at {rel(root, path)}"))
     return findings
 
 
@@ -199,11 +294,14 @@ def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
     if len(names) != len(set(names)) or any(not isinstance(name, str) for name in names):
         findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
                          "tool, script, and asset names must be unique strings"))
+    kind_findings, commands = lint_catalog_kinds(data)
+    findings.extend(kind_findings)
+    findings.extend(lint_command_names(data, commands))
     findings.extend(lint_tool_modules(root, modules))
     module_names = {entry.get("name") for entry in modules if isinstance(entry, dict)}
-    findings.extend(lint_tool_naming(root, module_names))
 
     cataloged = {entry.get("name") for entry in entries + scripts + assets} | module_names
+    findings.extend(lint_tool_naming(root, module_names, cataloged))
     for path in tool_tree_files(root):
         if path.suffix in {".py", ".sh"} and path.name not in cataloged:
             findings.append((rel(root, path), 1, "uncataloged-tool",
@@ -284,13 +382,14 @@ def lint_native_tool_ids(
 
 
 def lint_progress_transitions(root: Path, paths: list[Path]) -> list[tuple[str, int, str, str]]:
-    """A log-progress call must pass a state transition, not an event label.
+    """A crew-progress call must pass a state transition, not an event label.
 
-    log-progress.py prefixes `TRANSITION: ` itself, so an event string like "commit: abc123" writes
-    a line that is not a transition. Events belong in log-metric.py, which owns the METRIC line.
+    crew-progress.py prefixes `TRANSITION: ` itself, so an event string like "commit: abc123"
+    writes a line that is not a transition. Events belong in crew-metric.py, which owns the METRIC
+    line. Both basenames are checked while the deprecated wrapper exists.
     """
     findings: list[tuple[str, int, str, str]] = []
-    pattern = re.compile(r"log-progress\.py\"?\s+\"?\$TASK_DIR\"?\s+\"([^\"]*)\"")
+    pattern = re.compile(r"(?:crew-|log-)progress\.py\"?\s+\"?\$TASK_DIR\"?\s+\"([^\"]*)\"")
     for path in paths:
         text = path.read_text(errors="replace")
         for match in pattern.finditer(text):
@@ -298,8 +397,8 @@ def lint_progress_transitions(root: Path, paths: list[Path]) -> list[tuple[str, 
             if "→" not in value and "->" not in value:
                 findings.append((rel(root, path), line_no(text, match.start()),
                                  "progress-not-a-transition",
-                                 f'"{value}" has no state transition; use log-progress for '
-                                 'FROM → TO and log-metric for events'))
+                                 f'"{value}" has no state transition; use crew-progress for '
+                                 'FROM → TO and crew-metric for events'))
     return findings
 
 
@@ -464,7 +563,7 @@ def lint_swallowed_calls(
             "2>/dev/null" in value or "|| true" in value
         ):
             findings.append((name, line, "swallowed-call", "memory command failure is hidden"))
-        if "~/.agent/bin/" in value and "log-metric.py" not in value and (
+        if "~/.agent/bin/" in value and "crew-metric.py" not in value and (
             "2>/dev/null" in value or re.search(r"\|\|\s*true", value)
         ):
             exempt = "crew-lint: allow-swallow" in value
@@ -616,7 +715,7 @@ def lint_documents(
         name = rel(root, path)
         for match in re.finditer(r"tasks/(?:\$REPO|<repo>)", text):
             findings.append((name, line_no(text, match.start()), "stale-task-path",
-                             "use resolve-task-dir.py instead"))
+                             "use crew-resolve-task-dir.py instead"))
         findings.extend(lint_document_refs(root, path, text, name, rules, agents,
                                            routed_commands, router))
     findings.extend(lint_hook_registration(root))

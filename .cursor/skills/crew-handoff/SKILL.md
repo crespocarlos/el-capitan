@@ -15,7 +15,7 @@ Code, git, and task files stay authoritative; the handoff only points at them.
 
 ```bash
 source ~/.agent/bin/task-env.sh
-~/.agent/bin/task-context.py --artifacts task_id,spec,progress,report,review,deferred,handoff --max-chars 4000
+~/.agent/bin/crew-task-context.py --artifacts task_id,spec,progress,report,review,deferred,handoff --max-chars 4000
 REPO=$(basename "$(git rev-parse --show-toplevel)")
 HANDOFF="${TASK_DIR:-/tmp/crew-handoff-$REPO}/HANDOFF.md"
 mkdir -p "$(dirname "$HANDOFF")"

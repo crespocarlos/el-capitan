@@ -12,7 +12,7 @@ Resolve context:
 
 ```bash
 source ~/.agent/bin/task-env.sh
-~/.agent/bin/task-context.py --artifacts report,progress --max-chars 4000
+~/.agent/bin/crew-task-context.py --artifacts report,progress --max-chars 4000
 ```
 
 Use the returned available report and progress artifacts, plus recent `git log -5 --format="%h %s"`.

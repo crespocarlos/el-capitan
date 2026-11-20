@@ -24,6 +24,18 @@ RESOLVE_QUERY = ("mutation($threadId: ID!) { resolveReviewThread(input: {threadI
                  "{ thread { isResolved } } }")
 
 
+def default_query() -> Path:
+    """The graphql asset: the installed link when one exists, else the copy beside this file.
+
+    An asset is read, not installed, so `~/.agent/bin` no longer receives a link for it. The
+    installed path is still preferred when present, because a plan printed for an operator to run
+    by hand should name the stable path they will find.
+    """
+    if DEFAULT_QUERY.is_file():
+        return DEFAULT_QUERY
+    return _TOOLS_ROOT / "review" / "pr-review-threads.graphql"
+
+
 def repository(value: str) -> tuple[str, str]:
     try:
         owner, name = value.split("/", 1)
@@ -106,7 +118,7 @@ def main() -> int:
     fetch_parser.add_argument("--repo", required=True)
     fetch_parser.add_argument("--pr", required=True, type=int)
     fetch_parser.add_argument("--cursor")
-    fetch_parser.add_argument("--query", default=DEFAULT_QUERY, type=Path)
+    fetch_parser.add_argument("--query", default=default_query(), type=Path)
     fetch_parser.add_argument("--dry-run", action="store_true",
                               help="print the plan naming the exact gh command; never calls gh")
     for name in ("resolve", "reply"):

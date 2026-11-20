@@ -64,7 +64,7 @@ On every conversation start, check for an active task:
 if [ -n "${CREW_TASK_DIR+x}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
 else
-  TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/tmp/resolve-task-dir-err)
+  TASK_DIR=$(~/.agent/bin/crew-resolve-task-dir.py 2>/tmp/resolve-task-dir-err)
   EXIT_CODE=$?
   if [ $EXIT_CODE -ne 0 ]; then
     # Script ran but failed (git error, malformed .task-id, etc.) — surface it
@@ -111,11 +111,11 @@ session). Format:
 
 ## METRIC lines (offline analysis only)
 
-`METRIC:` lines are append-only audit records for offline analysis. `resolve-task-dir.py` must not
+`METRIC:` lines are append-only audit records for offline analysis. `crew-resolve-task-dir.py` must not
 parse them for gates or transitions — git/gh plus SPEC.md remain the source of truth.
 
 - Format: `[YYYY-MM-DD HH:MM:SS] METRIC: <event> [<key=value> ...]`
-- Write with `~/.agent/bin/log-metric.py "$TASK_DIR" <event> [key=value ...]`
+- Write with `~/.agent/bin/crew-metric.py "$TASK_DIR" <event> [key=value ...]`
 - Events: `implement_start mode=inline`, `implement_complete tasks_passed=N tasks_failed=N`,
  `commit sha=<short>`, `review verdict=pass|block`, `completion_protocol phase=ac_check`,
  `session tool_calls=N`

@@ -56,7 +56,7 @@ then this file. Hard constraints always apply.
   preamble, narration of intent, recap of the request, praise, or closing offers. Reports list what
   changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
 - **Project guidance applies by file, not by request size** — before editing, testing, reviewing, or
-  researching files, run `~/.agent/bin/agent-context.py` for the targets and apply every returned
+  researching files, run `~/.agent/bin/crew-agent-context.py` for the targets and apply every returned
   guidance file. The nearer file wins on conflict; report the conflict. In multi-file requests, do
   not skip guidance because other files use different languages or formats.
 - **Edit files with the edit tool, not a shell script** — use `StrReplace`/`Edit` or `Write` for any

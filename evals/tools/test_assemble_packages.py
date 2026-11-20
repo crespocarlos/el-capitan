@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract checks for .agent/tools/review/assemble-packages.py.
+"""Contract checks for .agent/tools/review/crew-assemble-packages.py.
 
 Two behaviours carry the value and can regress silently: every persona receives the same shared
 header, and the prompt tier does not re-send what the diff already quotes. A package that lost its
@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "assemble-packages.py"
+TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-assemble-packages.py"
 
 DIFF = """diff --git a/prompt.md b/prompt.md
 --- a/prompt.md

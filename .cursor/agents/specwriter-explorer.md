@@ -32,7 +32,7 @@ the native search tool, then read only the ranges that search identified. Never 
 ## What to find
 
 **0. Project context** — Use the `## Project guidance` section in the dispatch prompt (output of
-`agent-context.py`, repository root to nearest folder). Nearer files override farther ones; surface
+`crew-agent-context.py`, repository root to nearest folder). Nearer files override farther ones; surface
 any conflict. Do not search for `AGENTS.md`/`CLAUDE.md` yourself. If the section is missing, say so
 in your output. Extract: bootstrap command, test commands, deploy/validate commands, quality gates
 (pre-commit validation steps), forbidden patterns, and project-specific conventions. Include a `##

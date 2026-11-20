@@ -2,7 +2,7 @@
 # Refuse to write a SPEC.md whose slug disagrees with the task directory it lands in.
 #
 # A task directory records the spec it owns in `.task-id`, and the pipeline resolves "the current
-# task" with `resolve-task-dir.py`, which answers with the newest non-DONE task for the branch. On a
+# task" with `crew-resolve-task-dir.py`, which answers with the newest non-DONE task for the branch. On a
 # repository where every task lives on one branch, that is unrelated, already-finished work. Writing a
 # new spec into that directory destroys the completed task's spec, and task directories sit outside
 # the repository, so no version control recovers it. That happened once; this is the structural fix.

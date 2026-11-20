@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract checks for review-hunks.py: hunk ids, statuses, and markdown shape.
+"""Contract checks for crew-review-hunks.py: hunk ids, statuses, and markdown shape.
 
 The parser owns the ids every layer map and coverage gate refers to, so these tests pin the
 exact shapes: one id per textual hunk in diff order, plus one synthetic id for a file with no
@@ -13,7 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "review-hunks.py"
+TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-hunks.py"
 
 SIMPLE = """diff --git a/src/a.ts b/src/a.ts
 index 1111111..2222222 100644

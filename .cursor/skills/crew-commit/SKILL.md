@@ -19,7 +19,7 @@ git diff --staged --stat          # size check + file list
 git diff --staged --name-only     # file list for scope check
 
 source ~/.agent/bin/task-env.sh
-~/.agent/bin/task-context.py --artifacts spec,review --max-chars 4000
+~/.agent/bin/crew-task-context.py --artifacts spec,review --max-chars 4000
 ```
 
 If nothing staged, run `git status --short` and show the user what's unstaged. Ask which files to
@@ -142,7 +142,7 @@ change pipeline state, so this is a `METRIC` audit line, not a `TRANSITION`:
 if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
   echo "warning: task state unreadable — commit not logged to PROGRESS.md" >&2
 elif [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-metric.py "$TASK_DIR" commit sha="$(git rev-parse --short HEAD)"
+  ~/.agent/bin/crew-metric.py "$TASK_DIR" commit sha="$(git rev-parse --short HEAD)"
 fi
 ```
 

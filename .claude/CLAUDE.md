@@ -45,7 +45,7 @@ Dispatch fallback priority (when Agent tool is unavailable):
 **This routing is authoritative.** Read the file, follow its instructions. Do not override with
 judgment calls.
 
-**Task state**: resolve via `~/.agent/bin/resolve-task-dir.py`. Scans `~/.agent/tasks/*/.task-id`,
+**Task state**: resolve via `~/.agent/bin/crew-resolve-task-dir.py`. Scans `~/.agent/tasks/*/.task-id`,
 matches `repo_remote_url` + `branch`.
 
 ## Pipeline

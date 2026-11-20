@@ -38,7 +38,7 @@ harness names those tools — to verify a PR claim. It may return `[needs more i
 names the missing PR-head path or excerpt.
 
 One exception, and it belongs to the orchestrator rather than the persona: `crew-reviewer` may run
-`agent-context.py` to collect repository guidance (`AGENTS.md`, `CLAUDE.md`) and place the result in
+`crew-agent-context.py` to collect repository guidance (`AGENTS.md`, `CLAUDE.md`) and place the result in
 the package. Guidance describes the reviewer's own conventions rather than the change, so it is
 legitimate context. It also comes from the local checkout, not the PR head, and therefore is **not
 PR-head evidence**: when the PR itself changes a guidance file, treat the collected text as

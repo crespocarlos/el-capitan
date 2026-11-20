@@ -8,13 +8,13 @@ description: "Use when the user asks to inspect, compare, or explain evaluation 
 Two tools, both read-only and stdlib-only. Elasticsearch configuration uses `ES_URL`, plus
 `ES_API_KEY` or `ES_USER` and `ES_PASS`; exit 2 means the service is unavailable.
 
-## Inspect one experiment: `~/.agent/bin/evals-inspect.py`
+## Inspect one experiment: `~/.agent/bin/crew-evals-inspect.py`
 - no argument: `latest`
 - experiment: `scores <exp>` then `failures <exp>`
 - `trace <exp> <example>`: full trace for one example.
 - `ki`, `flips <a> <b>`, and `cluster <exp>...` map directly.
 
-## Compare runs: `~/.agent/bin/evals-compare.py`
+## Compare runs: `~/.agent/bin/crew-evals-compare.py`
 Groups runs by commit sha; use it to answer "did this change help?". Its default is project-neutral:
 every evaluator appears alphabetically and experiment names are shortened only by a shared prefix.
 - `runs`: list runs (commit groups), newest first.
@@ -33,7 +33,7 @@ Rules:
 
 ## Diagnose prompt changes
 
-Run `evals-compare.py diagnose <baseline> <candidate> --repo <read-only Kibana checkout> --json`. It
+Run `crew-evals-compare.py diagnose <baseline> <candidate> --repo <read-only Kibana checkout> --json`. It
 derives the suite from score metadata, reads only the repository's Git history, and classifies
 changed files as prompt, tool, retrieval, evaluator, dataset, or other.
 

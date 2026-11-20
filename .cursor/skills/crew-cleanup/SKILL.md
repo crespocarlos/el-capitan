@@ -32,7 +32,7 @@ For each non-main worktree, determine its status:
 - **Active**: neither gone nor merged — still in use
 
 ```bash
-DEFAULT_BRANCH=$(~/.agent/bin/default-branch.sh)
+DEFAULT_BRANCH=$(~/.agent/bin/crew-default-branch.sh)
 ```
 
 ### Step 4: Present the table
@@ -65,7 +65,7 @@ Chain with `&&`: if removal is refused, the branch must survive. Report the refu
 leave its task directories in place; do not offer them in the task-directory step below. If `-d`
 refuses after the worktree is removed, keep the branch and report it. Use `-D` only for gone
 branches the user confirmed; for those rows, show the unique-commit count in Step 4 (`git rev-list
---count origin/$(~/.agent/bin/default-branch.sh)..<branch>`). Squash-merged branches show a nonzero
+--count origin/$(~/.agent/bin/crew-default-branch.sh)..<branch>`). Squash-merged branches show a nonzero
 count, so treat it as information, not proof of unmerged work.
 
 Also remove associated task directories. Multiple tasks can share the same branch (the spec says
@@ -80,7 +80,7 @@ WORKTREE_BRANCH=<branch>
 MATCHING_DIRS=()
 while IFS= read -r dir; do
   [ -n "$dir" ] && MATCHING_DIRS+=("$dir")
-done < <(~/.agent/bin/resolve-task-dir.py   --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all) || \
+done < <(~/.agent/bin/crew-resolve-task-dir.py   --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all) || \
   echo "warning: could not enumerate task directories for '$WORKTREE_BRANCH'" >&2
 
 if [ "${#MATCHING_DIRS[@]}" -eq 0 ]; then

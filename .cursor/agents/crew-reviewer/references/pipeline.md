@@ -11,15 +11,15 @@ dispatched context package as `<persona>.in.md` and raw response as `<persona>.o
 
 **Command surface — read it, do not probe it.** A failed invocation plus a `--help` round trip costs
 two tool calls to learn an argument shape this section already states. Two entry points are easy to
-confuse: `review-hunks.py` takes the diff as a **positional** argument (there is no `--diff` flag),
-and `review-findings.py normalize` takes its input positionally (there is no `--input` flag), as
+confuse: `crew-review-hunks.py` takes the diff as a **positional** argument (there is no `--diff` flag),
+and `crew-review-findings.py normalize` takes its input positionally (there is no `--input` flag), as
 does `spec-context` (the SPEC.md path, with `--persona`).
 `coverage` is the gate for a reviewer `layers.json`; `validate-map` belongs to `crew explain` and
 rejects a `layers.json` for lacking `--review`. Every remaining argument shape is specified in the
 numbered steps below, next to the invocation that uses it.
 
 **PR mode has no task.** A PR review produces no SPEC.md transition, `crew commit` never reads its
-output, and `resolve-task-dir.py` answers with the newest non-DONE task for the current branch —
+output, and `crew-resolve-task-dir.py` answers with the newest non-DONE task for the current branch —
 usually an unrelated feature. Report the artifacts as `<path> (outside task state)`; that is a
 successful persist, not the `review not persisted` failure below. Pass the PR head SHA to `--head`,
 never `git rev-parse HEAD`; the local checkout never contains the PR head (PR mode fetches nothing).
@@ -31,7 +31,7 @@ task's `REVIEW.md`.
    `persona` uses the names above (a list when several flagged it); `disposition` is `patch`,
    `decide`, `defer`, `dropped`, or `merged`; `hunks` lists the ids from `hunks.json` whose change
    causes the finding (omit it when there is no hunk index).
-2. Run `~/.agent/bin/review-findings.py normalize "$REVIEW_ROOT/candidates.json" --strict --output
+2. Run `~/.agent/bin/crew-review-findings.py normalize "$REVIEW_ROOT/candidates.json" --strict --output
    "$REVIEW_ROOT/consolidation.json"`, adding `--hunks "$REVIEW_ROOT/hunks.json"` when that file
    exists and `--files <path1> <path2> …` always. `--files` is what moves the evidence-path gate to
    this step: `persist --strict` rejects a finding whose `evidence` names an unchanged file, and
@@ -41,7 +41,7 @@ task's `REVIEW.md`.
    emitted (`patch`/`decide`) `blocking`
    or `attention` finding without `verified: true` and an `evidence` location, and on more than
    `MAX_FINDINGS` emitted findings or more than `MAX_NITS` emitted nits; add `verified` and
-   `evidence` to each candidate. The two caps are defined once, in `review-findings.py`, and
+   `evidence` to each candidate. The two caps are defined once, in `crew-review-findings.py`, and
    restated with their rationale in `consolidation.md` — read them there rather than copying the
    numbers, so a cap change cannot leave this file stale. In PR mode evidence must use
    the PR-head form `path:line@headSHA7`, and the evidence excerpt belongs in the relevant persona
@@ -58,7 +58,7 @@ task's `REVIEW.md`.
    in it is attributable to the persona or re-verifiable later. Keep that persona in `--personas`
    and name it under `### Reviewers` in the report. Then
    write the emitted report to `$REVIEW_ROOT/report.md`,
-   and run `~/.agent/bin/review-findings.py persist --review-dir "$REVIEW_ROOT" --report
+   and run `~/.agent/bin/crew-review-findings.py persist --review-dir "$REVIEW_ROOT" --report
    "$REVIEW_ROOT/report.md" --findings "$REVIEW_ROOT/consolidation.json" --mode
    <self|changes|pr|spec|idea> --files <path1> <path2> ... --head <HEAD SHA> --strict --personas
    adversarial code-quality`; pass every dispatched persona as its own space-delimited argument (for
@@ -76,7 +76,7 @@ task's `REVIEW.md`.
    evidence. `--head`
    records the approved commit so `crew commit` and `--mark-done` can detect a tree that moved.
    With `layers.json` in `$REVIEW_ROOT`, `--strict` also requires every hunk id in `hunks.json` to
-   sit in exactly one layer (`review-findings.py coverage`, shared with `validate-map`), so a map can
+   sit in exactly one layer (`crew-review-findings.py coverage`, shared with `validate-map`), so a map can
    never pass validation and then fail coverage. It then appends `### Coverage by layer` to the
    report: one line per layer with its hunks and the emitted findings that cite them, or `no
    findings`, so the reader sees which layers drew scrutiny. Do not write that section yourself.
@@ -136,11 +136,11 @@ logging.
 ```bash
 # If PASS or WARN:
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-metric.py "$TASK_DIR" review verdict=pass
+  ~/.agent/bin/crew-metric.py "$TASK_DIR" review verdict=pass
 fi
 # If BLOCK:
 if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/log-metric.py "$TASK_DIR" review verdict=block
+  ~/.agent/bin/crew-metric.py "$TASK_DIR" review verdict=block
 fi
 ```
 

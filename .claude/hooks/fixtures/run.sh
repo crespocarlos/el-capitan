@@ -404,7 +404,7 @@ python3 "$ls_tool" --mark-done "$tasks/reviewed-ancestor" --pr-url x --branch ma
 test "$(status_of reviewed-ancestor)" = DONE
 
 bad_tools="$home/bad-tools"; mkdir -p "$bad_tools"
-cp "$ls_tool" "$root/.agent/tools/task/log-progress.py" "$root/.agent/tools/task/task_status.py" "$bad_tools/"
+cp "$ls_tool" "$root/.agent/tools/task/crew-progress.py" "$root/.agent/tools/task/task_status.py" "$bad_tools/"
 printf '{bad' > "$bad_tools/transitions.json"
 python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" >/dev/null
 fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile
@@ -413,19 +413,20 @@ fails 'unknown predicate' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" -
 printf '{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["idle"],"status":"{typo}","log":"y"}]}' > "$bad_tools/transitions.json"
 fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply
 
-# The installed surface is flat while the source tree is grouped, so install.sh must find every file
-# through its subdirectory and refuse a basename that appears twice: a second `ln -sf` would silently
+# The installed surface is flat while the source tree is grouped, so install.sh must resolve every
+# command through its subdirectory, link the catalog's commands and nothing else (a module is
+# imported, never run), and refuse a basename that appears twice: a second `ln -sf` would silently
 # replace the first link, and a cataloged command would resolve to the wrong tool.
 links=$(HOME="$home/link-home" bash "$root/install.sh" --dry-run 2>/dev/null | grep -c "ln -sf .*\.agent/tools/")
-cataloged=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(len(d.get(k, [])) for k in ('tools','scripts','modules','assets')))" "$root/.agent/tools/tools.json")
-test "$links" -ge "$cataloged"
+commands=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(1 for k in ('tools','scripts') for e in d.get(k, []) if e.get('kind') == 'command'))" "$root/.agent/tools/tools.json")
+test "$links" -eq "$commands"
 dup_src="$home/dup-src"
 mkdir -p "$dup_src/.agent/tools/task" "$dup_src/.agent/tools/review"
 cp "$root/install.sh" "$dup_src/install.sh"
 for d in rules .claude .cursor; do ln -s "$root/$d" "$dup_src/$d"; done
-cp "$root/.agent/tools/task/log-progress.py" "$dup_src/.agent/tools/task/log-progress.py"
-cp "$root/.agent/tools/task/log-progress.py" "$dup_src/.agent/tools/review/log-progress.py"
+cp "$root/.agent/tools/task/crew-progress.py" "$dup_src/.agent/tools/task/crew-progress.py"
+cp "$root/.agent/tools/task/crew-progress.py" "$dup_src/.agent/tools/review/crew-progress.py"
 dup_rc=0
 dup_err=$(HOME="$home/dup-home" bash "$dup_src/install.sh" --dry-run 2>&1 >/dev/null) || dup_rc=$?
 test "$dup_rc" -ne 0
-grep -q 'error: duplicate command log-progress.py in .*tools/review/log-progress.py and .*tools/task/log-progress.py' <<<"$dup_err"
+grep -q 'error: duplicate command crew-progress.py in .*tools/review/crew-progress.py and .*tools/task/crew-progress.py' <<<"$dup_err"

@@ -164,7 +164,7 @@ git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
-`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. `~/.agent/bin/` receives flat links to every file under `.agent/tools/`, including its responsibility subdirectories. No files are copied — updates to the repo are reflected immediately.
+`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. `~/.agent/bin/` receives a flat link per cataloged command — every `kind: command` entry in `.agent/tools/tools.json`, wherever its responsibility subdirectory puts the file. Modules are imported, never linked. No files are copied — updates to the repo are reflected immediately.
 
 **To update:**
 

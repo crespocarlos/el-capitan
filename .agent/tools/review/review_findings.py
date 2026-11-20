@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Finding model: vocabulary, parsing, validation, fingerprints, and normalization.
 
-Split out of `review-findings.py` so the CLI stays an argparse entry point. This module owns
+Split out of `crew-review-findings.py` so the CLI stays an argparse entry point. This module owns
 what a finding is and what one finding must satisfy; the persona, layer, and report concerns
 live in their own modules and import from here.
 """
@@ -13,7 +13,7 @@ import json
 import re
 from pathlib import Path
 
-from lib.files import atomic_write  # noqa: F401  re-exported by review-findings.py
+from lib.files import atomic_write  # noqa: F401  re-exported by crew-review-findings.py
 
 LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
 # Severity says how bad; `kind` says what sort of defect, and the two are independent. Kept out of

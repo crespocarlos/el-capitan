@@ -21,11 +21,10 @@ run() {
   fi
 }
 
-# Symlink regular files from $1 into $2 (creates dest). $3 is the walk depth: 1 for the flat
-# directories (rules, agents, hooks, skill references) and 2 for the tool tree, which is grouped into
-# responsibility subdirectories while the installed surface stays flat. A duplicate basename aborts
-# before any link is written: otherwise the second `ln -sf` silently replaces the first and a
-# cataloged command resolves to the wrong file. Cleanup of retired links is the caller's job via
+# Symlink regular files from $1 into $2 (creates dest). $3 is the walk depth, for the flat
+# directories (rules, agents, hooks, skill references). A duplicate basename aborts before any link
+# is written: otherwise the second `ln -sf` silently replaces the first and a cataloged command
+# resolves to the wrong file. Cleanup of retired links is the caller's job via
 # `prune_broken_symlinks`, which only removes links this installer created: doing it here would need
 # that helper defined first, and any sweep that did not check the link target would delete a user's
 # own dangling link in the same directory.
@@ -47,6 +46,89 @@ link_dir_files() {
   while IFS= read -r f; do
     run ln -sf "$f" "$dest/$(basename "$f")"
   done <<< "$listing"
+}
+
+# A duplicate basename anywhere in the tool tree aborts before a link is written, for the same
+# reason: the installed surface is flat. Scanned from the tree rather than the catalog so the check
+# still fires when a copy of this installer runs against a tree whose catalog is absent or stale.
+duplicate_tool_basenames() {
+  local listing duplicates name first second
+  listing=$(find "$SCRIPT_DIR/.agent/tools" -type f \( -name '*.py' -o -name '*.sh' \) \
+    ! -path '*/__pycache__/*' | sort)
+  [[ -n "$listing" ]] || return 0
+  duplicates=$(printf '%s\n' "$listing" | awk -F/ '
+    { name = $NF; if (name in seen) print name "\t" seen[name] "\t" $0; else seen[name] = $0 }')
+  [[ -z "$duplicates" ]] && return 0
+  while IFS=$'\t' read -r name first second; do
+    echo "error: duplicate command $name in $first and $second" >&2
+  done <<< "$duplicates"
+  return 1
+}
+
+# The catalog's `kind: command` entries as `dir<TAB>name` lines: the whole of what ~/.agent/bin
+# receives. Read from the manifest through Python so the JSON is parsed once, by one parser.
+catalog_commands() {
+  python3 - "$SCRIPT_DIR/.agent/tools/tools.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1]) as handle:
+    data = json.load(handle)
+for section in ("tools", "scripts"):
+    for entry in data.get(section, []):
+        if entry.get("kind") == "command":
+            print(f"{entry['dir']}\t{entry['name']}")
+PY
+}
+
+# Link only what the catalog declares as a command. A module is imported and an asset is read, so
+# neither belongs on the command surface. The old directory walk linked every file at depth two,
+# which shipped `cli.py`, `files.py`, `git.py`, and the `memory_*`/`review_*` modules to
+# ~/.agent/bin as commands that cannot run.
+link_catalog_commands() {
+  local dest="$1" listing directory name
+  if [[ ! -f "$SCRIPT_DIR/.agent/tools/tools.json" ]]; then
+    echo "error: missing tool catalog $SCRIPT_DIR/.agent/tools/tools.json" >&2
+    return 1
+  fi
+  listing=$(catalog_commands) || return 1
+  if [[ -z "$listing" ]]; then
+    echo "error: the tool catalog declares no commands" >&2
+    return 1
+  fi
+  run mkdir -p "$dest"
+  while IFS=$'\t' read -r directory name; do
+    run ln -sf "$SCRIPT_DIR/.agent/tools/$directory/$name" "$dest/$name"
+  done <<< "$listing"
+}
+
+# Remove links this installer created into the tool tree whose basename is no longer a cataloged
+# command. Those links are not broken — their targets still exist — so `prune_broken_symlinks`
+# leaves them behind, and the modules and catalog files the old walk linked would stay on the
+# command surface forever. Only links whose target is inside this repo's tool tree are touched, so a
+# user's own file in the same directory is safe.
+prune_retired_tool_links() {
+  local dir="$1" commands link target name
+  [[ -d "$dir" ]] || return 0
+  [[ -f "$SCRIPT_DIR/.agent/tools/tools.json" ]] || return 0
+  commands=$(catalog_commands | cut -f2) || return 1
+  shopt -s nullglob
+  for link in "$dir"/*; do
+    [[ -L "$link" ]] || continue
+    target=$(readlink "$link")
+    [[ "$target" == "$SCRIPT_DIR/.agent/tools/"* ]] || continue
+    name=$(basename "$link")
+    if grep -qxF "$name" <<< "$commands"; then
+      continue
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "  [dry-run] remove retired tool link: $link → $target"
+    else
+      echo "  Removing retired link: $name"
+      rm -f "$link"
+    fi
+  done
+  shopt -u nullglob
 }
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -327,11 +409,15 @@ for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _MEMORY_TE
   run ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
 done
 # ~/.agent/bin
-run rm -f ~/.agent/bin/resolve-task-dir.sh ~/.agent/bin/log-progress.sh
-if ! link_dir_files "$SCRIPT_DIR/.agent/tools" ~/.agent/bin 2; then
+# Retired names (modules the old directory walk linked, and basenames renamed with wrappers) are
+# removed by `prune_retired_tool_links` and `prune_broken_symlinks` below: both are driven by the
+# catalog, so no retired name needs to be listed here.
+if ! duplicate_tool_basenames; then
   echo "  ERROR: tool tree has a duplicate basename; ~/.agent/bin was not updated." >&2
   exit 1
 fi
+link_catalog_commands ~/.agent/bin
+prune_retired_tool_links ~/.agent/bin
 prune_broken_symlinks ~/.agent/bin
 if [ "$DRY_RUN" -eq 0 ] && [ ! -d "$HOME/.agent/memory/.git" ]; then
   CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/tools/memory/crew-mem.py" init

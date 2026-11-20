@@ -28,7 +28,7 @@ Otherwise:
 
 ```bash
 source ~/.agent/bin/task-env.sh
-~/.agent/bin/task-context.py --artifacts task_id,spec,progress,report,handoff --max-chars 4000
+~/.agent/bin/crew-task-context.py --artifacts task_id,spec,progress,report,handoff --max-chars 4000
 ```
 
 If `$TASK_DIR` is non-empty, use the returned available artifacts to resume; do not assume a spec,
@@ -106,9 +106,9 @@ chars), propose it, and confirm before proceeding.
   - **worktree** — fetch the default branch and create a worktree:
 
   ```bash
-  DEFAULT_BRANCH=$(~/.agent/bin/default-branch.sh)
+  DEFAULT_BRANCH=$(~/.agent/bin/crew-default-branch.sh)
   git fetch origin "$DEFAULT_BRANCH"
-  cd "$(~/.agent/bin/manage-worktree.py -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
+  cd "$(~/.agent/bin/crew-worktree.py -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
   ```
 
 After the worktree is created: **bootstrap dependencies.** Read the repo's `AGENTS.md` (or
@@ -123,7 +123,7 @@ worktree directory.
   - **new-branch** — create and checkout the branch:
 
     ```bash
-    DEFAULT_BRANCH=$(~/.agent/bin/default-branch.sh)
+    DEFAULT_BRANCH=$(~/.agent/bin/crew-default-branch.sh)
     git fetch origin "$DEFAULT_BRANCH"
     git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
     ```
@@ -136,7 +136,7 @@ The UUID task directory (`$TASK_DIR`) is stable — it does not move either way.
 
 ```bash
 ~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR" --branch "$(git -C "${WORK_DIR:-$PWD}" rev-parse --abbrev-ref HEAD)"
-~/.agent/bin/log-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
+~/.agent/bin/crew-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
 ```
 
 `--branch` reads `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
@@ -194,7 +194,7 @@ When the Implementation Report is available:
 
 **All tasks passed:**
 
-1. ```bash ~/.agent/bin/log-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
+1. ```bash ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
    ```
 2. **Journal (draft, never automatic)** — draft an immutable observation only when it holds something
    non-derivable from code, git, or the spec: a decision that will constrain future work, or a

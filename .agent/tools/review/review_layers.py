@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Layer-map concerns: hunk ids, layer validation, coverage, hunk references, and the map gate.
 
-Split out of `review-findings.py`. The layer map is what proves the personas were pointed at the
+Split out of `crew-review-findings.py`. The layer map is what proves the personas were pointed at the
 whole diff, so these checks are errors rather than warnings. Depends on `findings.py`.
 """
 from __future__ import annotations

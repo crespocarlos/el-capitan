@@ -26,7 +26,7 @@ Confirm it with the user only when the request leaves it ambiguous.
 
 ### Step 2: Implement
 
-Run `~/.agent/bin/agent-context.py <files>` and apply the returned guidance. Make the change under
+Run `~/.agent/bin/crew-agent-context.py <files>` and apply the returned guidance. Make the change under
 `crew-builder.md` rules for testing, verification, and scope: add a regression test first for a bug
 fix, keep the diff to the stated files, and never commit. Run the acceptance check and the
 repository's lint and type-check for the changed files. Fix and re-run up to three times; then stop

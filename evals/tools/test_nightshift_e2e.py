@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermetic checks for nightshift-e2e.py against a stub nightshift server.
+"""Hermetic checks for crew-nightshift-e2e.py against a stub nightshift server.
 
 The tool's contract is entirely HTTP-shaped, so a local `http.server` pins it without touching a
 real nightshift install: the request bodies it sends, the endpoints it must never call, and how
@@ -20,7 +20,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "nightshift-e2e.py"
+TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-nightshift-e2e.py"
 KEY = "elastic__kibana__12345"
 TESTED_HEAD = "0123456789ab"  # arbitrary: the tool must pass `meta.headSha` through unchanged
 

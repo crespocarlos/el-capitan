@@ -20,7 +20,7 @@ if [ -n "${CREW_TASK_DIR:-}" ]; then
   TASK_DIR="$CREW_TASK_DIR"
   CREW_TASK_STATE="${CREW_TASK_STATE:-ok}"
 else
-  _crew_err=$(~/.agent/bin/resolve-task-dir.py 2>&1 >/tmp/.crew-task-dir.$$)
+  _crew_err=$(~/.agent/bin/crew-resolve-task-dir.py 2>&1 >/tmp/.crew-task-dir.$$)
   _crew_rc=$?
   TASK_DIR=$(cat /tmp/.crew-task-dir.$$ 2>/dev/null)
   rm -f /tmp/.crew-task-dir.$$

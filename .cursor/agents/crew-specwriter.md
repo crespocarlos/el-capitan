@@ -32,7 +32,7 @@ Determine the task source:
   title,body,labels,comments`
 - If given a plain description: use it directly
 
-**Create a new task directory; never reuse one.** `resolve-task-dir.py` answers with the newest
+**Create a new task directory; never reuse one.** `crew-resolve-task-dir.py` answers with the newest
 non-DONE task for the current branch, which on a repo where every task lives on `main` is unrelated
 finished work. Writing a new SPEC.md into that directory overwrites a completed task's spec, and
 because task directories sit outside the repository no version control recovers it. Generate a fresh
@@ -108,7 +108,7 @@ Task/Agent tool call:
     Specific files mentioned: <any file paths from the issue, or "none">
 
     ## Project guidance
-    <output of `~/.agent/bin/agent-context.py <specific files mentioned or likely module paths>`; use the repository root when none are known>
+    <output of `~/.agent/bin/crew-agent-context.py <specific files mentioned or likely module paths>`; use the repository root when none are known>
 
     ## Recalled patterns
     <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>

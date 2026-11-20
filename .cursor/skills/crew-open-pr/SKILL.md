@@ -28,7 +28,7 @@ Do not proceed with PR creation.
 ```bash
 BRANCH=$(git branch --show-current)
 source ~/.agent/bin/task-env.sh
-~/.agent/bin/task-context.py --artifacts spec,review --max-chars 6000
+~/.agent/bin/crew-task-context.py --artifacts spec,review --max-chars 6000
 ```
 
 Detect fork workflow using git remotes — **do not use `gh repo view`** (freezes in VS Code
@@ -46,7 +46,7 @@ UPSTREAM_REPO=$(_parse_repo "$UPSTREAM_URL")
 the repo the PR will target: the default branch of `upstream` for a fork, otherwise of `origin`.
 
 ```bash
-BASE=$(~/.agent/bin/default-branch.sh "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)")
+BASE=$(~/.agent/bin/crew-default-branch.sh "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)")
 ```
 
 ```bash
@@ -58,7 +58,7 @@ branch. With an `upstream` remote, that base must exist there, so check; if it d
 cannot target upstream. Say so, and switch to `origin` only after the user confirms:
 
 ```bash
-if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/default-branch.sh upstream)" ]; then
+if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/crew-default-branch.sh upstream)" ]; then
   GH_PAGER=cat gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null \
     || echo "BASE '$BASE' not found on $UPSTREAM_REPO (or the check failed); ask before targeting $ORIGIN_REPO"
 fi

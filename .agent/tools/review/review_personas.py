@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Persona concerns: output classification, selection, coverage, packages, and spec context.
 
-Split out of `review-findings.py`. Everything here answers a question about reviewers rather
+Split out of `crew-review-findings.py`. Everything here answers a question about reviewers rather
 than about findings: which lenses to dispatch, whether each one actually produced output, and
 what a persona package must contain. Depends on `findings.py`.
 """
@@ -271,7 +271,7 @@ def package_violations(review_dir: Path, personas: list[str], mode: str,
             copied = builder_lines.intersection(line.strip() for line in lines)
             if len(copied) >= SPEC_COPIED_LINES:
                 errors.append(f"{package.name} carries the spec's Tasks/Hints ({len(copied)} lines); "
-                              "build its spec with `review-findings.py spec-context`")
+                              "build its spec with `crew-review-findings.py spec-context`")
         current = ""
         for line in lines:
             if line.startswith("diff --git "):

@@ -7,7 +7,7 @@ exec 2>/dev/null
 
 # Resolve active task for this repo+branch. A UserPromptSubmit hook must never block a
 # turn, so resolution failures are swallowed by design (crew-lint: allow-swallow).
-TASK_DIR=$(~/.agent/bin/resolve-task-dir.py 2>/dev/null) || exit 0   # crew-lint: allow-swallow
+TASK_DIR=$(~/.agent/bin/crew-resolve-task-dir.py 2>/dev/null) || exit 0   # crew-lint: allow-swallow
 [ -z "$TASK_DIR" ] && exit 0
 [ ! -f "$TASK_DIR/SPEC.md" ] && exit 0
 
