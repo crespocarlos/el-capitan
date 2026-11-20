@@ -353,6 +353,105 @@
   ],
   "modules": [
     {
+      "name": "evals_query.py",
+      "dir": "evals",
+      "kind": "module",
+      "category": "evals",
+      "owner": "crew-evals",
+      "help": "imported by crew-evals-compare.py",
+      "smoke": "imported by crew-evals-compare.py"
+    },
+    {
+      "name": "evals_report.py",
+      "dir": "evals",
+      "kind": "module",
+      "category": "evals",
+      "owner": "crew-evals",
+      "help": "imported by crew-evals-compare.py",
+      "smoke": "imported by crew-evals-compare.py"
+    },
+    {
+      "name": "evals_diagnose.py",
+      "dir": "evals",
+      "kind": "module",
+      "category": "evals",
+      "owner": "crew-evals",
+      "help": "imported by crew-evals-compare.py",
+      "smoke": "imported by crew-evals-compare.py"
+    },
+    {
+      "name": "evals_sources.py",
+      "dir": "evals",
+      "kind": "module",
+      "category": "evals",
+      "owner": "crew-evals",
+      "help": "imported by crew-evals-compare.py",
+      "smoke": "imported by crew-evals-compare.py"
+    },
+    {
+      "name": "lint_budget.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_catalog.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_files.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_naming.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_progress.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_prompts.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_references.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
       "name": "files.py",
       "dir": "lib",
       "kind": "module",
@@ -387,6 +486,60 @@
       "owner": "crew-orchestrator",
       "help": "imported by crew-ls.py",
       "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_state.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_resolve.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-resolve-task-dir.py",
+      "smoke": "imported by crew-resolve-task-dir.py"
+    },
+    {
+      "name": "task_report.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_gates.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_typed_tests.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_artifacts.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-task-context.py",
+      "smoke": "imported by crew-task-context.py"
     },
     {
       "name": "memory_store.py",

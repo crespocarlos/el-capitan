@@ -9,6 +9,8 @@ line, and the rule it violates, so a failure names what to change instead of onl
 Rules:
 - every top-level function has a return annotation;
 - no function spans more than `MAX_FUNCTION_LINES` lines;
+- no module in `task/`, `maintenance/`, or `evals/` exceeds `MAX_MODULE_LINES` lines, which is what
+  forces an oversized tool into a package instead of one file;
 - every logical line starts at a multiple-of-four column, with no tabs;
 - no run of more than `MAX_COMMENT_BLOCK` consecutive comment lines;
 - no bare-name import of a generic module name, which is what made `store`, `report`, and
@@ -28,6 +30,10 @@ TOOLS = ROOT / ".agent" / "tools"
 
 MAX_FUNCTION_LINES = 50
 MAX_COMMENT_BLOCK = 4
+# The three packages that were re-cut in this change. `memory/` and `review/` were re-cut earlier
+# and `memory_store.py` is a deliberate exception recorded in the spec, so neither is judged here.
+CAPPED_PACKAGES = ("task", "maintenance", "evals")
+MAX_MODULE_LINES = 200
 GENERIC_MODULES = {"store", "units", "recall", "maintenance",
                    "findings", "layers", "personas", "report"}
 UNIQUE_FUNCTIONS = ("atomic_write", "gh")
@@ -64,6 +70,22 @@ def check_lengths(path: Path, tree: ast.AST) -> tuple[list[tuple[str, int, str, 
         if span > MAX_FUNCTION_LINES:
             found.append((display(path), node.lineno, "long-function", f"{node.name} ({span} lines)"))
     return found, longest
+
+
+def capped(path: Path) -> bool:
+    """True for a file inside one of the packages held to the module ceiling."""
+    return path.parent.name in CAPPED_PACKAGES
+
+
+def check_module_size(path: Path, source: str) -> list[tuple[str, int, str, str]]:
+    """A module in a capped package stays under the ceiling, so its entry point stays readable."""
+    if not capped(path):
+        return []
+    lines = source.count("\n") + (0 if source.endswith("\n") else 1)
+    if lines <= MAX_MODULE_LINES:
+        return []
+    return [(display(path), 1, "long-module",
+             f"{lines} lines (>{MAX_MODULE_LINES}); split it into a package")]
 
 
 def logical_line_columns(source: str) -> list[tuple[int, int]]:
@@ -159,6 +181,8 @@ def main() -> int:
         longest = max(longest, longest_here)
         violations.extend(length_findings)
 
+        violations.extend(check_module_size(path, source))
+
         indent_findings = check_indentation(path, source)
         if indent_findings:
             indent_files.add(path)
@@ -180,6 +204,7 @@ def main() -> int:
           f"{len(indent_files)} files with non-4-space indent, "
           f"{count('long-comment-block')} long comment blocks, "
           f"{count('bare-generic-import')} bare-name imports, "
+          f"{count('long-module')} modules over {MAX_MODULE_LINES} lines, "
           f"{count('shared-helper-count')} shared-helper problems")
     bad = bool(violations)
     print("python-shape: fail" if bad else "python-shape: pass")

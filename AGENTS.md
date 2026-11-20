@@ -62,13 +62,15 @@ two-line `## Status\n<value>` form.
   _SPEC_TEMPLATE.md      ← symlink → ../.cursor/skills/spec-writing/references/spec-template.md
   _BUG_SPEC_TEMPLATE.md  ← symlink → ../.cursor/skills/spec-writing/references/bug-spec-template.md
   _JOURNAL_TEMPLATE.md
-  tools/        ← every command and module, grouped by responsibility; commands install flat into ~/.agent/bin/
+  tools/        ← every command and module, grouped by responsibility; `kind: command` installs flat into ~/.agent/bin/
     lib/        ← `.agent/tools/lib/` shared helpers: files.py (atomic_write, read_json), git.py (run_git, gh), cli.py
-    task/       ← task state, guidance context, worktrees, and the task_status.py status contract
-    review/     ← hunks, layer maps, findings, packages, PR threads, and the e2e client
-    memory/     ← crew-mem.py plus its memory_store/units/recall/maintenance modules, and the mem.py wrapper
-    evals/      ← evaluation inspection and comparison
-    maintenance/← crew-lint.py repository validation
+    task/       ← crew-ls.py over task_state/task_resolve/task_report/task_gates/task_artifacts/task_typed_tests,
+                  plus the task_status.py status contract, guidance context, and worktrees
+    review/     ← crew-review-findings.py, crew-review-hunks.py, crew-assemble-packages.py, crew-pr-actions.py,
+                  crew-nightshift-e2e.py over the review_* modules, and crew-diff.sh
+    memory/     ← crew-mem.py plus its memory_store/units/recall/maintenance modules
+    evals/      ← crew-evals-compare.py over evals_query/evals_report/evals_diagnose/evals_sources, and crew-evals-inspect.py
+    maintenance/← crew-lint.py over one lint_* module per family (catalog, naming, prompts, references, progress, budget)
     tools.json, TOOLS.md, requirements.txt  ← the catalog, the naming standard, the dependency note
 install.sh      ← creates symlinks from ~/.cursor/, ~/.claude/, ~/.agent/tools/ → this repo
 ```

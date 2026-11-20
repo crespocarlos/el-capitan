@@ -404,7 +404,7 @@ python3 "$ls_tool" --mark-done "$tasks/reviewed-ancestor" --pr-url x --branch ma
 test "$(status_of reviewed-ancestor)" = DONE
 
 bad_tools="$home/bad-tools"; mkdir -p "$bad_tools"
-cp "$ls_tool" "$root/.agent/tools/task/crew-progress.py" "$root/.agent/tools/task/task_status.py" "$bad_tools/"
+cp "$ls_tool" "$root"/.agent/tools/task/task_*.py "$root/.agent/tools/task/crew-progress.py" "$bad_tools/"
 printf '{bad' > "$bad_tools/transitions.json"
 python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" >/dev/null
 fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile

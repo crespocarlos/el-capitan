@@ -40,27 +40,67 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
   letting one link silently shadow the other. Tools resolve their siblings from
   `Path(__file__).resolve()`, which follows the installed symlink back into the repository.
 
-| Directory | Commands | Modules (imported, not run) | Purpose |
-| --- | --- | --- | --- |
-| `lib/` | — | `files.py`, `git.py`, `cli.py` | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py` | Guidance context, task state, validation, worktrees, and artifacts |
-| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
-| `review/` (deprecated name) | `pr-review-actions.py` | — | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
-| `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | — | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py` | `memory_store.py`, `memory_units.py`, `memory_recall.py`, `memory_maintenance.py` | Durable units and immutable observations |
-| `memory/` (deprecated name) | `mem.py` | — | Renamed to `crew-mem.py`; wrapper kept for one release cycle |
-| `maintenance/` | `crew-lint.py` | — | Repository validation |
-| root | `tools.json`, `TOOLS.md`, `requirements.txt` | — | The catalog and the dependency note |
+| Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
+| --- | --- | --- | --- | --- |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py` | `transitions.json` | Guidance context, task state, resolution, gates, worktrees |
+| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
+| `memory/` | `crew-mem.py` | `memory_store.py`, `memory_units.py`, `memory_recall.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
+| `maintenance/` | `crew-lint.py` | `lint_catalog.py`, `lint_naming.py`, `lint_prompts.py`, `lint_references.py`, `lint_progress.py`, `lint_budget.py`, `lint_files.py` | — | Repository validation, one module per lint family |
+| `lib/` | — | `files.py`, `git.py`, `cli.py` | — | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
+| root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
-`crew-mem.py` and `crew-review-findings.py` are argparse entry points over their modules: each parses the
-command line and dispatches, and holds no command logic. Modules import each other by their
-namespaced name in dependency order (`memory_store` → `memory_units` → `memory_recall` →
-`memory_maintenance`, and `review_findings` → `review_personas`/`review_layers` → `review_report`),
-so a module never imports back into one that imports it. A hyphenated entry point cannot be a
-module, so it puts its own directory and `.agent/tools` on `sys.path` once, which is also what makes
-`lib` importable. Both entry points re-export the names their public contract names, so
-`crew-assemble-packages.py` and the tests can keep importing them from the command file rather than
-reaching into a private module.
+The table is grouped by `kind`, which is what the manifest declares: a row's Commands column is
+every `kind: command` entry in that directory, so `install.sh` links exactly those basenames and
+nothing else. The old names still appear in `tools.json` as wrappers — see
+[Deprecated names](#deprecated-names).
+
+### Deprecated names
+
+Every renamed command keeps a wrapper at its old basename for one release cycle. Each prints one
+stderr line and execs the replacement, and each is cataloged as `kind: command`,
+`status: deprecated`, with a `replacement` field. `evals/tools/test_command_names.py` asserts
+output parity, so a wrapper that drops a flag or changes an exit code fails the gate.
+
+| Old basename | Replacement | Directory |
+| --- | --- | --- |
+| `agent-context.py` | `crew-agent-context.py` | `task/` |
+| `default-branch.sh` | `crew-default-branch.sh` | `task/` |
+| `log-metric.py` | `crew-metric.py` | `task/` |
+| `log-progress.py` | `crew-progress.py` | `task/` |
+| `manage-worktree.py` | `crew-worktree.py` | `task/` |
+| `resolve-task-dir.py` | `crew-resolve-task-dir.py` | `task/` |
+| `task-context.py` | `crew-task-context.py` | `task/` |
+| `review-findings.py` | `crew-review-findings.py` | `review/` |
+| `review-hunks.py` | `crew-review-hunks.py` | `review/` |
+| `assemble-packages.py` | `crew-assemble-packages.py` | `review/` |
+| `nightshift-e2e.py` | `crew-nightshift-e2e.py` | `review/` |
+| `pr-review-actions.py` | `crew-pr-actions.py` | `review/` |
+| `get-diff.sh` | `crew-diff.sh` | `review/` |
+| `evals-compare.py` | `crew-evals-compare.py` | `evals/` |
+| `evals-inspect.py` | `crew-evals-inspect.py` | `evals/` |
+| `mem.py` | `crew-mem.py` | `memory/` |
+
+`task-env.sh` is the one command with no `crew-` prefix and no wrapper to retire: it is sourced, so
+`source` must find a real file at that exact path.
+
+`crew-mem.py`, `crew-review-findings.py`, `crew-ls.py`, `crew-task-context.py`, `crew-evals-compare.py`,
+and `crew-lint.py` are argparse entry points over their modules: each parses the command line and
+dispatches, and holds no command logic. Modules import each other by their namespaced name in
+dependency order (`memory_store` → `memory_units` → `memory_recall` → `memory_maintenance`;
+`review_findings` → `review_personas`/`review_layers` → `review_report`; `task_state` →
+`task_resolve`/`task_typed_tests` → `task_gates`/`task_report`/`task_artifacts`; `evals_query` →
+`evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_naming`/`lint_budget` →
+`lint_catalog`/`lint_prompts`/`lint_references` → `lint_progress`), so a module never imports back
+into one that imports it. A hyphenated entry point cannot be a module, so it puts its own directory
+and `.agent/tools` on `sys.path` once, which is also what makes `lib` importable. The entry points
+re-export the names their public contract names, so `crew-assemble-packages.py` and the tests can
+keep importing them from the command file rather than reaching into a private module.
+
+The one structural rule the split enforces: no module in `task/`, `maintenance/`, or `evals/`
+exceeds 200 lines (`evals/tools/test_python_shape.py` reports `long-module`), and the
+`crew-lint.py` entry point stays under 120 because each lint family lives in its own `lint_*`
+module.
 
 ## Contracts
 
@@ -78,14 +118,18 @@ reaching into a private module.
   `CREW_TASK_STATE` (`ok`, `none`, `error`). Skills source it instead of copying the resolver block.
   Gates that require a task must abort on `error` rather than treating it as `none`.
 - `crew-task-context.py` is the task-artifact reader. It composes `crew-resolve-task-dir.py` with the task
-  artifacts listed in `ARTIFACTS`, honoring `CREW_TASK_DIR` and `--task-dir` before resolving so it
+  artifacts listed in `ARTIFACTS` (`task_artifacts.py`), honoring `CREW_TASK_DIR` and `--task-dir`
+  before resolving so it
   cannot disagree with the shell's cached `$TASK_DIR`. It returns exit 0 with `task.found: false`
   when no task matches; resolver failures keep their nonzero exit, and resolver warnings reach
   stderr. `--artifacts` selects a subset and `--max-chars` bounds each artifact, keeping the tail for
   append-only logs and for reports whose identity fields are appended last. Agents and skills use it
   for read-side task context; write-side state still goes through `task-env.sh` and `$TASK_DIR`.
 - `crew-ls.py --status-file SPEC.md` is the single reader for the `## Status` contract, implemented
-  in `task_status.py`; hooks and other tools import it and must not re-implement it.
+  in `task_status.py`; hooks and other tools import it and must not re-implement it. The listing and
+  the `--reconcile` report live in `task_report.py`, and every transition gate — `--mark-approved`,
+  `--mark-implementing`, `--mark-done` — lives in `task_gates.py`, so a refused transition's message
+  is defined beside the check that produced it.
 - `crew-review-findings.py` records two optional fields on a finding — `kind` (what sort of defect: its
   values are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
   `other`) and `validation` (one sentence on what a `verified: true` check read and concluded, required
@@ -144,7 +188,12 @@ reaching into a private module.
   deletes the local branch with `git branch -d` and keeps unmerged ones; merged branches with a live
   remote are left to `crew cleanup`.
 - The Elasticsearch tools are read-only. `crew-evals-inspect.py` and `crew-evals-compare.py` use `ES_URL`,
-  plus `ES_API_KEY` or `ES_USER`/`ES_PASS`.
+  plus `ES_API_KEY` or `ES_USER`/`ES_PASS`. `evals_query.py` owns that access for the compare tool
+  (the HTTP call and the paged score/trace queries), `evals_report.py` the printed tables and the
+  per-trace summary, `evals_diagnose.py` the sign test and the change-attribution bundle, and
+  `evals_sources.py` the suite lookup and changed-path classification. `evals/compare_run.py`
+  imports the compare tool by path and reads `common_prefix`, `sign_test_pvalue`, and
+  `classify_paths` from it, which is why the entry point re-exports them.
 - The repository is standard-library-only. `requirements.txt` documents that deliberate absence of
   third-party dependencies.
 
