@@ -178,6 +178,30 @@
   ],
   "modules": [
     {
+      "name": "files.py",
+      "dir": "lib",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by memory and review modules",
+      "smoke": "imported by memory and review modules"
+    },
+    {
+      "name": "git.py",
+      "dir": "lib",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by memory and review modules",
+      "smoke": "imported by memory and review modules"
+    },
+    {
+      "name": "cli.py",
+      "dir": "lib",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by command entry points",
+      "smoke": "imported by command entry points"
+    },
+    {
       "name": "task_status.py",
       "dir": "task",
       "category": "task",
@@ -186,7 +210,7 @@
       "smoke": "--help"
     },
     {
-      "name": "store.py",
+      "name": "memory_store.py",
       "dir": "memory",
       "category": "memory",
       "owner": "crew-memory",
@@ -194,7 +218,7 @@
       "smoke": "imported by crew-mem.py"
     },
     {
-      "name": "units.py",
+      "name": "memory_units.py",
       "dir": "memory",
       "category": "memory",
       "owner": "crew-memory",
@@ -202,7 +226,7 @@
       "smoke": "imported by crew-mem.py"
     },
     {
-      "name": "recall.py",
+      "name": "memory_recall.py",
       "dir": "memory",
       "category": "memory",
       "owner": "crew-memory",
@@ -210,7 +234,7 @@
       "smoke": "imported by crew-mem.py"
     },
     {
-      "name": "maintenance.py",
+      "name": "memory_maintenance.py",
       "dir": "memory",
       "category": "memory",
       "owner": "crew-memory",
@@ -218,7 +242,7 @@
       "smoke": "imported by crew-mem.py"
     },
     {
-      "name": "findings.py",
+      "name": "review_findings.py",
       "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",
@@ -226,7 +250,7 @@
       "smoke": "imported by review-findings.py"
     },
     {
-      "name": "personas.py",
+      "name": "review_personas.py",
       "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",
@@ -234,7 +258,7 @@
       "smoke": "imported by review-findings.py"
     },
     {
-      "name": "layers.py",
+      "name": "review_layers.py",
       "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",
@@ -242,7 +266,7 @@
       "smoke": "imported by review-findings.py"
     },
     {
-      "name": "report.py",
+      "name": "review_report.py",
       "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",

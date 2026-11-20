@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Emit the resolved crew task state and bounded task artifact contents."""
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -32,7 +34,7 @@ ARTIFACT_KEYS = {key for _, key, _ in ARTIFACTS}
 DEFAULT_MAX_CHARS = 12_000
 
 
-def resolve_task(args):
+def resolve_task(args: argparse.Namespace) -> tuple[dict | None, int]:
     """Return (resolved task JSON, exit code).
 
     `--task-dir`, then the cached `CREW_TASK_DIR`, then a fresh resolution. An explicit
@@ -79,7 +81,7 @@ def resolve_task(args):
         return None, 2
 
 
-def artifact_entry(path, key, max_chars):
+def artifact_entry(path: Path, key: str, max_chars: int) -> dict:
     try:
         info = path.stat()
     except FileNotFoundError:
@@ -102,7 +104,7 @@ def artifact_entry(path, key, max_chars):
     return entry
 
 
-def markdown_context(context):
+def markdown_context(context: dict) -> str:
     task = context["task"]
     if not task["found"]:
         return "Task context: no pipeline task matches this repository and branch."
@@ -131,7 +133,47 @@ def markdown_context(context):
     return "\n".join(lines)
 
 
-def main():
+def parse_artifact_selection(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str]:
+    """The artifact keys this run includes, or an argparse error naming the bad input."""
+    if args.max_chars < 1:
+        parser.error("--max-chars must be at least 1")
+    if args.artifacts:
+        requested = [key.strip() for key in args.artifacts.split(",") if key.strip()]
+        if not requested:
+            parser.error("--artifacts selected no keys")
+    else:
+        requested = [key for _, key, _ in ARTIFACTS]
+    unknown = sorted(set(requested) - ARTIFACT_KEYS)
+    if unknown:
+        parser.error(f"unknown artifact keys: {', '.join(unknown)}")
+    return requested
+
+
+def build_context(task_dir: str | None, resolved: dict, requested: list[str],
+                  max_chars: int) -> dict:
+    """The emitted record: the task identity, the budget, and each requested artifact."""
+    context = {
+        "task": {
+            "found": bool(task_dir),
+            "directory": task_dir,
+            "slug": resolved.get("slug"),
+            "status": resolved.get("status"),
+            "remote": resolved.get("remote"),
+            "branch": resolved.get("branch"),
+        },
+        "max_chars": max_chars,
+        "artifacts": {key: {"state": "absent"} for key in requested},
+    }
+    if task_dir:
+        directory = Path(task_dir)
+        context["artifacts"] = {
+            key: artifact_entry(directory / name, key, max_chars)
+            for name, key, _ in ARTIFACTS if key in requested
+        }
+    return context
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Emit resolved crew task status and bounded task artifact contents."
     )
@@ -151,41 +193,11 @@ def main():
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of Markdown")
     args = parser.parse_args()
-    if args.max_chars < 1:
-        parser.error("--max-chars must be at least 1")
-    if args.artifacts:
-        requested = [key.strip() for key in args.artifacts.split(",") if key.strip()]
-        if not requested:
-            parser.error("--artifacts selected no keys")
-    else:
-        requested = [key for _, key, _ in ARTIFACTS]
-    unknown = sorted(set(requested) - ARTIFACT_KEYS)
-    if unknown:
-        parser.error(f"unknown artifact keys: {', '.join(unknown)}")
-
+    requested = parse_artifact_selection(args, parser)
     resolved, exit_code = resolve_task(args)
     if exit_code:
         return exit_code
-    task_dir = resolved.get("task_dir")
-    context = {
-        "task": {
-            "found": bool(task_dir),
-            "directory": task_dir,
-            "slug": resolved.get("slug"),
-            "status": resolved.get("status"),
-            "remote": resolved.get("remote"),
-            "branch": resolved.get("branch"),
-        },
-        "max_chars": args.max_chars,
-        "artifacts": {key: {"state": "absent"} for key in requested},
-    }
-    if task_dir:
-        directory = Path(task_dir)
-        context["artifacts"] = {
-            key: artifact_entry(directory / name, key, args.max_chars)
-            for name, key, _ in ARTIFACTS if key in requested
-        }
-
+    context = build_context(resolved.get("task_dir"), resolved, requested, args.max_chars)
     print(json.dumps(context, indent=2) if args.json else markdown_context(context))
     return 0
 

@@ -20,6 +20,8 @@ Usage (crew-cleanup — all matches for a specific worktree's remote+branch):
   mapfile -t DIRS < <(~/.agent/bin/resolve-task-dir.py \\
     --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all 2>/dev/null || true)
 """
+from __future__ import annotations
+
 import argparse
 import glob
 import json
@@ -37,32 +39,24 @@ for _dir in (Path(__file__).resolve().parent,):
 from task_status import read_status  # noqa: E402  shared `## Status` contract
 
 
-def git_output(args):
+def git_output(args: list[str]) -> str:
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
 
 
-def read_spec_status(spec_path):
+def read_spec_status(spec_path: str | Path) -> str | None:
     """Delegate to the shared contract so hooks and tools cannot diverge."""
     return read_status(spec_path)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Resolve TASK_DIR for a repo+branch via .task-id reverse lookup."
-    )
-    parser.add_argument("--remote", default="", help="Override git remote URL")
-    parser.add_argument("--branch", default="", help="Override git branch name")
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Return every matching dir (one per line) instead of the single best match",
-    )
-    parser.add_argument("--json", action="store_true", help="Emit structured task state")
-    args = parser.parse_args()
+def resolve_context(args: argparse.Namespace) -> tuple[str, str]:
+    """The remote and branch to match on, from the flags or the current git context.
 
+    An unresolvable remote or a detached HEAD is a broken pipeline state, not "no task": the
+    caller aborts on exit 1 rather than silently taking the no-task path.
+    """
     if args.remote:
         current_remote = args.remote
     else:
@@ -78,10 +72,17 @@ def main():
         if not current_branch:
             print("Not on a branch; crew commands require an active branch.", file=sys.stderr)
             sys.exit(1)
+    return current_remote, current_branch
 
+
+def matching_tasks(current_remote: str, current_branch: str) -> list[tuple[str, str]]:
+    """Every `(created_at, task_dir)` whose `.task-id` matches this remote and branch.
+
+    A task is written on one branch and implemented on another, so either recorded branch
+    matches; matching only `branch` stranded the drafting checkout after implementation.
+    """
     tasks_glob = os.path.expanduser("~/.agent/tasks/*/.task-id")
     matches = []
-
     for task_id_file in glob.glob(tasks_glob):
         try:
             with open(task_id_file) as f:
@@ -90,17 +91,89 @@ def main():
             print(f"Warning: malformed .task-id at {task_id_file} — skipping.", file=sys.stderr)
             continue
 
-        file_remote = data.get("repo_remote_url", "")
-        # A task is written on one branch and implemented on another, so match either;
-        # matching only `branch` stranded the drafting checkout after implementation.
         task_branches = {data.get("branch", "")}
         if data.get("spec_branch"):
             task_branches.add(data["spec_branch"])
+        if data.get("repo_remote_url", "") == current_remote and current_branch in task_branches:
+            matches.append((data.get("created_at", ""), str(Path(task_id_file).parent)))
+    return matches
 
-        if file_remote == current_remote and current_branch in task_branches:
-            created_at = data.get("created_at", "")
-            task_dir = str(Path(task_id_file).parent)
-            matches.append((created_at, task_dir))
+
+def best_match(matches: list[tuple[str, str]]) -> str:
+    """The most recent non-DONE task, else the most recent one.
+
+    A spec whose status cannot be read is not ranked as open: an unreadable spec is unknown,
+    and silently preferring it over a readable open task is worse than choosing by date.
+    """
+    if len(matches) == 1:
+        return matches[0][1]
+    best = None
+    best_date = ""
+    for created_at, task_dir in matches:
+        spec_status = read_spec_status(os.path.join(task_dir, "SPEC.md"))
+        if spec_status is not None and spec_status.lower() != "done":
+            if best is None or created_at > best_date:
+                best = task_dir
+                best_date = created_at
+    if best is None:
+        return sorted(matches, key=lambda entry: entry[0] or "", reverse=True)[0][1]
+    return best
+
+
+def print_matches(args: argparse.Namespace, matches: list[tuple[str, str]],
+                  current_remote: str, current_branch: str) -> None:
+    """The `--all` output: every match, as JSON when asked and one path per line otherwise."""
+    if args.json:
+        print(json.dumps({"remote": current_remote, "branch": current_branch, "matches": [
+            {"task_dir": task_dir, "created_at": created_at,
+             "status": read_spec_status(os.path.join(task_dir, "SPEC.md"))}
+            for created_at, task_dir in matches
+        ]}))
+        return
+    for _, task_dir in matches:
+        print(task_dir)
+
+
+def print_resolved(args: argparse.Namespace, best: str, current_remote: str,
+                   current_branch: str) -> None:
+    """The single-match output, as a structured record when `--json` is asked."""
+    if not args.json:
+        print(best)
+        return
+    metadata_path = Path(best) / ".task-id"
+    try:
+        metadata = json.loads(metadata_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        metadata = {}
+    print(json.dumps({
+        "task_dir": best, "remote": current_remote, "branch": current_branch,
+        "status": read_spec_status(os.path.join(best, "SPEC.md")),
+        "slug": metadata.get("slug"), "created_at": metadata.get("created_at"),
+        "has_spec": (Path(best) / "SPEC.md").is_file(),
+        "has_report": (Path(best) / "REPORT.md").is_file(),
+        "has_review": (Path(best) / "REVIEW.md").is_file(),
+    }))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Resolve TASK_DIR for a repo+branch via .task-id reverse lookup."
+    )
+    parser.add_argument("--remote", default="", help="Override git remote URL")
+    parser.add_argument("--branch", default="", help="Override git branch name")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Return every matching dir (one per line) instead of the single best match",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit structured task state")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    current_remote, current_branch = resolve_context(args)
+    matches = matching_tasks(current_remote, current_branch)
 
     if not matches:
         if args.json:
@@ -108,67 +181,21 @@ def main():
                               "status": None, "matches": []}))
         else:
             print("")
-        sys.exit(0)
+        return 0
 
     if args.all:
-        if args.json:
-            print(json.dumps({"remote": current_remote, "branch": current_branch, "matches": [
-                {"task_dir": task_dir, "created_at": created_at,
-                 "status": read_spec_status(os.path.join(task_dir, "SPEC.md"))}
-                for created_at, task_dir in matches
-            ]}))
-        else:
-            for _, task_dir in matches:
-                print(task_dir)
-        sys.exit(0)
+        print_matches(args, matches, current_remote, current_branch)
+        return 0
 
-    if len(matches) == 1:
-        best = matches[0][1]
-    else:
-        best = None
-
-        # Multiple matches: prefer non-DONE, then most recent created_at. A spec whose
-        # status cannot be read must not be ranked as open.
-        best_date = ""
-        for created_at, task_dir in matches:
-            spec_path = os.path.join(task_dir, "SPEC.md")
-            spec_status = read_spec_status(spec_path)
-            if spec_status is not None and spec_status.lower() != "done":
-                date = created_at
-                if best is None or date > best_date:
-                    best = task_dir
-                    best_date = date
-
-    if best is None:
-        # All are DONE — pick most recent by created_at
-        def sort_key(entry):
-            return entry[0] or ""
-
-        matches_sorted = sorted(matches, key=sort_key, reverse=True)
-        best = matches_sorted[0][1]
-
+    best = best_match(matches)
     if len(matches) > 1:
         print(
             f"Multiple tasks found for this repo+branch. Using: {best} (most recent non-DONE).",
             file=sys.stderr,
         )
-    if args.json:
-        metadata_path = Path(best) / ".task-id"
-        try:
-            metadata = json.loads(metadata_path.read_text())
-        except (OSError, json.JSONDecodeError):
-            metadata = {}
-        print(json.dumps({
-            "task_dir": best, "remote": current_remote, "branch": current_branch,
-            "status": read_spec_status(os.path.join(best, "SPEC.md")),
-            "slug": metadata.get("slug"), "created_at": metadata.get("created_at"),
-            "has_spec": (Path(best) / "SPEC.md").is_file(),
-            "has_report": (Path(best) / "REPORT.md").is_file(),
-            "has_review": (Path(best) / "REVIEW.md").is_file(),
-        }))
-    else:
-        print(best)
+    print_resolved(args, best, current_remote, current_branch)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

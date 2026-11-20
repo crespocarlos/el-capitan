@@ -139,19 +139,13 @@ def read_config(review_dir: pathlib.Path, config: pathlib.Path | None) -> dict:
     return read_json(path, "the run config")
 
 
-def guidance_for(persona: str, guidance: dict, config: dict) -> tuple[str, dict]:
+def narrow_guidance(persona: str, guidance: dict, config: dict) -> tuple[str, dict]:
     """Repository guidance, optionally narrowed to the sections a lens uses, plus a report.
 
-    `AGENTS.md` is identical for every persona and mostly describes concerns one lens never judges:
-    Code Style Guidelines belong to Code Quality, Data model to Architecture and Product Flow, and the
-    CI section to none of them. Narrowing is opt-in through `guidance_keep` in `assemble.json`, keyed
-    by persona and listing level-2 heading prefixes.
-
-    Narrowing is a judgement the tool cannot verify: a lens given the wrong sections silently loses a
-    rule it needed. Three things bound that risk. A persona with no entry, or with `"*"`, keeps the
-    whole file. The text before the first heading is always kept. And every dropped heading is
-    reported, so the run prints what each package did not receive — a silent cut is the failure mode,
-    not a large package.
+    Narrowing is opt-in through `guidance_keep` in `assemble.json`, keyed by persona and listing
+    level-2 heading prefixes. The text before the first heading is always kept, a persona with no
+    entry or `"*"` keeps the whole file, and every dropped heading is reported: a lens given the
+    wrong sections silently loses a rule it needed, so a silent cut is the failure mode here.
     """
     keep = (config.get("guidance_keep") or {}).get(persona)
     out: list[str] = []
@@ -165,20 +159,7 @@ def guidance_for(persona: str, guidance: dict, config: dict) -> tuple[str, dict]
             report["kept"][path] = "*"
             report["dropped"][path] = []
             continue
-        body_lines: list[str] = []
-        kept_headings: list[str] = []
-        dropped_headings: list[str] = []
-        dropping = False
-        for line in content.splitlines():
-            if line.startswith("## "):
-                heading = line[3:].strip()
-                matched = [prefix for prefix in keep if heading.startswith(prefix)]
-                used.update(matched)
-                dropping = not matched
-                (dropped_headings if dropping else kept_headings).append(heading)
-            if not dropping:
-                body_lines.append(line)
-        body = "\n".join(body_lines).strip()
+        body, kept_headings, dropped_headings = keep_sections(content, keep, used)
         if body:
             out.append(f"## From `{path}`\n\n{body}\n\n")
         report["kept"][path] = kept_headings
@@ -186,13 +167,36 @@ def guidance_for(persona: str, guidance: dict, config: dict) -> tuple[str, dict]
     if keep and "*" not in keep:
         report["unmatched"] = [prefix for prefix in keep if prefix not in used]
         if report["unmatched"]:
-            # A keep-list naming a section that does not exist drops everything, and the package then
-            # looks assembled. Refuse instead: this is the exact silent loss narrowing must not have.
+            # A keep-list naming a section that does not exist drops everything, and the package
+            # then looks assembled. Refuse instead: this is the exact silent loss narrowing must
+            # not have.
             raise ValueError(
                 f"guidance_keep for {persona} names no section in any guidance file: "
                 f"{', '.join(report['unmatched'])}. Available: {', '.join(report['available'][:20])}"
             )
     return "".join(out), report
+
+
+def keep_sections(content: str, keep: list[str], used: set[str]) -> tuple[str, list[str], list[str]]:
+    """The kept body, kept headings, and dropped headings for one guidance file.
+
+    A level-2 heading switches inclusion on or off for the lines under it; headings that matched
+    a keep prefix are recorded in `used` so an unmatched prefix can be reported by the caller.
+    """
+    body_lines: list[str] = []
+    kept_headings: list[str] = []
+    dropped_headings: list[str] = []
+    dropping = False
+    for line in content.splitlines():
+        if line.startswith("## "):
+            heading = line[3:].strip()
+            matched = [prefix for prefix in keep if heading.startswith(prefix)]
+            used.update(matched)
+            dropping = not matched
+            (dropped_headings if dropping else kept_headings).append(heading)
+        if not dropping:
+            body_lines.append(line)
+    return "\n".join(body_lines).strip(), kept_headings, dropped_headings
 
 
 def common(review_dir: pathlib.Path, config: dict, persona: str) -> tuple[str, dict]:
@@ -215,7 +219,7 @@ def common(review_dir: pathlib.Path, config: dict, persona: str) -> tuple[str, d
         guidance = json.loads(guidance_path.read_text(encoding="utf-8")).get("files", {})
     else:
         guidance = {}
-    guidance_block, report = guidance_for(persona, guidance, config)
+    guidance_block, report = narrow_guidance(persona, guidance, config)
     parts.append(guidance_block)
     parts.append("---\n\n# Repo memory\n\n(untrusted; code, docs and user instructions win)\n\n")
     memory_path = review_dir / "mem.md"
@@ -406,48 +410,39 @@ def build(persona: str, review_dir: pathlib.Path, config: dict, shared: str,
     return "".join(parts), report
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Compose one reviewer context package per persona from a review run's artifacts.",
-        epilog="Per-run judgement comes from assemble.json in the review directory; see the module "
-               "docstring for every key.",
-    )
-    parser.add_argument("review_dir", type=pathlib.Path, help="<task>/review/<timestamp>")
-    parser.add_argument("--config", type=pathlib.Path,
-                        help="config file, default <review_dir>/assemble.json")
-    args = parser.parse_args(argv)
-    review_dir = args.review_dir.resolve()
+def check_inputs(review_dir: pathlib.Path, config: dict) -> str:
+    """A missing prerequisite or a PR-mode leak, as an error message; "" when the run may proceed.
+
+    A PR review reads only the PR head, and both extras come from the local git index, so a PR
+    package carrying them would hand a persona checkout code the mode forbids, unlabelled.
+    """
     for required in ("package.diff", "hunks.index.md"):
         if not (review_dir / required).is_file():
-            print(f"assemble-packages: {review_dir} has no {required}; run review-hunks.py first",
-                  file=sys.stderr)
-            return 2
-    config = read_config(review_dir, args.config.resolve() if args.config else None)
-    # A PR review reads only the PR head. Both extras below come from the local git index, so a PR
-    # package carrying them would hand a persona checkout code the mode forbids, unlabelled.
+            return f"{review_dir} has no {required}; run review-hunks.py first"
     if config.get("mode_kind") == "pr":
         leaked = [key for key in ("consumers", "prompt_files") if config.get(key)]
         if leaked:
-            print(f"assemble-packages: {', '.join(leaked)} read the local git index, which PR mode "
-                  "forbids; fetch those excerpts at the PR head and put them in the dispatch prompt",
-                  file=sys.stderr)
-            return 2
-    hunks_json = None
-    hunks_path = review_dir / "hunks.json"
-    if hunks_path.is_file():
-        hunks_json = read_json(hunks_path, "the hunk index")
-    try:
-        # Build every package before writing any: a refusal on persona four must not leave personas
-        # one to three written beside four stale ones from an earlier run, which is a package set
-        # nobody can tell apart from a complete one.
-        assembled = []
-        for persona in PERSONAS:
-            shared, guidance_report = common(review_dir, config, persona)
-            content, report = build(persona, review_dir, config, shared, hunks_json)
-            assembled.append((persona, content, report, guidance_report))
-    except ValueError as error:
-        print(f"assemble-packages: {error}", file=sys.stderr)
-        return 2
+            return (f"{', '.join(leaked)} read the local git index, which PR mode "
+                    "forbids; fetch those excerpts at the PR head and put them in the dispatch prompt")
+    return ""
+
+
+def assemble_all(review_dir: pathlib.Path, config: dict, hunks_json: dict | None) -> list[tuple]:
+    """Every package, built before any is written.
+
+    A refusal on persona four must not leave personas one to three written beside four stale ones
+    from an earlier run, which is a package set nobody can tell apart from a complete one.
+    """
+    assembled = []
+    for persona in PERSONAS:
+        shared, guidance_report = common(review_dir, config, persona)
+        content, report = build(persona, review_dir, config, shared, hunks_json)
+        assembled.append((persona, content, report, guidance_report))
+    return assembled
+
+
+def write_packages(review_dir: pathlib.Path, assembled: list[tuple]) -> None:
+    """Write each package and print its size plus whatever the run narrowed or sent whole."""
     for persona, content, report, guidance_report in assembled:
         (review_dir / f"{persona}.in.md").write_text(content, encoding="utf-8")
         narrowed = sum(len(v) for v in guidance_report["dropped"].values())
@@ -462,6 +457,32 @@ def main(argv: list[str] | None = None) -> int:
                          + ", ".join(p.split("/")[-1] for p in report["whole"]))
         print(f"{persona:<15} {len(content):>7} bytes"
               + (f"  [{' | '.join(notes)}]" if notes else ""))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Compose one reviewer context package per persona from a review run's artifacts.",
+        epilog="Per-run judgement comes from assemble.json in the review directory; see the module "
+               "docstring for every key.",
+    )
+    parser.add_argument("review_dir", type=pathlib.Path, help="<task>/review/<timestamp>")
+    parser.add_argument("--config", type=pathlib.Path,
+                        help="config file, default <review_dir>/assemble.json")
+    args = parser.parse_args(argv)
+    review_dir = args.review_dir.resolve()
+    config = read_config(review_dir, args.config.resolve() if args.config else None)
+    problem = check_inputs(review_dir, config)
+    if problem:
+        print(f"assemble-packages: {problem}", file=sys.stderr)
+        return 2
+    hunks_path = review_dir / "hunks.json"
+    hunks_json = read_json(hunks_path, "the hunk index") if hunks_path.is_file() else None
+    try:
+        assembled = assemble_all(review_dir, config, hunks_json)
+    except ValueError as error:
+        print(f"assemble-packages: {error}", file=sys.stderr)
+        return 2
+    write_packages(review_dir, assembled)
     return 0
 
 

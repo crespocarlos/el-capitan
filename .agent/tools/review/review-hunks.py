@@ -82,12 +82,86 @@ def new_file(path: str, old_path: str) -> dict:
             "hunkIds": []}
 
 
+def file_status(entry: dict, line: str) -> None:
+    """Record a file-level header line (`new file mode`, `rename from`, `Binary files`, …)."""
+    if line.startswith("new file mode"):
+        entry["status"] = "added"
+    elif line.startswith("deleted file mode"):
+        entry["status"] = "deleted"
+    elif line.startswith("rename from "):
+        entry["status"] = "renamed"
+        entry["oldPath"] = unquote(line[len("rename from "):])
+    elif line.startswith("rename to "):
+        entry["path"] = unquote(line[len("rename to "):])
+    elif line.startswith("Binary files "):
+        entry["status"] = "binary"
+
+
+def open_hunk(line: str, header: re.Match, current: dict, hunks: list[dict]) -> dict:
+    """The hunk a `@@ … @@` line starts, numbered in diff order."""
+    old_no, new_no = int(header.group(1)), int(header.group(3))
+    hunk = {
+        "id": f"h{len(hunks) + 1}",
+        "file": current["path"],
+        "oldFile": current["oldPath"],
+        "header": line[:line.index("@@", 2) + 2],
+        "context": header.group(5) or "",
+        "oldStart": old_no,
+        "newStart": new_no,
+        "additions": 0,
+        "deletions": 0,
+        "lines": [],
+    }
+    hunks.append(hunk)
+    current["hunkIds"].append(hunk["id"])
+    return hunk
+
+
+def hunk_line(hunk: dict, line: str, numbers: dict[str, int]) -> None:
+    """Append one body line to `hunk`, advancing the old and new line counters in `numbers`."""
+    kind = line[:1]
+    if kind == "+":
+        hunk["lines"].append({"t": "+", "s": line[1:], "n": numbers["new"]})
+        numbers["new"] += 1
+        hunk["additions"] += 1
+    elif kind == "-":
+        hunk["lines"].append({"t": "-", "s": line[1:], "o": numbers["old"]})
+        numbers["old"] += 1
+        hunk["deletions"] += 1
+    elif kind == " ":
+        hunk["lines"].append({"t": " ", "s": line[1:], "o": numbers["old"], "n": numbers["new"]})
+        numbers["old"] += 1
+        numbers["new"] += 1
+    elif kind == "\\":
+        hunk["lines"].append({"t": "\\", "s": line[1:]})
+    elif line == "":
+        # Some tools strip the leading space of an empty context line.
+        hunk["lines"].append({"t": " ", "s": "", "o": numbers["old"], "n": numbers["new"]})
+        numbers["old"] += 1
+        numbers["new"] += 1
+
+
+def synthetic_hunks(files: list[dict], hunks: list[dict]) -> None:
+    """Give every file with no textual hunk one id, so it can still be placed in a layer."""
+    for entry in files:
+        if entry["hunkIds"]:
+            continue
+        header = {"binary": "(binary file)", "renamed": "(renamed, no content change)"}.get(
+            entry["status"], "(no textual changes)"
+        )
+        hunk = {"id": f"h{len(hunks) + 1}", "file": entry["path"], "oldFile": entry["oldPath"],
+                "header": header, "context": "", "oldStart": 0, "newStart": 0,
+                "additions": 0, "deletions": 0, "lines": []}
+        hunks.append(hunk)
+        entry["hunkIds"].append(hunk["id"])
+
+
 def parse(diff: str) -> dict:
     files: list[dict] = []
     hunks: list[dict] = []
     current: dict | None = None
     hunk: dict | None = None
-    old_no = new_no = 0
+    numbers = {"old": 0, "new": 0}
 
     lines = diff.split("\n")
     for index, line in enumerate(lines):
@@ -101,73 +175,21 @@ def parse(diff: str) -> dict:
             continue
 
         if hunk is None or not line[:1] in " +-\\":
-            if line.startswith("new file mode"):
-                current["status"] = "added"
-            elif line.startswith("deleted file mode"):
-                current["status"] = "deleted"
-            elif line.startswith("rename from "):
-                current["status"] = "renamed"
-                current["oldPath"] = unquote(line[len("rename from "):])
-            elif line.startswith("rename to "):
-                current["path"] = unquote(line[len("rename to "):])
-            elif line.startswith("Binary files "):
-                current["status"] = "binary"
+            file_status(current, line)
 
         header = HUNK_HEADER.match(line)
         if header:
-            old_no, new_no = int(header.group(1)), int(header.group(3))
-            hunk = {
-                "id": f"h{len(hunks) + 1}",
-                "file": current["path"],
-                "oldFile": current["oldPath"],
-                "header": line[:line.index("@@", 2) + 2],
-                "context": header.group(5) or "",
-                "oldStart": old_no,
-                "newStart": new_no,
-                "additions": 0,
-                "deletions": 0,
-                "lines": [],
-            }
-            hunks.append(hunk)
-            current["hunkIds"].append(hunk["id"])
+            hunk = open_hunk(line, header, current, hunks)
+            numbers = {"old": hunk["oldStart"], "new": hunk["newStart"]}
             continue
 
         if hunk is None:
             continue
-        kind = line[:1]
-        if kind == "+":
-            hunk["lines"].append({"t": "+", "s": line[1:], "n": new_no})
-            new_no += 1
-            hunk["additions"] += 1
-        elif kind == "-":
-            hunk["lines"].append({"t": "-", "s": line[1:], "o": old_no})
-            old_no += 1
-            hunk["deletions"] += 1
-        elif kind == " ":
-            hunk["lines"].append({"t": " ", "s": line[1:], "o": old_no, "n": new_no})
-            old_no += 1
-            new_no += 1
-        elif kind == "\\":
-            hunk["lines"].append({"t": "\\", "s": line[1:]})
-        elif line == "" and index < len(lines) - 1:
-            # Some tools strip the leading space of an empty context line.
-            hunk["lines"].append({"t": " ", "s": "", "o": old_no, "n": new_no})
-            old_no += 1
-            new_no += 1
-
-    # A file whose diff has no hunk is still part of the change and needs an id to be mapped.
-    for entry in files:
-        if entry["hunkIds"]:
+        if line == "" and index >= len(lines) - 1:
             continue
-        header = {"binary": "(binary file)", "renamed": "(renamed, no content change)"}.get(
-            entry["status"], "(no textual changes)"
-        )
-        hunk = {"id": f"h{len(hunks) + 1}", "file": entry["path"], "oldFile": entry["oldPath"],
-                "header": header, "context": "", "oldStart": 0, "newStart": 0,
-                "additions": 0, "deletions": 0, "lines": []}
-        hunks.append(hunk)
-        entry["hunkIds"].append(hunk["id"])
+        hunk_line(hunk, line, numbers)
 
+    synthetic_hunks(files, hunks)
     apply_limits(files, hunks)
     return {"files": files, "hunks": hunks}
 

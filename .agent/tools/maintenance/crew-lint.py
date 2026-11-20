@@ -12,22 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-# Always-on rules are paid by every request in every session, so the cap is a ceiling on
-# per-turn context, not a target.
-#
-# The number is the *larger* of the two harnesses' payloads. Claude Code ignores `alwaysApply` and
-# `globs`, loading CLAUDE.md plus every `@` import whatever its glob says, so an imported glob rule
-# costs it every turn while costing Cursor only on matching files. Measured 2026-11-18 at the
-# maximum: 13,874 tokens — 6,997 of always-on rules, 2,963 AGENTS.md, 990 .claude/CLAUDE.md, and
-# 2,924 of `@`-imported rules that the previous counter missed entirely (it reported 11,225 while
-# Claude Code loaded 13,874).
-#
-# Two corrections produced the rise from 7,500: the counter learned about AGENTS.md and CLAUDE.md,
-# then learned about imports. Neither added a rule — both stopped under-reporting rules that were
-# already loaded. Raise this only with a new measurement recorded here; when the set grows without
-# a new rule to justify it, trim the set instead. The first trim candidates are
-# `crew-orchestrator.mdc` and `crew-router.mdc` (2,819 combined), whose routing and state-machine
-# detail is read once per pipeline step rather than needed on every turn.
+# The always-on ceiling is the larger of the two harnesses' payloads; `lint_budget` measures it.
 MAX_ALWAYS_RULE_TOKENS = 14500
 # Loaded by every request in every session alongside the always-on rules, so they belong in the
 # same budget. `AGENTS.md` arrives through `@AGENTS.md` in CLAUDE.md and through the repo context
@@ -153,6 +138,43 @@ def installed_tool_names(root: Path) -> set[str]:
     return {path.name for path in tool_tree_files(root)}
 
 
+def lint_catalog_entries(
+    root: Path, entries: list, scripts: list, modules: list
+) -> list[tuple[str, int, str, str]]:
+    """Each catalog entry carries the required fields and resolves to an executable file."""
+    findings: list[tuple[str, int, str, str]] = []
+    for listed in (entries, scripts, modules):
+        for entry in listed:
+            name = entry.get("name")
+            required = {"name", "dir", "category", "owner", "help", "smoke"}
+            missing = required - entry.keys()
+            if not isinstance(name, str):
+                findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
+                                 "every catalog entry needs a string name"))
+            elif missing:
+                findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
+                                 f"{name}: missing {', '.join(sorted(missing))}"))
+            else:
+                path = catalog_path(root, entry)
+                if not path.is_file() or not os.access(path, os.X_OK):
+                    findings.append((".agent/tools/tools.json", 1, "cataloged-tool-unavailable",
+                                     f"{name} does not exist or is not executable at "
+                                     f"{rel(root, path)}"))
+    return findings
+
+
+def lint_asset_entries(root: Path, assets: list) -> list[tuple[str, int, str, str]]:
+    """Each declared asset exists at the path its `dir` gives."""
+    findings: list[tuple[str, int, str, str]] = []
+    for asset in assets:
+        name = asset.get("name")
+        path = catalog_path(root, asset)
+        if not path.is_file():
+            findings.append((".agent/tools/tools.json", 1, "cataloged-asset-unavailable",
+                             f"{name} does not exist at {rel(root, path)}"))
+    return findings
+
+
 def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
     """Validate the installed command surface (tools and scripts) without executing it.
 
@@ -187,29 +209,8 @@ def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
             findings.append((rel(root, path), 1, "uncataloged-tool",
                              f"{path.name} is executable but absent from tools.json"))
 
-    for listed in (entries, scripts, modules):
-        for entry in listed:
-            name = entry.get("name")
-            required = {"name", "dir", "category", "owner", "help", "smoke"}
-            missing = required - entry.keys()
-            if not isinstance(name, str):
-                findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
-                                 "every catalog entry needs a string name"))
-            elif missing:
-                findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
-                                 f"{name}: missing {', '.join(sorted(missing))}"))
-            else:
-                path = catalog_path(root, entry)
-                if not path.is_file() or not os.access(path, os.X_OK):
-                    findings.append((".agent/tools/tools.json", 1, "cataloged-tool-unavailable",
-                                     f"{name} does not exist or is not executable at "
-                                     f"{rel(root, path)}"))
-    for asset in assets:
-        name = asset.get("name")
-        path = catalog_path(root, asset)
-        if not path.is_file():
-            findings.append((".agent/tools/tools.json", 1, "cataloged-asset-unavailable",
-                             f"{name} does not exist at {rel(root, path)}"))
+    findings.extend(lint_catalog_entries(root, entries, scripts, modules))
+    findings.extend(lint_asset_entries(root, assets))
     return findings
 
 
@@ -437,7 +438,193 @@ def lint_repo_paths(root: Path, paths: list[Path]) -> list[tuple[str, int, str, 
     return findings
 
 
+def routing_commands(router_text: str) -> set[str]:
+    """The `crew <command>` verbs the router recognizes, from both its table and its prose."""
+    routed = set(re.findall(r"`(crew [^`|]+?)(?:`|\s)", router_text))
+    routed.update(re.findall(r"\|\s*`(crew [^`]+)`", router_text))
+    return {
+        match.group(1)
+        for command in routed
+        if (match := re.match(r"crew\s+([a-z-]+)", command))
+    }
+
+
+def lint_swallowed_calls(
+    name: str, lines: list[str]
+) -> list[tuple[str, int, str, str]]:
+    """Flag a memory or agent command whose failure is hidden by `2>/dev/null` or `|| true`.
+
+    State and gate commands must surface failure; audit logging is the one legitimate exception
+    because it cannot change a pipeline decision. A hook that must never block a session opts out
+    with a `crew-lint: allow-swallow` comment on its own line.
+    """
+    findings: list[tuple[str, int, str, str]] = []
+    for line, value in enumerate(lines, 1):
+        if any(name in value for name in MEMORY_COMMANDS) and (
+            "2>/dev/null" in value or "|| true" in value
+        ):
+            findings.append((name, line, "swallowed-call", "memory command failure is hidden"))
+        if "~/.agent/bin/" in value and "log-metric.py" not in value and (
+            "2>/dev/null" in value or re.search(r"\|\|\s*true", value)
+        ):
+            exempt = "crew-lint: allow-swallow" in value
+            if not exempt and not re.search(r"\|\|\s*(echo|printf|exit)", value):
+                findings.append((name, line, "swallowed-call",
+                                 "agent command failure is hidden"))
+    return findings
+
+
+def lint_document_refs(
+    root: Path, path: Path, text: str, name: str, rules: set[str],
+    agents: set[str], routed_commands: set[str], router: Path,
+) -> list[tuple[str, int, str, str]]:
+    """The per-document references: scripts, rules, agents, routing, frontmatter, references."""
+    findings: list[tuple[str, int, str, str]] = []
+    for match in re.finditer(r"([\w-]+\.mdc)", text):
+        candidate = match.group(1)
+        if candidate not in rules and candidate != path.name:
+            findings.append((name, line_no(text, match.start()), "missing-rule-file",
+                             f"{candidate} is not a rule file"))
+    for match in re.finditer(r"(?:subagent_type:\s*|@)([\w-]+)", text):
+        agent = match.group(1)
+        if agent.startswith("crew-") and agent not in agents:
+            findings.append((name, line_no(text, match.start()), "missing-agent",
+                             f"{agent} is not in .cursor/agents"))
+    if name != "rules/crew-router.mdc":
+        for line, value in enumerate(text.splitlines(), 1):
+            for command in re.findall(r"\bcrew\s+([a-z-]+)", value):
+                if command in {"member", "command", "commands", "triggers", "protocol"}:
+                    continue
+                if command not in routed_commands:
+                    findings.append((name, line, "unrouted-command",
+                                     f"crew {command} has no routing row"))
+    findings.extend(lint_swallowed_calls(name, text.splitlines()))
+    if path.suffix == ".md" and ("/agents/" in name or path.name == "SKILL.md"):
+        if text.startswith("---"):
+            agent_frontmatter = text.split("---", 2)[1]
+            for key in ("name:", "description:"):
+                if key not in agent_frontmatter:
+                    findings.append((name, 1, "bad-frontmatter",
+                                     f"frontmatter lacks {key[:-1]}"))
+        for match in re.finditer(r"\]\((references/[^)#]+)\)", text):
+            target = path.parent / match.group(1)
+            if not target.is_file():
+                findings.append((name, line_no(text, match.start()), "missing-reference",
+                                 f"{match.group(1)} does not exist"))
+    if path != router and name != ".cursor/agents/crew-reviewer.md":
+        for match in re.finditer(r"\|\s*`crew ", text):
+            findings.append((name, line_no(text, match.start()), "routing-drift",
+                             "routing tables belong only in crew-router.mdc"))
+    return findings
+
+
+def lint_installed_names(
+    root: Path, all_files: list[Path], installed_names: set[str]
+) -> list[tuple[str, int, str, str]]:
+    """Every `~/.agent/bin/<name>` reference resolves to a file in the tool tree."""
+    findings: list[tuple[str, int, str, str]] = []
+    for path in all_files:
+        text = path.read_text(errors="replace")
+        name = rel(root, path)
+        for match in re.finditer(r"~/.agent/bin/([\w.-]+)", text):
+            script = match.group(1)
+            if script not in installed_names:
+                findings.append((name, line_no(text, match.start()), "missing-script",
+                                 f"{script} is not in the .agent/tools tree"))
+    return findings
+
+
+def lint_budget(root: Path, all_files: list[Path], rules: set[str]) -> list[tuple[str, int, str, str]]:
+    """The always-on token estimate and the per-file size caps.
+
+    The estimate is the larger of the two harnesses' payloads, not Cursor's `alwaysApply` set
+    alone: Claude Code ignores `alwaysApply` and `globs`, loading CLAUDE.md plus every `@` import
+    whatever its glob says, so an imported glob rule costs that harness every turn. AGENTS.md and
+    `.claude/CLAUDE.md` are always loaded too, so a budget that omits them cannot constrain. The
+    ceiling was measured 2026-11-18 at 13,874 tokens; raise it only with a new measurement, and
+    when the set grows with no new rule to justify it, trim the set instead.
+    """
+    findings: list[tuple[str, int, str, str]] = []
+    rule_dir = root / "rules"
+    always = 0
+    cursor_payload = set()
+    for rule in rule_dir.glob("*.mdc"):
+        text = rule.read_text(errors="replace")
+        if re.search(r"alwaysApply:\s*true", text):
+            cursor_payload.add(rule.name)
+    for name in sorted(cursor_payload | claude_imports(root)):
+        path = rule_dir / name
+        if path.is_file():
+            always += len(path.read_text(errors="replace")) // 4
+    for name in ALWAYS_LOADED_PROJECT_FILES:
+        path = root / name
+        if path.is_file():
+            always += len(path.read_text(errors="replace")) // 4
+    if always > MAX_ALWAYS_RULE_TOKENS:
+        findings.append(("rules", 1, "budget",
+                         f"always-on rules estimate {always} tokens (>{MAX_ALWAYS_RULE_TOKENS})"))
+    for path in all_files:
+        lines = path.read_text(errors="replace").count("\n") + 1
+        if ("/agents/" in rel(root, path) or "/skills/" in rel(root, path)) and lines > 500:
+            findings.append((rel(root, path), 1, "budget", f"{lines} lines (>500)"))
+    for rule in rules:
+        if (root / "rules" / rule).exists() and (root / ".cursor/rules" / rule).exists():
+            findings.append((f"rules/{rule}", 1, "budget",
+                             "rule exists under rules and .cursor/rules"))
+    return findings
+
+
+def rule_names(root: Path) -> set[str]:
+    """The `.mdc` filenames that count as rules, preferring `rules/` when it exists."""
+    rule_dir = root / "rules"
+    if rule_dir.is_dir():
+        return {path.name for path in rule_dir.glob("*.mdc")}
+    return {path.name for path in (root / ".cursor/rules").glob("*.mdc")}
+
+
+def router_path(root: Path) -> Path:
+    """The routing table this repo reads, under either rules layout."""
+    router = root / "rules/crew-router.mdc"
+    return router if router.exists() else root / ".cursor/rules/crew-router.mdc"
+
+
+def lint_hook_registration(root: Path) -> list[tuple[str, int, str, str]]:
+    """Every hook script is named in a settings file, or it never runs."""
+    findings: list[tuple[str, int, str, str]] = []
+    referenced_hooks = ""
+    for config in (root / ".claude/settings.json", root / ".cursor/hooks.template.json"):
+        if config.exists():
+            referenced_hooks += config.read_text(errors="replace")
+    for hook in (root / ".claude/hooks").glob("*.sh"):
+        if hook.name not in referenced_hooks:
+            findings.append((rel(root, hook), 1, "unregistered-hook",
+                             "hook is not registered in a settings file"))
+    return findings
+
+
+def lint_documents(
+    root: Path, all_files: list[Path], installed_names: set[str], rules: set[str]
+) -> list[tuple[str, int, str, str]]:
+    """The per-document checks: stale paths, installed names, references, and hook registration."""
+    findings: list[tuple[str, int, str, str]] = []
+    agents = {path.stem for path in (root / ".cursor/agents").glob("*.md")}
+    router = router_path(root)
+    routed_commands = routing_commands(router.read_text() if router.exists() else "")
+    findings.extend(lint_installed_names(root, all_files, installed_names))
+    for path in all_files:
+        text = path.read_text(errors="replace")
+        name = rel(root, path)
+        for match in re.finditer(r"tasks/(?:\$REPO|<repo>)", text):
+            findings.append((name, line_no(text, match.start()), "stale-task-path",
+                             "use resolve-task-dir.py instead"))
+        findings.extend(lint_document_refs(root, path, text, name, rules, agents,
+                                           routed_commands, router))
+    findings.extend(lint_hook_registration(root))
+    return findings
+
+
 def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
+    """Every check over one repository root; findings are `(path, line, rule, message)` tuples."""
     findings: list[tuple[str, int, str, str]] = []
     findings.extend(lint_tool_catalog(root))
     findings.extend(lint_rule_setup(root))
@@ -454,135 +641,10 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
     findings.extend(lint_edit_discipline(root, all_files))
     docs = [root / name for name in ("README.md", "AGENTS.md") if (root / name).is_file()]
     findings.extend(lint_repo_paths(root, all_files + docs))
-    rule_dir = root / "rules"
-    rules = (
-        {path.name for path in rule_dir.glob("*.mdc")}
-        if rule_dir.is_dir()
-        else {path.name for path in (root / ".cursor/rules").glob("*.mdc")}
-    )
-    agents = {path.stem for path in (root / ".cursor/agents").glob("*.md")}
-    router = root / "rules/crew-router.mdc"
-    if not router.exists():
-        router = root / ".cursor/rules/crew-router.mdc"
-    router_text = router.read_text() if router.exists() else ""
-    routed = set(re.findall(r"`(crew [^`|]+?)(?:`|\s)", router_text))
-    routed.update(re.findall(r"\|\s*`(crew [^`]+)`", router_text))
-    routed_commands = {
-        match.group(1)
-        for command in routed
-        if (match := re.match(r"crew\s+([a-z-]+)", command))
-    }
-
-    for path in all_files:
-        text = path.read_text(errors="replace")
-        name = rel(root, path)
-        for match in re.finditer(r"tasks/(?:\$REPO|<repo>)", text):
-            findings.append((name, line_no(text, match.start()), "stale-task-path",
-                             "use resolve-task-dir.py instead"))
-        for match in re.finditer(r"~/.agent/bin/([\w.-]+)", text):
-            script = match.group(1)
-            if script not in installed_names:
-                findings.append((name, line_no(text, match.start()), "missing-script",
-                                 f"{script} is not in the .agent/tools tree"))
-        for match in re.finditer(r"([\w-]+\.mdc)", text):
-            candidate = match.group(1)
-            if candidate not in rules and candidate != path.name:
-                findings.append((name, line_no(text, match.start()), "missing-rule-file",
-                                 f"{candidate} is not a rule file"))
-        for match in re.finditer(r"(?:subagent_type:\s*|@)([\w-]+)", text):
-            agent = match.group(1)
-            if agent.startswith("crew-") and agent not in agents:
-                findings.append((name, line_no(text, match.start()), "missing-agent",
-                                 f"{agent} is not in .cursor/agents"))
-        for line, value in enumerate(text.splitlines(), 1):
-            if name == "rules/crew-router.mdc":
-                continue
-            for command in re.findall(r"\bcrew\s+([a-z-]+)", value):
-                if command in {"member", "command", "commands", "triggers", "protocol"}:
-                    continue
-                if command not in routed_commands:
-                    findings.append((name, line, "unrouted-command",
-                                     f"crew {command} has no routing row"))
-            if any(name in value for name in MEMORY_COMMANDS) and (
-                "2>/dev/null" in value or "|| true" in value
-            ):
-                findings.append((name, line, "swallowed-call",
-                                 "memory command failure is hidden"))
-            # State and gate commands must surface failure; audit logging is the one
-            # legitimate exception because it cannot change a pipeline decision. A hook
-            # that must never block a session opts out with a `crew-lint: allow-swallow`
-            # comment on its own line.
-            if "~/.agent/bin/" in value and "log-metric.py" not in value and (
-                "2>/dev/null" in value or re.search(r"\|\|\s*true", value)
-            ):
-                exempt = "crew-lint: allow-swallow" in value
-                if not exempt and not re.search(r"\|\|\s*(echo|printf|exit)", value):
-                    findings.append((name, line, "swallowed-call",
-                                     "agent command failure is hidden"))
-        if path.suffix == ".md" and ("/agents/" in name or path.name == "SKILL.md"):
-            if text.startswith("---"):
-                agent_frontmatter = text.split("---", 2)[1]
-                for key in ("name:", "description:"):
-                    if key not in agent_frontmatter:
-                        findings.append((name, 1, "bad-frontmatter",
-                                         f"frontmatter lacks {key[:-1]}"))
-            for match in re.finditer(r"\]\((references/[^)#]+)\)", text):
-                target = path.parent / match.group(1)
-                if not target.is_file():
-                    findings.append((name, line_no(text, match.start()), "missing-reference",
-                                     f"{match.group(1)} does not exist"))
-        if path != router and name != ".cursor/agents/crew-reviewer.md":
-            for match in re.finditer(r"\|\s*`crew ", text):
-                findings.append((name, line_no(text, match.start()), "routing-drift",
-                                 "routing tables belong only in crew-router.mdc"))
-
-    referenced_hooks = ""
-    for config in (root / ".claude/settings.json", root / ".cursor/hooks.template.json"):
-        if config.exists():
-            referenced_hooks += config.read_text(errors="replace")
-    for hook in (root / ".claude/hooks").glob("*.sh"):
-        if hook.name not in referenced_hooks:
-            findings.append((rel(root, hook), 1, "unregistered-hook",
-                             "hook is not registered in a settings file"))
-
+    rules = rule_names(root)
+    findings.extend(lint_documents(root, all_files, installed_names, rules))
     if budget:
-        always = 0
-        # Measure the larger of the two harnesses' payloads, not Cursor's `alwaysApply` set alone.
-        # Claude Code ignores `alwaysApply` and `globs` entirely, loading CLAUDE.md plus its `@`
-        # imports whatever their globs say — so an `@`-imported glob rule costs this harness every
-        # turn while costing Cursor only on matching files. Counting only `alwaysApply: true`
-        # undercounted by 2,649 tokens, which is exactly the blind spot that let the ceiling drift.
-        cursor_payload = set()
-        for rule in rule_dir.glob("*.mdc"):
-            text = rule.read_text(errors="replace")
-            if re.search(r"alwaysApply:\s*true", text):
-                cursor_payload.add(rule.name)
-        claude_payload = claude_imports(root)
-        for name in sorted(cursor_payload | claude_payload):
-            path = rule_dir / name
-            if path.is_file():
-                always += len(path.read_text(errors="replace")) // 4
-        # AGENTS.md and .claude/CLAUDE.md are always loaded too, through `@AGENTS.md` and the
-        # repo context file, so counting only `rules/*.mdc` measured a fraction of the real
-        # per-turn payload: the five rules below it reported 6,997 tokens while the true
-        # always-on set was over 10,000. A budget that omits the two largest files cannot
-        # constrain anything.
-        for name in ALWAYS_LOADED_PROJECT_FILES:
-            path = root / name
-            if path.is_file():
-                always += len(path.read_text(errors="replace")) // 4
-        if always > MAX_ALWAYS_RULE_TOKENS:
-            findings.append(("rules", 1, "budget",
-                             f"always-on rules estimate {always} tokens (>{MAX_ALWAYS_RULE_TOKENS})"))
-        for path in all_files:
-            lines = path.read_text(errors="replace").count("\n") + 1
-            if ("/agents/" in rel(root, path) or "/skills/" in rel(root, path)) and lines > 500:
-                findings.append((rel(root, path), 1, "budget",
-                                 f"{lines} lines (>500)"))
-        for rule in rules:
-            if (root / "rules" / rule).exists() and (root / ".cursor/rules" / rule).exists():
-                findings.append((f"rules/{rule}", 1, "budget",
-                                 "rule exists under rules and .cursor/rules"))
+        findings.extend(lint_budget(root, all_files, rules))
     return findings
 
 

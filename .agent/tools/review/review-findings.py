@@ -2,10 +2,10 @@
 """Normalize review findings, persist review reports, and append outcome records.
 
 This file is the argparse entry point only: parsing, validation, personas, layers, and report
-persistence live in the sibling `findings.py`, `personas.py`, `layers.py`, and `report.py`
-modules. They are imported through a `sys.path` insert because a hyphenated command name cannot
-be a module, and because `Path(__file__).resolve()` follows the installed `~/.agent/bin` symlink
-back to this directory, so the siblings are found from either invocation path.
+persistence live in the sibling `review_findings.py`, `review_personas.py`, `review_layers.py`,
+and `review_report.py` modules. `Path(__file__).resolve()` follows the installed `~/.agent/bin`
+symlink back to this directory, so the siblings and the `lib` package above them are found from
+either invocation path.
 
 Input finding JSON requires title and label; file, line, persona, evidence,
 disposition, reason, and memory_ids are optional. `normalize` canonicalizes
@@ -43,14 +43,16 @@ import json
 import sys
 from pathlib import Path
 
-for _dir in (Path(__file__).resolve().parent,):
-    if str(_dir) not in sys.path:
-        sys.path.insert(0, str(_dir))
+_REVIEW_DIR = Path(__file__).resolve().parent
+_TOOLS_ROOT = _REVIEW_DIR.parent
+for _path in (_TOOLS_ROOT, _REVIEW_DIR):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 # Re-exported deliberately: `assemble-packages.py` imports PERSONAS from this file as the single
 # persona registry, and the contract tests import the classifier and the label pattern to exercise
 # them directly. A caller must not have to know which private module now owns them.
-from findings import (  # noqa: E402,F401
+from review_findings import (  # noqa: E402,F401
     CODE_MODES,
     EMITTED,
     KINDS,
@@ -70,7 +72,7 @@ from findings import (  # noqa: E402,F401
     normalized_title,
     read_findings,
 )
-from layers import (  # noqa: E402,F401
+from review_layers import (  # noqa: E402,F401
     check_coverage,
     check_hunk_refs,
     check_layers,
@@ -79,7 +81,7 @@ from layers import (  # noqa: E402,F401
     layer_coverage,
     validate_map,
 )
-from personas import (  # noqa: E402,F401
+from review_personas import (  # noqa: E402,F401
     ANCHOR_ANYWHERE,
     EXPLORER_FINDING,
     FIX_RESPONSE_FINDING,
@@ -100,12 +102,11 @@ from personas import (  # noqa: E402,F401
     spec_for,
     spec_sections,
 )
-from report import outcome, persist  # noqa: E402,F401
+from review_report import outcome, persist  # noqa: E402,F401
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="command", required=True)
+def add_normalize_parsers(commands) -> None:
+    """`normalize`, `persist`, and `select`: the candidate pipeline's write and dispatch steps."""
     normalize_parser = commands.add_parser("normalize")
     normalize_parser.add_argument("input", type=Path)
     normalize_parser.add_argument("--output", type=Path)
@@ -130,6 +131,10 @@ def main() -> int:
     select_parser.add_argument("--paths", nargs="*", default=[])
     select_parser.add_argument("--contract", action="store_true", help="a spec or PR contract supplies acceptance criteria")
     select_parser.add_argument("--compat", action="store_true", help="the change alters behavior of an existing consumer")
+
+
+def add_map_parsers(commands) -> None:
+    """`coverage` and `validate-map`: the layer map's two gates."""
     coverage_parser = commands.add_parser("coverage")
     coverage_parser.add_argument("--hunks", required=True, type=Path,
                                  help="hunks.json from review-hunks.py")
@@ -140,6 +145,10 @@ def main() -> int:
                                  help="review.json written by crew explain")
     validate_parser.add_argument("--hunks", required=True, type=Path,
                                  help="hunks.json the map was built from")
+
+
+def add_context_parsers(commands) -> None:
+    """`spec-context`, `check-packages`, and `outcome`: the per-persona and audit commands."""
     spec_parser = commands.add_parser("spec-context",
                                       help="print the part of SPEC.md one persona's package carries")
     spec_parser.add_argument("--persona", required=True)
@@ -159,6 +168,14 @@ def main() -> int:
     outcome_parser.add_argument("--outcome", required=True, choices=sorted(OUTCOMES))
     outcome_parser.add_argument("--reason", required=True)
     outcome_parser.add_argument("--memory-id", action="append", default=[])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    add_normalize_parsers(commands)
+    add_map_parsers(commands)
+    add_context_parsers(commands)
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "coverage": coverage, "validate-map": validate_map,

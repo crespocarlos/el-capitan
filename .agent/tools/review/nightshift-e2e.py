@@ -287,31 +287,30 @@ def check(name: str, ok: bool, detail: str, fix: str = "") -> dict:
     return {"check": name, "ok": ok, "detail": detail, "fix": fix if not ok else ""}
 
 
-def doctor(_args: argparse.Namespace) -> int:
-    """Preflight for `crew e2e`, with checks ordered by what actually blocks a run.
-
-    Nothing here is a warning: `crew e2e` starts real e2e runs, so a check that cannot pass
-    must stop the skill. `launchd` and `build_fresh` are the exception, and deliberately so:
-    a server started with `npm run dev` answers and works, so gating on a LaunchAgent would
-    reject a perfectly usable machine. They are reported as notes instead.
-    """
-    root, source = resolve_root()
-    checks: list[dict] = []
-    notes: list[dict] = []
-    checks.append(check("location", root.is_dir(), f"{root} ({source})",
-                        "set NIGHTSHIFT_PR_HELPER_DIR to a nightshift-pr-helper checkout"))
+def location_checks(root: Path, source: str) -> list[dict]:
+    """The checks that need only the checkout path: its existence, its remote, and node_modules."""
+    checks = [check("location", root.is_dir(), f"{root} ({source})",
+                    "set NIGHTSHIFT_PR_HELPER_DIR to a nightshift-pr-helper checkout")]
     if not root.is_dir():
-        print(json.dumps({"root": str(root), "url": base_url(), "ok": False,
-                          "checks": checks, "notes": notes}, indent=2))
-        return 1
-
+        return checks
     remote, why = elastic_remote(root)
     checks.append(check("repo", bool(remote), why or f"{remote} -> {CANONICAL_REMOTE}",
                         f"add the canonical remote: git -C {root} remote add elastic "
                         f"https://github.com/{CANONICAL_REMOTE}"))
+    modules = root / "node_modules"
+    checks.append(check("node_modules", modules.is_dir(), str(modules), f"cd {root} && npm install"))
+    return checks
+
+
+def machine_notes(root: Path, remote: str) -> list[dict]:
+    """Notes about the checkout and the machine: freshness, config, ports, launchd, and build.
+
+    None of these blocks a run. A server started with `npm run dev` answers and works, so gating
+    on a LaunchAgent would reject a usable machine; they are reported so the operator can see them.
+    """
+    notes = []
     fresh, why = helper_up_to_date(root, remote)
-    notes.append(check("helper_up_to_date", fresh, why,
-                       f"cd {root} && git pull {remote}"))
+    notes.append(check("helper_up_to_date", fresh, why, f"cd {root} && git pull {remote}"))
     dupes = duplicate_config_keys(root / "config.local.json")
     notes.append(check("config_duplicate_keys", not dupes,
                        f"duplicate key(s) in config.local.json: {', '.join(sorted(set(dupes)))}"
@@ -319,11 +318,8 @@ def doctor(_args: argparse.Namespace) -> int:
                        "remove the duplicate key(s); the later one silently wins over the earlier one"))
     free, why = ports_status()
     notes.append(check("ports_free", free, why,
-                       f"a process already listens on that port; stop it, or pick a worktree "
+                       "a process already listens on that port; stop it, or pick a worktree "
                        "that is not already using it"))
-    modules = root / "node_modules"
-    checks.append(check("node_modules", modules.is_dir(), str(modules), f"cd {root} && npm install"))
-
     running, why = launchd_state()
     notes.append(check("launchd", running, why or "dev.prhelper.web is loaded",
                        f"cd {root} && npm run launchd:install"))
@@ -333,65 +329,94 @@ def doctor(_args: argparse.Namespace) -> int:
         fresh, why = build_is_fresh(root)
         notes.append(check("build_fresh", fresh, why or "build is newer than HEAD",
                            f"cd {root} && npm run launchd:restart-web"))
+    return notes
 
-    # The queue endpoint is the only read-only proof that the port answers nightshift and
-    # can report its machines. `/api/state` is not used: it advances the queue, which can
-    # start a run this command was never asked to start.
+
+def server_checks(root: Path) -> tuple[list[dict], dict | None]:
+    """The checks that need the HTTP API: reachability, a shaped queue, and an enabled machine.
+
+    Returns the checks and the queue payload, or `None` when the server never answered a shaped
+    response. The queue endpoint is the only read-only proof that the port answers nightshift and
+    can report its machines; `/api/state` advances the queue.
+    """
+    fix = f"cd {root} && npm run dev   # or npm run launchd:install"
+    restart = f"cd {root} && npm run launchd:restart-web"
     try:
         queue = request("GET", "/api/e2e/queue", timeout=15)
     except Unreachable as error:
-        checks.append(check("server", False, f"{base_url()} unreachable: {error}",
-                            f"cd {root} && npm run dev   # or npm run launchd:install"))
-        print(json.dumps({"root": str(root), "url": base_url(), "ok": False,
-                          "checks": checks, "notes": notes}, indent=2))
-        return 1
+        return [check("server", False, f"{base_url()} unreachable: {error}", fix)], None
     except ApiError as error:
-        checks.append(check("server", False, f"{base_url()} answered: {error}",
-                            f"cd {root} && npm run launchd:restart-web"))
-        print(json.dumps({"root": str(root), "url": base_url(), "ok": False,
-                          "checks": checks, "notes": notes}, indent=2))
-        return 1
+        return [check("server", False, f"{base_url()} answered: {error}", restart)], None
     shaped = isinstance(queue.get("queued"), list) and isinstance(queue.get("machines"), list)
-    checks.append(check("server", shaped, f"{base_url()} /api/e2e/queue",
-                        f"cd {root} && npm run launchd:restart-web"))
+    checks = [check("server", shaped, f"{base_url()} /api/e2e/queue", restart)]
     machines = queue.get("machines") if shaped else []
     enabled = [m for m in machines if isinstance(m, dict) and m.get("enabled")]
     checks.append(check("machine_enabled", bool(enabled),
                         ", ".join(str(m.get("label") or m.get("id")) for m in enabled) or "no machine enabled",
                         "enable a review machine at /e2e, or set e2e.machines in config.local.json"))
+    return checks, queue
 
+
+def config_checks(root: Path) -> tuple[list[dict], list[dict]]:
+    """The agent-config checks, split into blocking checks and notes, or `(None, None)` on failure."""
     cli = _configured_cli(root)
     if cli is None:
-        checks.append(check("config", False, "could not load config through nightshift's loader",
-                            f"cd {root} && npm install"))
-        print(json.dumps({"root": str(root), "url": base_url(), "ok": False,
-                          "checks": checks, "notes": notes}, indent=2))
-        return 1
+        return [check("config", False, "could not load config through nightshift's loader",
+                      f"cd {root} && npm install")], []
     missing = [(name, path, flag) for name, path, flag in (
         ("kibana.repo", cli.get("kibana"), cli.get("kibanaExists")),
         ("nightshiftRepo", cli.get("nightshift"), cli.get("nightshiftExists")),
         ("kibana.devStackScript", cli.get("stack"), cli.get("stackExists")),
     ) if not path or not flag]
-    checks.append(check("config_paths", not missing,
-                        ", ".join(f"{name}={path}" for name, path, _ in missing)
-                        or "all configured paths exist",
-                        f"fix in {root}/config.local.json: "
-                        + ", ".join(f"{name} ({path})" for name, path, _ in missing)))
+    checks = [check("config_paths", not missing,
+                    ", ".join(f"{name}={path}" for name, path, _ in missing)
+                    or "all configured paths exist",
+                    f"fix in {root}/config.local.json: "
+                    + ", ".join(f"{name} ({path})" for name, path, _ in missing))]
     current, why = dev_stack_current(root, cli.get("stack"))
-    notes.append(check("dev_stack_eis", current, why or "dev_stack.sh honors DEV_STACK_EIS",
-                       f"review `diff {cli.get('stack')} {root}/examples/kibana-dev-tools/dev_stack.sh`, "
-                       "back up the installed script, then copy the example over it"))
+    notes = [check("dev_stack_eis", current, why or "dev_stack.sh honors DEV_STACK_EIS",
+                   f"review `diff {cli.get('stack')} {root}/examples/kibana-dev-tools/dev_stack.sh`, "
+                   "back up the installed script, then copy the example over it")]
     checks.append(check("e2e_enabled", bool(cli.get("e2e")), "e2e.enabled is true",
                         f"set e2e.enabled in {root}/config.json"))
     checks.append(check("config", True, f"agent.cli={cli.get('cli')}"))
     cli_name = str(cli.get("cli") or "")
     usable, why = agent_check(cli_name) if cli_name else (False, "agent.cli is not set")
     checks.append(check("agent_cli", usable, why or f"{cli_name} reports models",
-                        f"install and sign in to {cli_name}, or override agent.cli in {root}/config.local.json"))
+                        f"install and sign in to {cli_name}, or override agent.cli in "
+                        f"{root}/config.local.json"))
+    return checks, notes
+
+
+def report_doctor(root: Path, checks: list[dict], notes: list[dict]) -> int:
     ok = all(entry["ok"] for entry in checks)
     print(json.dumps({"root": str(root), "url": base_url(), "ok": ok,
                       "checks": checks, "notes": notes}, indent=2))
     return 0 if ok else 1
+
+
+def doctor(_args: argparse.Namespace) -> int:
+    """Preflight for `crew e2e`, with checks ordered by what actually blocks a run.
+
+    Nothing in `checks` is a warning: `crew e2e` starts real e2e runs, so a check that cannot pass
+    must stop the skill. `launchd` and `build_fresh` are notes, and deliberately so: a server
+    started with `npm run dev` answers and works, so gating on a LaunchAgent would reject a
+    perfectly usable machine.
+    """
+    root, source = resolve_root()
+    checks = location_checks(root, source)
+    if not root.is_dir():
+        return report_doctor(root, checks, [])
+    remote, _ = elastic_remote(root)
+    notes = machine_notes(root, remote)
+    server, queue = server_checks(root)
+    checks.extend(server)
+    if queue is None:
+        return report_doctor(root, checks, notes)
+    config, config_notes = config_checks(root)
+    checks.extend(config)
+    notes.extend(config_notes)
+    return report_doctor(root, checks, notes)
 
 
 def _configured_cli(root: Path) -> dict | None:

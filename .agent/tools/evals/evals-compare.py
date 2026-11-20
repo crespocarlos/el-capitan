@@ -15,6 +15,8 @@ sha prefix. Generic behavior includes every evaluator. Suite metadata is derived
 score documents and the suite source under --repo. Env: ES_URL (http://localhost:9200),
 ES_API_KEY or ES_USER/ES_PASS, ES_SINCE, ES_TRACE_INDEX. Standard library only. Read-only.
 """
+from __future__ import annotations
+
 import argparse
 import base64
 import collections
@@ -34,7 +36,7 @@ COST_NAMES = {"Input Tokens", "Output Tokens", "Tool Calls", "Latency",
               "reported_input_tokens", "reported_output_tokens"}
 
 
-def es(path, body):
+def es(path: str, body: dict) -> dict:
     headers = {"content-type": "application/json"}
     if os.environ.get("ES_API_KEY"):
         headers["authorization"] = f"ApiKey {os.environ['ES_API_KEY']}"
@@ -51,7 +53,7 @@ def es(path, body):
         return json.load(response)
 
 
-def common_prefix(values):
+def common_prefix(values: list[str]) -> str:
     """Remove a shared readable prefix only when all selected names have it."""
     if not values:
         return ""
@@ -60,7 +62,7 @@ def common_prefix(values):
     return prefix[:boundary + 2] if boundary >= 0 else ""
 
 
-def fetch_scores(since):
+def fetch_scores(since: str | None) -> list[dict]:
     query = {"range": {"@timestamp": {"gte": since}}} if since else {"match_all": {}}
     out, after = [], None
     while True:
@@ -82,7 +84,7 @@ def fetch_scores(since):
             return out
 
 
-def rows(docs):
+def rows(docs: list[dict]) -> list[dict]:
     seen, out = set(), []
     prefix = common_prefix([d.get("experiment_name", "") for d in docs])
     for d in docs:
@@ -108,14 +110,14 @@ def rows(docs):
     return out
 
 
-def commit_order(rs):
+def commit_order(rs: list[dict]) -> list[str]:
     first = {}
     for r in rs:
         first[r["commit"]] = min(first.get(r["commit"], r["time"]), r["time"])
     return sorted(first, key=first.get)  # oldest first
 
 
-def fmt(values, name):
+def fmt(values: list[float], name: str) -> str:
     if not values:
         return "-"
     mean = statistics.mean(values)
@@ -123,11 +125,11 @@ def fmt(values, name):
     return f"{text or '0'}({len(values)})"
 
 
-def match(commit, prefix):
+def match(commit: str, prefix: str) -> bool:
     return commit.startswith(prefix)
 
 
-def cmd_runs(rs, _args):
+def cmd_runs(rs: list[dict], _args: argparse.Namespace) -> None:
     groups = collections.defaultdict(lambda: {"t": [], "exps": collections.defaultdict(set)})
     for r in rs:
         g = groups[r["commit"]]
@@ -141,7 +143,7 @@ def cmd_runs(rs, _args):
             print(f"    {exp:<18} {len(reps)} example(s), repetitions per example: {sorted(set(reps.values()))}")
 
 
-def cmd_compare(rs, args):
+def cmd_compare(rs: list[dict], args: argparse.Namespace) -> None:
     order = commit_order(rs)
     picked = [c for p in args.commits for c in order if match(c, p)] if args.commits else order[-3:]
     if not picked:
@@ -163,7 +165,7 @@ def cmd_compare(rs, args):
             print("  " + name.ljust(34) + "".join(x.rjust(14) for x in cells))
 
 
-def cmd_detail(rs, args):
+def cmd_detail(rs: list[dict], args: argparse.Namespace) -> None:
     order = commit_order(rs)
     commit = next((c for c in reversed(order) if match(c, args.commit)), None)
     if not commit:
@@ -173,14 +175,14 @@ def cmd_detail(rs, args):
         print(f"[{r['exp']}] {r['example'][:34]} rep{r['rep']} {r['ev']} = {r['score']:.2f}\n    {r['why'][:args.chars]}")
 
 
-def spans(trace_ids):
+def spans(trace_ids: list[str]) -> list[dict]:
     body = {"size": 5000, "sort": [{"@timestamp": "asc"}],
             "query": {"bool": {"filter": [{"terms": {"trace_id": trace_ids}},
                                           {"terms": {"attributes.gen_ai.operation.name": ["chat", "execute_tool"]}}]}}}
     return [h["_source"] for h in es(f"{TRACE_INDEX}/_search", body)["hits"]["hits"]]
 
 
-def summarize_trace(spans_):
+def summarize_trace(spans_: list[dict]) -> tuple[int, int, dict, dict, int, int, int, list[str]]:
     tools, kinds, conversations = collections.Counter(), collections.Counter(), {}
     llm = tokens = 0
     errors = []
@@ -216,7 +218,7 @@ def summarize_trace(spans_):
     return llm, tokens, dict(tools), dict(kinds), len(conversations), ctx, grounded, errors
 
 
-def cmd_traces(rs, args):
+def cmd_traces(rs: list[dict], args: argparse.Namespace) -> None:
     order = commit_order(rs)
     commit = next((c for c in reversed(order) if match(c, args.commit)), None)
     if not commit:
@@ -233,7 +235,7 @@ def cmd_traces(rs, args):
             print(f"    tool error: {message[:230]}")
 
 
-def git(repo, *args):
+def git(repo: Path, *args: str) -> str:
     try:
         return subprocess.run(
             ["git", "-C", str(repo), *args], check=True, text=True,
@@ -244,7 +246,7 @@ def git(repo, *args):
         raise SystemExit(f"repository unavailable: {message}")
 
 
-def locate_suite(repo, suite_id):
+def locate_suite(repo: Path, suite_id: str) -> Path:
     expected = f"@kbn/evals-suite-{suite_id}"
     for manifest in repo.rglob("kibana.jsonc"):
         try:
@@ -257,7 +259,7 @@ def locate_suite(repo, suite_id):
     raise SystemExit(f"suite source unavailable: {expected} was not found below {repo}")
 
 
-def evaluator_sources(suite):
+def evaluator_sources(suite: Path) -> dict[str, str]:
     sources = {}
     for path in (suite / "src" / "evaluators").rglob("*"):
         if not path.is_file() or path.suffix not in {".ts", ".tsx"}:
@@ -270,7 +272,7 @@ def evaluator_sources(suite):
     return sources
 
 
-def classify_paths(paths, suite, evaluator_paths):
+def classify_paths(paths: list[str], suite: Path, evaluator_paths: set[str]) -> dict[str, list[str]]:
     result = {kind: [] for kind in ("prompt", "tool", "retrieval", "evaluator", "dataset", "other")}
     suite_text = str(suite)
     for path in paths:
@@ -294,7 +296,7 @@ def classify_paths(paths, suite, evaluator_paths):
     return result
 
 
-def sign_test_pvalue(baseline, candidate):
+def sign_test_pvalue(baseline: list[float], candidate: list[float]) -> tuple[float, int]:
     """Exact two-sided sign-test p-value; ties are excluded."""
     wins = sum(c > b for b, c in zip(baseline, candidate))
     losses = sum(c < b for b, c in zip(baseline, candidate))
@@ -305,7 +307,7 @@ def sign_test_pvalue(baseline, candidate):
     return min(1.0, 2 * tail), pairs
 
 
-def trace_summary(trace_id):
+def trace_summary(trace_id: object) -> dict:
     if not trace_id:
         return {"trace_missing": True}
     found = spans([trace_id])
@@ -316,33 +318,131 @@ def trace_summary(trace_id):
             "cycles": cycles, "context_cycles": context, "grounded_cycles": grounded, "errors": errors}
 
 
-def cmd_diagnose(rs, args):
-    if args.single:
-        candidate = next((commit for commit in commit_order(rs) if match(commit, args.baseline)), None)
-        if not candidate:
-            raise SystemExit("unknown candidate commit; run `runs`")
-        selected = [row for row in rs if row["commit"] == candidate and row["score"] is not None]
-        bundle = {
-            "candidate": candidate,
-            "mode": "single",
-            "low_scores": [
-                {"experiment": row["exp_full"], "evaluator": row["ev"], "example": row["example"],
-                 "repetition": row["rep"], "score": row["score"], "direction": row["direction"],
-                 "explanation": row["why"], "trace": trace_summary(row["trace"])}
-                for row in sorted(
-                    selected,
-                    key=lambda row: row["score"] if row["direction"] != "minimize" else -row["score"],
-                )[:args.top]
-            ],
-        }
-        print(json.dumps(bundle, indent=2, sort_keys=True))
-        return
+def diagnose_single(rs: list[dict], args: argparse.Namespace) -> int:
+    """One commit's lowest scores, with a trace summary per score; makes no delta claim."""
+    candidate = next((commit for commit in commit_order(rs) if match(commit, args.baseline)), None)
+    if not candidate:
+        raise SystemExit("unknown candidate commit; run `runs`")
+    selected = [row for row in rs if row["commit"] == candidate and row["score"] is not None]
+    bundle = {
+        "candidate": candidate,
+        "mode": "single",
+        "low_scores": [
+            {"experiment": row["exp_full"], "evaluator": row["ev"], "example": row["example"],
+             "repetition": row["rep"], "score": row["score"], "direction": row["direction"],
+             "explanation": row["why"], "trace": trace_summary(row["trace"])}
+            for row in sorted(
+                selected,
+                key=lambda row: row["score"] if row["direction"] != "minimize" else -row["score"],
+            )[:args.top]
+        ],
+    }
+    print(json.dumps(bundle, indent=2, sort_keys=True))
+    return 0
+
+
+def compare_commit(rs: list[dict], args: argparse.Namespace) -> tuple[str, str]:
+    """The baseline and candidate commits `diagnose` compares, or SystemExit naming the gap."""
     if not args.candidate:
         raise SystemExit("diagnose requires BASELINE CANDIDATE, or CANDIDATE --single")
     baseline = next((commit for commit in commit_order(rs) if match(commit, args.baseline)), None)
     candidate = next((commit for commit in commit_order(rs) if match(commit, args.candidate)), None)
     if not baseline or not candidate:
         raise SystemExit("unknown baseline or candidate commit; run `runs`")
+    return baseline, candidate
+
+
+def paired_rows(
+    rows_: list[dict], baseline: str, candidate: str
+) -> tuple[list[tuple[str, object]], list[dict], list[dict]]:
+    """The keys both commits scored, and each commit's row for those keys in order."""
+    by_commit = _rows_by_commit(rows_)
+    paired = sorted(
+        key for key in (set(by_commit[baseline]) & set(by_commit[candidate]))
+        if by_commit[baseline][key]["score"] is not None
+        and by_commit[candidate][key]["score"] is not None
+    )
+    return (paired, [by_commit[baseline][key] for key in paired],
+            [by_commit[candidate][key] for key in paired])
+
+
+def verdict_for(p_value: float, paired: int, comparable: bool, delta: float | None,
+                direction: str) -> tuple[str, str | None]:
+    """The verdict and its reason, in the order the thresholds apply."""
+    threshold = 0.05
+    if not comparable:
+        return "not_comparable", "evaluator or dataset source changed between commits"
+    if paired < 3:
+        return "insufficient_evidence", "fewer than three paired examples"
+    if p_value >= threshold:
+        return "insufficient_evidence", f"sign-test p={p_value:.3g} is not below {threshold}"
+    improved = delta > 0 if direction != "minimize" else delta < 0
+    return ("improved" if improved else "regressed"), None
+
+
+def failing_examples(
+    paired: list[tuple[str, object]], baseline: str, candidate: str,
+    by_commit: dict[str, dict], direction: str, top: int
+) -> list[dict]:
+    """The worst regressed pairs, ordered by how much worse the candidate scored."""
+    ordered = sorted(
+        paired, key=lambda key: (
+            by_commit[candidate][key]["score"] - by_commit[baseline][key]["score"]
+            if direction != "minimize" else
+            by_commit[baseline][key]["score"] - by_commit[candidate][key]["score"]
+        )
+    )
+    failing = []
+    for key in ordered[:top]:
+        before, after = by_commit[baseline][key], by_commit[candidate][key]
+        failing.append({"example": after["example"], "repetition": after["rep"],
+                        "baseline_score": before["score"], "candidate_score": after["score"],
+                        "explanation": after["why"], "baseline_trace": trace_summary(before["trace"]),
+                        "candidate_trace": trace_summary(after["trace"])})
+    return failing
+
+
+def evaluator_report(
+    key: tuple[str, str], rows_: list[dict], baseline: str, candidate: str,
+    sources: dict, comparable: bool, top: int,
+) -> dict:
+    """One experiment/evaluator pair: its pairing, verdict, and any regressed examples."""
+    experiment, evaluator = key
+    paired, before_rows, after_rows = paired_rows(rows_, baseline, candidate)
+    baseline_scores = [row["score"] for row in before_rows]
+    candidate_scores = [row["score"] for row in after_rows]
+    direction = next((row["direction"] for row in rows_ if row["direction"]), "maximize")
+    p_value, non_tie_pairs = sign_test_pvalue(baseline_scores, candidate_scores)
+    delta = (statistics.mean(candidate_scores) - statistics.mean(baseline_scores)) if paired else None
+    verdict, reason = verdict_for(p_value, len(paired), comparable, delta, direction)
+    failing = [] if verdict != "regressed" else failing_examples(
+        paired, baseline, candidate, _rows_by_commit(rows_), direction, top
+    )
+    return {"experiment": experiment, "evaluator": evaluator,
+            "evaluator_source": sources.get(evaluator), "direction": direction,
+            "comparable": comparable, "reason": reason, "verdict": verdict,
+            "test": "exact_two_sided_sign_test", "p_value": p_value,
+            "paired": len(paired), "non_tie_pairs": non_tie_pairs,
+            "unpaired_baseline": len(_rows_by_commit(rows_)[baseline]) - len(paired),
+            "unpaired_candidate": len(_rows_by_commit(rows_)[candidate]) - len(paired),
+            "baseline_mean": statistics.mean(baseline_scores) if paired else None,
+            "candidate_mean": statistics.mean(candidate_scores) if paired else None,
+            "delta": delta, "failing_examples": failing}
+
+
+def _rows_by_commit(rows_: list[dict]) -> dict[str, dict]:
+    by_commit: dict[str, dict] = collections.defaultdict(dict)
+    for row in rows_:
+        by_commit[row["commit"]][(row["example"], row["rep"])] = row
+    return by_commit
+
+
+def cmd_diagnose(rs: list[dict], args: argparse.Namespace) -> None:
+    """Attribute a score change between two commits, or describe one commit's low scores."""
+    if args.single:
+        diagnose_single(rs, args)
+        return
+    baseline, candidate = compare_commit(rs, args)
     selected = [row for row in rs if row["commit"] in {baseline, candidate}]
     suites = {row["suite"] for row in selected if row["suite"]}
     if len(suites) != 1:
@@ -362,70 +462,16 @@ def cmd_diagnose(rs, args):
     grouped = collections.defaultdict(list)
     for row in selected:
         grouped[(row["exp_full"], row["ev"])].append(row)
-    reports = []
-    evaluator_changed = bool(surfaces["evaluator"])
-    dataset_changed = bool(surfaces["dataset"])
-    for (experiment, evaluator), rows_ in sorted(grouped.items()):
-        by_commit = collections.defaultdict(dict)
-        for row in rows_:
-            by_commit[row["commit"]][(row["example"], row["rep"])] = row
-        paired = sorted(
-            key for key in (set(by_commit[baseline]) & set(by_commit[candidate]))
-            if by_commit[baseline][key]["score"] is not None
-            and by_commit[candidate][key]["score"] is not None
-        )
-        baseline_scores = [by_commit[baseline][key]["score"] for key in paired]
-        candidate_scores = [by_commit[candidate][key]["score"] for key in paired]
-        direction = next((row["direction"] for row in rows_ if row["direction"]), "maximize")
-        comparable = not evaluator_changed and not dataset_changed
-        p_value, non_tie_pairs = sign_test_pvalue(baseline_scores, candidate_scores)
-        delta = (statistics.mean(candidate_scores) - statistics.mean(baseline_scores)) if paired else None
-        threshold = 0.05
-        if not comparable:
-            verdict = "not_comparable"
-            reason = "evaluator or dataset source changed between commits"
-        elif len(paired) < 3:
-            verdict = "insufficient_evidence"
-            reason = "fewer than three paired examples"
-        elif p_value >= threshold:
-            verdict = "insufficient_evidence"
-            reason = f"sign-test p={p_value:.3g} is not below {threshold}"
-        else:
-            improved = delta > 0 if direction != "minimize" else delta < 0
-            verdict = "improved" if improved else "regressed"
-            reason = None
-        failing = []
-        if verdict == "regressed":
-            ordered = sorted(
-                paired, key=lambda key: (
-                    by_commit[candidate][key]["score"] - by_commit[baseline][key]["score"]
-                    if direction != "minimize" else
-                    by_commit[baseline][key]["score"] - by_commit[candidate][key]["score"]
-                )
-            )
-            for key in ordered[:args.top]:
-                before, after = by_commit[baseline][key], by_commit[candidate][key]
-                failing.append({"example": after["example"], "repetition": after["rep"],
-                                "baseline_score": before["score"], "candidate_score": after["score"],
-                                "explanation": after["why"], "baseline_trace": trace_summary(before["trace"]),
-                                "candidate_trace": trace_summary(after["trace"])})
-        reports.append({"experiment": experiment, "evaluator": evaluator,
-                        "evaluator_source": sources.get(evaluator), "direction": direction,
-                        "comparable": comparable, "reason": reason, "verdict": verdict,
-                        "test": "exact_two_sided_sign_test", "p_value": p_value,
-                        "paired": len(paired), "non_tie_pairs": non_tie_pairs,
-                        "unpaired_baseline": len(by_commit[baseline]) - len(paired),
-                        "unpaired_candidate": len(by_commit[candidate]) - len(paired),
-                        "baseline_mean": statistics.mean(baseline_scores) if paired else None,
-                        "candidate_mean": statistics.mean(candidate_scores) if paired else None,
-                        "delta": delta, "failing_examples": failing})
+    comparable = not surfaces["evaluator"] and not surfaces["dataset"]
+    reports = [evaluator_report(key, rows_, baseline, candidate, sources, comparable, args.top)
+               for key, rows_ in sorted(grouped.items())]
     bundle = {"baseline": baseline, "candidate": candidate, "suite_id": next(iter(suites)),
               "suite_path": str(suite), "change_surface": surfaces,
               "prompt_diff": prompt_diff, "evaluators": reports}
     print(json.dumps(bundle, indent=2, sort_keys=True) if args.json else json.dumps(bundle, indent=2))
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--since", default=os.environ.get("ES_SINCE"), help="ISO time; only scores after it")
     sub = parser.add_subparsers(dest="cmd", required=True)

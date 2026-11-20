@@ -10,17 +10,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
+
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(_TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_ROOT))
+
+from lib.git import gh  # noqa: E402
 
 DEFAULT_QUERY = Path.home() / ".agent/bin/pr-review-threads.graphql"
 RESOLVE_QUERY = ("mutation($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) "
                  "{ thread { isResolved } } }")
-
-
-def gh(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["gh", *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 def repository(value: str) -> tuple[str, str]:

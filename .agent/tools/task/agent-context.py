@@ -28,7 +28,12 @@ def repo_root(explicit: Path | None) -> Path:
     return Path(result.stdout.strip()).resolve()
 
 
-def guidance_for(root: Path, target: Path) -> list[Path]:
+def guidance_paths(root: Path, target: Path) -> list[Path]:
+    """The guidance files that apply to `target`, from the repository root to its directory.
+
+    An `AGENTS.md` wins over a `CLAUDE.md` in the same directory: it is the harness-neutral file,
+    and loading both would duplicate every rule for a path that has each.
+    """
     resolved = target if target.is_absolute() else Path.cwd() / target
     directory = resolved if resolved.is_dir() else resolved.parent
     try:
@@ -69,7 +74,7 @@ def main() -> int:
     failed = 0
     for path in args.paths:
         try:
-            guidance = guidance_for(root, path)
+            guidance = guidance_paths(root, path)
             for item in guidance:
                 files.setdefault(
                     str(item), item.read_text(encoding="utf-8", errors="replace")

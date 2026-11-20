@@ -14,7 +14,7 @@ import sys
 from datetime import datetime
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Append a pipeline transition to PROGRESS.md."
     )

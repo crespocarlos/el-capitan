@@ -63,9 +63,10 @@ two-line `## Status\n<value>` form.
   _BUG_SPEC_TEMPLATE.md  ← symlink → ../.cursor/skills/spec-writing/references/bug-spec-template.md
   _JOURNAL_TEMPLATE.md
   tools/        ← every command and module, grouped by responsibility; all install flat into ~/.agent/bin/
+    lib/        ← `.agent/tools/lib/` shared helpers: files.py (atomic_write, read_json), git.py (run_git, gh), cli.py
     task/       ← task state, guidance context, worktrees, and the task_status.py status contract
     review/     ← hunks, layer maps, findings, packages, PR threads, and the e2e client
-    memory/     ← crew-mem.py plus its store/units/recall/maintenance modules, and the mem.py wrapper
+    memory/     ← crew-mem.py plus its memory_store/units/recall/maintenance modules, and the mem.py wrapper
     evals/      ← evaluation inspection and comparison
     maintenance/← crew-lint.py repository validation
     tools.json, TOOLS.md, requirements.txt  ← the catalog, the naming standard, the dependency note

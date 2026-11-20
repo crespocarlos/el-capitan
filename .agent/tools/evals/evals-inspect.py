@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Inspect evaluation documents in Elasticsearch. Read-only; exit 2 if unavailable."""
+from __future__ import annotations
+
 import argparse
 import base64
 import collections
@@ -12,7 +14,7 @@ import urllib.request
 URL = os.environ.get("ES_URL", "http://localhost:9200").rstrip("/")
 
 
-def search(index, query):
+def search(index: str, query: dict) -> dict:
     headers = {"Content-Type": "application/json"}
     if os.environ.get("ES_API_KEY"):
         headers["Authorization"] = f"ApiKey {os.environ['ES_API_KEY']}"
@@ -32,7 +34,7 @@ def search(index, query):
         raise SystemExit(2)
 
 
-def docs(experiment=None, metric=None):
+def docs(experiment: str | None = None, metric: str | None = None) -> list[dict]:
     clauses = []
     if experiment:
         clauses.append({"term": {"experiment_id": experiment}})
@@ -42,7 +44,7 @@ def docs(experiment=None, metric=None):
     return [hit["_source"] for hit in response["hits"]["hits"]]
 
 
-def failed(experiment):
+def failed(experiment: str) -> set[tuple[str | None, str | None]]:
     return {
         (doc.get("example", {}).get("id"), doc.get("evaluator", {}).get("name"))
         for doc in docs(experiment)
@@ -50,7 +52,7 @@ def failed(experiment):
     }
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("latest")
@@ -89,7 +91,8 @@ def main():
                     grouped[(evaluator.get("name", "?"), summary)] += 1
         result = {f"{name}: {summary}": count for (name, summary), count in grouped.items()}
     print(json.dumps(result, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

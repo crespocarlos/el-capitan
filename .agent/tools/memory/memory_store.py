@@ -16,9 +16,12 @@ import re
 import sqlite3
 import subprocess
 import sys
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Callable, Iterator
+
+from lib.files import atomic_write
+from lib.git import GitError, conflicted_paths, dirty_files as _dirty_files, run_git as _run_git
 
 TYPES = {
     "user", "feedback", "project", "reference", "failure-shield", "procedure",
@@ -31,31 +34,32 @@ class MemoryError(Exception):
     """Expected unavailable/corrupt-store error."""
 
 
-def memory_root():
+def memory_root() -> Path:
     return Path(os.environ.get("CREW_MEMORY_DIR", Path.home() / ".agent" / "memory"))
 
 
-def journal_root():
+def journal_root() -> Path:
     return Path(os.environ.get("CREW_JOURNAL_DIR", Path.home() / ".agent" / "journal"))
 
 
-def database_path():
+def database_path() -> Path:
     return memory_root() / ".index.sqlite"
 
 
-def normalized(value):
+def normalized(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
-def slug(value):
+def slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "memory"
 
 
-def today():
+def today() -> str:
     return dt.date.today().isoformat()
 
 
-def repo_key():
+def repo_key() -> str:
+    """The repository scope: the upstream (or origin) repository's bare name, else the directory."""
     try:
         top = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True,
@@ -80,7 +84,7 @@ def repo_key():
         return Path.cwd().name
 
 
-def canonical_scope(value):
+def canonical_scope(value: str) -> str:
     if value == "global":
         return "global"
     value = value.removeprefix("repo:")
@@ -88,24 +92,24 @@ def canonical_scope(value):
     return owner_repo.group(1) if owner_repo else value
 
 
-def scope_directory(scope):
+def scope_directory(scope: str) -> Path:
     scope = canonical_scope(scope)
     return memory_root() / ("global" if scope == "global" else f"repos/{scope}")
 
 
-def observation_directory(scope):
+def observation_directory(scope: str) -> Path:
     scope = canonical_scope(scope)
     if scope in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9._-]+", scope):
         raise ValueError(f"invalid observation scope: {scope!r}")
     return memory_root() / "observations" / scope
 
 
-def ensure_store():
+def ensure_store() -> None:
     if not database_path().exists():
         raise MemoryError("memory store missing; run crew-mem.py init")
 
 
-def connection():
+def connection() -> sqlite3.Connection:
     try:
         conn = sqlite3.connect(database_path())
         conn.row_factory = sqlite3.Row
@@ -118,7 +122,7 @@ def connection():
 SCHEMA_VERSION = 1
 
 
-def initialize_database():
+def initialize_database() -> None:
     conn = sqlite3.connect(database_path())
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -142,7 +146,7 @@ def initialize_database():
 
 
 @contextmanager
-def store_lock():
+def store_lock() -> Iterator[None]:
     lock = (memory_root() / ".lock").open("a+")
     try:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
@@ -152,21 +156,7 @@ def store_lock():
         lock.close()
 
 
-def atomic_write(path, content):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=".mem-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-
-
-def split_inline_list(inner):
+def split_inline_list(inner: str) -> list[str]:
     """Split an inline list body on commas that sit outside quotes."""
     parts, current, quote, index = [], [], None, 0
     while index < len(inner):
@@ -191,7 +181,7 @@ def split_inline_list(inner):
     return [part.strip() for part in parts if part.strip()]
 
 
-def parse_scalar(value):
+def parse_scalar(value: str) -> object:
     value = value.strip()
     if value in {"null", "None", "~"}:
         return None
@@ -229,7 +219,7 @@ EMITTED_KEYS = {
 # otherwise they are preserved like any other unmodeled key. See split_frontmatter.
 
 
-def split_frontmatter(text, path):
+def split_frontmatter(text: str, path: Path) -> tuple[list[str], list[str], str]:
     """Return (frontmatter lines, extra raw lines, body).
 
     Aliases (`name`, `description`) are only consumed when the canonical key is absent;
@@ -263,7 +253,9 @@ def split_frontmatter(text, path):
     return lines, extras, text[end + 4:].lstrip("\n")
 
 
-def parse_unit(path, source_path=None, inferred_scope=None):
+def parse_unit(
+    path: Path, source_path: str | None = None, inferred_scope: str | None = None
+) -> dict:
     text = path.read_text(encoding="utf-8", errors="replace")
     if not text.startswith("---\n"):
         raise ValueError("missing YAML frontmatter")
@@ -313,7 +305,7 @@ def parse_unit(path, source_path=None, inferred_scope=None):
     }
 
 
-def list_value(value):
+def list_value(value: object) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
@@ -321,14 +313,14 @@ def list_value(value):
     return [part.strip() for part in str(value).split(",") if part.strip()]
 
 
-def integer(value):
+def integer(value: object) -> int:
     try:
         return int(value or 0)
     except ValueError:
         return 0
 
 
-def _scope_from_path(path):
+def _scope_from_path(path: Path) -> str:
     relative = path.relative_to(memory_root())
     if relative.parts[0] == "global":
         return "global"
@@ -339,7 +331,7 @@ def _scope_from_path(path):
     return repo_key()
 
 
-def source_files():
+def source_files() -> Iterator[Path]:
     root = memory_root()
     for directory in [
         root / "global", *(root / "repos").glob("*"), *(root / "observations").glob("*")
@@ -351,7 +343,7 @@ def source_files():
             )
 
 
-def refresh(write_indexes=True):
+def refresh(write_indexes: bool = True) -> sqlite3.Connection:
     """Synchronize changed external units using persisted mtime/size fingerprints."""
     conn = connection()
     indexed = {row["source_path"]: row for row in conn.execute(
@@ -383,7 +375,7 @@ def refresh(write_indexes=True):
     return conn
 
 
-def write_indexes_for_scopes(conn):
+def write_indexes_for_scopes(conn: sqlite3.Connection) -> list[tuple[Path, str | None]]:
     scopes = {"global"}
     scopes.update(row[0] for row in conn.execute("SELECT DISTINCT scope FROM units"))
     scopes.update(directory.name for directory in (memory_root() / "repos").glob("*") if directory.is_dir())
@@ -405,7 +397,7 @@ def write_indexes_for_scopes(conn):
     return backups
 
 
-def unit_row(conn, ident, scope=None):
+def unit_row(conn: sqlite3.Connection, ident: str, scope: str | None = None) -> sqlite3.Row | None:
     """Resolve IDs in the current repository scope before falling back to global."""
     scopes = [canonical_scope(scope)] if scope else [repo_key(), "global"]
     for candidate_scope in scopes:
@@ -418,39 +410,33 @@ def unit_row(conn, ident, scope=None):
     return None
 
 
-def unit_path(conn, ident, scope=None):
+def unit_path(conn: sqlite3.Connection, ident: str, scope: str | None = None) -> Path | None:
     row = unit_row(conn, ident, scope)
     return memory_root() / row["source_path"] if row else None
 
 
-def run_git(arguments, check=True):
-    return subprocess.run(
-        ["git", "-C", str(memory_root()), *arguments],
-        text=True, capture_output=True, check=check
-    )
+def run_git(arguments: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Git against the memory store, whose repository is not the caller's working directory."""
+    return _run_git(memory_root(), list(arguments), check=check)
 
 
-def dirty_files():
-    result = run_git(["status", "--porcelain"], check=True)
-    return [line for line in result.stdout.splitlines() if line]
+def dirty_files() -> list[str]:
+    return _dirty_files(memory_root())
 
 
-def unresolved_conflicts():
+def unresolved_conflicts() -> list[str]:
     """Return conflicted paths, or raise when git cannot answer.
 
     A failed `git diff` (broken index, missing repo, held lock) is not "no conflicts":
     reporting clean would let `commit_external_changes` adopt conflict markers.
     """
-    result = run_git(["diff", "--name-only", "--diff-filter=U"], check=False)
-    if result.returncode:
-        raise MemoryError(
-            "cannot verify the memory store's merge state: "
-            + (result.stderr.strip() or f"git exit {result.returncode}")
-        )
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    try:
+        return conflicted_paths(memory_root())
+    except GitError as error:
+        raise MemoryError("cannot verify the memory store's merge state: " + str(error)) from error
 
 
-def git_commit(message):
+def git_commit(message: str) -> None:
     result = run_git([
         "-c", "user.name=mem", "-c", "user.email=mem@localhost",
         "commit", "-m", message
@@ -459,7 +445,7 @@ def git_commit(message):
         raise MemoryError(f"git commit failed: {result.stderr.strip() or result.stdout.strip()}")
 
 
-def commit_external_changes():
+def commit_external_changes() -> None:
     # `git add -A` on a conflicted file marks the working tree (markers included) as the
     # resolution, so a merge conflict would be silently adopted and indexed.
     conflicts = unresolved_conflicts()
@@ -474,7 +460,7 @@ def commit_external_changes():
         git_commit(f"mem: external {len(changes)} files")
 
 
-def mutate(operation, change):
+def mutate(operation: str, change: Callable[[], list[tuple[Path, str | None]]]) -> int:
     """Lock, preserve changed unit files, index, commit, and restore on failure."""
     ensure_store()
     with store_lock():
@@ -498,7 +484,7 @@ def mutate(operation, change):
             return 2
 
 
-def duplicate_candidates(conn, unit):
+def duplicate_candidates(conn: sqlite3.Connection, unit: dict) -> list[str]:
     candidates = conn.execute("""
         SELECT id, title, body FROM units
         WHERE scope = ? AND type = ? AND status = 'active'
@@ -514,5 +500,5 @@ def duplicate_candidates(conn, unit):
     return matches
 
 
-def tokens(value):
+def tokens(value: str) -> list[str]:
     return re.findall(r"[a-z0-9]{2,}", value.lower())

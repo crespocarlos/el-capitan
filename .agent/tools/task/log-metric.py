@@ -16,7 +16,7 @@ import sys
 from datetime import datetime
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Append METRIC audit line to PROGRESS.md.")
     parser.add_argument("task_dir", help="Path to the task directory")
     parser.add_argument(

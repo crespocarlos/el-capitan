@@ -14,13 +14,20 @@ paths do not change. `tools.json` is the machine-readable source of truth: each 
   import a hyphenated module, so `task_status.py` stays snake_case while its siblings are CLIs. A
   module is an exception the catalog must declare: list it under `modules` in `tools.json`, never
   leave it to be inferred from the file extension.
+- **A module name is namespaced to its tool** — `memory_store.py`, `review_findings.py`, never a
+  bare `store.py` or `findings.py`. Generic names collided once a tool put its directory on
+  `sys.path`, so a shared name is now a defect: prefix it with the package it belongs to.
 - **`crew-` is reserved for the commands a user types** — the `crew` subcommands such as `crew ls`.
   A tool behind one of those commands carries the prefix (`crew-ls.py`, `crew-lint.py`,
   `crew-mem.py`); an internal helper the user never types does not (`log-progress.py`,
   `review-hunks.py`, `task_status.py`).
-- **One subdirectory per responsibility** — `task/`, `review/`, `memory/`, `evals/`,
+- **One subdirectory per responsibility** — `lib/`, `task/`, `review/`, `memory/`, `evals/`,
   `maintenance/`. `tools.json`, `TOOLS.md`, and `requirements.txt` stay at the root of
   `.agent/tools/`, because they describe the whole tree rather than belonging to one group.
+- **`lib/` is imported, never installed as a command.** `.agent/tools/lib/` holds the helpers every
+  tool shares — `files.py` (`atomic_write`, `read_json`), `git.py` (`run_git`, `gh`, the dirty and
+  conflict helpers), and `cli.py` (the parser factory and `fail`). A tool adds `.agent/tools` to
+  `sys.path` and imports `lib.files`, so one `atomic_write` exists in the whole tree.
 - **The installed surface is flat.** `install.sh` links basenames into `~/.agent/bin/`, so a
   basename must be unique across every subdirectory; a duplicate aborts the install instead of
   letting one link silently shadow the other. Tools resolve their siblings from
@@ -28,20 +35,23 @@ paths do not change. `tools.json` is the machine-readable source of truth: each 
 
 | Directory | Commands | Modules (imported, not run) | Purpose |
 | --- | --- | --- | --- |
+| `lib/` | — | `files.py`, `git.py`, `cli.py` | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
 | `task/` | `agent-context.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | `task_status.py` | Guidance context, task state, validation, worktrees, and artifacts |
-| `review/` | `assemble-packages.py`, `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | `findings.py`, `layers.py`, `personas.py`, `report.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
+| `review/` | `assemble-packages.py`, `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
 | `review/` (deprecated name) | `pr-review-actions.py` | — | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
 | `evals/` | `evals-compare.py`, `evals-inspect.py` | — | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py` | `store.py`, `units.py`, `recall.py`, `maintenance.py` | Durable units and immutable observations |
+| `memory/` | `crew-mem.py` | `memory_store.py`, `memory_units.py`, `memory_recall.py`, `memory_maintenance.py` | Durable units and immutable observations |
 | `memory/` (deprecated name) | `mem.py` | — | Renamed to `crew-mem.py`; wrapper kept for one release cycle |
 | `maintenance/` | `crew-lint.py` | — | Repository validation |
 | root | `tools.json`, `TOOLS.md`, `requirements.txt` | — | The catalog and the dependency note |
 
 `crew-mem.py` and `review-findings.py` are argparse entry points over their modules: each parses the
-command line and dispatches, and holds no command logic. Modules import each other through a
-`sys.path` insert of their own directory, in dependency order (`store` → `units` → `recall` →
-`maintenance`, and `findings` → `personas`/`layers` → `report`), so a module never imports back into
-one that imports it. Both entry points re-export the names their public contract names, so
+command line and dispatches, and holds no command logic. Modules import each other by their
+namespaced name in dependency order (`memory_store` → `memory_units` → `memory_recall` →
+`memory_maintenance`, and `review_findings` → `review_personas`/`review_layers` → `review_report`),
+so a module never imports back into one that imports it. A hyphenated entry point cannot be a
+module, so it puts its own directory and `.agent/tools` on `sys.path` once, which is also what makes
+`lib` importable. Both entry points re-export the names their public contract names, so
 `assemble-packages.py` and the tests can keep importing them from the command file rather than
 reaching into a private module.
 

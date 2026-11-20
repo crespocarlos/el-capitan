@@ -10,16 +10,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
-import tempfile
 from pathlib import Path
 
+from lib.files import atomic_write  # noqa: F401  re-exported by review-findings.py
+
 LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
-# Severity says how bad; `kind` says what sort of defect, and the two are independent. A security
-# hole and a doc inaccuracy can both be `[attention]`, and a reader triaging a report needs to tell
-# them apart without parsing prose. Kept separate from `fingerprint`: identity is "this defect in
-# this file", so re-classifying a finding must not turn it into a second finding.
+# Severity says how bad; `kind` says what sort of defect, and the two are independent. Kept out of
+# `fingerprint` because identity is "this defect in this file": re-classifying must not split one.
 KINDS = {"security", "correctness", "reliability", "documentation", "testing", "other"}
 OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}
 PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prompt-quality", "explorer"}
@@ -29,12 +27,8 @@ CODE_MODES = {"self", "changes", "pr"}
 # failure words are authoritative; anything else (`dispatched`, `done`) falls through to
 # the content check, so a placeholder cannot claim a persona completed.
 PERSONA_STATUSES = {"failed", "skipped", "truncated"}
-# Tiered output cap, counted separately so polish cannot evict severity. A flat cap of 7 counted a
-# nit as equal to a blocking finding: measured over 65 persisted reviews it bound on 42% of runs, and
-# one review emitted three nits while dropping an [attention] finding. Non-nit volume never exceeded
-# 11 in that sample, and emitted nits never exceeded 4, so 12 + 4 binds on none of the 65 recorded
-# reviews: a ceiling against runaway output that does not truncate real findings. Total output is at
-# most 16.
+# Tiered output cap, counted separately so polish cannot evict severity: a nit has a 4-slot budget
+# and non-nits a 12-slot one, so a flat cap cannot bind a real finding out to make room for polish.
 MAX_FINDINGS = 12
 MAX_NITS = 4
 EMITTED = {"patch", "decide"}
@@ -79,19 +73,6 @@ def canonical_personas(value: object, *, split_commas: bool = True) -> list[str]
         if name not in result:
             result.append(name)
     return result
-
-
-def atomic_write(path: Path, text: str) -> None:
-    """Write via a sibling temp file so an interrupted run cannot truncate REVIEW.md."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=".review-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
 
 
 def read_json_object(path: Path, key: str) -> dict:
@@ -229,7 +210,7 @@ def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
 
 def normalize(args: argparse.Namespace) -> int:
     """Deduplicate exact fingerprints and, under `--strict`, apply the per-finding gates."""
-    from layers import check_hunk_refs, hunk_ids
+    from review_layers import check_hunk_refs, hunk_ids
 
     findings = read_findings(args.input)
     if args.strict and args.hunks:

@@ -13,7 +13,13 @@ import re
 import sys
 from pathlib import Path
 
-from findings import CODE_MODES, PERSONA_STATUSES, SELECT_RULES, canonical_personas, read_json_object
+from review_findings import (
+    CODE_MODES,
+    PERSONA_STATUSES,
+    SELECT_RULES,
+    canonical_personas,
+    read_json_object,
+)
 
 
 def persona_outcome(path: Path) -> str:
@@ -52,11 +58,8 @@ def persona_outcome(path: Path) -> str:
     return "ok" if has_review_content(text) else "unknown"
 
 
-# Reviewer personas do not all number their findings. `reviewer-code-quality`,
-# `reviewer-product-flow`, and `reviewer-prompt-quality` document an unnumbered
-# `**path — line N** — title` body closed by `Fix/Response:`, and `reviewer-explorer`
-# returns a fixed set of `##` sections. A classifier that accepts only numbered findings
-# would report every real response from those personas as no output and refuse the review.
+# Reviewer personas do not all number their findings: three document an unnumbered
+# `**path — line N** — title` body closed by `Fix/Response:`, and explorer returns `##` sections.
 EXPLORER_SECTIONS = (
     "## Similar patterns",
     "## Potential duplicates",
@@ -66,16 +69,12 @@ EXPLORER_SECTIONS = (
     "## Cross-file consistency",
 )
 VERDICT_NO_FINDINGS = re.compile(r"^### Verdict:\s*no findings\s*$", re.M | re.I)
-# A severity label plus a location anchor, in either order. Personas write the label at the start of
-# the line (the mandated shape), inside leading bold, after a list bullet, or after the anchor as
-# "`path:line` — [label] …"; all of these carry the same content, and rejecting one aborts the whole
-# review at persist time. The anchor must still be a real path:line, so a bare label or a marker
-# alone never matches.
+# A severity label plus a location anchor, in either order: label first, inside leading bold, after a
+# bullet, or after the anchor. All carry the same content, and rejecting one aborts the review; the
+# anchor must still be a real `path:line`, so a bare label or a marker alone never matches.
 _SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)"
 _ANCHOR = r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)"
-# Optional list bullet, number, or bare ordinal. Personas use `-`, `*`, `1.`, `1)`, and `2 ` (no
-# punctuation) interchangeably, and nine real review outputs were scored as no output purely for not
-# using `1.`.
+# Optional list bullet, number, or bare ordinal: personas use `-`, `*`, `1.`, `1)`, and `2 ` alike.
 _BULLET = r"(?:[-*+]\s+)?(?:\d+[.)]?\s*)?"
 LABELED_FINDING = re.compile(
     # label first: `1. [blocking] … path.ts:42`, `- **[attention]** … path.ts:42`
@@ -84,31 +83,23 @@ LABELED_FINDING = re.compile(
     + r"|^[ \t]*" + _BULLET + r"(?:\*\*)?`?[^`\n\s\[\]]+`?\s*:\s*\d+[^\n]*?\[" + _SEVERITY + r"\]",
     re.M | re.I,
 )
-# Findings whose anchor sits outside the label's line, so a line-local pattern cannot see them: a
-# label followed by an `Anchor: path:line` line. Both shapes were scored as "no output" in real runs,
-# and the artifact was then refused as a placeholder.
+# Findings whose anchor sits on an `Anchor: path:line` line rather than the label's own line.
 LABEL_LINE = re.compile(
     r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[(" + _SEVERITY + r")\]([^\n]*)", re.M | re.I
 )
 ANCHOR_ANYWHERE = re.compile(_ANCHOR, re.I)
 FIX_RESPONSE_FINDING = re.compile(
-    # The fix field has three documented spellings: `Fix:` is the consolidator's contract,
-    # `Fix/Response:` is what code-quality and prompt-quality print, and `Suggested fix:` is what
-    # adversarial and architecture printed until 2026-11-18. All three mark a documented finding, so
-    # rejecting one refused real reviews as placeholders.
+    # Three documented spellings of the fix field: `Fix:`, `Fix/Response:`, and `Suggested fix:`.
+    # Rejecting any one of them refused real reviews as placeholders.
     r"(?ms)^\*\*.+?\*\*\s+—\s+\S.*?^(?:Suggested fix|Fix/Response|Fix):\s+\S"
 )
 EXPLORER_FINDING = re.compile(
     r"(?m)^(?:" + "|".join(re.escape(section) for section in EXPLORER_SECTIONS) + r")\s*$\n\s*-\s+\S"
 )
-# An orchestrator's own summary of a persona, written in place of the persona's response. The
-# protocol forbids it ("never substitute a stub"), and it cannot be verified or re-graded later, so
-# it is refused rather than accepted as output. 57 of 220 recorded artifacts were such digests, and
-# they announced themselves in the opening 300 characters under five wordings: `(condensed)`,
-# `# … (condensed relay)`, `Condensed record of …`, `status: complete (condensed; …)`, and
-# `status: ok (condensed)`. The marker must read as an announcement — bare at the start, in
-# parentheses/brackets, in a heading, or on a `status:` line — so a persona reviewing a prompt that
-# happens to contain the word is unaffected.
+# An orchestrator's own digest written in place of a persona's response. The protocol forbids it and
+# it cannot be verified or re-graded later, so it is refused rather than accepted as output. The
+# marker must read as an announcement — bare, bracketed, in a heading, or on a `status:` line — so a
+# persona reviewing a prompt that merely contains the word is unaffected.
 SUMMARY_ARTIFACT = re.compile(
     r"\A\s*(?:#{1,6}[^\n]*)?\s*[(\[]?\s*(?:condensed|summari[sz]ed)\b"
     r"|^[ \t]*(?:#{1,6}[ \t]*)?[(\[]\s*(?:condensed|summari[sz]ed)\b"
@@ -116,19 +107,14 @@ SUMMARY_ARTIFACT = re.compile(
     re.I | re.M,
 )
 SUMMARY_HEADER_CHARS = 300
-# How far past a label line its evidence may sit. Bounded at the next label when that is closer, and
-# widened to this when a single long finding runs further, so neither a stray anchor far below can
-# rescue a marker-only block nor a long finding lose its own `Anchor:` line.
+# How far past a label line its evidence may sit, so neither a stray anchor far below can rescue a
+# marker-only block nor a long finding lose its own `Anchor:` line.
 ANCHOR_WINDOW = 2000
-# A spec or idea review has one artifact under review, so its findings anchor by quoting the
-# sentence they attack rather than by a path:line into a diff. Four real spec reviews were scored as
-# "no output" for this alone.
+# A spec or idea review has one artifact under review, so its findings anchor by quoting the sentence
+# they attack rather than by a `path:line` into a diff.
 QUOTED_EVIDENCE = re.compile(r"[\"“][^\"”\n]{20,}[\"”]")
-# A spec or idea review cites the one artifact under review, so a finding may anchor to a bare line
-# number or range instead of a path. Requiring a path there would reject a correct spec review, but
-# the line number is still required: without it a long unanchored label line would pass as a finding.
-# What separates a finding from a marker is described content past the number, so `[nit] 611` stays
-# out while `2 [blocking] 611 (570-571): unscoped example contradicts the rule` is accepted.
+# A spec review cites the one artifact under review, so a finding may anchor to a bare line number or
+# range. The number is still required, and described content must follow it, or `[nit] 611` would pass.
 SPEC_FINDING = re.compile(
     r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[" + _SEVERITY + r"\][\s*:—–-]*"
     r"\(?\s*\d[\d,\s–-]*\)?[\d,\s–\-:()]*\**\s*[A-Za-z\"“][^\n]{40,}",

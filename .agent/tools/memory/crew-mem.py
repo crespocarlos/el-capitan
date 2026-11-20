@@ -2,21 +2,23 @@
 """Harness-neutral Markdown memory CLI backed by a rebuildable SQLite FTS5 index.
 
 This file is the argparse entry point only: the store, unit, recall, and maintenance logic
-lives in the sibling `store.py`, `units.py`, `recall.py`, and `maintenance.py` modules. They
-are imported through a `sys.path` insert because a hyphenated command name cannot be a module,
-and because `Path(__file__).resolve()` follows the installed `~/.agent/bin` symlink back to
-this directory, so the siblings are found from either invocation path.
+lives in the sibling `memory_store.py`, `memory_units.py`, `memory_recall.py`, and
+`memory_maintenance.py` modules. `Path(__file__).resolve()` follows the installed
+`~/.agent/bin` symlink back to this directory, so the siblings and the `lib` package above
+them are found from either invocation path.
 """
 import argparse
 import sqlite3
 import sys
 from pathlib import Path
 
-for _dir in (Path(__file__).resolve().parent,):
-    if str(_dir) not in sys.path:
-        sys.path.insert(0, str(_dir))
+_MEMORY_DIR = Path(__file__).resolve().parent
+_TOOLS_ROOT = _MEMORY_DIR.parent
+for _path in (_TOOLS_ROOT, _MEMORY_DIR):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
-from maintenance import (  # noqa: E402
+from memory_maintenance import (  # noqa: E402
     consolidate,
     doctor,
     import_inbox,
@@ -25,15 +27,13 @@ from maintenance import (  # noqa: E402
     reindex,
     stats,
 )
-from recall import context, journal_add, journal_import, search  # noqa: E402
-from store import STATUSES, TYPES, MemoryError  # noqa: E402
-from units import add, archive, cite, listing, show, supersede  # noqa: E402
+from memory_recall import context, journal_add, journal_import, search  # noqa: E402
+from memory_store import STATUSES, TYPES, MemoryError  # noqa: E402
+from memory_units import add, archive, cite, listing, show, supersede  # noqa: E402
 
 
-def build_parser():
-    parser = argparse.ArgumentParser()
-    commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("init")
+def add_unit_parsers(commands) -> None:
+    """`add`: one unit written from stdin, with its type, scope, title, and metadata."""
     add_parser = commands.add_parser("add")
     add_parser.add_argument("--type", required=True, choices=sorted(TYPES))
     add_parser.add_argument("--scope", required=True)
@@ -42,6 +42,10 @@ def build_parser():
     add_parser.add_argument("--paths", nargs="*", default=[])
     add_parser.add_argument("--evidence", nargs="*", default=[])
     add_parser.add_argument("--force", action="store_true")
+
+
+def add_read_parsers(commands) -> None:
+    """`search`, `context`, and `show`: the read paths over the index."""
     search_parser = commands.add_parser("search")
     search_parser.add_argument("query")
     search_parser.add_argument("--repo", help="repository scope; '*' searches every scope")
@@ -60,6 +64,10 @@ def build_parser():
     context_parser.add_argument("--json", action="store_true")
     show_parser = commands.add_parser("show")
     show_parser.add_argument("id")
+
+
+def add_write_parsers(commands) -> None:
+    """The unit mutations that are not `add`: list, supersede, archive, and cite."""
     list_parser = commands.add_parser("list")
     list_parser.add_argument("--scope")
     list_parser.add_argument("--status", choices=sorted(STATUSES))
@@ -71,6 +79,10 @@ def build_parser():
     cite_parser = commands.add_parser("cite")
     cite_parser.add_argument("ids", nargs="+")
     cite_parser.add_argument("--outcome", required=True, choices=["used", "helped", "misled"])
+
+
+def add_maintenance_parsers(commands) -> None:
+    """Store lifecycle and bulk operations: reindex, doctor, stats, consolidate, and ingest."""
     commands.add_parser("reindex")
     commands.add_parser("doctor")
     commands.add_parser("stats")
@@ -84,6 +96,10 @@ def build_parser():
     inbox_parser = commands.add_parser("import-inbox")
     inbox_parser.add_argument("--all", action="store_true")
     inbox_parser.add_argument("files", nargs="*")
+
+
+def add_journal_parsers(commands) -> None:
+    """The journal subcommands: `add` for one entry, `import` for a whole directory."""
     journal_parser = commands.add_parser("journal")
     journal_commands = journal_parser.add_subparsers(dest="journal_command", required=True)
     journal_add_parser = journal_commands.add_parser("add")
@@ -93,10 +109,21 @@ def build_parser():
     journal_add_parser.add_argument("--date")
     journal_import_parser = journal_commands.add_parser("import")
     journal_import_parser.add_argument("--dry-run", action="store_true")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("init")
+    add_unit_parsers(commands)
+    add_read_parsers(commands)
+    add_write_parsers(commands)
+    add_maintenance_parsers(commands)
+    add_journal_parsers(commands)
     return parser
 
 
-def main():
+def main() -> int:
     args = build_parser().parse_args()
     handlers = {
         "init": lambda _: init_store(), "add": add, "search": search, "context": context,
