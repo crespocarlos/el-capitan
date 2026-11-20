@@ -29,13 +29,9 @@ def catalog_path(root: Path, entry: dict) -> Path:
     return root / ".agent/tools" / str(entry.get("dir", ".")) / str(entry.get("name"))
 
 
-def lint_catalog_kinds(data: dict) -> tuple[Findings, set[str]]:
-    """`kind` is declared on every entry; a module never carries a command's basename.
-
-    Returns the declared command names, which the naming check needs to resolve a wrapper target.
-    """
+def lint_catalog_kinds(data: dict) -> Findings:
+    """`kind` is declared on every entry; a module never carries a command's basename."""
     findings: Findings = []
-    commands: set[str] = set()
     for section, expected in CATALOG_SECTIONS:
         for entry in data.get(section, []):
             if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
@@ -55,9 +51,7 @@ def lint_catalog_kinds(data: dict) -> tuple[Findings, set[str]]:
                 findings.append((MANIFEST, 1, "installable-module",
                                  f"{name}: a module is imported, never installed, so it must not "
                                  f"carry a command basename"))
-            elif kind == "command":
-                commands.add(name)
-    return findings, commands
+    return findings
 
 
 def lint_entry_fields(root: Path, entries: list, modules: list) -> Findings:
@@ -120,9 +114,9 @@ def lint_tool_catalog(root: Path) -> Findings:
     if len(names) != len(set(names)) or any(not isinstance(name, str) for name in names):
         findings.append((MANIFEST, 1, "invalid-tool-catalog",
                          "tool, script, and asset names must be unique strings"))
-    kind_findings, commands = lint_catalog_kinds(data)
+    kind_findings = lint_catalog_kinds(data)
     findings.extend(kind_findings)
-    findings.extend(installable_naming(data, commands))
+    findings.extend(installable_naming(data))
     findings.extend(tree_naming(root, modules, entries + scripts + assets))
     findings.extend(lint_entry_fields(root, entries + scripts, modules))
     findings.extend(lint_asset_entries(root, assets))

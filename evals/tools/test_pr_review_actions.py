@@ -13,7 +13,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "review" / "crew-pr-actions.py"
-WRAPPER = ROOT / ".agent" / "tools" / "review" / "pr-review-actions.py"
 
 
 def stub_gh(directory):
@@ -122,15 +121,6 @@ def main():
                       "--query", str(custom)), bindir)
         check("explicit --query is honored", f"query=@{custom}" in
               json.loads(result.stdout)["planned"]["command"], result.stdout)
-
-        # The deprecated name still works and says so once on stderr.
-        env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}",
-               "PYTHONDONTWRITEBYTECODE": "1", "HOME": str(bindir.parent)}
-        result = subprocess.run([sys.executable, str(WRAPPER), "--help"],
-                                capture_output=True, text=True, env=env)
-        check("wrapper --help exits 0", result.returncode == 0, result.stderr)
-        check("wrapper names its replacement", "crew-pr-actions.py" in result.stderr, result.stderr)
-        check("wrapper warns exactly once", result.stderr.count("deprecated") == 1, result.stderr)
 
     print("all crew-pr-actions checks passed")
     return 0

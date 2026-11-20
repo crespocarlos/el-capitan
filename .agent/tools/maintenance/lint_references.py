@@ -13,9 +13,8 @@ from pathlib import Path
 
 from lint_files import line_no, rel
 
-# The memory CLI under both its primary and deprecated basenames: a caller may still use either
-# until the wrapper is removed, and a swallowed memory failure is a defect under both.
-MEMORY_COMMANDS = ("crew-mem.py", "mem.py")
+# The memory CLI: a swallowed memory failure is a defect, so its call sites are checked by name.
+MEMORY_COMMANDS = ("crew-mem.py",)
 REPO_PATH = re.compile(r"`((?:\.agent|\.cursor|\.claude|rules|evals)/[^`\s]*)`")
 INSTALLED = re.compile(r"~/.agent/bin/([\w.-]+)")
 RULE_FILE = re.compile(r"([\w-]+\.mdc)")

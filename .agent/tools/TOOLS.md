@@ -10,9 +10,8 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 - **Executables are kebab-case** — `^crew-[a-z0-9-]+\.(py|sh)$`, for example `crew-ls.py` or
   `crew-default-branch.sh`. A new command that does not follow it is a defect, not a style choice.
-  Two exemptions, both declared rather than inferred: a deprecated wrapper keeps its old basename
-  until it is removed (`status: deprecated` plus `replacement`), and `task-env.sh` is sourced, so it
-  cannot be renamed — `source` needs a real file at a fixed path and a wrapper cannot supply one.
+  One exemption, declared rather than inferred: `task-env.sh` is sourced, so it cannot be renamed —
+  `source` needs a real file at a fixed path.
 - **A Python module imported by another tool is snake_case** — `^[a-z0-9_]+\.py$`. Python cannot
   import a hyphenated module, so `task_status.py` stays snake_case while its siblings are CLIs. A
   module is an exception the catalog must declare: list it under `modules` in `tools.json` with
@@ -26,8 +25,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
   command and is not installed; it stays snake_case and unprefixed (`task_status.py`).
 - **`kind` is what tells them apart** — every `tools.json` entry declares `kind: command`, `module`,
   or `asset`. `install.sh` links `kind: command` and nothing else, and `crew-lint.py` fails a command
-  whose basename lacks the prefix, a module that carries a command's basename, and a deprecated
-  entry with no `replacement`.
+  whose basename lacks the prefix and a module that carries a command's basename.
 - **One subdirectory per responsibility** — `lib/`, `task/`, `review/`, `memory/`, `evals/`,
   `maintenance/`. `tools.json`, `TOOLS.md`, and `requirements.txt` stay at the root of
   `.agent/tools/`, because they describe the whole tree rather than belonging to one group.
@@ -52,37 +50,10 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 The table is grouped by `kind`, which is what the manifest declares: a row's Commands column is
 every `kind: command` entry in that directory, so `install.sh` links exactly those basenames and
-nothing else. The old names still appear in `tools.json` as wrappers — see
-[Deprecated names](#deprecated-names).
+nothing else.
 
-### Deprecated names
-
-Every renamed command keeps a wrapper at its old basename for one release cycle. Each prints one
-stderr line and execs the replacement, and each is cataloged as `kind: command`,
-`status: deprecated`, with a `replacement` field. `evals/tools/test_command_names.py` asserts
-output parity, so a wrapper that drops a flag or changes an exit code fails the gate.
-
-| Old basename | Replacement | Directory |
-| --- | --- | --- |
-| `agent-context.py` | `crew-agent-context.py` | `task/` |
-| `default-branch.sh` | `crew-default-branch.sh` | `task/` |
-| `log-metric.py` | `crew-metric.py` | `task/` |
-| `log-progress.py` | `crew-progress.py` | `task/` |
-| `manage-worktree.py` | `crew-worktree.py` | `task/` |
-| `resolve-task-dir.py` | `crew-resolve-task-dir.py` | `task/` |
-| `task-context.py` | `crew-task-context.py` | `task/` |
-| `review-findings.py` | `crew-review-findings.py` | `review/` |
-| `review-hunks.py` | `crew-review-hunks.py` | `review/` |
-| `assemble-packages.py` | `crew-assemble-packages.py` | `review/` |
-| `nightshift-e2e.py` | `crew-nightshift-e2e.py` | `review/` |
-| `pr-review-actions.py` | `crew-pr-actions.py` | `review/` |
-| `get-diff.sh` | `crew-diff.sh` | `review/` |
-| `evals-compare.py` | `crew-evals-compare.py` | `evals/` |
-| `evals-inspect.py` | `crew-evals-inspect.py` | `evals/` |
-| `mem.py` | `crew-mem.py` | `memory/` |
-
-`task-env.sh` is the one command with no `crew-` prefix and no wrapper to retire: it is sourced, so
-`source` must find a real file at that exact path.
+`task-env.sh` is the one command with no `crew-` prefix: it is sourced, so `source` must find a real
+file at that exact path.
 
 `crew-mem.py`, `crew-review-findings.py`, `crew-ls.py`, `crew-task-context.py`, `crew-evals-compare.py`,
 and `crew-lint.py` are argparse entry points over their modules: each parses the command line and
@@ -112,8 +83,7 @@ module.
   `mcp__<server>__<tool>` reference and `tool-id-unknown` for a bare `tools:` id that neither list
   declares. A project that adds an MCP server or a new native tool id adds it here in the same change.
 - `crew-diff.sh` is source-only; it exports review context and intentionally does not implement an
-  executable `--help`. `get-diff.sh` is its deprecated alias: `source`d it warns and sources the
-  replacement, so the caller still receives `BASE`, `DIFF_SOURCE`, and `CHANGED_FILES`.
+  executable `--help`.
 - `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state
   `CREW_TASK_STATE` (`ok`, `none`, `error`). Skills source it instead of copying the resolver block.
   Gates that require a task must abort on `error` rather than treating it as `none`.
@@ -155,8 +125,7 @@ module.
   `--dry-run` names that behavior explicitly (the two are mutually exclusive). The plan's `command`
   field is the exact `gh` argv, so an operator can read or run it by hand. `fetch` takes `--dry-run`
   as well and defaults `--query` to the `pr-review-threads.graphql` asset, so the query text has one
-  source. `pr-review-actions.py` is the deprecated basename: it prints one stderr line naming the
-  replacement and execs it, and stays until the rename completes one release cycle.
+  source.
 - `crew-review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
   `package.diff` (the diff persona packages embed, generated files' hunks collapsed to one note),
   numbering every hunk `h1`, `h2`, … in diff order, including one synthetic hunk for a file with no
@@ -249,10 +218,8 @@ harness that produces that failure.
 ## Compatibility policy
 
 Command basenames are public because installation creates matching `~/.agent/bin/<name>` symlinks.
-Rename a command only by adding a compatible wrapper for one release cycle, documenting the
-replacement in this catalog, and adding the old basename to the catalog with `status: deprecated`
-plus `replacement: <new name>`. `evals/tools/test_command_names.py` asserts output parity between
-each wrapper and its replacement, so a wrapper that drops a flag or changes an exit code fails the
-gate instead of surprising a caller. Remove the wrapper only after all repository references and
-installed migration cleanup entries are gone; `install.sh`'s `prune_retired_tool_links` removes the
-stale link from `~/.agent/bin` on the next install.
+A rename is therefore a breaking change: apply it in one change — the new basename, every caller in
+this repository, the catalog entry, and this document — because no alias cycle exists. `install.sh`
+links exactly the catalog's `kind: command` entries and `prune_retired_tool_links` removes any
+`~/.agent/bin` link whose target is in this tool tree but whose basename is no longer cataloged, so
+the stale link goes on the next install.

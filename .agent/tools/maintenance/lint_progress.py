@@ -15,7 +15,7 @@ from pathlib import Path
 from lint_files import line_no, rel
 
 SETTINGS_FILES = (".claude/settings.json", ".cursor/hooks.template.json")
-PROGRESS_CALL = re.compile(r"(?:crew-|log-)progress\.py\"?\s+\"?\$TASK_DIR\"?\s+\"([^\"]*)\"")
+PROGRESS_CALL = re.compile(r"crew-progress\.py\"?\s+\"?\$TASK_DIR\"?\s+\"([^\"]*)\"")
 SHELL_EDITS = (
     (re.compile(r"(?<!`)\bsed\s+-[a-zA-Z]*i"), "sed -i rewrites a file in place; use the edit tool"),
     (re.compile(r"(?<!`)\bperl\s+-[a-zA-Z]*i"), "perl -i rewrites a file in place; use the edit tool"),
@@ -30,7 +30,7 @@ def lint_progress_transitions(root: Path, paths: list[Path]) -> Findings:
 
     crew-progress.py prefixes `TRANSITION: ` itself, so an event string like "commit: abc123"
     writes a line that is not a transition. Events belong in crew-metric.py, which owns the METRIC
-    line. Both basenames are checked while the deprecated wrapper exists.
+    line.
     """
     findings: Findings = []
     for path in paths:

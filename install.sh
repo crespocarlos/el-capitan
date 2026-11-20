@@ -409,9 +409,6 @@ for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _MEMORY_TE
   run ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
 done
 # ~/.agent/bin
-# Retired names (modules the old directory walk linked, and basenames renamed with wrappers) are
-# removed by `prune_retired_tool_links` and `prune_broken_symlinks` below: both are driven by the
-# catalog, so no retired name needs to be listed here.
 if ! duplicate_tool_basenames; then
   echo "  ERROR: tool tree has a duplicate basename; ~/.agent/bin was not updated." >&2
   exit 1

@@ -21,8 +21,8 @@ COMMAND_NAME = re.compile(r"^crew-[a-z0-9-]+\.(py|sh)$")
 MODULE_NAME = re.compile(r"^[a-z0-9_]+\.py$")
 CATALOG_SECTIONS = (("tools", "command"), ("scripts", "command"),
                     ("modules", "module"), ("assets", "asset"))
-# Sourced, never executed. `source` needs a real file at a fixed path and a wrapper cannot supply
-# one, so this one command keeps a name the `crew-` rule would otherwise reject.
+# Sourced, never executed. `source` needs a real file at a fixed path, so this one command keeps a
+# name the `crew-` rule would otherwise reject.
 SOURCE_ONLY_COMMANDS = {"task-env.sh"}
 Findings = list[tuple[str, int, str, str]]
 
@@ -53,12 +53,11 @@ def installed_tool_names(root: Path) -> set[str]:
             and isinstance(entry.get("name"), str)}
 
 
-def installable_naming(data: dict, commands: set[str]) -> Findings:
-    """Every command basename matches `^crew-[a-z0-9-]+\\.(py|sh)$`, and a wrapper names its target.
+def installable_naming(data: dict) -> Findings:
+    """Every command basename matches `^crew-[a-z0-9-]+\\.(py|sh)$`.
 
-    Two explicit exemptions: a deprecated wrapper keeps its old basename until it is removed, and
-    `task-env.sh` is sourced — `source` needs a real file at a fixed path, which a wrapper cannot
-    provide, so it cannot be renamed at all.
+    One explicit exemption: `task-env.sh` is sourced — `source` needs a real file at a fixed path,
+    so it cannot be renamed at all.
     """
     findings: Findings = []
     for section, _ in CATALOG_SECTIONS:
@@ -68,16 +67,7 @@ def installable_naming(data: dict, commands: set[str]) -> Findings:
             name = entry.get("name")
             if name in SOURCE_ONLY_COMMANDS:
                 continue
-            if entry.get("status") == "deprecated":
-                replacement = entry.get("replacement")
-                if not isinstance(replacement, str):
-                    findings.append((MANIFEST, 1, "catalog-kind-invalid",
-                                     f"{name}: a deprecated entry names its `replacement`"))
-                elif replacement not in commands:
-                    findings.append((MANIFEST, 1, "catalog-kind-invalid",
-                                     f"{name}: replacement {replacement} is not a cataloged "
-                                     f"command"))
-            elif not COMMAND_NAME.match(str(name)):
+            if not COMMAND_NAME.match(str(name)):
                 findings.append((MANIFEST, 1, "command-name",
                                  f"{name}: a command matches ^crew-[a-z0-9-]+\\.(py|sh)$"))
     return findings
@@ -112,8 +102,7 @@ def lint_tool_naming(root: Path, modules: set[str], cataloged: set[str]) -> Find
     """An undeclared executable is `crew-`-prefixed; a module another tool imports is snake_case.
 
     Checked over the tree, so a file added without a catalog entry is still judged by the rule it
-    violates. Cataloged names are skipped because the catalog judges them: a deprecated wrapper
-    keeps its old basename on purpose, and a source-only script cannot be renamed at all.
+    violates. Cataloged names are skipped because the catalog judges them.
     """
     findings: Findings = []
     for path in tool_tree_files(root):
