@@ -44,6 +44,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
+# Severity says how bad; `kind` says what sort of defect, and the two are independent. A security
+# hole and a doc inaccuracy can both be `[attention]`, and a reader triaging a report needs to tell
+# them apart without parsing prose. Kept separate from `fingerprint`: identity is "this defect in
+# this file", so re-classifying a finding must not turn it into a second finding.
+KINDS = {"security", "correctness", "reliability", "documentation", "testing", "other"}
 OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}
 PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prompt-quality", "explorer"}
 LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs still normalize
@@ -119,6 +124,30 @@ def atomic_write(path: Path, text: str) -> None:
             os.unlink(temporary)
 
 
+# The `Confidence:` line `persist` writes. It is not a heading, so `GENERATED_SECTIONS` cannot cover
+# it; the duplicate check needs its own pattern.
+CONFIDENCE_LINE = re.compile(r"(?m)^Confidence:\s*\d+%")
+# A verdict line a reader looks for first. Either the self-review form (`Verdict: PASS`) or the
+# idea/spec form (`**Verdict:** proceed`); a report with neither is left alone rather than guessed at.
+VERDICT_LINE = re.compile(r"(?m)^(?:\*\*)?Verdict:(?:\*\*)?\s*\S")
+
+
+def insert_under_verdict(report: str, line: str) -> str:
+    """Place `line` directly beneath the first verdict line, before any generated section.
+
+    Appending would put it after the coverage table — the end of the report — which is the one place
+    the reader is told it will not be. When the report carries no verdict line there is nothing to
+    anchor to, so the line goes at the end of the body before generated content, and the caller's
+    report is otherwise untouched.
+    """
+    match = VERDICT_LINE.search(report)
+    if match:
+        end = report.find("\n", match.end())
+        end = len(report) if end == -1 else end
+        return report[:end] + "\n\n" + line + report[end:].rstrip() + "\n"
+    return report.rstrip() + "\n\n" + line + "\n"
+
+
 def fingerprint(finding: dict) -> str:
     material = "|".join(
         [
@@ -128,6 +157,71 @@ def fingerprint(finding: dict) -> str:
         ]
     )
     return hashlib.sha1(material.encode()).hexdigest()
+
+
+# Near-duplicate detection compares findings that survived the exact-fingerprint pass. Two reviewers
+# describing one defect rarely produce the same title, and exact hashing keeps both.
+#
+# Similarity is Jaccard overlap of the normalized titles' meaningful tokens within the same file: a
+# title is the reviewer's own summary of the defect, and the file fixes the subject.
+#
+# The threshold is measured, not chosen. Run over 81 recorded consolidation files, the highest overlap
+# between any two same-file findings was 0.33, and several pairs at that level were *different*
+# defects sharing a sentence shape rather than one defect stated twice. So title overlap alone cannot
+# separate a real duplicate from a coincidence at any threshold that is also useful: rewritten titles
+# for one bug share almost no words.
+#
+# What this therefore reports is "worth a look", not "probably the same": a pair at or above 0.2 is
+# printed with its score so the orchestrator can judge with the finding bodies in front of it. It is
+# deterministic because `normalize` runs in the hermetic gate, and it only ever *reports* — a wrong
+# merge silently deletes a finding, a wrong candidate costs one line to ignore.
+SIMILARITY_THRESHOLD = 0.2
+# Words too common in finding titles to say anything about which defect is meant.
+TITLE_STOPWORDS = frozenset(
+    "a an the is are was were be been being to of in on at for from by with and or not no "
+    "this that these those it its as if then than when while so but into over under "
+    "should must can cannot will would could may might do does did done has have had".split()
+)
+
+
+def title_tokens(title: str) -> set[str]:
+    words = re.findall(r"[a-z0-9_]+", normalized_title(title))
+    return {word for word in words if word not in TITLE_STOPWORDS and len(word) > 1}
+
+
+def similarity_score(left: dict, right: dict) -> float:
+    """Jaccard overlap of the two titles' meaningful tokens, 0.0 when they cannot share a subject.
+
+    No file on either side means no subject: two unfiled findings both compare as `""`, and treating
+    that as "the same file" pairs two unrelated global nits into a candidate the orchestrator cannot
+    act on. `file` is optional, so this case is common, not theoretical.
+    """
+    left_file = str(left.get("file", "")).strip()
+    right_file = str(right.get("file", "")).strip()
+    if not left_file or not right_file or left_file != right_file:
+        return 0.0
+    a, b = title_tokens(left["title"]), title_tokens(right["title"])
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def near_duplicates(findings: list[dict]) -> list[dict]:
+    """Pairs above SIMILARITY_THRESHOLD, highest first. Advisory: the caller merges, this reports."""
+    pairs = []
+    for index, left in enumerate(findings):
+        for right in findings[index + 1:]:
+            score = similarity_score(left, right)
+            if score >= SIMILARITY_THRESHOLD:
+                pairs.append(
+                    {
+                        "similarity": round(score, 2),
+                        "files": [left.get("file", ""), right.get("file", "")],
+                        "titles": [left["title"], right["title"]],
+                        "labels": [left.get("label", ""), right.get("label", "")],
+                    }
+                )
+    return sorted(pairs, key=lambda pair: pair["similarity"], reverse=True)
 
 
 def read_findings(path: Path) -> list[dict]:
@@ -147,6 +241,17 @@ def read_findings(path: Path) -> list[dict]:
         if disposition is not None and disposition not in DISPOSITIONS:
             raise ValueError(f"finding {index} has invalid disposition: {disposition!r}")
         normalized = {**finding, "label": label}
+        # Optional: every review recorded before this field existed has no `kind`, and refusing those
+        # would make the tool unable to re-read its own history. A typo is a different matter — an
+        # unknown value is rejected so the vocabulary cannot drift one spelling at a time.
+        if "kind" in finding:
+            kind = str(finding["kind"]).strip().lower()
+            if kind not in KINDS:
+                raise ValueError(
+                    f"finding {index} has invalid kind: {finding['kind']!r} "
+                    f"(expected one of {', '.join(sorted(KINDS))})"
+                )
+            normalized["kind"] = kind
         if "persona" in finding or "personas" in finding:
             normalized.pop("personas", None)
             normalized["persona"] = canonical_personas(finding.get("persona", finding.get("personas")))
@@ -154,9 +259,16 @@ def read_findings(path: Path) -> list[dict]:
     return result
 
 
-def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
-    emitted = [f for f in findings if f.get("disposition") in EMITTED]
-    for f in emitted:
+def check_findings(findings: list[dict]) -> None:
+    """Per-finding rules that need no changed-file list.
+
+    Split out from `check_strict` because `persist` used to reach every per-finding rule only when
+    `--files` carried at least one path, and a spec or idea review has no path list to pass. The
+    result was a `verified: true` finding with no validation sentence persisting successfully in
+    exactly the modes that pass no files, while both `TOOLS.md` and the consolidation protocol said
+    the sentence was required.
+    """
+    for f in findings:
         evidence = f.get("evidence")
         if f["label"] in {"blocking", "attention"} and not (
             f.get("verified") is True
@@ -174,6 +286,23 @@ def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
             raise ValueError(
                 f"finding {f['title']!r}: evidence must be a string path:line, got {type(evidence).__name__}"
             )
+        if f.get("verified") is True:
+            # `verified: true` asserts a second read happened. Without its conclusion recorded, the
+            # next reader has only a boolean and an anchor and cannot tell why the check passed —
+            # which is the reasoning the consolidator used to discard.
+            validation = f.get("validation")
+            if not isinstance(validation, str) or not validation.strip():
+                raise ValueError(
+                    f"finding {f['title']!r} is verified but records no validation sentence; "
+                    "state what the verification read and concluded"
+                )
+
+
+def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
+    emitted = [f for f in findings if f.get("disposition") in EMITTED]
+    check_findings(emitted)
+    for f in emitted:
+        evidence = f.get("evidence")
         if files and evidence:
             # Shape is not enough: evidence must point at something under review, or a
             # finding about an untouched file is reported as verified. A finding with no
@@ -224,7 +353,11 @@ def normalize(args: argparse.Namespace) -> int:
             kept[finding["fingerprint"]] = finding
     if args.strict:
         check_strict(list(kept.values()), args.files)
-    payload = {"findings": list(kept.values()), "duplicates": duplicates}
+    # Advisory, and computed on what survived the exact pass: two distinct findings about one defect
+    # stay in the payload, with the pair reported so the orchestrator can merge deliberately and say
+    # why. Automatic merging here was rejected — a wrong merge silently deletes a finding.
+    payload = {"findings": list(kept.values()), "duplicates": duplicates,
+               "merge_candidates": near_duplicates(list(kept.values()))}
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.write_text(text)
@@ -786,6 +919,12 @@ def persist(args: argparse.Namespace) -> int:
                                                owner / "SPEC.md", hunks_path)
             if violations:
                 raise ValueError("; ".join(violations))
+    if args.confidence is not None and not 0 <= args.confidence <= 100:
+        raise ValueError(f"--confidence must be 0-100, got {args.confidence}")
+    if (args.confidence is None) != (not args.confidence_reason.strip()):
+        # Both or neither: a bare percentage is an unfalsifiable number, and a reason with no number
+        # is prose the reader cannot compare across reviews.
+        raise ValueError("--confidence and --confidence-reason go together")
     report = args.report.read_text()
     # Two sections are generated from the inputs below, so a report carrying its own copy would
     # render the same table twice — once verbatim in the body, once at the end — and a reader
@@ -802,6 +941,18 @@ def persist(args: argparse.Namespace) -> int:
             f"{args.report} already contains {', '.join(generated)}, which persist appends; "
             "delete it from the report and let persist write it"
         )
+    # `Confidence:` is generated, so it is inserted under the verdict rather than appended, and a
+    # report that already carries one is refused like the two heading sections. Both rules exist for
+    # the same reason they do there: two copies leave a reader unable to tell which is authoritative,
+    # and appending after the coverage table would put it at the end instead of where a reader looks.
+    if args.confidence is not None:
+        if CONFIDENCE_LINE.search(report):
+            raise ValueError(
+                f"{args.report} already carries a `Confidence:` line, which persist writes; "
+                "delete it and pass --confidence instead"
+            )
+        report = insert_under_verdict(
+            report, f"Confidence: {args.confidence}% — {args.confidence_reason.strip()}")
     if coverage_section:
         report = report.rstrip() + "\n\n" + coverage_section
     if coverage_gap:
@@ -830,8 +981,13 @@ def persist(args: argparse.Namespace) -> int:
             if exists.returncode:
                 raise ValueError(f"--head {head} is not a commit in this repository")
         report = report.rstrip() + f"\n\nReviewed at: {head}\n"
-    if args.strict and args.files:
-        check_strict([f for f in findings if f.get("disposition") in EMITTED], args.files)
+    if args.strict:
+        # Per-finding rules always; the path-scoped evidence gate only when a path set exists. A spec
+        # or idea review passes no paths, and gating the whole check on `--files` silently skipped
+        # the `validation` requirement in exactly those modes.
+        check_findings([f for f in findings if f.get("disposition") in EMITTED])
+        if args.files:
+            check_strict([f for f in findings if f.get("disposition") in EMITTED], args.files)
     rows = [f for f in findings if f.get("disposition") == "defer"]
     args.review_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(args.review_dir / "REVIEW.md", report)
@@ -941,6 +1097,10 @@ def main() -> int:
     persist_parser.add_argument("--strict", action="store_true")
     persist_parser.add_argument("--personas", nargs="*", default=[])
     persist_parser.add_argument("--head", default="", help="reviewed commit SHA recorded as `Reviewed at:`")
+    persist_parser.add_argument("--confidence", type=int, default=None,
+                                help="0-100: how much of the change the review actually exercised")
+    persist_parser.add_argument("--confidence-reason", default="",
+                                help="one sentence saying why that percentage, required with --confidence")
     select_parser = commands.add_parser("select")
     select_parser.add_argument("--mode", required=True, type=mode_arg,
                                choices=sorted(CODE_MODES | {"spec", "idea"}))

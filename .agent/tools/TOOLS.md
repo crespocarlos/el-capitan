@@ -37,6 +37,14 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
   for read-side task context; write-side state still goes through `task-env.sh` and `$TASK_DIR`.
 - `crew-ls.py --status-file SPEC.md` is the single reader for the `## Status` contract, implemented
   in `task_status.py`; hooks and other tools import it and must not re-implement it.
+- `review-findings.py` records two optional fields on a finding — `kind` (what sort of defect: its
+  values are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
+  `other`) and `validation` (one sentence on what a `verified: true` check read and concluded, required
+  under `--strict` in every mode) — and one `persist` flag pair, `--confidence` plus
+  `--confidence-reason`: a 0-100 coverage self-assessment rendered under the verdict, which nothing
+  gates on. `normalize` also emits `merge_candidates`: same-file findings whose titles overlap,
+  reported with a score and never merged, because title overlap cannot separate a real duplicate from a
+  coincidence — over 81 recorded reviews the maximum same-file overlap was 0.33.
 - `review-findings.py persist --files` records the reviewed paths and gates evidence against them;
   it deliberately does not compare that list with the diff. `persist` runs in three modes with no
   single base ref, so inferring one would be wrong more often than right. Tree identity is carried by

@@ -273,7 +273,7 @@ Multi-lens review of a branch diff, a PR, a SPEC.md, staged changes, or an idea/
 
 For idea and spec reviews, the output is evaluative: a verdict (`proceed / revisit / blocked`) followed by findings using `[blocking]` and `[concern]` labels, focused on whether the plan holds up.
 
-Every `[blocking]` and `[attention]` finding is verified against the repository before it is shown; pre-existing, linter-catchable, and previously rejected issues are deferred to `DEFERRED.md` instead of reported. Each review is persisted to the task's `REVIEW.md`.
+Every `[blocking]` and `[attention]` finding is verified against the repository before it is shown; pre-existing, linter-catchable, and previously rejected issues are deferred to `DEFERRED.md` instead of reported. Each review is persisted to the task's `REVIEW.md`, with an optional `kind` beside each label (the values are listed in `TOOLS.md`), the verifier's own one-sentence conclusion, and a `Confidence:` percentage plus reason under the verdict. Findings whose titles overlap within the same file are reported as merge candidates rather than merged, since title similarity cannot tell a duplicate from a coincidence.
 
 **Personas:** Code Quality (always; includes naming and user-facing strings), Adversarial, Architecture, Product Flow, Prompt Quality  
 **Modes:** `crew review` (self), `crew review changes` (staged), `crew review PR #N`, `crew review spec`, `crew review idea`, `crew review address`

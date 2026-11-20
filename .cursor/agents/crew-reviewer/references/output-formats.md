@@ -6,6 +6,19 @@ blocking findings must state the verdict (`PASS` or `WARN`) and end with `Next: 
 to continue.` A blocked self-review must state `BLOCK` and end with `Next: run \`crew review
 address\` to resolve the findings.`
 
+A finding line carries its kind beside its label when one was recorded, and `persist` renders the
+confidence line under the verdict — do not write either into the report body yourself:
+
+```
+1. [attention] · security **`path/to/file.ts — line N`** — one-line title
+```
+
+Both are optional in the sense that a finding without a clear kind omits the suffix rather than
+inventing a value. The `· kind` slot is also defined in the code-review template in
+`consolidation.md`, which is the shape a finding is actually written in; this file only shows it in
+the reply. The confidence line comes from `--confidence` / `--confidence-reason`, and a report that
+already carries a `Confidence:` line is refused by `persist`.
+
 ## Render the report, do not re-author it
 
 The reply is the persisted `report.md` passed through unchanged, under its `## Review:` heading. Do

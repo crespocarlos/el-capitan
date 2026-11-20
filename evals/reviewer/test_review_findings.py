@@ -102,12 +102,22 @@ def test_normalize_strict_requires_verified_evidence_and_cap(tmp: Path) -> None:
     source.write_text(json.dumps([base]))
     assert run("normalize", str(source), "--strict").returncode == 2
     assert run("normalize", str(source)).returncode == 0
-    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3"}]))
+    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3",
+                                   "validation": "read a.ts:1-9; the guard is absent"}]))
     assert run("normalize", str(source), "--strict").returncode == 0
+    # `verified: true` claims a second read; strict now requires its conclusion too, so a bare
+    # boolean cannot pass as evidence of one.
+    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3"}]))
+    strict = run("normalize", str(source), "--strict")
+    assert strict.returncode == 2 and "validation sentence" in strict.stderr
+    # Without --strict it still normalizes, because older artifacts have no such field.
+    assert run("normalize", str(source)).returncode == 0
     for evidence in (True, {}, "verified elsewhere", "a.ts"):
-        source.write_text(json.dumps([{**base, "verified": True, "evidence": evidence}]))
+        source.write_text(json.dumps([{**base, "verified": True, "evidence": evidence,
+                                       "validation": "read it"}]))
         assert run("normalize", str(source), "--strict").returncode == 2
-    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3@abc1234"}]))
+    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3@abc1234",
+                                   "validation": "read it at the PR head"}]))
     assert run("normalize", str(source), "--strict").returncode == 0
     many = [{**base, "title": f"t{i}", "label": "nit"} for i in range(8)]
     source.write_text(json.dumps(many))
@@ -117,7 +127,8 @@ def test_normalize_strict_requires_verified_evidence_and_cap(tmp: Path) -> None:
 
 def test_normalize_strict_caps_nits_separately_from_total(tmp: Path) -> None:
     source = tmp / "c.json"
-    ok = {"verified": True, "evidence": "a.ts:3", "file": "a.ts", "disposition": "patch"}
+    ok = {"verified": True, "evidence": "a.ts:3", "file": "a.ts", "disposition": "patch",
+          "validation": "read a.ts:1-9"}
 
     def write(items: list[dict]) -> subprocess.CompletedProcess:
         source.write_text(json.dumps(items))
@@ -621,7 +632,7 @@ def test_normalize_strict_requires_real_hunk_ids_on_emitted_findings(tmp: Path) 
     hunks, _ = write_map(tmp, ["h1", "h2"], [["h1", "h2"]])
     source = tmp / "c.json"
     base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
-            "verified": True, "evidence": "a.ts:3"}
+            "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9"}
     cases = [
         ({**base, "hunks": ["h2"]}, 0, ""),
         (base, 2, "cites no hunk"),
@@ -643,7 +654,8 @@ def test_normalize_strict_merges_duplicate_hunks_and_validates_each_candidate(tm
     hunks, _ = write_map(tmp, ["h1", "h2"], [["h1", "h2"]])
     source = tmp / "c.json"
     base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
-            "verified": True, "evidence": "a.ts:3", "persona": ["adversarial"]}
+            "verified": True, "evidence": "a.ts:3", "persona": ["adversarial"],
+            "validation": "read a.ts:1-9"}
     source.write_text(json.dumps([
         {**base, "hunks": ["h1"]},
         {**base, "persona": ["code-quality"], "hunks": ["h2", "h1"]},
@@ -675,7 +687,8 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
     report.write_text("## Review: changes\n")
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
-        {"title": "Guard missing", "label": "attention", "disposition": "patch", "hunks": ["h1"]},
+        {"title": "Guard missing", "label": "attention", "disposition": "patch", "hunks": ["h1"],
+         "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9"},
         {"title": "Rename", "label": "nit", "disposition": "patch"},
         {"title": "Old bug", "label": "attention", "disposition": "defer"},
     ]))
@@ -924,6 +937,140 @@ def test_findings_outrank_a_trailing_no_findings_verdict(tmp: Path) -> None:
     # complete empty review, and a placeholder is still unknown.
     assert classify("### Verdict: no findings\n") == "ok"
     assert classify("status: dispatched\n\nraw response captured\n") == "unknown"
+
+
+def test_kind_is_validated_normalized_and_absent_legal(tmp: Path) -> None:
+    """The `kind` field's three rules, none of which had a test.
+
+    Absent must pass (every recorded review predates the field), padding and case are normalized
+    rather than rejected, a typo is refused, and `kind` stays out of the fingerprint so re-classifying
+    a finding cannot create a second one.
+    """
+    source = tmp / "c.json"
+    base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch"}
+
+    def normalize(payload: list[dict]) -> subprocess.CompletedProcess:
+        source.write_text(json.dumps(payload))
+        return run("normalize", str(source))
+
+    assert normalize([base]).returncode == 0, "an absent kind is legal"
+    padded = normalize([{**base, "kind": "  Security "}])
+    assert padded.returncode == 0
+    assert json.loads(padded.stdout)["findings"][0]["kind"] == "security"
+    typo = normalize([{**base, "kind": "securty"}])
+    assert typo.returncode == 2 and "invalid kind" in typo.stderr
+    # Identity is the defect, not its classification: same file, label and title means one finding.
+    plain = json.loads(normalize([base]).stdout)["findings"][0]["fingerprint"]
+    classified = json.loads(normalize([{**base, "kind": "security"}]).stdout)["findings"][0]["fingerprint"]
+    assert plain == classified
+
+
+def test_near_duplicates_pin_both_threshold_edges(tmp: Path) -> None:
+    """Above the threshold appears, below it does not, and a blank file never pairs.
+
+    The earlier version of this test passed with any threshold from 0.01 to 0.77, so the measured
+    value its comment rests on was unverified. These titles are constructed to sit either side of 0.2
+    and at 0.5-overlap for the unfiled case.
+    """
+    source = tmp / "c.json"
+    base = {"label": "attention", "file": "a.yaml", "disposition": "patch"}
+    # Four shared tokens of five total -> 0.8, comfortably above.
+    source.write_text(json.dumps([
+        {**base, "title": "resolver falls back to empty list instead of reported rules"},
+        {**base, "title": "resolver falls back to empty list ignoring reported rules"},
+        # Shared tokens below the threshold: one common token of many distinct ones.
+        {**base, "title": "schema description claims stamps that never succeeded"},
+    ]))
+    payload = json.loads(run("normalize", str(source)).stdout)
+    assert len(payload["findings"]) == 3, "a candidate pair must never be merged"
+    assert len(payload["merge_candidates"]) == 1
+    assert payload["merge_candidates"][0]["similarity"] >= 0.2
+    assert "schema" not in payload["merge_candidates"][0]["titles"][0]
+    # Two unfiled findings with similar titles must not pair: no file means no shared subject.
+    source.write_text(json.dumps([
+        {"label": "nit", "disposition": "patch", "title": "rename the helper for clarity"},
+        {"label": "nit", "disposition": "patch", "title": "rename the helper for readability"},
+    ]))
+    assert json.loads(run("normalize", str(source)).stdout)["merge_candidates"] == []
+
+
+def test_persist_places_confidence_under_the_verdict(tmp: Path) -> None:
+    """The line goes below the verdict, not at the end — and a report carrying one is refused."""
+    task = tmp / "task"
+    review_dir = task / "review" / "20260101000000"
+    review_dir.mkdir(parents=True)
+    (review_dir / "adversarial.in.md").write_text("package")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "layers.json").write_text(json.dumps(
+        {"layers": [{"id": "L1", "kind": "core", "title": "t", "explainer": "e",
+                     "reviewFocus": "- f", "hunks": ["h1"]}]}))
+    (review_dir / "hunks.json").write_text(json.dumps({"files": [], "hunks": [{"id": "h1"}]}))
+    report = tmp / "report.md"
+    args = ["persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "changes",
+            "--personas", "adversarial", "--strict", "--confidence", "40",
+            "--confidence-reason", "the diff was read"]
+    report.write_text("## Review: changes — x\n\nVerdict: PASS\n\n1. [nit] stuff\n")
+    assert run(*args).returncode == 0
+    written = (review_dir / "REVIEW.md").read_text()
+    assert written.index("Confidence:") < written.index("### Coverage by layer"), written
+    assert written.index("Verdict: PASS") < written.index("Confidence:")
+    # A hand-written copy is refused rather than duplicated.
+    report.write_text("## Review: changes — x\n\nVerdict: PASS\n\nConfidence: 90% — invented\n")
+    refused = run(*args)
+    assert refused.returncode == 2 and "already carries a `Confidence:` line" in refused.stderr
+
+
+
+    """Two reviewers state one defect differently; both stay, the pair is reported with a score.
+
+    The threshold is measured low (0.2) because title overlap cannot separate a real duplicate from a
+    coincidence: over 81 recorded reviews the maximum same-file overlap was 0.33. So this reports a
+    candidate, never a merge — a wrong merge deletes a finding.
+    """
+    source = tmp / "c.json"
+    base = {"label": "attention", "file": "a.yaml", "disposition": "patch",
+            "verified": True, "evidence": "a.yaml:3", "validation": "read a.yaml"}
+    source.write_text(json.dumps([
+        {**base, "title": "resolver falls back to an empty list instead of reported rules"},
+        {**base, "title": "resolver falls back to an empty list, dropping reported rules"},
+        {**base, "title": "schema description claims stamps that never succeeded"},
+    ]))
+    payload = json.loads(run("normalize", str(source), "--strict").stdout)
+    assert len(payload["findings"]) == 3, "a candidate pair must not be merged"
+    assert payload["duplicates"] == []
+    assert len(payload["merge_candidates"]) == 1
+    pair = payload["merge_candidates"][0]
+    assert pair["similarity"] >= 0.2 and pair["files"] == ["a.yaml", "a.yaml"]
+    # Different files never pair, however similar the titles.
+    source.write_text(json.dumps([
+        {**base, "title": "resolver falls back to an empty list instead of reported rules"},
+        {**base, "title": "resolver falls back to an empty list instead of reported rules",
+         "file": "b.yaml"},
+    ]))
+    assert json.loads(run("normalize", str(source), "--strict").stdout)["merge_candidates"] == []
+
+
+def test_persist_renders_confidence_and_requires_a_reason(tmp: Path) -> None:
+    """Confidence sits under the verdict and is optional; a bare number is refused."""
+    task = tmp / "task"
+    review_dir = task / "review" / "20260101000000"
+    review_dir.mkdir(parents=True)
+    (review_dir / "adversarial.in.md").write_text("package")
+    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    report = tmp / "report.md"
+    base = ["persist", "--review-dir", str(review_dir), "--report", str(report),
+            "--mode", "changes", "--personas", "adversarial"]
+    report.write_text("## Review: changes — nothing\n")
+    assert run(*base).returncode == 0
+    assert "Confidence:" not in (review_dir / "REVIEW.md").read_text(), "omitting it is valid"
+    report.write_text("## Review: changes — nothing\n")
+    assert run(*base, "--confidence", "30").returncode == 2, "a percentage needs its reason"
+    report.write_text("## Review: changes — nothing\n")
+    assert run(*base, "--confidence", "101", "--confidence-reason", "x").returncode == 2
+    report.write_text("## Review: changes — nothing\n")
+    assert run(*base, "--confidence", "30", "--confidence-reason",
+               "the diff was read; no test was run").returncode == 0
+    assert "Confidence: 30% — the diff was read; no test was run" in (review_dir / "REVIEW.md").read_text()
 
 
 def main() -> int:

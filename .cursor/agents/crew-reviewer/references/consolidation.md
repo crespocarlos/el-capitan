@@ -120,6 +120,36 @@ Give each kept finding a disposition in the internal record:
   list; append it to the deferred file (see pipeline persistence) and mention the count in one line
   after the list.
 
+Three things are recorded beyond each finding's label and anchor, each under its own condition:
+
+- **`kind`** (optional, per finding) — what sort of defect, independent of severity. Record it when the
+  finding clearly fits one; omit it rather than defaulting to `other`, which would destroy the triage
+  separation the field exists for. The values are the `KINDS` set in `review-findings.py` — a security
+  hole and a doc inaccuracy can both be `[attention]`, and this is how a reader tells them apart. Read
+  the set there rather than copying it here, and do not invent a value: `normalize` rejects one outside
+  it. The boundaries that matter, because the names alone do not separate them: `correctness` produces
+  a wrong result on valid input; `reliability` fails under load, timing, or an environmental condition;
+  `testing` is missing or weak coverage of behaviour the change introduces; `documentation` is prose or
+  a comment that misstates what the code does; `other` is none of these.
+- **`validation`** (per finding, when `verified` is true) — one sentence saying what you read and what it
+  concluded, e.g. "confirmed: `executeEsqlQuery` returns no rows when `_source` is absent, and this
+  query keeps only `data_json`". `verified: true` alone asserts a second read happened; this records
+  *why it passed*, so the next reader can check the reasoning instead of trusting a boolean.
+  `persist --strict` requires it whenever `verified` is true, in every mode including one that passes no
+  `--files`.
+- **merge candidates** (report-level, when `normalize` emits a pair) — `normalize` reports pairs of
+  surviving findings whose titles overlap in the same file, with a similarity score. It never merges
+  them: title overlap cannot tell a real duplicate from a coincidence. Read each pair with both finding
+  bodies in front of you and decide; when you merge, append `(merged with: <other title> — <reason>)` to
+  the kept finding's title line, after the title. That marker and `(also flagged by: …)` may both
+  appear, the "also flagged" list first.
+
+**Confidence.** At the end of the review, record how much of the change you could actually judge, as a
+percentage plus one sentence, and pass both to `persist` (`--confidence`, `--confidence-reason`). The
+number is a self-assessment of coverage, not a probability that the change is correct. Do not write a
+`Confidence:` line into the report yourself — `persist` renders it under the verdict, and a report that
+already carries one is refused. Nothing gates on the number; it exists so a reader can weigh the report.
+
 When a hunk index exists, carry each finding's hunk ids into its record. Check them against the
 verified location: a persona's id that names a hunk the finding does not depend on is corrected, and
 a `[blocking]` or `[attention]` finding that no hunk causes is pre-existing, so route it to `defer`.
@@ -195,6 +225,9 @@ a missing requirement) and use `[concern]` in place of `[attention]` for weaknes
 
 Each finding is a self-contained GitHub PR comment body — written to be pasted inline without
 editing. Use one flat numbered list with an inline severity label; do not add severity headings.
+
+The `· <kind>` slot after the label is optional: include it when the finding clearly fits one of the
+`KINDS` values, and omit it rather than inventing one. The label itself is never optional.
 
 ````
 ## Review: <mode> — <summary>
