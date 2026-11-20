@@ -184,6 +184,70 @@
       "owner": "crew-orchestrator",
       "help": "argparse",
       "smoke": "--help"
+    },
+    {
+      "name": "store.py",
+      "dir": "memory",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "units.py",
+      "dir": "memory",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "recall.py",
+      "dir": "memory",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "maintenance.py",
+      "dir": "memory",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "findings.py",
+      "dir": "review",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review-findings.py",
+      "smoke": "imported by review-findings.py"
+    },
+    {
+      "name": "personas.py",
+      "dir": "review",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review-findings.py",
+      "smoke": "imported by review-findings.py"
+    },
+    {
+      "name": "layers.py",
+      "dir": "review",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review-findings.py",
+      "smoke": "imported by review-findings.py"
+    },
+    {
+      "name": "report.py",
+      "dir": "review",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review-findings.py",
+      "smoke": "imported by review-findings.py"
     }
   ],
   "assets": [

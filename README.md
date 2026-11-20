@@ -316,8 +316,13 @@ el-capitan/
 │   ├── hooks/               # Guard, telemetry, session, and memory-context hooks
 │   └── settings.json        # Hook configuration
 ├── .agent/
-│   ├── tools/               # CLIs (.py) with --help, GraphQL asset, tools.json and TOOLS.md catalog
-│   ├── scripts/             # Source-only and internal shell helpers (task-env.sh, default-branch.sh, get-diff.sh)
+│   ├── tools/               # CLIs grouped by responsibility: task/, review/, memory/, evals/, maintenance/
+│   │   ├── task/            # Task state, guidance context, worktrees, status contract
+│   │   ├── review/          # Hunks, layer maps, findings, packages, PR threads, e2e
+│   │   ├── memory/          # crew-mem.py entry point plus its store/units/recall/maintenance modules
+│   │   ├── evals/           # Evaluation inspection and comparison
+│   │   ├── maintenance/     # crew-lint.py repository validation
+│   │   └── tools.json, TOOLS.md, requirements.txt  # The catalog and the dependency note
 │   ├── _SPEC_TEMPLATE.md    # Symlink → spec-writing/references/spec-template.md
 │   ├── _BUG_SPEC_TEMPLATE.md  # Symlink → spec-writing/references/bug-spec-template.md
 │   ├── _MEMORY_TEMPLATE.md  # Typed durable-memory unit template

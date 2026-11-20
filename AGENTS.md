@@ -62,8 +62,14 @@ two-line `## Status\n<value>` form.
   _SPEC_TEMPLATE.md      ← symlink → ../.cursor/skills/spec-writing/references/spec-template.md
   _BUG_SPEC_TEMPLATE.md  ← symlink → ../.cursor/skills/spec-writing/references/bug-spec-template.md
   _JOURNAL_TEMPLATE.md
-  bin/          ← shell scripts, Python utilities, GraphQL queries (symlinked to ~/.agent/bin/)
-install.sh      ← creates symlinks from ~/.cursor/, ~/.claude/, ~/.agent/ → this repo
+  tools/        ← every command and module, grouped by responsibility; all install flat into ~/.agent/bin/
+    task/       ← task state, guidance context, worktrees, and the task_status.py status contract
+    review/     ← hunks, layer maps, findings, packages, PR threads, and the e2e client
+    memory/     ← crew-mem.py plus its store/units/recall/maintenance modules, and the mem.py wrapper
+    evals/      ← evaluation inspection and comparison
+    maintenance/← crew-lint.py repository validation
+    tools.json, TOOLS.md, requirements.txt  ← the catalog, the naming standard, the dependency note
+install.sh      ← creates symlinks from ~/.cursor/, ~/.claude/, ~/.agent/tools/ → this repo
 ```
 
 ## Symlink rules

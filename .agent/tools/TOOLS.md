@@ -26,16 +26,24 @@ paths do not change. `tools.json` is the machine-readable source of truth: each 
   letting one link silently shadow the other. Tools resolve their siblings from
   `Path(__file__).resolve()`, which follows the installed symlink back into the repository.
 
-| Directory | Commands | Purpose |
-| --- | --- | --- |
-| `task/` | `agent-context.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `task_status.py`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
-| `review/` | `assemble-packages.py`, `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
-| `review/` (deprecated name) | `pr-review-actions.py` | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
-| `evals/` | `evals-compare.py`, `evals-inspect.py` | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py` | Durable units and immutable observations |
-| `memory/` (deprecated name) | `mem.py` | Renamed to `crew-mem.py`; wrapper kept for one release cycle |
-| `maintenance/` | `crew-lint.py` | Repository validation |
-| root | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
+| Directory | Commands | Modules (imported, not run) | Purpose |
+| --- | --- | --- | --- |
+| `task/` | `agent-context.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | `task_status.py` | Guidance context, task state, validation, worktrees, and artifacts |
+| `review/` | `assemble-packages.py`, `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | `findings.py`, `layers.py`, `personas.py`, `report.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
+| `review/` (deprecated name) | `pr-review-actions.py` | — | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
+| `evals/` | `evals-compare.py`, `evals-inspect.py` | — | Inspect, compare, and diagnose evaluation runs |
+| `memory/` | `crew-mem.py` | `store.py`, `units.py`, `recall.py`, `maintenance.py` | Durable units and immutable observations |
+| `memory/` (deprecated name) | `mem.py` | — | Renamed to `crew-mem.py`; wrapper kept for one release cycle |
+| `maintenance/` | `crew-lint.py` | — | Repository validation |
+| root | `tools.json`, `TOOLS.md`, `requirements.txt` | — | The catalog and the dependency note |
+
+`crew-mem.py` and `review-findings.py` are argparse entry points over their modules: each parses the
+command line and dispatches, and holds no command logic. Modules import each other through a
+`sys.path` insert of their own directory, in dependency order (`store` → `units` → `recall` →
+`maintenance`, and `findings` → `personas`/`layers` → `report`), so a module never imports back into
+one that imports it. Both entry points re-export the names their public contract names, so
+`assemble-packages.py` and the tests can keep importing them from the command file rather than
+reaching into a private module.
 
 ## Contracts
 
