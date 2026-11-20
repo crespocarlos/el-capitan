@@ -103,7 +103,7 @@ def check_personas_do_not_restate_the_shared_contract() -> None:
         "the nit-in-disguise rule": "nit in disguise",
         "[concern] definition": "replaces `[attention]`",
         "the fetch budget": "Tool-call budget: ≤",
-        "the search order": "map_symbols_by_query",
+        "the search order": "sourcerer_code_search",
     }
     for name in PERSONAS:
         # Body only: the tool name legitimately appears in the frontmatter `tools:` line.
@@ -270,9 +270,9 @@ def check_every_declared_mcp_tool_is_named_in_the_contract() -> None:
 def check_granted_tools_match_what_the_prose_tells_them_to_use() -> None:
     """The reverse direction: prose must not name a tool the persona is not granted.
 
-    Claude Code reads `tools:` and enforces it. A contract that says "call `auth_status` when a call
-    is rejected" while the persona's frontmatter omits `auth_status` is an instruction to call a tool
-    it does not have — a contradiction between two loaded files.
+    Claude Code reads `tools:` and enforces it. A contract that says "call `sourcerer_files_cat`" while
+    the persona's frontmatter omits it is an instruction to call a tool it does not have — a
+    contradiction between two loaded files.
     """
     servers = load_mcp_servers()
     all_tools = {tool for tools in servers.values() for tool in tools}
@@ -310,11 +310,11 @@ def check_docs_rule_is_available_without_a_trigger() -> None:
     )
 
 
-def check_search_order_is_semantic_first_and_harness_neutral() -> None:
-    """Semantic search first, and the instruction must not name Cursor-only tools as the only path."""
+def check_search_order_is_index_first_and_harness_neutral() -> None:
+    """Index search first, and the instruction must not name Cursor-only tools as the only path."""
     contract = flat(CONTRACT.read_text())
-    assert "Semantic search first" in contract, "the contract does not put semantic search first"
-    assert "map_symbols_by_query" in contract, "the contract does not name the primary symbol lookup"
+    assert "Sourcerer" in contract, "the contract does not put the code index first"
+    assert "sourcerer_code_search" in contract, "the contract does not name the primary index lookup"
     assert "harness" in contract.lower(), (
         "the contract has no harness-neutral fallback, so a non-Cursor harness has no instruction"
     )
@@ -340,7 +340,7 @@ CHECKS = [
     check_granted_tools_match_what_the_prose_tells_them_to_use,
     check_personas_grant_the_same_toolset,
     check_docs_rule_is_available_without_a_trigger,
-    check_search_order_is_semantic_first_and_harness_neutral,
+    check_search_order_is_index_first_and_harness_neutral,
 ]
 
 

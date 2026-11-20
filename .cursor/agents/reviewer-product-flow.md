@@ -4,7 +4,7 @@ description: "Product manager reviewer for spec alignment, user experience, flow
 # Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
 # Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
 # is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
-tools: Read, Grep, Glob, mcp__semantic-code-search__semantic_code_search, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
+tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search, mcp__sourcerer__sourcerer_code_grep, mcp__sourcerer__sourcerer_files_tree, mcp__sourcerer__sourcerer_files_read_lines, mcp__sourcerer__sourcerer_files_cat, mcp__sourcerer__sourcerer_ki_search, mcp__sourcerer__sourcerer_repos_search, mcp__sourcerer__sourcerer_repos_list, mcp__sourcerer__sourcerer_refs_list, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
 readonly: true
 maxTurns: 10
 ---

@@ -63,29 +63,35 @@ not ground.
 
 ## Finding things in the codebase
 
-Semantic search first: it finds code by meaning; a text search finds only the string you guessed.
-Take the first row that fits and stop there:
+Search Sourcerer's code index before reaching for a text search: it ranks by relevance across whole
+repositories, so it finds implementations you could not have guessed the words for. Take the first row
+that fits and stop there:
 
 | Task | Use |
 | --- | --- |
-| Where does this concept live? | `discover_directories`, then `map_symbols_by_query` |
-| Find a symbol, or every file using known symbols | `map_symbols_by_query`, or `symbol_analysis` |
-| Natural-language query, no symbol or directory known | `semantic_code_search` |
-| Definition, call sites, types, tests of one symbol | `symbol_analysis` |
-| Outline of one known file | `document_symbols` |
-| Read a file that search identified | `read_file_from_chunks` |
-| Verify one exact string in a located file | a text search (`Grep`) |
+| Where does this concept live? | `sourcerer_code_search` with a described query, then `sourcerer_files_tree` on the directory it names |
+| Find code by identifier, error text, or config key | `sourcerer_code_grep` (exact regex) |
+| Outline of one known directory | `sourcerer_files_tree` |
+| Read a file search identified, or a line range | `sourcerer_files_read_lines` |
+| Read a whole file | `sourcerer_files_cat` |
+| Which repositories hold this code | `sourcerer_repos_search`, or `sourcerer_repos_list` |
+| Which branch or tag is indexed | `sourcerer_refs_list`; a stale index is the usual reason results look wrong |
+| Repository or module orientation prose | `sourcerer_ki_search` |
+| Verify one exact string in a file you already located | a text search (`Grep`) |
 | Find files by path once you know the area | a path search (`Glob`) |
-| Which repos are indexed, or results look wrong | `list_indices` |
-| The server rejects a call | `auth_status`, then retry once |
 
-These are the semantic code search server's ids (`mcp__semantic-code-search__*`) plus the native
-`Grep` and `Glob`; in a harness with different names, use its equivalents in the same order. Never
-start with a text search while exploring; it is correct once search has narrowed the scope, or when
-the finding already names its file and line. Read a whole file only as a last resort.
-`~/.cursor/rules/crew-explorer-conventions.mdc` has the KQL syntax for `map_symbols_by_query`.
+These are Sourcerer's ids (`mcp__sourcerer__*`) plus the native `Grep` and `Glob`; in a harness with
+different names, use its equivalents in the same order. Three things to know about the index: it is
+**lexical relevance ranking, not embedding search**, so a query of the words that actually appear in
+the code beats a restatement of the question; it holds snapshots of *refs*, so it may be behind the
+working tree or covering another branch; and leaving its ref filters at `*` blends results across
+every indexed ref. When a claim is version-specific — "does this branch do X" — pass the branch or
+commit as `git_ref`, and check `sourcerer_refs_list` for that ref's `status`: `complete` is safe,
+`indexing` may be partial, `stale` should not be relied on. Never start with a text search while
+exploring; it is correct once search has narrowed the scope, or when the finding already names its
+file and line. Read a whole file only as a last resort.
 
-**Tool-call budget: ≤8 file-fetch calls** (text search, read, and semantic search combined). Fetch
+**Tool-call budget: ≤8 file-fetch calls** (text search, read, and index search combined). Fetch
 only when a finding cannot be grounded from the artifact and package; count before each call and
 stop at 8.
 
@@ -93,6 +99,6 @@ stop at 8.
 
 Verify ES|QL (`.esql` files, `FROM … |`, `esql` identifiers) and Elasticsearch or Kibana API claims
 against the docs server, never from memory: search with `search_internal_docs`, confirm with
-`get_internal_document_by_url`, cite the URL. The semantic index shows how code builds a query, not
+`get_internal_document_by_url`, cite the URL. The code index shows how code builds a query, not
 whether the syntax is valid. With no docs server, or a failed lookup, mark the claim `unverified`: a
 guessed option is indistinguishable from a verified one.

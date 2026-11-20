@@ -5,7 +5,7 @@ description: "Spec adversarial critic for missing criteria and edge cases. Dispa
 # Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
 # is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
 readonly: true
-tools: Read, Grep, Glob, mcp__semantic-code-search__semantic_code_search, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
+tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search, mcp__sourcerer__sourcerer_code_grep, mcp__sourcerer__sourcerer_files_tree, mcp__sourcerer__sourcerer_files_read_lines, mcp__sourcerer__sourcerer_files_cat, mcp__sourcerer__sourcerer_repos_search, mcp__sourcerer__sourcerer_repos_list, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
 maxTurns: 5
 ---
 

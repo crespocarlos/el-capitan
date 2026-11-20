@@ -148,7 +148,7 @@ The PR head is authoritative. Resolve the repository and its immutable head SHA 
 `gh pr view --json headRefOid,headRepositoryOwner,headRepository`, before any read: every later
 `?ref=` and every `path:line@headSHA7` label depends on that one value, so deriving it late leaves
 earlier reads unattributable. Then never use the local checkout to build or verify PR context: no
-file reads, repository search, semantic search, explorer local-repository tools, or shell filesystem
+file reads, repository search, code-index search, explorer local-repository tools, or shell filesystem
 commands, in either harness. Read the patch with `gh pr diff` and every excerpt with `gh api` at the
 head SHA, following the read discipline in `crew-reviewer`'s critical rules — build the same Tier
 1–3 and prompt-tier packages from the returned contents, labeling every excerpt `path:line@headSHA7`.

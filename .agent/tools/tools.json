@@ -183,15 +183,16 @@
     }
   ],
   "mcp_servers": {
-    "semantic-code-search": [
-      "auth_status",
-      "discover_directories",
-      "document_symbols",
-      "list_indices",
-      "map_symbols_by_query",
-      "read_file_from_chunks",
-      "semantic_code_search",
-      "symbol_analysis"
+    "sourcerer": [
+      "sourcerer_code_search",
+      "sourcerer_code_grep",
+      "sourcerer_files_tree",
+      "sourcerer_files_read_lines",
+      "sourcerer_files_cat",
+      "sourcerer_repos_list",
+      "sourcerer_repos_search",
+      "sourcerer_refs_list",
+      "sourcerer_ki_search"
     ],
     "elastic-internal-docs": [
       "get_internal_document_by_url",

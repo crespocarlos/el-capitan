@@ -33,7 +33,7 @@ the persona read. Name the delivery in the report's `### Reviewers` section.
 
 **PR mode:** the package is the only repository evidence a persona may use. Every code excerpt must
 identify `path:line@headSHA7` and come from `gh api` at that head. A persona must not use the local
-checkout — no file reads, repository search, semantic search, or Explorer output, whatever the
+checkout — no file reads, repository search, code-index search, or Explorer output, whatever the
 harness names those tools — to verify a PR claim. It may return `[needs more info]` only when it
 names the missing PR-head path or excerpt.
 

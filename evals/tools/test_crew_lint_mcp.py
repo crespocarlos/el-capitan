@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "crew-lint.py"
 
-SERVERS = {"semantic-code-search": ["map_symbols_by_query", "symbol_analysis"]}
+SERVERS = {"sourcerer": ["sourcerer_code_search", "sourcerer_code_grep"]}
 NATIVE = ["Glob", "Grep", "Read"]
 
 
@@ -58,7 +58,7 @@ def main() -> int:
     cases = [
         (
             "declared mcp reference and declared native id",
-            "tools: Read, Grep, Glob, mcp__semantic-code-search__map_symbols_by_query",
+            "tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search",
             None, 0,
         ),
         (
@@ -68,7 +68,7 @@ def main() -> int:
         ),
         (
             "undeclared tool on a declared server",
-            "tools: Read, mcp__semantic-code-search__bogus_tool",
+            "tools: Read, mcp__sourcerer__sourcerer_bogus_tool",
             "mcp-tool-unknown", 1,
         ),
         (
@@ -112,7 +112,7 @@ def main() -> int:
         root = make_root(Path(temporary), "tools: Read")
         (root / ".agent" / "tools" / "tools.json").write_text(json.dumps({
             "schema_version": 1, "tools": [], "scripts": [], "assets": [],
-            "mcp_servers": "semantic-code-search", "native_tools": NATIVE,
+            "mcp_servers": "sourcerer", "native_tools": NATIVE,
         }))
         result = run(root)
         hits = findings(result, "invalid-tool-catalog")

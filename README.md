@@ -130,9 +130,20 @@ crew spec <issue URL or description>
 
 | Dependency | Purpose | Install |
 |---|---|---|
-| semantic-code-search MCP | Semantic code search across the codebase (remote, OAuth). Tools appear as `mcp__semantic-code-search__*` | `claude mcp add --transport http --scope user semantic-code-search https://semantic-code-search.elastic.dev/mcp`, then authenticate via `/mcp` |
+| [Sourcerer](https://github.com/elastic/sourcerer) | Ranked code search and file reads over git repos indexed in Elasticsearch (lexical bm25, not embeddings). Tools appear as `mcp__sourcerer__*` | `uv tool install "git+https://github.com/elastic/sourcerer.git@v3.0.3"` |
 
-> **Without semantic-code-search:** crew-specwriter uses file reads and grep for codebase exploration.
+> **Sourcerer is self-hosted.** It needs Elasticsearch and Kibana v9.5.0+, a `.env` with
+> `ELASTICSEARCH_URL`, `KIBANA_URL`, and `ELASTICSEARCH_API_KEY`, and a `sourcerer.yml` naming the
+> sources to index; then `sourcerer setup --config sourcerer.yml` and `sourcerer index --config
+> sourcerer.yml`. Claude Code can use its plugin instead of an MCP entry: `claude plugin marketplace
+> add elastic/sourcerer`, then `claude plugin install sourcerer`. Setup details live in the
+> [repo's README](https://github.com/elastic/sourcerer#quickstart).
+>
+> **Without Sourcerer** the explorer agents fall back to file reads and grep, and say so in their
+> report. Two properties of the index matter when reading their output: it is lexical, so query with
+> the words the code contains, and it holds *snapshots of refs* — a review of a branch should pass
+> `git_ref` and confirm that ref's `status` is `complete` via `sourcerer_refs_list`, or results may
+> come from another revision or one that is still indexing.
 
 ### macOS note
 

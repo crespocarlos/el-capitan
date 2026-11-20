@@ -1,5 +1,5 @@
 ---
-description: "Semantic-search-first protocol for all code research. Use for any investigation, discovery, exploration, or 'how/where/what' question. Text search and reads are fallbacks — only after semantic search has narrowed scope, or when the exact file/line is already known."
+description: "Search-first protocol for all code research. Use for any investigation, discovery, exploration, or 'how/where/what' question. Text search and reads are fallbacks — only after an index search has narrowed scope, or when the exact file/line is already known."
 alwaysApply: false
 ---
 
@@ -11,173 +11,167 @@ alwaysApply: false
 already know the exact file and line I need?"
 
 - **Yes** → a direct search or read is fine.
-- **No** → Search semantically first.
+- **No** → search Sourcerer's code index first.
 
-Defaulting to `rg` or `grep` for code exploration is a protocol violation. A semantic index finds
-across the full codebase by meaning; grep finds only what you already know to search for. Tool names
-below are Cursor's; in a harness without them, use that harness's equivalent search and read tools in
-the same order, and without any semantic index, search first and read only what search narrowed.
+Defaulting to `rg` or `grep` for code exploration is a protocol violation. The index is ranked over
+whole repositories, so it finds code you could not have guessed the words for; grep finds only what you
+already know to search for. Tool names below are Sourcerer's, reached as `mcp__sourcerer__*`; in a
+harness without them, use that harness's equivalent search and read tools in the same order, and with
+no index, search first and read only what search narrowed.
 
 </critical_rules>
 
-**Semantic search is always preferred. Text search, path search, and reads are fallbacks — only use
-them after semantic search has narrowed the scope, or when you already know the exact file and
-line.**
+**Index search is always preferred. Text search, path search, and reads are fallbacks — only use them
+after an index search has narrowed the scope, or when you already know the exact file and line.**
 
-| Task                                               | Preferred                                          | Fallback (scope already known) |
-| -------------------------------------------------- | -------------------------------------------------- | ------------------------------ |
-| Explore a concept, find implementations            | `discover_directories` then `map_symbols_by_query` | —                              |
-| Find all usages of a known symbol                  | `map_symbols_by_query` or `symbol_analysis`        | Grep for exact identifier      |
-| Trace a symbol's definition, call sites, consumers | `symbol_analysis`                                  | —                              |
-| Read a file discovered via search                  | `read_file_from_chunks`                            | a targeted file read (Cursor `Read`)   |
-| Verify an exact string once you know the file      | —                                                  | text search (Cursor `Grep`)            |
-| Find files by path pattern once you know the area  | —                                                  | path search (Cursor `Glob`)            |
+| Task | Preferred | Fallback (scope already known) |
+| --- | --- | --- |
+| Explore a concept, find implementations | `sourcerer_code_search`, then `sourcerer_files_tree` on a directory it names | — |
+| Find an identifier, error string, or config key | `sourcerer_code_grep` | text search (Cursor `Grep`) |
+| Outline one known directory | `sourcerer_files_tree` | path search (Cursor `Glob`) |
+| Read a file search found | `sourcerer_files_read_lines` (a range) or `sourcerer_files_cat` (whole) | a targeted file read (Cursor `Read`) |
+| Which repositories hold the code | `sourcerer_repos_search`, or `sourcerer_repos_list` | — |
+| Which branch or tag is indexed | `sourcerer_refs_list` | — |
+| Orientation prose about a repo or module | `sourcerer_ki_search` | — |
+| Verify an exact string once you know the file | — | text search (Cursor `Grep`) |
 
-**The flow is always: semantic search to discover → text search and reads only to drill into what
-search already found. Never start with a text search.**
+**The flow is always: index search to discover → text search and reads only to drill into what search
+already found. Never start with a text search.**
 
 ## Decision tree
 
 ```
-Know symbol names? ──→ map_symbols_by_query or symbol_analysis
-Exploring a concept? ──→ discover_directories → map_symbols_by_query
-Need deep dive on one symbol? ──→ symbol_analysis
-Need full file content? ──→ read_file_from_chunks (or Read for short files)
-Exact string verification? ──→ Grep
-Path-based file find? ──→ Glob
+Know the identifier, error text, or config key? ──→ sourcerer_code_grep
+Exploring a concept?                             ──→ sourcerer_code_search → sourcerer_files_tree
+Need a repo or module overview before reading?    ──→ sourcerer_ki_search
+Need full file content?                          ──→ sourcerer_files_read_lines / sourcerer_files_cat
+Exact string verification in a known file?       ──→ Grep
+Path-based file find in a known area?            ──→ Glob
 ```
 
 ## Tool selection
 
-### discover_directories
+### sourcerer_code_search
 
-**For finding where things live.**
+**Primary tool for any discovery question.**
 
-- Returns top 20 directories with relevance scores
-- Best for: "Where is the auth layer?", navigating unfamiliar packages
-- Use BEFORE `map_symbols_by_query` when you don't know the directory
+- Lexical relevance ranking (bm25) over the indexed revisions of indexed repositories — not embedding
+  search, so the words that appear in the code beat a restatement of the question
+- Narrow with `file_path` (`src/**`), `git_repo`, `git_ref`, or `git_org` instead of hoping the ranking
+  sorts it out
+- Best for: "where is X handled?", "what implements Y?", finding code you cannot name precisely
+- Follow it with `sourcerer_files_tree` on the directory it names, or `sourcerer_files_read_lines` on a
+  specific hit
 
-### map_symbols_by_query 🎯
+### sourcerer_code_grep
 
-**Primary tool when you know symbol names or directories.**
+**Exact regex over the index.**
 
-- Returns ALL matching files (not limited to 25)
-- Shows symbol density (more symbols = more relevant)
-- Structured output: symbols with line numbers, imports, exports
-- Best for: Finding co-occurrence, understanding how symbols relate across files
-- Use AFTER `discover_directories` or `semantic_code_search`
+- Use when you know the string: an identifier, an error message fragment, a config key
+- Same filters as `sourcerer_code_search`
+- Best for: every call site of a name, a literal that must match exactly
 
-### symbol_analysis
+### sourcerer_files_tree
 
-**Deep dive on one symbol.**
+**Structure of a directory.**
 
-- Shows definition, usages, types, imports, call sites, tests, documentation
-- Reveals related symbols for your next search
-- Best for: Understanding a specific symbol completely, tracing impact of changes
+- Roots at `file_path` and recurses; `L` controls depth, `d` lists directories only, `f` and `i`
+  produce a flat list of full paths
+- Best for: orienting in an unfamiliar package before reading anything
 
-### read_file_from_chunks
+### sourcerer_files_read_lines / sourcerer_files_cat
 
-**Get full file content from the index.**
+**Read from the index.**
 
-- Reconstructs complete files without needing the file path on disk
-- Best for: Reading files discovered via search
+- `read_lines` takes a range and is the default; `cat` reads the whole file
+- Each line arrives prefixed with its 1-indexed number, so an anchor can be quoted directly
+- Best for: reading what search identified without a separate path lookup
+
+### sourcerer_repos_search / sourcerer_repos_list / sourcerer_refs_list
+
+**What is actually indexed.**
+
+- `repos_search` finds repositories whose code matches a query; `repos_list` enumerates them
+- `refs_list` shows the branches and tags indexed, and their status — an `indexing` or stale ref is the
+  usual reason results look empty or wrong
+- Best for: a result set that seems impossible, or a review against a branch
+
+### sourcerer_ki_search
+
+**Prose orientation.**
+
+- Searches the Knowledge Indicator index for repo profiles and ref profiles
+- Best for: "what is this repository", "what does this module do" before reading code
+- Not a substitute for reading the code a finding depends on
 
 ## Workflows
 
 **User mentions specific names** (e.g., "How does onFilter work?"):
 
 ```
-map_symbols_by_query → symbol_analysis (optional) → read_file_from_chunks
+sourcerer_code_grep('onFilter') → sourcerer_files_read_lines (the definition and one caller)
 ```
 
 **User asks conceptual question** (e.g., "How is auth handled?"):
 
 ```
-discover_directories → map_symbols_by_query → symbol_analysis → read_file_from_chunks
+sourcerer_code_search('auth middleware validates session token') → sourcerer_files_tree(dir) → sourcerer_files_read_lines
 ```
 
 **Tracing cross-file consistency** (e.g., "does the schema match the mapping?"):
 
 ```
-symbol_analysis('fieldName') → see all usages → verify same name everywhere
-map_symbols_by_query(kql: '"fieldName"') → find all files referencing it
+sourcerer_code_grep('fieldName') → read each hit → confirm the same name everywhere
 ```
 
 **Deep investigation of impact** (e.g., "what breaks if I change X?"):
 
 ```
-symbol_analysis → map_symbols_by_query (with related symbols) → read_file_from_chunks
+sourcerer_code_grep('X') for every call site → sourcerer_files_read_lines on each → note the ones the change breaks
 ```
-
-## KQL quick reference (for map_symbols_by_query)
-
-**Fields:** `content:`, `filePath:`, `kind:`, `language:` **Nested:** `symbols: { name:
-<symbol-name> }` **Boolean:** `and`, `or`, `not` with `(parentheses)` — always lowercase **Exact
-match:** `"quoted"` **Wildcards:** NO quotes: `filePath: *test*`
-
-**Common kinds:** `function_declaration`, `class_declaration`, `interface_declaration`,
-`type_alias_declaration`, `method_definition`
-
-### Patterns
-
-```
-# By symbol name
-"discoverySchema" and language: typescript
-
-# By directory
-filePath: *sig_events*
-
-# By kind + content
-kind: "function_declaration" and content: "async" and filePath: *api*
-
-# Exclude tests
-language: typescript and not filePath: *test*
-
-# Co-occurrence (find files using BOTH symbols)
-"schemaField" and "mappingField"
-```
-
-### Common mistakes
-
-- ❌ Quoting wildcards: `filePath: "*test*"` → ✅ `filePath: *test*`
-- ❌ Uppercase operators: `AND` → ✅ `and`
-- ❌ Missing quotes on kind: `kind: function` → ✅ `kind: "function_declaration"`
 
 ## Key rules
 
-✅ **Start with semantic search** — for research, discovery, or exploration; it finds across the
-codebase by meaning rather than by the exact string you already know ✅ Know symbol names → symbol or
-directory lookup; exploring concepts → directory discovery first ✅ Text search and file reads are
-fallbacks — after search has narrowed the scope, or when you already know the file and line ✅ Use
-actual symbol names from analysis, not generic terms ✅ Files with more symbols = more relevant ✅
-Chain: discovery → mapping → analysis → read
+✅ **Start with an index search** — for research, discovery, or exploration; it ranks across whole
+repositories rather than matching the exact string you already know
+✅ Know the identifier → `sourcerer_code_grep`; exploring a concept → `sourcerer_code_search`
+✅ Text search and file reads are fallbacks — after search has narrowed the scope, or when you already
+know the file and line
+✅ Use the names and strings the code actually contains; a described query works because bm25 ranks
+token overlap, not because the index understands English
+✅ More hits in one file usually means more relevant
+✅ Chain: search → tree → read the range
 
 ❌ Starting with a text search when you are still exploring — it only finds what you already know to
-look for, and it misses renamed or differently-worded implementations ❌ Directory discovery when you
-already know exact symbol names (use a symbol lookup) ❌ Generic query terms like "handler" or
-"manager" ❌ Reading full files before search has narrowed what to read
+look for
+❌ Generic query terms alone like "handler" or "manager" — add the distinguishing words
+❌ Reading full files before search has narrowed what to read
 
-Without a semantic index in the current invocation, fall back to the harness's own search, then read
-only the range it identified, and say in the report that semantic search was unavailable.
-
-## Why map_symbols > semantic (when you know what you're looking for)
-
-**Rule:** Know names → `map_symbols_by_query`. Exploring concepts → `discover_directories` first.
+Without an index in the current invocation, fall back to the harness's own search, then read only the
+range it identified, and say in the report that index search was unavailable.
 
 ## Availability and fallback
 
-- Run `auth_status` once per session before the first search. If the server is not authenticated or
-  a call fails with an auth error, authenticate it (Cursor: MCP settings; Claude Code: `/mcp`), then
-  retry once.
-- If no semantic index is available in the current invocation, use the harness's own search and
-  file-read tools in that same order (search first, then read only the narrowed range), and state in
-  the report that semantic search was unavailable.
-- `list_indices` shows which repositories are indexed. Check it when results look empty or belong to
-  the wrong repo.
-- `document_symbols` lists the symbols of one known file. Use it instead of `read_file_from_chunks`
-  when only the outline is needed.
-- `semantic_code_search` is for natural-language queries when no symbol or directory name is known.
-  Prefer `discover_directories` first for broad concepts.
+- The index holds snapshots of *refs*, so it can be behind the working tree or covering a different
+  branch. When a finding depends on the current tree, confirm with a direct read rather than the index.
+- **Pin the ref when the question is version-specific.** Every content tool takes `git_ref`,
+  `git_commit`, and `git_ref_type`; leaving them at `*` blends results across every indexed ref, which
+  is fine for "where is this handled" and wrong for "does this branch do X". For a review, pass the
+  branch under review as `git_ref` so a finding cannot be grounded in another revision.
+- `sourcerer_refs_list` is the ref inventory, and each row carries a `status`:
+  - `complete` — fully indexed and safe to query.
+  - `indexing` — a run is mid-flight; content may be partial. Prefer a `complete` ref, or say the
+    answer rests on a partially indexed revision.
+  - `stale` — superseded by a mode switch; do not rely on it.
+  Results that look empty or wrong are usually a ref that is not indexed, is still `indexing`, or is
+  not the one you assumed — check this before concluding the code is absent.
+- `sourcerer_repos_list` is the index inventory; `sourcerer_repos_search` is the "which repo is this"
+  query. If the trail leads into a dependency, check whether that repo is indexed before concluding
+  the answer is not findable.
+- Setup is self-hosted: an Elasticsearch and Kibana deployment (v9.5.0+), a configured `sourcerer`
+  MCP server, and credentials. A rejected call means the server is unavailable or unauthenticated in
+  this invocation — fall back to the harness's own search and say so; there is no in-session
+  re-authentication step.
 
 ## ES|QL construction
 
@@ -185,5 +179,5 @@ For any ES|QL query or Elasticsearch/Kibana docs question, also use a docs MCP s
 configured for this project: its search tool to find the command, function, or syntax, then its
 fetch-by-URL tool to confirm it. When no docs server is available in this invocation, say the claim
 is unverified rather than guessing.
-Check ES|QL syntax and function availability there before writing a query. Use the semantic code
-index only to find how Kibana code builds or consumes the query.
+Check ES|QL syntax and function availability there before writing a query. Use the code index only to
+find how Kibana code builds or consumes the query.

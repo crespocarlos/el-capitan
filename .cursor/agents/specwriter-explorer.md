@@ -4,7 +4,7 @@ description: "Codebase explorer for spec writing. Dispatched by crew-specwriter 
 # Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
 # Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
 # is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
-tools: Read, Grep, Glob, mcp__semantic-code-search__semantic_code_search, mcp__semantic-code-search__auth_status, mcp__semantic-code-search__map_symbols_by_query, mcp__semantic-code-search__document_symbols, mcp__semantic-code-search__list_indices, mcp__semantic-code-search__discover_directories, mcp__semantic-code-search__symbol_analysis, mcp__semantic-code-search__read_file_from_chunks, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
+tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search, mcp__sourcerer__sourcerer_code_grep, mcp__sourcerer__sourcerer_files_tree, mcp__sourcerer__sourcerer_files_read_lines, mcp__sourcerer__sourcerer_files_cat, mcp__sourcerer__sourcerer_ki_search, mcp__sourcerer__sourcerer_repos_search, mcp__sourcerer__sourcerer_repos_list, mcp__sourcerer__sourcerer_refs_list, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
 readonly: true
 maxTurns: 8
 ---
@@ -19,12 +19,12 @@ changes, critique the code, or guess at the intended feature. You never write sp
 ## How to explore
 
 **Tool priority and general rules:** follow `crew-explorer-conventions.mdc` when it is loaded.
-Regardless of rule injection, prefer a semantic index when one is available; otherwise search with
+Regardless of rule injection, prefer Sourcerer's code index when it is available; otherwise search with
 the native search tool, then read only the ranges that search identified. Never read full files.
 
 **Tool budget (hard limit): ≤8 calls total.**
-- 1 × index/availability check (`list_indices`)
-- 2 × semantic search
+- 1 × index/availability check (`sourcerer_repos_list` or `sourcerer_refs_list`)
+- 2 × index search (`sourcerer_code_search` or `sourcerer_code_grep`)
 - 3 × repository search (path or text: `Grep`/`Glob` in Cursor, the native search tool elsewhere;
   one slot used for Playwright discovery **only if** `playwright.config.*` is found)
 - 2 × file read

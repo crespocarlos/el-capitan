@@ -164,10 +164,10 @@ claim, and supplied `path:line@headSHA7` excerpts.
 persona that this particular artifact needs it. When the reviewed content contains ES|QL (`FROM … |`
 queries, `.esql` files, `esql` identifiers) or Elasticsearch/Kibana API claims, add to every persona's
 context package: "This artifact contains ES|QL or Elasticsearch API claims. Verify the syntax,
-function availability, and API behavior with the docs server before reporting, and cite the URL. State
-`unverified` when the docs are unreachable." Every reviewer persona and `reviewer-explorer` hold the
-docs server's search and fetch-by-URL tools, so this check stays possible whenever a docs server is
-configured for the project.
+function availability, and API behavior with the docs MCP server before reporting, and cite the URL.
+State `unverified` when the docs are unreachable." Every reviewer persona and `reviewer-explorer` hold
+the docs MCP server's search and fetch-by-URL tools, so this check stays possible whenever that server
+is configured for the project.
 
 ## Step 6: dispatch
 
