@@ -22,6 +22,9 @@ run() {
 }
 
 # Symlink regular files from $1 into $2 (creates dest). nullglob; skips subdirs; no-op if $1 missing.
+# Cleanup of retired links is the caller's job via `prune_broken_symlinks`, which only removes links
+# this installer created: doing it here would need that helper defined first, and any sweep that does
+# not check the link target would delete a user's own dangling link in the same directory.
 link_dir_files() {
   local src="$1" dest="$2"
   [[ -d "$src" ]] || return 0
@@ -277,6 +280,9 @@ if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
   fi
 fi
 link_dir_files "$SCRIPT_DIR/.claude/hooks" ~/.claude/hooks
+# Runs after the merge above, so a retired script's registration is already gone; this removes the
+# link that pointed at it, and only links whose target is inside this repo.
+prune_broken_symlinks ~/.claude/hooks
 if [ "$DRY_RUN" -eq 0 ]; then
   mkdir -p "$HOME/.cursor"
   if ! python3 "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json"; then

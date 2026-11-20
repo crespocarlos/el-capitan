@@ -33,8 +33,12 @@ task's `REVIEW.md`.
    causes the finding (omit it when there is no hunk index).
 2. Run `~/.agent/bin/review-findings.py normalize "$REVIEW_ROOT/candidates.json" --strict --output
    "$REVIEW_ROOT/consolidation.json"`, adding `--hunks "$REVIEW_ROOT/hunks.json"` when that file
-   exists. With `--hunks`, an emitted `blocking` or `attention` finding must cite at least one hunk,
-   and every cited id must exist; a nit may stay unanchored. `--strict` fails on an emitted (`patch`/`decide`) `blocking`
+   exists and `--files <path1> <path2> …` always. `--files` is what moves the evidence-path gate to
+   this step: `persist --strict` rejects a finding whose `evidence` names an unchanged file, and
+   without `--files` here that rejection arrives after every persona has run. Pass the same path set
+   you will pass to `persist`. With `--hunks`, an emitted `blocking` or `attention` finding must cite
+   at least one hunk, and every cited id must exist; a nit may stay unanchored. `--strict` fails on an
+   emitted (`patch`/`decide`) `blocking`
    or `attention` finding without `verified: true` and an `evidence` location, and on more than
    `MAX_FINDINGS` emitted findings or more than `MAX_NITS` emitted nits; add `verified` and
    `evidence` to each candidate. The two caps are defined once, in `review-findings.py`, and
@@ -80,16 +84,17 @@ task's `REVIEW.md`.
    `persist` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
    directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
 
-Write scratch JSON, scripts, and assembled context packages with the harness's edit or write tool at a
-path that tool permits. Measure the permitted set, do not assume it: the Cursor `Write` tool refuses
-`/tmp` and other paths outside the workspace worktrees, but accepts the task directory under
-`~/.agent/tasks/` and `~/.agent/` generally. `check-write-boundary.sh` allows `$HOME/.agent/`,
-`$HOME/.claude/`, `$HOME/.cursor/`, and `/tmp` — a superset of what the tool allows, so the tool is
-the binding constraint and a `/tmp` path fails before the hook is consulted.
+Write scratch JSON, scripts, and assembled context packages with the harness's edit or write tool. On
+Cursor the permitted set is `/tmp` plus the task directory under `~/.agent/tasks/` and `~/.agent/`
+generally — measured, not assumed: the tool wrote `/tmp/crew-write-tool-probe.md` on the harness in
+use. `check-write-boundary.sh` allows `$HOME/.agent/`, `$HOME/.claude/`, `$HOME/.cursor/`, and
+`/tmp`; a write outside all four is denied by the hook.
 
-When a scratch file has no permitted home, produce it and consume it in one shell command with a
-heredoc (`python3 - <<'PY' … PY`). A heredoc is the fallback for content that never needs to persist,
-not the default for writing files.
+If the tool rejects the path in the harness you are on, produce and consume the file in one command
+with a heredoc (`python3 - <<'PY' … PY`) instead of hunting for another location. A heredoc is also the
+right choice when a scratch file genuinely should not persist — a payload consumed by the same
+command, or content whose formatting the shell would mangle. What it is not is a default: routing every
+scratch file through a shell hides the write from the edit log.
 
 Creating `$REVIEW_ROOT` under `~/.agent/tasks/` fails with `Operation not permitted` in a sandboxed
 shell (Cursor; Claude Code writes it directly). Run the `mkdir`, `normalize`, and `persist` commands

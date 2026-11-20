@@ -371,12 +371,12 @@ install time:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| `PreToolUse` / Cursor pre-execution | Bash, Write, Edit | `block-destructive-git.sh` blocks `git reset --hard`, `git clean -f`, force pushes (including `-f` and through `git -C`/`-c`), pulling a PR into the local checkout (`gh pr checkout`, `pull/<n>` refs), and local PR-ref reads. `check-write-boundary.sh` blocks writes outside the active worktree. Both fail closed: unparsable input or a missing `jq` denies the command. |
-| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `check-publish.sh` blocks commits whose staged lines match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists. It parses the directory from the command, not from text inside a quoted commit message, and falls back to the session `cwd` when the named path is not a repository. |
+| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `guard-shell.sh` holds every shell rule in one process: destructive git (`git reset --hard`, `git clean -f`, force pushes including `-f` and through `git -C`/`-c`), pulling a PR into the local checkout (`gh pr checkout`, `pull/<n>` refs) and local PR-ref reads; commits whose staged lines match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists; Python snippets that rewrite a tracked file; and a bare `=word` that zsh would expand as a command path and abort the rest of the line. Directory parsing reads the command, not text inside a quoted commit message, and falls back to the session `cwd` when the named path is not a repository. Fails closed: unparsable input or a missing `jq` denies the command. |
+| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-write-boundary.sh` blocks writes outside the active worktree. Fails closed. |
 | `UserPromptSubmit` / `SessionStart` | Each turn | `mode-anchor.sh` injects the active task, status, branch, and task directory so a long session does not drift out of the pipeline. Fails silent by design. |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
 | `SessionStart` | Session begins | Loads bounded memory context and records session state (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
-| `SessionEnd` / `Stop` | Session ends | Records session telemetry |
+| `SessionEnd` / `Stop` | Session ends | `session-event.sh <start\|end\|session>` records session telemetry |
 
 Guard hooks fail closed and always return explicit JSON allow or deny decisions.
 Telemetry hooks fail open and remain local-only.
@@ -451,7 +451,9 @@ to three evidence-backed candidates into the inbox automatically. Lightweight
 session telemetry records only tool categories and outcomes; after substantive
 work or repeated failures, the stop hook asks for one user-approved candidate
 review. Candidates are never imported automatically: review the batch and
-approve it with `crew memory seed` or `mem.py import-inbox`.
+approve it with `crew memory seed` or `mem.py import-inbox`. Bare
+`import-inbox` takes the whole inbox, including drafts left by earlier
+sessions, so pass the approved files by name.
 
 `mem.py` stores typed Markdown units under `~/.agent/memory` and uses SQLite
 FTS5 only as a rebuildable search index. Verify with `python3

@@ -65,6 +65,13 @@
       "smoke": "--help"
     },
     {
+      "name": "assemble-packages.py",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "argparse",
+      "smoke": "--help"
+    },
+    {
       "name": "nightshift-e2e.py",
       "category": "review",
       "owner": "crew-e2e",

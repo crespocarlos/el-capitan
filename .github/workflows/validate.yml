@@ -39,6 +39,9 @@ jobs:
       - name: Review-hunks parser tests
         run: python3 evals/tools/test_review_hunks.py
 
+      - name: Package assembly tests
+        run: python3 evals/tools/test_assemble_packages.py
+
       - name: Nightshift e2e client tests
         run: python3 evals/tools/test_nightshift_e2e.py
 

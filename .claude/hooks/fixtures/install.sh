@@ -25,6 +25,15 @@ test -d "$root/rules" && test ! -L "$root/rules"           # repo not linked int
 test "$(stat -f '%OLp' "$home/.claude/CLAUDE.md" 2>/dev/null || stat -c '%a' "$home/.claude/CLAUDE.md")" = 644
 ls -d "$home"/.claude/agents.bak.* >/dev/null              # originals retained
 
+# A dangling symlink the installer did not create must survive: pruning is limited to links whose
+# target is inside this repo. A user's link into an unmounted volume looks exactly like a stale one.
+mkdir -p "$home/.claude/hooks"
+ln -s "$home/unmounted/user-hook.sh" "$home/.claude/hooks/user-owned.sh"
+ln -s "$root/.claude/hooks/gone-script.sh" "$home/.claude/hooks/repo-owned.sh"
+HOME="$home" bash "$root/install.sh" >/dev/null
+test -L "$home/.claude/hooks/user-owned.sh"                # user link kept
+test ! -e "$home/.claude/hooks/repo-owned.sh" || test ! -L "$home/.claude/hooks/repo-owned.sh"
+
 # Second run must not duplicate hooks or lose the restored add-ons.
 before=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(json.dumps({k:len(v) for k,v in sorted(d['hooks'].items())}))" "$home/.claude/settings.json")
 HOME="$home" bash "$root/install.sh" >/dev/null
@@ -57,6 +66,46 @@ python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "
 first=$(counts "$home/merge.json")
 python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/merge.json" >/dev/null
 test "$first" = "$(counts "$home/merge.json")"
+
+# A hook this repository retired must be removed from an existing install: the guard files fail
+# closed, so a leftover registration would deny every command once its script is gone. A user hook that
+# merely shares a retired file name must survive — the match is the managed path, not the basename.
+python3 - "$home/merge.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path))
+data["hooks"].setdefault("PreToolUse", []).append({"hooks": [
+    {"type": "command", "command": "bash \"$HOME/.claude/hooks/block-destructive-git.sh\""},
+    {"type": "command", "command": "bash \"$HOME/myhooks/session-start.sh\""},
+    {"type": "command", "command": "bash \"$HOME/.claude/hooks/my-own-hook.sh\""}]})
+json.dump(data, open(path, "w"), indent=2)
+PY
+python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/merge.json" >/dev/null
+if grep -q 'block-destructive-git.sh' "$home/merge.json"; then exit 1; fi
+grep -q 'myhooks/session-start.sh' "$home/merge.json"
+grep -q 'my-own-hook.sh' "$home/merge.json"
+python3 - "$home/merge.json" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+commands = [h["command"] for entries in data["hooks"].values() for e in entries for h in e.get("hooks", [])]
+assert any("guard-shell.sh" in c for c in commands), "guard-shell.sh is not registered"
+assert any("session-event.sh" in c and " start" in c for c in commands), "session-event start is not registered"
+PY
+
+# Same retirement rule for the Cursor template.
+cp "$root/.cursor/hooks.template.json" "$home/hooks.json"
+python3 - "$home/hooks.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path))
+data["hooks"]["beforeShellExecution"].append({"command": "bash \"$HOME/.claude/hooks/check-publish.sh\""})
+json.dump(data, open(path, "w"), indent=2)
+PY
+python3 "$root/.claude/merge_cursor_hooks.py" "$root/.cursor/hooks.template.json" "$home/hooks.json" >/dev/null
+if grep -q 'check-publish.sh' "$home/hooks.json"; then exit 1; fi
+python3 "$root/.claude/merge_cursor_hooks.py" "$root/.cursor/hooks.template.json" "$home/hooks.json" >/dev/null
+count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['hooks']['beforeShellExecution']))" "$home/hooks.json")
+test "$count" = 1
 printf '{bad' > "$home/broken.json"
 if python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/broken.json" >/dev/null 2>&1; then exit 1; fi
 test "$(cat "$home/broken.json")" = '{bad'

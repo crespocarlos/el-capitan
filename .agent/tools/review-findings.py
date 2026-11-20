@@ -333,6 +333,10 @@ SUMMARY_ARTIFACT = re.compile(
     re.I | re.M,
 )
 SUMMARY_HEADER_CHARS = 300
+# How far past a label line its evidence may sit. Bounded at the next label when that is closer, and
+# widened to this when a single long finding runs further, so neither a stray anchor far below can
+# rescue a marker-only block nor a long finding lose its own `Anchor:` line.
+ANCHOR_WINDOW = 2000
 # A spec or idea review has one artifact under review, so its findings anchor by quoting the
 # sentence they attack rather than by a path:line into a diff. Four real spec reviews were scored as
 # "no output" for this alone.
@@ -347,6 +351,31 @@ SPEC_FINDING = re.compile(
     r"\(?\s*\d[\d,\s–-]*\)?[\d,\s–\-:()]*\**\s*[A-Za-z\"“][^\n]{40,}",
     re.M | re.I,
 )
+
+
+def has_findings(text: str) -> bool:
+    """True when the artifact carries at least one credited finding.
+
+    Separate from `has_review_content` because the two answer different questions. A verdict line
+    says "nothing to report"; a finding says the opposite. A persona can emit both — six anchored
+    findings followed by `### Verdict: no findings` was observed in a real PR review — and a
+    classifier that treats the verdict token as authoritative discards grounded work. Content wins:
+    the verdict line is a signal for an empty review, never a cancellation of findings above it.
+    """
+    if LABELED_FINDING.search(text) or FIX_RESPONSE_FINDING.search(text):
+        return True
+    if EXPLORER_FINDING.search(text) or SPEC_FINDING.search(text):
+        return True
+    labels = list(LABEL_LINE.finditer(text))
+    for index, match in enumerate(labels):
+        # End the block at the next label, as the artifact's own structure implies, and in any case no
+        # earlier than ANCHOR_WINDOW past the label line: a long finding may put its `Anchor:` further
+        # down than the next label is far away, and truncating it would refuse a real finding.
+        next_label = labels[index + 1].start() if index + 1 < len(labels) else len(text)
+        block = text[match.start():max(next_label, match.end() + ANCHOR_WINDOW)]
+        if ANCHOR_ANYWHERE.search(block) or QUOTED_EVIDENCE.search(block):
+            return True
+    return False
 
 
 def has_review_content(text: str) -> bool:
@@ -364,20 +393,7 @@ def has_review_content(text: str) -> bool:
     """
     if VERDICT_NO_FINDINGS.search(text):
         return True
-    if LABELED_FINDING.search(text) or FIX_RESPONSE_FINDING.search(text) or EXPLORER_FINDING.search(text):
-        return True
-    if SPEC_FINDING.search(text):
-        return True
-    # The anchor sits outside the label's line: an `Anchor: path:line` line, a quoted sentence, or a
-    # body line naming a path:line. Bound the search to the finding's own block so a stray anchor
-    # elsewhere in the artifact cannot rescue a marker-only file.
-    labels = list(LABEL_LINE.finditer(text))
-    for index, match in enumerate(labels):
-        end = labels[index + 1].start() if index + 1 < len(labels) else len(text)
-        block = text[match.start():end]
-        if ANCHOR_ANYWHERE.search(block) or QUOTED_EVIDENCE.search(block):
-            return True
-    return False
+    return has_findings(text)
 
 
 def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:

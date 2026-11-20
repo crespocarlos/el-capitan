@@ -22,7 +22,7 @@ No setup required. Skip the bootstrap step in any worktree.
 
 ## Tests
 
-Nine hermetic checks, also run in CI (`.github/workflows/validate.yml`):
+Ten hermetic checks, also run in CI (`.github/workflows/validate.yml`):
 
 ```bash
 python3 .agent/tools/crew-lint.py --budget          # conventions, catalog, references, token budget
@@ -32,12 +32,13 @@ python3 evals/reviewer/test_review_findings.py      # normalize/persist/coverage
 python3 evals/reviewer/test_scoring.py              # reviewer eval scoring and fixture coverage
 python3 evals/reviewer/test_personas.py             # persona contract, labels, tools, budgets
 python3 evals/tools/test_review_hunks.py            # hunk ids shared by the map and the gate
+python3 evals/tools/test_assemble_packages.py       # packages share one header; prompt tier not doubled
 python3 evals/tools/test_nightshift_e2e.py          # nightshift e2e client against a stub server
 python3 evals/tools/test_install_blocks.py          # install.sh managed blocks stay idempotent
 ```
 
 `crew test` looks for typed `## Tests` commands in a spec; with none it returns WARN. Verification of
-a change means the eight commands above plus the **Acceptance criteria** in SPEC.md. Specs use the
+a change means the ten commands above plus the **Acceptance criteria** in SPEC.md. Specs use the
 two-line `## Status\n<value>` form.
 
 ## File layout
@@ -117,8 +118,8 @@ They are not a substitute for editing a tracked file.
   unconditionally passes every deny test while breaking the session. `crew-lint` fails an
   unregistered hook, and a rule whose violation a hook already blocks should not also carry a
   paragraph of rationale in `personal.mdc`.
-- **Adding a reviewer persona** — four changes, two of them in code (steps 2 and 4), or the persona
-  is never dispatched:
+- **Adding a reviewer persona** — five changes, three of them in code (steps 2, 4 and 5), or the
+  persona is dispatched with no package, or never dispatched at all:
   1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
      `description`, the search/read `tools` for this harness, `readonly: true`, `maxTurns: 12`) and a
      persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
@@ -133,7 +134,11 @@ They are not a substitute for editing a tracked file.
      dispatches nothing. `select` never returns `explorer`, so that persona stays manually dispatched.
   3. **Context tier** — assign the persona to a tier in
      `.cursor/agents/crew-reviewer/references/context-tiers.md`.
-  4. **Fixture** — add the persona to an `evals/reviewer/fixtures.json` case, or its prompt is
+  4. **Package assembly** — add the name to `PRIMARY_KINDS` in `assemble-packages.py` with the layer
+     kinds its lens reads first. The tool derives its persona list from `PERSONAS`, so a name missing
+     from `PRIMARY_KINDS` stops the run with a message naming it instead of silently writing no
+     package.
+  5. **Fixture** — add the persona to an `evals/reviewer/fixtures.json` case, or its prompt is
      unmeasured.
 
   For example, an SRE team could add `reviewer-observability.md`, selected on monitoring/alerting
@@ -183,11 +188,12 @@ python3 evals/reviewer/test_review_findings.py   # normalize/persist/coverage/va
 python3 evals/reviewer/test_scoring.py   # reviewer eval scoring, fixture coverage
 python3 evals/reviewer/test_personas.py   # persona contract, labels, tools, budgets
 python3 evals/tools/test_review_hunks.py   # hunk ids shared by the layer map and the gate
+python3 evals/tools/test_assemble_packages.py   # one shared header; prompt tier not doubled
 python3 evals/tools/test_nightshift_e2e.py   # nightshift e2e client against a stub server
 python3 evals/tools/test_install_blocks.py   # install.sh managed blocks stay idempotent
 ```
 
-All nine are hermetic (no network, no API key, no nightshift install) and run in CI via
+All ten are hermetic (no network, no API key, no nightshift install) and run in CI via
 `.github/workflows/validate.yml`.
 `evals/run.py` and `evals/reviewer/run.py` make model calls and need an API key; they are not part of
 the deterministic gate.

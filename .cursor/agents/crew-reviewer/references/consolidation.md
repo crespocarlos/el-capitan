@@ -5,11 +5,19 @@ repository: every `[blocking]` and `[attention]` candidate is verified in the so
 kept (see "Verify against the repository"). Never re-review the artifact for new findings.
 
 **Completion check:** Before evaluating a persona response, treat it as incomplete only when the
-harness reports truncation, it ends mid-sentence/list/code fence, or it contains neither a complete
-`### Verdict: no findings` line, a complete documented finding, nor an explorer section with an
-item. A short response alone is valid. Relaunch an incomplete persona once with a narrower evidence
-package and a request for a complete verdict; if it remains incomplete, persist the failure artifact
-and name the gap under `### Reviewers`.
+harness reports truncation, it ends mid-sentence/list/code fence, it points at an earlier turn instead
+of carrying the list, or it contains neither a complete `### Verdict: no findings` line, a complete
+documented finding, nor an explorer section with an item. A short response alone is valid.
+
+Recovering an incomplete response is a dispatch rule, not a consolidation one: a pointer reply is
+resumed once, anything else relaunched once with a narrower package, and the protocol lives in
+**A reply that points at an earlier turn** in the shared dispatch instructions. This file owns only the
+outcome: if the recovery also fails, persist a failure artifact for that persona and name the gap under
+`### Reviewers`.
+
+A response that carries both anchored findings and a trailing `### Verdict: no findings` is complete:
+content wins, and a verdict line never cancels findings above it. Note the contradiction under
+`### Reviewers` rather than silently dropping either half.
 
 ### Challenge each finding before keeping it
 
@@ -173,8 +181,9 @@ a missing requirement) and use `[concern]` in place of `[attention]` for weaknes
    for a slot: fill severity slots first, then add nits only within their own budget. Drop the rest
    entirely. Both numbers are defined once, in `review-findings.py` as `MAX_FINDINGS` and `MAX_NITS`,
    which count the two budgets separately; read them there rather than copying them into other files.
-4. Zero findings is valid. No action plan. No padding. Add a `### Reviewers` section only when a
-   persona failed, was truncated, or returned partial coverage — then name the lens and the gap.
+4. Zero findings is valid. No action plan. No padding. `### Reviewers` always names how each package
+   was delivered, and adds a lens with its gap only when a persona failed, was truncated, or returned
+   partial coverage.
 5. Per-finding length: code snippet (2-5 lines) anchoring the finding, explanation (2-3 sentences),
    fix (1-2 sentences or code block). Every sentence must add information — do not pad.
 6. For idea/spec review: `Fix:` field required on every `[blocking]` and `[concern]` finding —

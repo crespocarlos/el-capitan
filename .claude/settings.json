@@ -48,15 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/block-destructive-git.sh\""
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/check-publish.sh\""
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/block-shell-source-edits.sh\""
+            "command": "bash \"$HOME/.claude/hooks/guard-shell.sh\""
           }
         ]
       },
@@ -113,7 +105,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/session-start.sh\" 2>/dev/null; exit 0"
+            "command": "bash \"$HOME/.claude/hooks/session-event.sh\" start 2>/dev/null; exit 0"
           }
         ]
       },
@@ -139,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/session-end.sh\" 2>/dev/null; exit 0"
+            "command": "bash \"$HOME/.claude/hooks/session-event.sh\" end 2>/dev/null; exit 0"
           }
         ]
       }
@@ -149,7 +141,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/session-logger.sh\" 2>/dev/null; exit 0"
+            "command": "bash \"$HOME/.claude/hooks/session-event.sh\" session 2>/dev/null; exit 0"
           }
         ]
       },

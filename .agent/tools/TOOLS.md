@@ -55,15 +55,22 @@ source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lis
   rebased; it is never used by a skill on its own initiative.
 - `review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
   `package.diff` (the diff persona packages embed, generated files' hunks collapsed to one note),
-  numbering every hunk `h1`,
-  `h2`, … in diff order, including one synthetic hunk for a file with no textual change (binary,
-  rename-only, mode change). It owns the ids: the persona Reading map and `review-findings.py
-  coverage` share them. `hunks.md` carries index plus bodies for the layer-mapping pass;
-  `hunks.index.md` is the index alone, for a persona package that already holds the diff.
-  Self-contained by design — hunk parsing is project-agnostic, so it must not
+  numbering every hunk `h1`, `h2`, … in diff order, including one synthetic hunk for a file with no
+  textual change (binary, rename-only, mode change). It owns the ids: the persona Reading map and
+  `review-findings.py coverage` share them. `hunks.md` carries index plus bodies for the
+  layer-mapping pass; `hunks.index.md` is the index alone, for a persona package that already holds
+  the diff. Self-contained by design — hunk parsing is project-agnostic, so it must not
   depend on another checkout. Its ids, statuses, and lines match nightshift-pr-helper's
   `parseDiff`; that parity is what lets a crew review and a nightshift review of one PR cite the
   same `h1`.
+- `assemble-packages.py <review-dir> [--config <file>]` composes one `<persona>.in.md` package per
+  reviewer from files the run already wrote — contract, mode, hunk reference, guidance, memory, spec,
+  reading map, `package.diff`, and the consumer and prompt extras. Per-run judgement (mode text,
+  consumer excerpts, prompt files, size-gate line) comes from `assemble.json` in the review directory,
+  so the shared parts cannot drift between personas. Consumer excerpts and prompt files are read from
+  the git index, not the working tree, and `mode_kind: "pr"` refuses both because a PR review may not
+  read the local checkout at all. The persona list is derived from `review-findings.py`, and a persona
+  with no `PRIMARY_KINDS` entry stops the run instead of shipping without a package.
 - `nightshift-e2e.py` is the only nightshift-coupled tool: it drives the local nightshift-pr-helper
   server over HTTP for e2e runs and cannot be generalized. `doctor` is read-only and never calls
   `/api/state`, which advances the queue and can start a run. It never uses the queue or

@@ -5,12 +5,16 @@ Usage: merge_cursor_hooks.py <template.json> <dest.json>
 
 Entries whose command appears in the template are replaced by the template's
 entry, so changed flags (failClosed, loop_limit, matcher) reach an existing
-install. Every other entry is preserved, so user-registered hooks survive.
+install. Every other entry is preserved, so user-registered hooks survive —
+except a retired script this repository no longer ships, which is dropped so
+a fail-closed guard cannot deny every command after its file is deleted.
 """
 import json
 import os
 import sys
 import tempfile
+
+from hooks_retirement import retired
 
 
 def main() -> int:
@@ -28,7 +32,14 @@ def main() -> int:
     hooks = dest.setdefault("hooks", {})
     for event, entries in template["hooks"].items():
         ours = {entry.get("command") for entry in entries}
-        kept = [entry for entry in hooks.get(event, []) if entry.get("command") not in ours]
+        kept = []
+        for entry in hooks.get(event, []):
+            if entry.get("command") in ours:
+                continue
+            if retired(entry.get("command")):
+                print(f"  Retiring hook registration: {entry.get('command')}")
+                continue
+            kept.append(entry)
         hooks[event] = kept + [dict(entry) for entry in entries]
     descriptor, temporary = tempfile.mkstemp(dir=os.path.dirname(dst) or ".", text=True)
     with os.fdopen(descriptor, "w", encoding="utf-8") as f:

@@ -892,6 +892,40 @@ def test_check_packages_matches_git_quoted_header_paths(tmp: Path) -> None:
     assert result.returncode == 1 and "generated file lock files/yarn.lock" in result.stderr
 
 
+def load_module():
+    """Import the tool as a module so persona_outcome can be exercised without a subprocess."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("review_findings_for_outcomes", TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def classify(text: str) -> str:
+    """`persona_outcome` for a string, through a temporary artifact so the real path is exercised."""
+    with tempfile.TemporaryDirectory() as directory:
+        artifact = Path(directory) / "p.out.md"
+        artifact.write_text(text)
+        return load_module().persona_outcome(artifact)
+
+
+def test_findings_outrank_a_trailing_no_findings_verdict(tmp: Path) -> None:
+    """A persona emitted anchored findings and then `### Verdict: no findings`.
+
+    Content wins: the verdict line means "nothing to report", never "discard what is above", so the
+    artifact stays a completed run and the contradiction is noted rather than resolved by throwing
+    evidence away.
+    """
+    both = ("1. [blocking] **`x-pack/a.ts — line 12`** (h3) — the guard is inverted\n\n"
+            "```ts\nif (!ready) return;\n```\n\nIt rejects the ready path.\n\n"
+            "Fix: flip the condition.\n\n### Verdict: no findings\n")
+    assert classify(both) == "ok"
+    # The other direction still holds, so the rule did not become permissive: a bare verdict is a
+    # complete empty review, and a placeholder is still unknown.
+    assert classify("### Verdict: no findings\n") == "ok"
+    assert classify("status: dispatched\n\nraw response captured\n") == "unknown"
+
+
 def main() -> int:
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0

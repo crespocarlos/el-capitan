@@ -22,7 +22,7 @@ narration.
   the PR ref, `git switch`, or `git worktree add` for it. Read the diff with `gh pr diff` and file
   contents at the head SHA with `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"`
   (quoted: an unquoted `?ref=` is a zsh glob and the command dies before `gh` runs); verification in
-  PR mode uses those reads, never the working tree. The shell hook `block-destructive-git.sh` denies
+  PR mode uses those reads, never the working tree. The shell hook `guard-shell.sh` denies
   `gh pr checkout` and `pull/<n>` fetches.
 - Keep every `gh` evidence read a single literal command with a quoted URL and redirect output to a
   file on its own. The `gh`/`git` guard rejects commands that a shell loop or variable expansion
@@ -138,6 +138,21 @@ the index does not impose reading order, but the heading plus that sentence is w
 persona cite the ids strict persistence requires, in the `path:line (h7)` form the rest of the
 pipeline reads.
 
+**Assemble the packages with the tool, not by hand.** Once the layer map exists, write
+`$REVIEW_ROOT/assemble.json` with the per-run judgement, then run
+`~/.agent/bin/assemble-packages.py "$REVIEW_ROOT"`. Keys: `repo` (path), `mode` (a markdown block),
+`size_gate` (one line), `consumers` (`[[path, start, end, label], …]`), `prompt_files`
+(`[path, …]`), `guidance_keep` (`{persona: [level-2 heading prefix, …]}`, optional), and `mode_kind`
+(`"pr"` when the review reads a PR head, which makes the tool refuse `consumers` and `prompt_files`
+because those would come from the local checkout). The shapes are documented in the tool's own
+docstring.
+
+Two settings keep the size honest. The prompt tier elides the regions `package.diff` already quotes
+and keeps every unchanged line, so a rule that collides with surrounding text stays visible. And
+`guidance_keep` narrows repository guidance per lens — `Testing` and `Verification pattern` to Code
+Quality, `File layout` and `Symlink rules` to Architecture — because every lens otherwise pays for the
+whole file. A prefix that matches no section fails the run and lists the available ones.
+
 In PR mode, `agent-context.py` is allowed only for repository guidance. Fetch reviewed code and all
 claim-supporting excerpts from the PR head with `gh`; do not use the local checkout to assemble code
 context. Before a PR validator dispatch, add `## PR validation` with the repository, head SHA, exact
@@ -160,16 +175,22 @@ Use the shared dispatch contract. Give each persona its context package and mode
 collect raw output without altering it. Personas may run read-only, and the `claude -p` fallback
 returns stdout only; follow the evidence rules in the shared dispatch instructions.
 
-**Compose the shared reviewer contract into every package.** A subagent loads only its own persona
-file, so a rule that lives in a reference file reaches it only if it is in the package. Prepend the
-contents of `~/.cursor/agents/references/reviewer-contract.md` verbatim as the package's first
-section, then the mode and label vocabulary, then the lens package. The persona files describe a lens
-and no longer restate labels, the finding shape, the abstention line, or the evidence rules; those
-live only in that file, so a package without it leaves the persona without them. The eval harness
-composes the same file (`load_persona_prompt` in `evals/reviewer/run.py`), which is what keeps the
-measured prompt and the dispatched prompt the same shape.
+**The tool owns package composition; do not assemble by hand.** `assemble-packages.py` writes the
+package's first section and every section after it — the shared contract, the mode block, the hunk
+reference, repository guidance, memory, the spec, the reading map, `package.diff`, and the consumer
+and prompt extras — in one fixed order. A subagent loads only its own persona file, so a rule that
+lives in a reference file reaches it only if the package carries it; composing by hand is how a run
+delivered one reviewer a prebuilt header instead of the contract, and `check-packages` passed anyway
+because it checks the rules whose absence is detectable, not that two reviewers read the same
+evidence. The eval harness composes the same contract (`load_persona_prompt` in
+`evals/reviewer/run.py`), which is what keeps the measured prompt and the dispatched prompt the same
+shape.
 
-**Check the packages before the first dispatch.** Write every `$REVIEW_ROOT/<persona>.in.md`, then
+In spec and idea reviews there is no diff, so the tool does not apply: compose those packages by hand
+in the same order, contract first.
+
+**Check the packages before the first dispatch.** Confirm `assemble-packages.py` wrote every
+`$REVIEW_ROOT/<persona>.in.md` for the personas `select` returned, then
 run `~/.agent/bin/review-findings.py check-packages --review-dir "$REVIEW_ROOT" --mode
 <selector-mode> --personas <names>`, where `<selector-mode>` is the value passed to `select` in
 Step 4. Dispatch only on exit 0; on a non-zero exit, rewrite the named package and check again. The
@@ -180,8 +201,9 @@ the check for a directory that holds a `package.diff`, so skipping it fails the 
 cost is spent.
 
 **Persist both artifacts at dispatch time, not at persist time.** The package sent to each persona
-is the `.in.md` just checked; write its raw reply to `$REVIEW_ROOT/<persona>.out.md` as each
-returns. `persist --strict` requires both files, and reconstructing either afterwards from a
+is the `.in.md` just checked. Deliver it inline, or by path under **Package delivery** in the shared
+dispatch instructions, where all three conditions apply. Write the raw reply to
+`$REVIEW_ROOT/<persona>.out.md` as each returns. `persist --strict` requires both files, and reconstructing either afterwards from a
 one-line summary satisfies the gate while destroying the audit trail — the recorded package must be
 the one the persona actually read.
 
@@ -194,9 +216,10 @@ Follow [consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.m
 Follow [output formats](~/.cursor/agents/crew-reviewer/references/output-formats.md),
 [auto-apply](~/.cursor/agents/crew-reviewer/references/auto-apply.md), and [pipeline
 persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md). The reply is `report.md`
-rendered verbatim — never a rewrite of it from your own notes. Add a `### Reviewers` section
-only when a persona failed, was truncated, or returned partial coverage (blocked reads, unread
-files); name the lens and the gap.
+rendered verbatim — never a rewrite of it from your own notes. End it with a `### Reviewers` section
+naming how each package was delivered (inline, or by path per the shared dispatch instructions) and
+adding a lens with its gap only when that persona failed, was truncated, or returned partial coverage
+(blocked reads, unread files).
 
 ## Step 9: extensibility
 

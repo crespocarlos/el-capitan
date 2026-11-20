@@ -14,12 +14,20 @@ hooks is a dict keyed by event type, with each value an array of
 Matcher is not a unique key (settings.json registers several matcher-less
 entries per event), so entries are never replaced wholesale: that would
 delete user hooks that share a matcher.
+
+A retired hook — one this repository used to ship and has since merged or
+removed — is dropped from the destination. Leaving it registered is worse
+than a missing file: the guard fails closed, so a deleted script would deny
+every command it used to inspect. The list and the match live in
+`hooks_retirement.py`, shared with the Cursor merger.
 """
 import json
 import os
 import sys
 import tempfile
 import time
+
+from hooks_retirement import retired
 
 
 def template_commands(entries):
@@ -30,7 +38,14 @@ def merge_event(existing, incoming):
     ours = template_commands(incoming)
     kept = []
     for entry in existing:
-        remaining = [h for h in entry.get("hooks", []) if h.get("command") not in ours]
+        remaining = []
+        for hook in entry.get("hooks", []):
+            if hook.get("command") in ours:
+                continue
+            if retired(hook.get("command")):
+                print(f"  Retiring hook registration: {hook.get('command')}")
+                continue
+            remaining.append(hook)
         if remaining:
             kept.append({**entry, "hooks": remaining})
     seen, appended = set(), []
