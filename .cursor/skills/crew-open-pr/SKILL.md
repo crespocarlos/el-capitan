@@ -158,7 +158,7 @@ quick`), there is nothing to mark.
 when it holds something non-derivable: a key architectural decision, or a lesson for future similar
 work. Derive it from SPEC.md when a task exists, otherwise from the commit log and PR description;
 1-2 plain-prose paragraphs, each one self-contained idea. Show the title and prose and ask `Store
-this journal entry? (yes / no)`. Only on `yes`, run `~/.agent/bin/mem.py journal add --title "PR
+this journal entry? (yes / no)`. Only on `yes`, run `~/.agent/bin/crew-mem.py journal add --title "PR
 opened: <title>" --tags <tags> --repo <scope>` with the prose on stdin (heredoc). On `no`, or when
 nothing qualifies, write nothing and say `journal: none`. On non-zero exit print `warning: memory
 unavailable` and continue.

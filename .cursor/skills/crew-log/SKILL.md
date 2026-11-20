@@ -23,14 +23,14 @@ write immediately. Do not prompt for specific fields.
 
 ## Format
 
-Write through `mem.py journal add`, with a prose body on stdin. The body is prose only: no heading,
+Write through `crew-mem.py journal add`, with a prose body on stdin. The body is prose only: no heading,
 `**Tags:**`, `**Repo:**`, or `---` lines. Title, tags, scope, and date come from flags (`--date`
 defaults to today). The command stores one immutable observation per call in the unified memory
 store. Write in **prose paragraphs** — not bullets, not section headers. Each paragraph is one
 coherent idea and evidence for later consolidation. Write the "why", not just the "what".
 
 ```bash
-~/.agent/bin/mem.py journal add --title "Title" --tags kibana mapping --repo <scope> <<'EOF'
+~/.agent/bin/crew-mem.py journal add --title "Title" --tags kibana mapping --repo <scope> <<'EOF'
 First paragraph: what happened and why it matters.
 
 Second paragraph (if there's a distinct second idea): another self-contained insight.
@@ -44,7 +44,7 @@ for global entries. The command prints the observation ID.
 
 Keep the resulting observation IDs as evidence. Draft zero to three durable typed candidates into
 `~/.agent/memory/.inbox/`, citing those IDs; a no-op is valid. Show candidates with the entry and,
-only after approval, run `~/.agent/bin/mem.py import-inbox --all`. On exit 2 print `warning: memory
+only after approval, run `~/.agent/bin/crew-mem.py import-inbox --all`. On exit 2 print `warning: memory
 unavailable`.
 
 Then:

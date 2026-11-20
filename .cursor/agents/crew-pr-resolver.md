@@ -32,7 +32,7 @@ cd "$(~/.agent/bin/manage-worktree.py "$PR_BRANCH")"
 PR_TITLE=$(gh pr view PR_NUMBER --repo OWNER/REPO --json title --jq '.title')
 ~/.agent/bin/task-context.py --branch "$PR_BRANCH" --artifacts task_id,handoff --max-chars 2000
 
-MEM_OUT=$(~/.agent/bin/mem.py context --mode review --query "$PR_TITLE" 2>&1); MEM_RC=$?
+MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode review --query "$PR_TITLE" 2>&1); MEM_RC=$?
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 
@@ -172,7 +172,7 @@ Write 1-3 plain-prose paragraphs. Show the title and prose, then ask:
 Only after `yes`, run:
 
 ```bash
-~/.agent/bin/mem.py journal add --title "PR review: <PR title>" --tags <tags> --repo <scope>
+~/.agent/bin/crew-mem.py journal add --title "PR review: <PR title>" --tags <tags> --repo <scope>
 ```
 
 Pass the approved prose on stdin via a heredoc. On `no`, or when nothing qualifies, write nothing and

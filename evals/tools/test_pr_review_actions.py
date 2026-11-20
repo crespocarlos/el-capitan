@@ -12,8 +12,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "crew-pr-actions.py"
-WRAPPER = ROOT / ".agent" / "tools" / "pr-review-actions.py"
+TOOL = ROOT / ".agent" / "tools" / "review" / "crew-pr-actions.py"
+WRAPPER = ROOT / ".agent" / "tools" / "review" / "pr-review-actions.py"
 
 
 def stub_gh(directory):
@@ -40,7 +40,7 @@ def install_query_asset(home):
     """The default --query is the installed asset path, so the scratch HOME gets that file."""
     target = home / ".agent" / "bin" / "pr-review-threads.graphql"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text((ROOT / ".agent" / "tools" / "pr-review-threads.graphql").read_text())
+    target.write_text((ROOT / ".agent" / "tools" / "review" / "pr-review-threads.graphql").read_text())
     return target
 
 

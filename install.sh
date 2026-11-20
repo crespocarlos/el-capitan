@@ -21,21 +21,32 @@ run() {
   fi
 }
 
-# Symlink regular files from $1 into $2 (creates dest). nullglob; skips subdirs; no-op if $1 missing.
-# Cleanup of retired links is the caller's job via `prune_broken_symlinks`, which only removes links
-# this installer created: doing it here would need that helper defined first, and any sweep that does
-# not check the link target would delete a user's own dangling link in the same directory.
+# Symlink regular files from $1 into $2 (creates dest). $3 is the walk depth: 1 for the flat
+# directories (rules, agents, hooks, skill references) and 2 for the tool tree, which is grouped into
+# responsibility subdirectories while the installed surface stays flat. A duplicate basename aborts
+# before any link is written: otherwise the second `ln -sf` silently replaces the first and a
+# cataloged command resolves to the wrong file. Cleanup of retired links is the caller's job via
+# `prune_broken_symlinks`, which only removes links this installer created: doing it here would need
+# that helper defined first, and any sweep that did not check the link target would delete a user's
+# own dangling link in the same directory.
 link_dir_files() {
-  local src="$1" dest="$2"
+  local src="$1" dest="$2" depth="${3:-1}"
   [[ -d "$src" ]] || return 0
+  local listing duplicates f name first second
+  listing=$(find "$src" -maxdepth "$depth" -type f ! -path '*/__pycache__/*' | sort)
+  [[ -n "$listing" ]] || return 0
+  duplicates=$(printf '%s\n' "$listing" | awk -F/ '
+    { name = $NF; if (name in seen) print name "\t" seen[name] "\t" $0; else seen[name] = $0 }')
+  if [[ -n "$duplicates" ]]; then
+    while IFS=$'\t' read -r name first second; do
+      echo "error: duplicate command $name in $first and $second" >&2
+    done <<< "$duplicates"
+    return 1
+  fi
   run mkdir -p "$dest"
-  shopt -s nullglob
-  local f
-  for f in "$src"/*; do
-    [[ -f "$f" ]] || continue
+  while IFS= read -r f; do
     run ln -sf "$f" "$dest/$(basename "$f")"
-  done
-  shopt -u nullglob
+  done <<< "$listing"
 }
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -186,7 +197,7 @@ import tempfile
 home = Path(sys.argv[1])
 source = Path(sys.argv[2])
 block = """<!-- el-capitan:memory -->
-Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
+Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/crew-mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
 <!-- /el-capitan:memory -->"""
 
 
@@ -317,11 +328,13 @@ for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _MEMORY_TE
 done
 # ~/.agent/bin
 run rm -f ~/.agent/bin/resolve-task-dir.sh ~/.agent/bin/log-progress.sh
-link_dir_files "$SCRIPT_DIR/.agent/tools" ~/.agent/bin
-link_dir_files "$SCRIPT_DIR/.agent/scripts" ~/.agent/bin
+if ! link_dir_files "$SCRIPT_DIR/.agent/tools" ~/.agent/bin 2; then
+  echo "  ERROR: tool tree has a duplicate basename; ~/.agent/bin was not updated." >&2
+  exit 1
+fi
 prune_broken_symlinks ~/.agent/bin
 if [ "$DRY_RUN" -eq 0 ] && [ ! -d "$HOME/.agent/memory/.git" ]; then
-  CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/tools/mem.py" init
+  CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/tools/memory/crew-mem.py" init
 fi
 
 echo ""

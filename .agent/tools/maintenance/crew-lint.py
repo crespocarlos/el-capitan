@@ -35,6 +35,9 @@ MAX_ALWAYS_RULE_TOKENS = 14500
 ALWAYS_LOADED_PROJECT_FILES = ("AGENTS.md", ".claude/CLAUDE.md")
 # The source of truth for skills that may activate without an explicit `crew` command.
 MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test", "spec-writing"}
+# The memory CLI under both its primary and deprecated basenames: a caller may still use either
+# until the wrapper is removed, and a swallowed memory failure is a defect under both.
+MEMORY_COMMANDS = ("crew-mem.py", "mem.py")
 
 
 def files(root: Path) -> list[Path]:
@@ -73,11 +76,92 @@ def parse_frontmatter(text: str) -> tuple[str | None, str | None, str | None]:
     return value, None, None
 
 
+# The naming standard in TOOLS.md. A hyphen cannot appear in a Python import, so the two shapes
+# are disjoint by construction rather than by convention an author has to remember.
+EXECUTABLE_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.(py|sh)$")
+MODULE_NAME = re.compile(r"^[a-z0-9_]+\.py$")
+
+
+def tool_tree_files(root: Path) -> list[Path]:
+    """Every file in the tool tree, so a name is checked wherever it is filed."""
+    directory = root / ".agent/tools"
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path for path in directory.rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
+    )
+
+
+def catalog_path(root: Path, entry: dict) -> Path:
+    """The file a catalog entry names: its declared `dir` under `.agent/tools`."""
+    return root / ".agent/tools" / str(entry.get("dir", ".")) / str(entry.get("name"))
+
+
+def lint_tool_naming(root: Path, modules: set[str]) -> list[tuple[str, int, str, str]]:
+    """Every executable is kebab-case; a module another tool imports is snake_case and declared.
+
+    Checked over the tree rather than the catalog alone, so a file added without a catalog entry is
+    still judged by the rule it violates instead of only by its missing entry.
+    """
+    findings: list[tuple[str, int, str, str]] = []
+    for path in tool_tree_files(root):
+        if path.suffix not in {".py", ".sh"} or path.name in modules:
+            continue
+        if not EXECUTABLE_NAME.match(path.name):
+            findings.append((rel(root, path), 1, "tool-name",
+                             f"{path.name} is not kebab-case; rename it like crew-ls.py, or declare "
+                             f"it under `modules` when another tool imports it"))
+    return findings
+
+
+def lint_tool_modules(root: Path, modules: list) -> list[tuple[str, int, str, str]]:
+    """A declared importable module exists, is snake_case, and is not also cataloged as a command."""
+    findings: list[tuple[str, int, str, str]] = []
+    commands = set()
+    manifest = root / ".agent/tools/tools.json"
+    try:
+        data = json.loads(manifest.read_text())
+        commands = {entry.get("name") for key in ("tools", "scripts", "assets")
+                    for entry in data.get(key, [])}
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+    for entry in modules:
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if not isinstance(name, str):
+            findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
+                             "modules entries must be objects with a name"))
+            continue
+        if not MODULE_NAME.match(name):
+            findings.append((".agent/tools/tools.json", 1, "tool-name",
+                             f"{name}: an imported module is snake_case (^[a-z0-9_]+\\.py$)"))
+        if name in commands:
+            findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
+                             f"{name}: declared both as a module and as a command"))
+        if not catalog_path(root, entry).is_file():
+            findings.append((".agent/tools/tools.json", 1, "cataloged-module-unavailable",
+                             f"{name} does not exist under its declared dir"))
+    return findings
+
+
+def installed_tool_names(root: Path) -> set[str]:
+    """Basenames the installer links into `~/.agent/bin` before any migration cleanup.
+
+    Every file in the tree is linked, cataloged or not, so a `~/.agent/bin/<name>` reference
+    resolves against the tree rather than against the catalog.
+    """
+    return {path.name for path in tool_tree_files(root)}
+
+
 def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
-    """Validate the installed command surface (tools and scripts) without executing it."""
+    """Validate the installed command surface (tools and scripts) without executing it.
+
+    Entries resolve through their declared `dir`, never by basename in one flat directory: the tree
+    is grouped by responsibility and only `tools.json`, `TOOLS.md`, and `requirements.txt` sit at its
+    root, so a lookup that ignored `dir` would report every entry missing.
+    """
     findings: list[tuple[str, int, str, str]] = []
     tool_dir = root / ".agent/tools"
-    script_dir = root / ".agent/scripts"
     manifest = tool_dir / "tools.json"
     if not manifest.exists():
         return [(".agent/tools", 1, "missing-tool-catalog", "add tools.json")]
@@ -86,37 +170,46 @@ def lint_tool_catalog(root: Path) -> list[tuple[str, int, str, str]]:
         entries = data["tools"]
         scripts = data.get("scripts", [])
         assets = data.get("assets", [])
+        modules = data.get("modules", [])
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
         return [(".agent/tools/tools.json", 1, "invalid-tool-catalog", str(error))]
     names = [entry.get("name") for entry in entries + scripts + assets]
     if len(names) != len(set(names)) or any(not isinstance(name, str) for name in names):
         findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
                          "tool, script, and asset names must be unique strings"))
-    for directory, listed in ((tool_dir, entries), (script_dir, scripts)):
-        executable = {
-            path.name for path in directory.iterdir()
-            if path.is_file() and path.suffix in {".py", ".sh"}
-        } if directory.is_dir() else set()
-        cataloged = {entry.get("name") for entry in listed}
-        for name in sorted(executable - cataloged):
-            findings.append((rel(root, directory / name), 1, "uncataloged-tool",
-                             f"{name} is executable but absent from tools.json"))
+    findings.extend(lint_tool_modules(root, modules))
+    module_names = {entry.get("name") for entry in modules if isinstance(entry, dict)}
+    findings.extend(lint_tool_naming(root, module_names))
+
+    cataloged = {entry.get("name") for entry in entries + scripts + assets} | module_names
+    for path in tool_tree_files(root):
+        if path.suffix in {".py", ".sh"} and path.name not in cataloged:
+            findings.append((rel(root, path), 1, "uncataloged-tool",
+                             f"{path.name} is executable but absent from tools.json"))
+
+    for listed in (entries, scripts, modules):
         for entry in listed:
             name = entry.get("name")
-            path = directory / str(name)
-            required = {"name", "category", "owner", "help", "smoke"}
+            required = {"name", "dir", "category", "owner", "help", "smoke"}
             missing = required - entry.keys()
-            if missing:
+            if not isinstance(name, str):
+                findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
+                                 "every catalog entry needs a string name"))
+            elif missing:
                 findings.append((".agent/tools/tools.json", 1, "invalid-tool-catalog",
                                  f"{name}: missing {', '.join(sorted(missing))}"))
-            elif not path.is_file() or not os.access(path, os.X_OK):
-                findings.append((".agent/tools/tools.json", 1, "cataloged-tool-unavailable",
-                                 f"{name} does not exist or is not executable"))
+            else:
+                path = catalog_path(root, entry)
+                if not path.is_file() or not os.access(path, os.X_OK):
+                    findings.append((".agent/tools/tools.json", 1, "cataloged-tool-unavailable",
+                                     f"{name} does not exist or is not executable at "
+                                     f"{rel(root, path)}"))
     for asset in assets:
         name = asset.get("name")
-        if not (tool_dir / str(name)).is_file():
+        path = catalog_path(root, asset)
+        if not path.is_file():
             findings.append((".agent/tools/tools.json", 1, "cataloged-asset-unavailable",
-                             f"{name} does not exist"))
+                             f"{name} does not exist at {rel(root, path)}"))
     return findings
 
 
@@ -350,6 +443,8 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
     findings.extend(lint_rule_setup(root))
     findings.extend(lint_skill_setup(root))
     all_files = files(root)
+    # What `~/.agent/bin` receives: every cataloged file, linked flat by basename.
+    installed_names = installed_tool_names(root)
     servers, native, surface_findings = load_tool_surface(root)
     findings.extend(surface_findings)
     if not surface_findings:
@@ -386,9 +481,9 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
                              "use resolve-task-dir.py instead"))
         for match in re.finditer(r"~/.agent/bin/([\w.-]+)", text):
             script = match.group(1)
-            if not any((root / ".agent" / d / script).exists() for d in ("tools", "scripts")):
+            if script not in installed_names:
                 findings.append((name, line_no(text, match.start()), "missing-script",
-                                 f"{script} is not in .agent/tools or .agent/scripts"))
+                                 f"{script} is not in the .agent/tools tree"))
         for match in re.finditer(r"([\w-]+\.mdc)", text):
             candidate = match.group(1)
             if candidate not in rules and candidate != path.name:
@@ -408,7 +503,7 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
                 if command not in routed_commands:
                     findings.append((name, line, "unrouted-command",
                                      f"crew {command} has no routing row"))
-            if "mem.py" in value and (
+            if any(name in value for name in MEMORY_COMMANDS) and (
                 "2>/dev/null" in value or "|| true" in value
             ):
                 findings.append((name, line, "swallowed-call",
@@ -493,7 +588,7 @@ def lint(root: Path, budget: bool) -> list[tuple[str, int, str, str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument("--budget", action="store_true")
     args = parser.parse_args()
     if not args.root.is_dir():

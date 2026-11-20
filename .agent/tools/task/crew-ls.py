@@ -19,9 +19,11 @@ import json,os,re,subprocess,sys
 from datetime import datetime,timezone
 from pathlib import Path
 
-# Installed flat into ~/.agent/bin, but in the repo this file is .agent/tools and the
-# shared status contract lives in .agent/scripts.
-for _dir in (Path(__file__).resolve().parent, Path(__file__).resolve().parent.parent/'scripts'):
+# Installed flat into ~/.agent/bin, but in the repo this file is `.agent/tools/task` and the
+# shared status contract is its sibling there; `resolve()` follows the installed symlink back into
+# the repo, so one directory covers both. A hyphenated tool name cannot be imported, which is why
+# the contract lives in a snake_case module and reaches this one through `sys.path`.
+for _dir in (Path(__file__).resolve().parent,):
     if (_dir/'task_status.py').is_file() and str(_dir) not in sys.path:
         sys.path.insert(0,str(_dir))
 from task_status import STATUS, head as _head, read_status  # noqa: E402

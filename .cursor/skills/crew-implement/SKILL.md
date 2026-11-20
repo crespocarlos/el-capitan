@@ -76,11 +76,11 @@ the file paths the spec names, for example `SPEC_PATHS=(src/a.ts src/b.ts)` (emp
 
 ```bash
 if [ "${#SPEC_PATHS[@]}" -gt 0 ]; then
-  MEM_OUT=$(~/.agent/bin/mem.py context --mode implement --query "$SPEC_TITLE" --paths "${SPEC_PATHS[@]}" 2>&1); MEM_RC=$?
+  MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode implement --query "$SPEC_TITLE" --paths "${SPEC_PATHS[@]}" 2>&1); MEM_RC=$?
 else
-  MEM_OUT=$(~/.agent/bin/mem.py context --mode implement --query "$SPEC_TITLE" 2>&1); MEM_RC=$?
+  MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode implement --query "$SPEC_TITLE" 2>&1); MEM_RC=$?
 fi
-case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
+case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: crew-mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
 ```
 
 Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no journal entries or
@@ -205,7 +205,7 @@ When the Implementation Report is available:
 
    Show the title and 1–3 plain-prose paragraphs, each one self-contained idea, then ask
    `Store this journal entry? (yes / no)`. Only on `yes`, run
-   `~/.agent/bin/mem.py journal add --title "Implemented: <title>" --tags <tags> --repo <scope>` with
+   `~/.agent/bin/crew-mem.py journal add --title "Implemented: <title>" --tags <tags> --repo <scope>` with
    the prose on stdin. On `no`, or when nothing qualifies, write nothing and report `journal: none`.
    On non-zero exit print `warning: memory unavailable` and continue. Observations are immutable, so
    the approval step is mandatory (`memory-capture.mdc`; `CLAUDE.md`: do not write memories
@@ -216,7 +216,7 @@ When the Implementation Report is available:
    `~/.agent/memory/.inbox/` only when they are durable, non-derivable, and
    backed by a file, command, or journal evidence pointer. Do not import them.
    Show each candidate (or `none`) in the completion handoff and ask for one
-   batch approval; `crew memory seed` or `mem.py import-inbox` performs the
+   batch approval; `crew memory seed` or `crew-mem.py import-inbox` performs the
    later promotion.
 4. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Status stays `IMPLEMENTING` until the PR is opened."

@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "task-context.py"
+TOOL = ROOT / ".agent" / "tools" / "task" / "task-context.py"
 
 SPEC = "# Spec: demo\n\n## Status\nAPPROVED\n" + ("body line\n" * 40)
 PROGRESS = "".join(f"[2026-11-{day:02d} 10:00] TRANSITION: step {day}\n" for day in range(1, 29))

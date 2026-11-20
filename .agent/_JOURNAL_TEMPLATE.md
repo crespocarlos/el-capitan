@@ -1,8 +1,8 @@
 # Journal Entry Schema
 
-New entries are stored as immutable observations by `mem.py journal add` (see `crew-log`) under
+New entries are stored as immutable observations by `crew-mem.py journal add` (see `crew-log`) under
 `~/.agent/memory/observations/`. The format below is the legacy monthly-file layout in
-`~/.agent/journal/YYYY-MM.md`, which is import-only (`mem.py journal import`).
+`~/.agent/journal/YYYY-MM.md`, which is import-only (`crew-mem.py journal import`).
 
 ## Format
 

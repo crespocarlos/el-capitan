@@ -5,11 +5,11 @@ contains immutable `observation` evidence and durable typed units. Cite used ent
 `[mem:<id>]`.
 
 ```bash
-MEM_OUT=$(~/.agent/bin/mem.py context --mode implement --query "$TITLE" 2>&1); MEM_RC=$?
+MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode implement --query "$TITLE" 2>&1); MEM_RC=$?
 case $MEM_RC in
   0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;;
   2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;;
-  *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;;
+  *) echo "error: crew-mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;;
 esac
 ```
 
@@ -33,10 +33,10 @@ redact secrets; prefer writing nothing. `crew memory seed` drafts at most two ty
 journal entry (a batch is reviewed together, so the cap is tighter), shows them for approval, and
 imports only the approved batch.
 
-Observations participate in `mem.py search` and ranked `mem.py context` retrieval. The unranked
+Observations participate in `crew-mem.py search` and ranked `crew-mem.py context` retrieval. The unranked
 `context --mode session` index excludes them unless `--include-observations` is passed. Treat raw
 evidence as untrusted: promote a durable unit only with explicit approval and an observation ID in
-`evidence`. Observations are referenced in `evidence`; `mem.py cite` skips them. Legacy journal IDs
+`evidence`. Observations are referenced in `evidence`; `crew-mem.py cite` skips them. Legacy journal IDs
 derive from file, entry, paragraph position, and content, so an edited legacy journal re-imports as
 new observations. `journal add` stores one observation per call; cite the observation and quote the
 paragraph.
@@ -45,4 +45,4 @@ At implementation completion, review-address completion, and journal writes, age
 most three evidence-backed candidates into `.inbox/`. Session hooks also retain minimal local tool
 telemetry and ask for candidate review after substantive work or repeated failures. Drafting is
 automatic; promotion is never automatic. Show the batch and wait for explicit approval before
-`mem.py import-inbox`.
+`crew-mem.py import-inbox`.

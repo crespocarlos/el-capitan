@@ -99,7 +99,7 @@ def observation_directory(scope):
 
 def ensure_store():
     if not database_path().exists():
-        raise MemoryError("memory store missing; run mem.py init")
+        raise MemoryError("memory store missing; run crew-mem.py init")
 
 
 def connection():

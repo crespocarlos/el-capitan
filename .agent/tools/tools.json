@@ -3,6 +3,7 @@
   "tools": [
     {
       "name": "agent-context.py",
+      "dir": "task",
       "category": "task",
       "owner": "repository",
       "help": "argparse",
@@ -10,6 +11,7 @@
     },
     {
       "name": "crew-lint.py",
+      "dir": "maintenance",
       "category": "maintenance",
       "owner": "repository",
       "help": "argparse",
@@ -17,6 +19,7 @@
     },
     {
       "name": "crew-ls.py",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
@@ -24,6 +27,7 @@
     },
     {
       "name": "pr-review-actions.py",
+      "dir": "review",
       "category": "review",
       "owner": "crew-pr-resolver",
       "help": "argparse",
@@ -33,6 +37,7 @@
     },
     {
       "name": "crew-pr-actions.py",
+      "dir": "review",
       "category": "review",
       "owner": "crew-pr-resolver",
       "help": "argparse",
@@ -40,6 +45,7 @@
     },
     {
       "name": "review-findings.py",
+      "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",
       "help": "argparse",
@@ -47,6 +53,7 @@
     },
     {
       "name": "review-hunks.py",
+      "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",
       "help": "argparse",
@@ -54,6 +61,7 @@
     },
     {
       "name": "assemble-packages.py",
+      "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",
       "help": "argparse",
@@ -61,6 +69,7 @@
     },
     {
       "name": "nightshift-e2e.py",
+      "dir": "review",
       "category": "review",
       "owner": "crew-e2e",
       "help": "argparse",
@@ -68,6 +77,7 @@
     },
     {
       "name": "evals-compare.py",
+      "dir": "evals",
       "category": "evals",
       "owner": "crew-evals",
       "help": "argparse",
@@ -75,6 +85,7 @@
     },
     {
       "name": "evals-inspect.py",
+      "dir": "evals",
       "category": "evals",
       "owner": "crew-evals",
       "help": "argparse",
@@ -82,6 +93,7 @@
     },
     {
       "name": "log-metric.py",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
@@ -89,20 +101,33 @@
     },
     {
       "name": "log-progress.py",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
       "smoke": "--help"
     },
     {
-      "name": "mem.py",
+      "name": "crew-mem.py",
+      "dir": "memory",
       "category": "memory",
       "owner": "crew-memory",
       "help": "argparse",
       "smoke": "--help"
     },
     {
+      "name": "mem.py",
+      "dir": "memory",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "argparse",
+      "smoke": "--help",
+      "status": "deprecated",
+      "replacement": "crew-mem.py"
+    },
+    {
       "name": "resolve-task-dir.py",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
@@ -110,6 +135,7 @@
     },
     {
       "name": "task-context.py",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
@@ -117,6 +143,7 @@
     },
     {
       "name": "manage-worktree.py",
+      "dir": "task",
       "category": "task",
       "owner": "crew-implement",
       "help": "argparse",
@@ -125,14 +152,8 @@
   ],
   "scripts": [
     {
-      "name": "task_status.py",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "argparse",
-      "smoke": "--help"
-    },
-    {
       "name": "default-branch.sh",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "--help",
@@ -140,6 +161,7 @@
     },
     {
       "name": "task-env.sh",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "source-only",
@@ -147,25 +169,39 @@
     },
     {
       "name": "get-diff.sh",
+      "dir": "review",
       "category": "review",
       "owner": "crew-reviewer",
       "help": "source-only",
       "smoke": "source-only"
     }
   ],
+  "modules": [
+    {
+      "name": "task_status.py",
+      "dir": "task",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help"
+    }
+  ],
   "assets": [
     {
       "name": "pr-review-threads.graphql",
+      "dir": "review",
       "category": "review",
       "owner": "crew-pr-resolver"
     },
     {
       "name": "transitions.json",
+      "dir": "task",
       "category": "task",
       "owner": "crew-orchestrator"
     },
     {
       "name": "requirements.txt",
+      "dir": ".",
       "category": "metadata",
       "owner": "repository"
     }

@@ -66,8 +66,8 @@ if [ -f "$TASK_DIR/SPEC.md" ]; then
   exit 1
 fi
 
-MEM_OUT=$(~/.agent/bin/mem.py context --mode plan --query "$SLUG" 2>&1); MEM_RC=$?
-case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
+MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode plan --query "$SLUG" 2>&1); MEM_RC=$?
+case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: crew-mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
 ```
 
 The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces

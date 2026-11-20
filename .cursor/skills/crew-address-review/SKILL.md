@@ -61,7 +61,7 @@ past the cut. If neither source is available, stop:
 **Code mode, once before evaluating:** recall repo memory for the files the findings touch:
 
 ```bash
-MEM_OUT=$(~/.agent/bin/mem.py context --mode review --query "<review topic>" --paths <files named in findings> 2>&1); MEM_RC=$?
+MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode review --query "<review topic>" --paths <files named in findings> 2>&1); MEM_RC=$?
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 
@@ -204,7 +204,7 @@ invalid inline list at commas without error. With no review directory, cite the 
 and the finding title instead of `<review-dir>` and `<id>`. Follow the frontmatter with a
 retrieval-ready claim and a `**Don't apply when:**` condition. A file in `.inbox/`
 is only a draft even when its frontmatter has `status: active`; do not import it. These candidates
-count toward the Step 4 limit. For cited memory ids, run `mem.py cite <ids> --outcome misled`; on
+count toward the Step 4 limit. For cited memory ids, run `crew-mem.py cite <ids> --outcome misled`; on
 exit 2 print `warning: memory unavailable`.
 
 ### Step 4: Execute approved fixes
@@ -244,7 +244,7 @@ Before the summary, draft zero to three durable, evidence-backed memory candidat
 `~/.agent/memory/.inbox/` from the accepted review outcomes, including the rejected-finding
 candidates from Step 3b. Do not draft facts already derivable from the changed files or review
 record; do not import any candidate. Show the candidate titles (or `none`) with the summary and
-require a later explicit batch approval through `crew memory seed` or `mem.py import-inbox`.
+require a later explicit batch approval through `crew memory seed` or `crew-mem.py import-inbox`.
 
 **Idea mode:** synthesis, not implementation. The artifact is usually pasted text, but a spec review
 targets a `SPEC.md` file; in that case the "revised idea" is an edit to that file, not a chat reply.

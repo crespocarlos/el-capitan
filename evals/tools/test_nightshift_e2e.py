@@ -20,7 +20,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "nightshift-e2e.py"
+TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "nightshift-e2e.py"
 KEY = "elastic__kibana__12345"
 TESTED_HEAD = "0123456789ab"  # arbitrary: the tool must pass `meta.headSha` through unchanged
 

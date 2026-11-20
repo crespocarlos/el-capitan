@@ -1,19 +1,41 @@
 # Agent tool catalog
 
-Source is split by kind: `.agent/tools/` holds CLIs and their assets, and `.agent/scripts/` holds
-source-only and internal helpers. `install.sh` links both into `~/.agent/bin/`, which stays a flat,
-stable command surface, so installed paths do not change. `tools.json` is the machine-readable
-source of truth: `tools` and `assets` live in `.agent/tools/`, and `scripts` lists the files in
-`.agent/scripts/`. `crew-lint.py` validates it.
+Source lives under `.agent/tools/`, grouped by responsibility into subdirectories. `install.sh`
+links every file into `~/.agent/bin/`, which stays a flat, stable command surface, so installed
+paths do not change. `tools.json` is the machine-readable source of truth: each entry records the
+`dir` it lives in. `crew-lint.py` validates it.
 
-| Category | Commands | Purpose |
+## Naming and layout
+
+- **Executables are kebab-case** — `^[a-z0-9]+(-[a-z0-9]+)*\.(py|sh)$`, for example
+  `crew-ls.py` or `default-branch.sh`. A new command that is not kebab-case is a defect, not a
+  style choice.
+- **A Python module imported by another tool is snake_case** — `^[a-z0-9_]+\.py$`. Python cannot
+  import a hyphenated module, so `task_status.py` stays snake_case while its siblings are CLIs. A
+  module is an exception the catalog must declare: list it under `modules` in `tools.json`, never
+  leave it to be inferred from the file extension.
+- **`crew-` is reserved for the commands a user types** — the `crew` subcommands such as `crew ls`.
+  A tool behind one of those commands carries the prefix (`crew-ls.py`, `crew-lint.py`,
+  `crew-mem.py`); an internal helper the user never types does not (`log-progress.py`,
+  `review-hunks.py`, `task_status.py`).
+- **One subdirectory per responsibility** — `task/`, `review/`, `memory/`, `evals/`,
+  `maintenance/`. `tools.json`, `TOOLS.md`, and `requirements.txt` stay at the root of
+  `.agent/tools/`, because they describe the whole tree rather than belonging to one group.
+- **The installed surface is flat.** `install.sh` links basenames into `~/.agent/bin/`, so a
+  basename must be unique across every subdirectory; a duplicate aborts the install instead of
+  letting one link silently shadow the other. Tools resolve their siblings from
+  `Path(__file__).resolve()`, which follows the installed symlink back into the repository.
+
+| Directory | Commands | Purpose |
 | --- | --- | --- |
-| task | `agent-context.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
-| review | `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | Hunks and layer maps, findings, PR threads, and on-demand e2e runs |
-| review (deprecated) | `pr-review-actions.py` | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
-| evals | `evals-inspect.py`, `evals-compare.py` | Inspect, compare, and diagnose evaluation runs |
-| memory | `mem.py` | Durable units and immutable observations |
-| maintenance | `crew-lint.py` | Repository validation |
+| `task/` | `agent-context.py`, `crew-ls.py`, `default-branch.sh`, `log-metric.py`, `log-progress.py`, `manage-worktree.py`, `resolve-task-dir.py`, `task-context.py`, `task-env.sh`, `task_status.py`, `transitions.json` | Guidance context, task state, validation, worktrees, and artifacts |
+| `review/` | `assemble-packages.py`, `crew-pr-actions.py`, `get-diff.sh`, `nightshift-e2e.py`, `pr-review-threads.graphql`, `review-findings.py`, `review-hunks.py` | Hunks and layer maps, findings, packages, PR threads, and on-demand e2e runs |
+| `review/` (deprecated name) | `pr-review-actions.py` | Renamed to `crew-pr-actions.py`; wrapper kept for one release cycle |
+| `evals/` | `evals-compare.py`, `evals-inspect.py` | Inspect, compare, and diagnose evaluation runs |
+| `memory/` | `crew-mem.py` | Durable units and immutable observations |
+| `memory/` (deprecated name) | `mem.py` | Renamed to `crew-mem.py`; wrapper kept for one release cycle |
+| `maintenance/` | `crew-lint.py` | Repository validation |
+| root | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
 ## Contracts
 
@@ -140,12 +162,12 @@ harness that produces that failure.
 
 ## Adding or retiring a tool
 
-1. Add or remove the executable in `.agent/tools/` or `.agent/scripts/` and its `tools.json` entry
-   in the same change.
+1. Add or remove the executable in its `.agent/tools/<dir>/` subdirectory and its `tools.json` entry
+   — with the matching `dir` — in the same change.
 2. Give it `--help`, or document a specific exception in `help`.
 3. Assign one category and one owning skill, agent, or `repository`.
 4. Add a deterministic smoke command if the CLI is safe to invoke.
-5. Run `python3 .agent/tools/crew-lint.py` and the listed smoke command.
+5. Run `python3 .agent/tools/maintenance/crew-lint.py` and the listed smoke command.
 
 ## Compatibility policy
 

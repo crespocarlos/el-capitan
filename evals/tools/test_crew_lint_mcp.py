@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "crew-lint.py"
+TOOL = ROOT / ".agent" / "tools" / "maintenance" / "crew-lint.py"
 
 SERVERS = {"sourcerer": ["sourcerer_code_search", "sourcerer_code_grep"]}
 NATIVE = ["Glob", "Grep", "Read"]

@@ -67,7 +67,7 @@ El Capitan has three layers:
 | **Router** | `rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
 | **Orchestrator** | `rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
 | **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
-| **Runtime** | hooks, `mem.py` | Execution engines |
+| **Runtime** | hooks, `crew-mem.py` | Execution engines |
 
 ---
 
@@ -164,7 +164,7 @@ git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
-`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. `~/.agent/bin/` receives flat links to `.agent/tools/` and `.agent/scripts/`. No files are copied — updates to the repo are reflected immediately.
+`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. `~/.agent/bin/` receives flat links to every file under `.agent/tools/`, including its responsibility subdirectories. No files are copied — updates to the repo are reflected immediately.
 
 **To update:**
 
@@ -330,7 +330,7 @@ el-capitan/
 
 ```
 ~/.agent/
-├── bin/                     # Flat installed command surface (links from .agent/tools and .agent/scripts); see TOOLS.md
+├── bin/                     # Flat installed command surface (links from every .agent/tools subdirectory); see TOOLS.md
 ├── journal/                 # Legacy monthly journal files (import-only)
 ├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox
 ├── telemetry/               # Local hook telemetry JSONL
@@ -362,7 +362,7 @@ a ceiling on per-request context, not a target: it was raised from 7,000 because
 Code imports `prompt-engineering.mdc` and `typescript.mdc` through `.claude/CLAUDE.md`, so both load
 every Claude session.
 
-Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` and `.agent/scripts/` — not in agent files.
+Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` — not in agent files.
 
 ---
 
@@ -448,7 +448,7 @@ find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -name '*.md' ! -type l
 ## Memory and validation
 
 Run `bash install.sh` once after updating el-capitan. It creates the shared
-`~/.agent/memory` store, installs the `mem.py` command, and adds read
+`~/.agent/memory` store, installs the `crew-mem.py` command, and adds read
 instructions for Cursor, Claude Code, and Codex.
 
 After that, no routine setup is needed: agents retrieve relevant memory at task
@@ -456,7 +456,7 @@ start. Use `crew remember: <lesson>` only for a durable fact that is not
 derivable from code or project rules. Use `crew memory seed` to draft
 user-approved candidates from the journal, or `crew memory doctor` to check
 the store. Existing Claude or Codex memory can be imported read-only with
-`mem.py ingest --source claude|codex --path <directory>`; the import never
+`crew-mem.py ingest --source claude|codex --path <directory>`; the import never
 modifies the source directory.
 
 Implementation completion, review-address completion, and `crew log` draft up
@@ -464,17 +464,17 @@ to three evidence-backed candidates into the inbox automatically. Lightweight
 session telemetry records only tool categories and outcomes; after substantive
 work or repeated failures, the stop hook asks for one user-approved candidate
 review. Candidates are never imported automatically: review the batch and
-approve it with `crew memory seed` or `mem.py import-inbox`. Bare
+approve it with `crew memory seed` or `crew-mem.py import-inbox`. Bare
 `import-inbox` takes the whole inbox, including drafts left by earlier
 sessions, so pass the approved files by name.
 
-`mem.py` stores typed Markdown units under `~/.agent/memory` and uses SQLite
+`crew-mem.py` stores typed Markdown units under `~/.agent/memory` and uses SQLite
 FTS5 only as a rebuildable search index. Verify with `python3
-evals/memory/run.py` and `python3 .agent/tools/crew-lint.py`. Rules live in
+evals/memory/run.py` and `python3 .agent/tools/maintenance/crew-lint.py`. Rules live in
 `rules/`.
 
 The same store also holds immutable journal observations. They are indexed as
 evidence and included in `search` and ranked `context` retrieval (the
 `--mode session` listing excludes them unless `--include-observations` is
-passed); import legacy journals with `mem.py journal import --dry-run` before
-`mem.py journal import`.
+passed); import legacy journals with `crew-mem.py journal import --dry-run` before
+`crew-mem.py journal import`.

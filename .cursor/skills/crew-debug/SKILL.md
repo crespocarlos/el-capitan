@@ -26,7 +26,7 @@ report what was tried, what differed from the reported environment, and what evi
 Recall prior incidents for the area:
 
 ```bash
-MEM_OUT=$(~/.agent/bin/mem.py context --mode debug --query "<symptom>" 2>&1); MEM_RC=$?
+MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode debug --query "<symptom>" 2>&1); MEM_RC=$?
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 

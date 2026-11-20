@@ -46,7 +46,7 @@ approval in `crew-open-pr`: the title, description, base, and target repo, shown
 The commit message is reviewed in `crew-commit` (auto-committed when unambiguous, paused when not),
 but approving a commit message is not the gate — Gate 2 is the push and PR creation.
 
-Automatic transitions are data in `.agent/tools/transitions.json`, applied by
+Automatic transitions are data in `.agent/tools/task/transitions.json`, applied by
 `crew-ls.py --reconcile --apply`. `DRAFTING|APPROVED` go `ON-HOLD` after 14 idle days, with the prior state recorded in the
 status; resume by editing the Status back to the `was` value. `IMPLEMENTING` specs are reported as
 ready to open a PR (all criteria checked, review pass or warn) or stalled, never rewritten. `DONE`

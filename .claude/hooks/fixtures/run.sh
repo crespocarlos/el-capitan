@@ -270,7 +270,7 @@ mkspec implementing-pass $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict
 mkspec implementing-nits $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict: pass-with-nits'
 mkspec implementing-rerun $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' $'Verdict: pass\n\nround 2\nVerdict: BLOCK'
 mkspec empty-status $'# T\n\n## Status\n\n## Summary\n\n- [x] a\n' 'Verdict: pass'
-python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply >/dev/null
+python3 "$root/.agent/tools/task/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply >/dev/null
 test "$(status_of abandoned)" = ABANDONED
 test "$(status_of onhold)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)'
 test "$(status_of drafting-old)" = 'ON-HOLD (auto-hold: no activity 14d; was DRAFTING)'
@@ -283,7 +283,7 @@ grep -q '^## Summary$' "$tasks/empty-status/SPEC.md"
 grep -q 'DRAFTING → ON-HOLD' "$tasks/drafting-old/PROGRESS.md"
 
 hook_home="$home/hook-home"; mkdir -p "$hook_home/.agent/bin" "$hook_home/.agent/tasks"
-ln -s "$root/.agent/tools/crew-ls.py" "$hook_home/.agent/bin/crew-ls.py"
+ln -s "$root/.agent/tools/task/crew-ls.py" "$hook_home/.agent/bin/crew-ls.py"
 mkdir -p "$hook_home/.agent/tasks/idle" "$hook_home/.agent/tasks/shipped"
 printf '# T\n\n## Status\nDRAFTING\n\n- [ ] a\n' > "$hook_home/.agent/tasks/idle/SPEC.md"; touch -t 202610010000 "$hook_home/.agent/tasks/idle/SPEC.md"
 printf '# T\n\n## Status\ndone\n\n- [x] a\n' > "$hook_home/.agent/tasks/shipped/SPEC.md"
@@ -298,13 +298,13 @@ grep -q 'spec-status: 1 ready to open PR: ready' <<<"$hook_out"
 grep -q 'spec-status: 1 stalled IMPLEMENTING: stuck' <<<"$hook_out"
 missing_out=$(HOME="$home/no-tool" bash "$root/.claude/hooks/spec-status-reconcile.sh")
 grep -q 'reconcile failed' <<<"$missing_out"
-table_out=$(python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks")
+table_out=$(python3 "$root/.agent/tools/task/crew-ls.py" --tasks-dir "$tasks")
 grep -q '^STATE  *TASK  *BRANCH  *REVIEW  *AGE$' <<<"$table_out"
-python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --tsv | awk -F'\t' 'NF!=5{bad=1} END{exit bad}'
-md_out=$(python3 "$root/.agent/tools/crew-ls.py" --tasks-dir "$tasks" --md)
+python3 "$root/.agent/tools/task/crew-ls.py" --tasks-dir "$tasks" --tsv | awk -F'\t' 'NF!=5{bad=1} END{exit bad}'
+md_out=$(python3 "$root/.agent/tools/task/crew-ls.py" --tasks-dir "$tasks" --md)
 grep -q '^| STATE | TASK | BRANCH | REVIEW | AGE |$' <<<"$md_out"
 grep -q '^|---|---|---|---|---|$' <<<"$md_out"
-ls_tool="$root/.agent/tools/crew-ls.py"
+ls_tool="$root/.agent/tools/task/crew-ls.py"
 mkspec approved-old $'# T\n\n## Status\nAPPROVED\n\n- [ ] a\n' '' 202610010000
 mkspec implementing-old-open $'# T\n\n## Status\nIMPLEMENTING\n\n- [ ] a\n' 'Verdict: pass' 202610010000
 mkspec approved-done-old $'# T\n\n## Status\nAPPROVED\n\n- [x] a\n' 'Verdict: pass' 202610010000
@@ -404,7 +404,7 @@ python3 "$ls_tool" --mark-done "$tasks/reviewed-ancestor" --pr-url x --branch ma
 test "$(status_of reviewed-ancestor)" = DONE
 
 bad_tools="$home/bad-tools"; mkdir -p "$bad_tools"
-cp "$ls_tool" "$root/.agent/tools/log-progress.py" "$root/.agent/scripts/task_status.py" "$bad_tools/"
+cp "$ls_tool" "$root/.agent/tools/task/log-progress.py" "$root/.agent/tools/task/task_status.py" "$bad_tools/"
 printf '{bad' > "$bad_tools/transitions.json"
 python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" >/dev/null
 fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile
@@ -412,3 +412,20 @@ printf '{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["bogu
 fails 'unknown predicate' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply
 printf '{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["idle"],"status":"{typo}","log":"y"}]}' > "$bad_tools/transitions.json"
 fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply
+
+# The installed surface is flat while the source tree is grouped, so install.sh must find every file
+# through its subdirectory and refuse a basename that appears twice: a second `ln -sf` would silently
+# replace the first link, and a cataloged command would resolve to the wrong tool.
+links=$(HOME="$home/link-home" bash "$root/install.sh" --dry-run 2>/dev/null | grep -c "ln -sf .*\.agent/tools/")
+cataloged=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sum(len(d.get(k, [])) for k in ('tools','scripts','modules','assets')))" "$root/.agent/tools/tools.json")
+test "$links" -ge "$cataloged"
+dup_src="$home/dup-src"
+mkdir -p "$dup_src/.agent/tools/task" "$dup_src/.agent/tools/review"
+cp "$root/install.sh" "$dup_src/install.sh"
+for d in rules .claude .cursor; do ln -s "$root/$d" "$dup_src/$d"; done
+cp "$root/.agent/tools/task/log-progress.py" "$dup_src/.agent/tools/task/log-progress.py"
+cp "$root/.agent/tools/task/log-progress.py" "$dup_src/.agent/tools/review/log-progress.py"
+dup_rc=0
+dup_err=$(HOME="$home/dup-home" bash "$dup_src/install.sh" --dry-run 2>&1 >/dev/null) || dup_rc=$?
+test "$dup_rc" -ne 0
+grep -q 'error: duplicate command log-progress.py in .*tools/review/log-progress.py and .*tools/task/log-progress.py' <<<"$dup_err"

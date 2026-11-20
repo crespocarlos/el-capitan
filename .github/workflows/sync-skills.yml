@@ -8,7 +8,6 @@ on:
       - ".cursor/agents/**"
       - ".cursor/rules/**"
       - ".agent/tools/**"
-      - ".agent/scripts/**"
   pull_request:
     branches: [main]
     paths:

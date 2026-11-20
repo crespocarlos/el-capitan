@@ -9,8 +9,9 @@ Python utilities — there is no build step and no package manager. It contains:
 - **Skill files** — `.cursor/skills/<name>/SKILL.md`
 - **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md` (symlinks to the
   portable `spec-writing` skill's `references/`)
-- **Tools** — `.agent/tools/` (CLIs, cataloged in `TOOLS.md` / `tools.json`); `.agent/scripts/`
-  (source-only and internal helpers). Both install flat into `~/.agent/bin/`.
+- **Tools** — `.agent/tools/` (CLIs grouped into `task/`, `review/`, `memory/`, `evals/`,
+  `maintenance/`, cataloged in `TOOLS.md` / `tools.json`). Every file installs flat into
+  `~/.agent/bin/`.
 
 ## Bootstrap
 
@@ -25,7 +26,7 @@ No setup required. Skip the bootstrap step in any worktree.
 Ten hermetic checks, also run in CI (`.github/workflows/validate.yml`):
 
 ```bash
-python3 .agent/tools/crew-lint.py --budget          # conventions, catalog, references, token budget
+python3 .agent/tools/maintenance/crew-lint.py --budget          # conventions, catalog, references, token budget
 bash .claude/hooks/fixtures/run.sh                  # guard hooks, crew-ls gates, status reconcile
 python3 evals/memory/run.py                         # memory retrieval and scope isolation
 python3 evals/reviewer/test_review_findings.py      # normalize/persist/coverage/validate-map
@@ -181,7 +182,7 @@ the SPEC.md. Most checks are `grep`-based:
 
 ```bash
 grep "keyword" .cursor/agents/target-file.md   # presence check
-python3 .agent/tools/crew-lint.py --budget   # routing, catalog, reference integrity, token budget
+python3 .agent/tools/maintenance/crew-lint.py --budget   # routing, catalog, reference integrity, token budget
 bash .claude/hooks/fixtures/run.sh   # hook guards, crew-ls gates, status reconciliation
 python3 evals/memory/run.py   # memory retrieval, scope isolation, conflict handling
 python3 evals/reviewer/test_review_findings.py   # normalize/persist/coverage/validate-map
@@ -200,19 +201,19 @@ the deterministic gate.
 
 ## Persistent memory
 
-`mem.py` manages typed, repo-scoped Markdown memories in `~/.agent/memory`; SQLite FTS5 is a
+`crew-mem.py` manages typed, repo-scoped Markdown memories in `~/.agent/memory`; SQLite FTS5 is a
 rebuildable index, not the source of truth. Run `bash install.sh` once to initialize the store and
 install harness-neutral read instructions. Agents retrieve memory automatically. Repository scope
 uses the upstream repository's bare name when available, so forks and upstream worktrees share their
 memory.
 
-Journal entries are immutable `observation` evidence in the same store. `mem.py search` and ranked
-`mem.py context` (plan, implement, review, debug) include them; the unranked `--mode session`
+Journal entries are immutable `observation` evidence in the same store. `crew-mem.py search` and ranked
+`crew-mem.py context` (plan, implement, review, debug) include them; the unranked `--mode session`
 listing excludes them unless `--include-observations` is passed. Import legacy journals read-only
-with `mem.py journal import`.
+with `crew-mem.py journal import`.
 
 Use `crew remember: <lesson>` only for durable, non-derivable information; use `crew memory seed` to
-draft journal candidates for approval, and `crew memory doctor` to diagnose the store. `mem.py
+draft journal candidates for approval, and `crew memory doctor` to diagnose the store. `crew-mem.py
 ingest --source claude|codex --path <directory>` imports external memory read-only and never
 reconfigures or edits its source repository. Verify with `python3 evals/memory/run.py` and `python3
-.agent/tools/crew-lint.py`.
+.agent/tools/maintenance/crew-lint.py`.

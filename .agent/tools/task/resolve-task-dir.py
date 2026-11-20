@@ -28,7 +28,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-for _dir in (Path(__file__).resolve().parent, Path(__file__).resolve().parent.parent / "scripts"):
+# The shared `## Status` contract is a snake_case module beside this tool, because a hyphenated
+# name cannot be imported. `resolve()` follows the installed ~/.agent/bin symlink back into the repo,
+# so the sibling directory is correct whether the tool runs from the tree or the flat surface.
+for _dir in (Path(__file__).resolve().parent,):
     if (_dir / "task_status.py").is_file() and str(_dir) not in sys.path:
         sys.path.insert(0, str(_dir))
 from task_status import read_status  # noqa: E402  shared `## Status` contract

@@ -71,7 +71,7 @@ override memory.
 
 Do not write memories automatically. Use `crew remember:` only for durable information not available
 from code, git, or rules. `crew memory seed` drafts journal candidates for explicit user approval.
-Existing Claude Code or Codex memory may be imported as a read-only source with `mem.py ingest`;
+Existing Claude Code or Codex memory may be imported as a read-only source with `crew-mem.py ingest`;
 never reconfigure or modify its source repository.
 
 ## Invariants
@@ -90,5 +90,5 @@ never reconfigure or modify its source repository.
   directly. Never skip the protocol and implement ad-hoc.
 
 <!-- el-capitan:memory -->
-Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
+Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/crew-mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
 <!-- /el-capitan:memory -->

@@ -13,7 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review-hunks.py"
+TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "review-hunks.py"
 
 SIMPLE = """diff --git a/src/a.ts b/src/a.ts
 index 1111111..2222222 100644

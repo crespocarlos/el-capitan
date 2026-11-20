@@ -15,7 +15,7 @@
     },
     {
       "id": "t4",
-      "description": "Add a `crew-lint.py` rule that enforces the naming and layout convention for tools: every executable in `.agent/tools/` must expose `--help` or a documented exception, every source-only helper must live in `.agent/scripts/`, and the name suffix must match its kind. Report a finding naming the file and its expected location."
+      "description": "Add a `crew-lint.py` rule that enforces the naming and layout convention for tools: every executable in the `.agent/tools/` tree must be kebab-case with `--help` or a documented exception, every module another tool imports must be snake_case and declared under `modules` in `tools.json`, and the name suffix must match its kind. Report a finding naming the file and its expected location."
     },
     {
       "id": "t5",

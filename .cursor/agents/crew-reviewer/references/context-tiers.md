@@ -179,5 +179,5 @@ summary).
 
 ## Repo memory
 
-Before dispatch, call `mem.py context --mode review --paths <changed files>` once. Append its output
+Before dispatch, call `crew-mem.py context --mode review --paths <changed files>` once. Append its output
 under `## Repo memory` in every context package. On exit 2, append `warning: memory unavailable`.
