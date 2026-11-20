@@ -7,6 +7,7 @@
     ],
     "preToolUse": [
       {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": true},
+      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\"", "failClosed": true},
       {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/review-address-gate.sh\"", "failClosed": true}
     ],
     "beforeSubmitPrompt": [{"command": "bash \"$HOME/.claude/hooks/review-address-approval.sh\"", "failClosed": false}],

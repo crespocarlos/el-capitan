@@ -32,7 +32,11 @@ Determine the task source:
   title,body,labels,comments`
 - If given a plain description: use it directly
 
-Generate a UUID, create the task directory, and write the `.task-id` metadata file:
+**Create a new task directory; never reuse one.** `resolve-task-dir.py` answers with the newest
+non-DONE task for the current branch, which on a repo where every task lives on `main` is unrelated
+finished work. Writing a new SPEC.md into that directory overwrites a completed task's spec, and
+because task directories sit outside the repository no version control recovers it. Generate a fresh
+UUID for every spec:
 
 ```bash
 # Generate slug from issue title or description (lowercase, hyphens, ~50 chars max)
@@ -54,6 +58,13 @@ data = {
 }
 json.dump(data, sys.stdout, indent=2)
 " > "$TASK_DIR/.task-id"
+
+# Refuse to write into a directory that already holds another task's spec. Compare first, then stop
+# before any file is touched.
+if [ -f "$TASK_DIR/SPEC.md" ]; then
+  echo "error: $TASK_DIR already holds a SPEC.md; generate a new UUID instead of reusing a task dir" >&2
+  exit 1
+fi
 
 MEM_OUT=$(~/.agent/bin/mem.py context --mode plan --query "$SLUG" 2>&1); MEM_RC=$?
 case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac

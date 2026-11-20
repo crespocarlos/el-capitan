@@ -152,6 +152,22 @@ test "$(harness_guard PreToolUse "")" = allow
 test "$(jq -n --arg c 'echo =====' '{hook_event_name:"beforeShellExecution",command:$c}' \
   | env -u SHELL bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission')" = deny
 
+# Task spec guard: a spec titled for one task must not be written into another task's directory.
+# This is the failure that destroyed a completed spec: resolve-task-dir returns the newest non-DONE
+# task for the branch, which on a single-branch repo is unrelated finished work.
+spec_guard() { jq -n --arg p "$1" --arg c "$2" '{hook_event_name:"PreToolUse",tool_input:{file_path:$p,content:$c}}' \
+  | HOME="$home" bash "$root/.claude/hooks/check-task-spec-owner.sh" \
+  | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; }
+mkdir -p "$home/.agent/tasks/AAA-other"
+jq -n '{slug:"align-agent-tool-frontmatter"}' > "$home/.agent/tasks/AAA-other/.task-id"
+test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Reviewer finding kind axis and confidence')" = deny
+# A rewrite of the task's own spec passes, and so does an unrelated path.
+test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Align agent tool frontmatter with the harness')" = allow
+mkdir -p "$home/.agent/tasks/BBB-new"
+test "$(spec_guard "$home/.agent/tasks/BBB-new/SPEC.md" '# Spec: Reviewer finding kind axis')" = allow
+test "$(spec_guard "$home/somewhere/SPEC.md" '# Spec: anything at all')" = allow
+test "$(spec_guard "$home/.agent/tasks/AAA-other/REPORT.md" '# Spec: Reviewer finding kind axis')" = allow
+
 # review-address gate: no pending marker means an ordinary edit, so the hook must allow rather
 # than block every write in the session. This is the direction that fails silently if wrong.
 # `gate` sends a session id, because a marker is scoped to the session that armed it.
