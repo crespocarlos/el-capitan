@@ -124,30 +124,6 @@ def atomic_write(path: Path, text: str) -> None:
             os.unlink(temporary)
 
 
-# The `Confidence:` line `persist` writes. It is not a heading, so `GENERATED_SECTIONS` cannot cover
-# it; the duplicate check needs its own pattern.
-CONFIDENCE_LINE = re.compile(r"(?m)^Confidence:\s*\d+%")
-# A verdict line a reader looks for first. Either the self-review form (`Verdict: PASS`) or the
-# idea/spec form (`**Verdict:** proceed`); a report with neither is left alone rather than guessed at.
-VERDICT_LINE = re.compile(r"(?m)^(?:\*\*)?Verdict:(?:\*\*)?\s*\S")
-
-
-def insert_under_verdict(report: str, line: str) -> str:
-    """Place `line` directly beneath the first verdict line, before any generated section.
-
-    Appending would put it after the coverage table — the end of the report — which is the one place
-    the reader is told it will not be. When the report carries no verdict line there is nothing to
-    anchor to, so the line goes at the end of the body before generated content, and the caller's
-    report is otherwise untouched.
-    """
-    match = VERDICT_LINE.search(report)
-    if match:
-        end = report.find("\n", match.end())
-        end = len(report) if end == -1 else end
-        return report[:end] + "\n\n" + line + report[end:].rstrip() + "\n"
-    return report.rstrip() + "\n\n" + line + "\n"
-
-
 def fingerprint(finding: dict) -> str:
     material = "|".join(
         [
@@ -157,71 +133,6 @@ def fingerprint(finding: dict) -> str:
         ]
     )
     return hashlib.sha1(material.encode()).hexdigest()
-
-
-# Near-duplicate detection compares findings that survived the exact-fingerprint pass. Two reviewers
-# describing one defect rarely produce the same title, and exact hashing keeps both.
-#
-# Similarity is Jaccard overlap of the normalized titles' meaningful tokens within the same file: a
-# title is the reviewer's own summary of the defect, and the file fixes the subject.
-#
-# The threshold is measured, not chosen. Run over 81 recorded consolidation files, the highest overlap
-# between any two same-file findings was 0.33, and several pairs at that level were *different*
-# defects sharing a sentence shape rather than one defect stated twice. So title overlap alone cannot
-# separate a real duplicate from a coincidence at any threshold that is also useful: rewritten titles
-# for one bug share almost no words.
-#
-# What this therefore reports is "worth a look", not "probably the same": a pair at or above 0.2 is
-# printed with its score so the orchestrator can judge with the finding bodies in front of it. It is
-# deterministic because `normalize` runs in the hermetic gate, and it only ever *reports* — a wrong
-# merge silently deletes a finding, a wrong candidate costs one line to ignore.
-SIMILARITY_THRESHOLD = 0.2
-# Words too common in finding titles to say anything about which defect is meant.
-TITLE_STOPWORDS = frozenset(
-    "a an the is are was were be been being to of in on at for from by with and or not no "
-    "this that these those it its as if then than when while so but into over under "
-    "should must can cannot will would could may might do does did done has have had".split()
-)
-
-
-def title_tokens(title: str) -> set[str]:
-    words = re.findall(r"[a-z0-9_]+", normalized_title(title))
-    return {word for word in words if word not in TITLE_STOPWORDS and len(word) > 1}
-
-
-def similarity_score(left: dict, right: dict) -> float:
-    """Jaccard overlap of the two titles' meaningful tokens, 0.0 when they cannot share a subject.
-
-    No file on either side means no subject: two unfiled findings both compare as `""`, and treating
-    that as "the same file" pairs two unrelated global nits into a candidate the orchestrator cannot
-    act on. `file` is optional, so this case is common, not theoretical.
-    """
-    left_file = str(left.get("file", "")).strip()
-    right_file = str(right.get("file", "")).strip()
-    if not left_file or not right_file or left_file != right_file:
-        return 0.0
-    a, b = title_tokens(left["title"]), title_tokens(right["title"])
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
-
-
-def near_duplicates(findings: list[dict]) -> list[dict]:
-    """Pairs above SIMILARITY_THRESHOLD, highest first. Advisory: the caller merges, this reports."""
-    pairs = []
-    for index, left in enumerate(findings):
-        for right in findings[index + 1:]:
-            score = similarity_score(left, right)
-            if score >= SIMILARITY_THRESHOLD:
-                pairs.append(
-                    {
-                        "similarity": round(score, 2),
-                        "files": [left.get("file", ""), right.get("file", "")],
-                        "titles": [left["title"], right["title"]],
-                        "labels": [left.get("label", ""), right.get("label", "")],
-                    }
-                )
-    return sorted(pairs, key=lambda pair: pair["similarity"], reverse=True)
 
 
 def read_findings(path: Path) -> list[dict]:
@@ -353,11 +264,7 @@ def normalize(args: argparse.Namespace) -> int:
             kept[finding["fingerprint"]] = finding
     if args.strict:
         check_strict(list(kept.values()), args.files)
-    # Advisory, and computed on what survived the exact pass: two distinct findings about one defect
-    # stay in the payload, with the pair reported so the orchestrator can merge deliberately and say
-    # why. Automatic merging here was rejected — a wrong merge silently deletes a finding.
-    payload = {"findings": list(kept.values()), "duplicates": duplicates,
-               "merge_candidates": near_duplicates(list(kept.values()))}
+    payload = {"findings": list(kept.values()), "duplicates": duplicates}
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.write_text(text)
@@ -919,12 +826,6 @@ def persist(args: argparse.Namespace) -> int:
                                                owner / "SPEC.md", hunks_path)
             if violations:
                 raise ValueError("; ".join(violations))
-    if args.confidence is not None and not 0 <= args.confidence <= 100:
-        raise ValueError(f"--confidence must be 0-100, got {args.confidence}")
-    if (args.confidence is None) != (not args.confidence_reason.strip()):
-        # Both or neither: a bare percentage is an unfalsifiable number, and a reason with no number
-        # is prose the reader cannot compare across reviews.
-        raise ValueError("--confidence and --confidence-reason go together")
     report = args.report.read_text()
     # Two sections are generated from the inputs below, so a report carrying its own copy would
     # render the same table twice — once verbatim in the body, once at the end — and a reader
@@ -941,18 +842,6 @@ def persist(args: argparse.Namespace) -> int:
             f"{args.report} already contains {', '.join(generated)}, which persist appends; "
             "delete it from the report and let persist write it"
         )
-    # `Confidence:` is generated, so it is inserted under the verdict rather than appended, and a
-    # report that already carries one is refused like the two heading sections. Both rules exist for
-    # the same reason they do there: two copies leave a reader unable to tell which is authoritative,
-    # and appending after the coverage table would put it at the end instead of where a reader looks.
-    if args.confidence is not None:
-        if CONFIDENCE_LINE.search(report):
-            raise ValueError(
-                f"{args.report} already carries a `Confidence:` line, which persist writes; "
-                "delete it and pass --confidence instead"
-            )
-        report = insert_under_verdict(
-            report, f"Confidence: {args.confidence}% — {args.confidence_reason.strip()}")
     if coverage_section:
         report = report.rstrip() + "\n\n" + coverage_section
     if coverage_gap:
@@ -1097,10 +986,6 @@ def main() -> int:
     persist_parser.add_argument("--strict", action="store_true")
     persist_parser.add_argument("--personas", nargs="*", default=[])
     persist_parser.add_argument("--head", default="", help="reviewed commit SHA recorded as `Reviewed at:`")
-    persist_parser.add_argument("--confidence", type=int, default=None,
-                                help="0-100: how much of the change the review actually exercised")
-    persist_parser.add_argument("--confidence-reason", default="",
-                                help="one sentence saying why that percentage, required with --confidence")
     select_parser = commands.add_parser("select")
     select_parser.add_argument("--mode", required=True, type=mode_arg,
                                choices=sorted(CODE_MODES | {"spec", "idea"}))

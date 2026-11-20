@@ -120,7 +120,7 @@ Give each kept finding a disposition in the internal record:
   list; append it to the deferred file (see pipeline persistence) and mention the count in one line
   after the list.
 
-Three things are recorded beyond each finding's label and anchor, each under its own condition:
+Two things are recorded beyond each finding's label and anchor, each under its own condition:
 
 - **`kind`** (optional, per finding) — what sort of defect, independent of severity. Record it when the
   finding clearly fits one; omit it rather than defaulting to `other`, which would destroy the triage
@@ -137,19 +137,6 @@ Three things are recorded beyond each finding's label and anchor, each under its
   *why it passed*, so the next reader can check the reasoning instead of trusting a boolean.
   `persist --strict` requires it whenever `verified` is true, in every mode including one that passes no
   `--files`.
-- **merge candidates** (report-level, when `normalize` emits a pair) — `normalize` reports pairs of
-  surviving findings whose titles overlap in the same file, with a similarity score. It never merges
-  them: title overlap cannot tell a real duplicate from a coincidence. Read each pair with both finding
-  bodies in front of you and decide; when you merge, append `(merged with: <other title> — <reason>)` to
-  the kept finding's title line, after the title. That marker and `(also flagged by: …)` may both
-  appear, the "also flagged" list first.
-
-**Confidence.** At the end of the review, record how much of the change you could actually judge, as a
-percentage plus one sentence, and pass both to `persist` (`--confidence`, `--confidence-reason`). The
-number is a self-assessment of coverage, not a probability that the change is correct. Do not write a
-`Confidence:` line into the report yourself — `persist` renders it under the verdict, and a report that
-already carries one is refused. Nothing gates on the number; it exists so a reader can weigh the report.
-
 When a hunk index exists, carry each finding's hunk ids into its record. Check them against the
 verified location: a persona's id that names a hunk the finding does not depend on is corrected, and
 a `[blocking]` or `[attention]` finding that no hunk causes is pre-existing, so route it to `defer`.

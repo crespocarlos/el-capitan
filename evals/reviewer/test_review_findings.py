@@ -965,112 +965,31 @@ def test_kind_is_validated_normalized_and_absent_legal(tmp: Path) -> None:
     assert plain == classified
 
 
-def test_near_duplicates_pin_both_threshold_edges(tmp: Path) -> None:
-    """Above the threshold appears, below it does not, and a blank file never pairs.
-
-    The earlier version of this test passed with any threshold from 0.01 to 0.77, so the measured
-    value its comment rests on was unverified. These titles are constructed to sit either side of 0.2
-    and at 0.5-overlap for the unfiled case.
-    """
+def test_confidence_flags_and_merge_candidates_are_gone(tmp: Path) -> None:
+    """The removed --confidence flags and merge_candidates output stay removed."""
     source = tmp / "c.json"
     base = {"label": "attention", "file": "a.yaml", "disposition": "patch"}
-    # Four shared tokens of five total -> 0.8, comfortably above.
     source.write_text(json.dumps([
         {**base, "title": "resolver falls back to empty list instead of reported rules"},
         {**base, "title": "resolver falls back to empty list ignoring reported rules"},
-        # Shared tokens below the threshold: one common token of many distinct ones.
-        {**base, "title": "schema description claims stamps that never succeeded"},
     ]))
     payload = json.loads(run("normalize", str(source)).stdout)
-    assert len(payload["findings"]) == 3, "a candidate pair must never be merged"
-    assert len(payload["merge_candidates"]) == 1
-    assert payload["merge_candidates"][0]["similarity"] >= 0.2
-    assert "schema" not in payload["merge_candidates"][0]["titles"][0]
-    # Two unfiled findings with similar titles must not pair: no file means no shared subject.
-    source.write_text(json.dumps([
-        {"label": "nit", "disposition": "patch", "title": "rename the helper for clarity"},
-        {"label": "nit", "disposition": "patch", "title": "rename the helper for readability"},
-    ]))
-    assert json.loads(run("normalize", str(source)).stdout)["merge_candidates"] == []
+    assert "merge_candidates" not in payload, "normalize no longer reports candidate pairs"
+    assert len(payload["findings"]) == 2, "a similar pair is kept as two findings"
 
-
-def test_persist_places_confidence_under_the_verdict(tmp: Path) -> None:
-    """The line goes below the verdict, not at the end — and a report carrying one is refused."""
-    task = tmp / "task"
-    review_dir = task / "review" / "20260101000000"
-    review_dir.mkdir(parents=True)
-    (review_dir / "adversarial.in.md").write_text("package")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
-    (review_dir / "layers.json").write_text(json.dumps(
-        {"layers": [{"id": "L1", "kind": "core", "title": "t", "explainer": "e",
-                     "reviewFocus": "- f", "hunks": ["h1"]}]}))
-    (review_dir / "hunks.json").write_text(json.dumps({"files": [], "hunks": [{"id": "h1"}]}))
-    report = tmp / "report.md"
-    args = ["persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "changes",
-            "--personas", "adversarial", "--strict", "--confidence", "40",
-            "--confidence-reason", "the diff was read"]
-    report.write_text("## Review: changes — x\n\nVerdict: PASS\n\n1. [nit] stuff\n")
-    assert run(*args).returncode == 0
-    written = (review_dir / "REVIEW.md").read_text()
-    assert written.index("Confidence:") < written.index("### Coverage by layer"), written
-    assert written.index("Verdict: PASS") < written.index("Confidence:")
-    # A hand-written copy is refused rather than duplicated.
-    report.write_text("## Review: changes — x\n\nVerdict: PASS\n\nConfidence: 90% — invented\n")
-    refused = run(*args)
-    assert refused.returncode == 2 and "already carries a `Confidence:` line" in refused.stderr
-
-
-
-    """Two reviewers state one defect differently; both stay, the pair is reported with a score.
-
-    The threshold is measured low (0.2) because title overlap cannot separate a real duplicate from a
-    coincidence: over 81 recorded reviews the maximum same-file overlap was 0.33. So this reports a
-    candidate, never a merge — a wrong merge deletes a finding.
-    """
-    source = tmp / "c.json"
-    base = {"label": "attention", "file": "a.yaml", "disposition": "patch",
-            "verified": True, "evidence": "a.yaml:3", "validation": "read a.yaml"}
-    source.write_text(json.dumps([
-        {**base, "title": "resolver falls back to an empty list instead of reported rules"},
-        {**base, "title": "resolver falls back to an empty list, dropping reported rules"},
-        {**base, "title": "schema description claims stamps that never succeeded"},
-    ]))
-    payload = json.loads(run("normalize", str(source), "--strict").stdout)
-    assert len(payload["findings"]) == 3, "a candidate pair must not be merged"
-    assert payload["duplicates"] == []
-    assert len(payload["merge_candidates"]) == 1
-    pair = payload["merge_candidates"][0]
-    assert pair["similarity"] >= 0.2 and pair["files"] == ["a.yaml", "a.yaml"]
-    # Different files never pair, however similar the titles.
-    source.write_text(json.dumps([
-        {**base, "title": "resolver falls back to an empty list instead of reported rules"},
-        {**base, "title": "resolver falls back to an empty list instead of reported rules",
-         "file": "b.yaml"},
-    ]))
-    assert json.loads(run("normalize", str(source), "--strict").stdout)["merge_candidates"] == []
-
-
-def test_persist_renders_confidence_and_requires_a_reason(tmp: Path) -> None:
-    """Confidence sits under the verdict and is optional; a bare number is refused."""
-    task = tmp / "task"
-    review_dir = task / "review" / "20260101000000"
+    review_dir = tmp / "task" / "review" / "20260101000000"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("package")
     (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
     report = tmp / "report.md"
-    base = ["persist", "--review-dir", str(review_dir), "--report", str(report),
+    args = ["persist", "--review-dir", str(review_dir), "--report", str(report),
             "--mode", "changes", "--personas", "adversarial"]
     report.write_text("## Review: changes — nothing\n")
-    assert run(*base).returncode == 0
-    assert "Confidence:" not in (review_dir / "REVIEW.md").read_text(), "omitting it is valid"
-    report.write_text("## Review: changes — nothing\n")
-    assert run(*base, "--confidence", "30").returncode == 2, "a percentage needs its reason"
-    report.write_text("## Review: changes — nothing\n")
-    assert run(*base, "--confidence", "101", "--confidence-reason", "x").returncode == 2
-    report.write_text("## Review: changes — nothing\n")
-    assert run(*base, "--confidence", "30", "--confidence-reason",
-               "the diff was read; no test was run").returncode == 0
-    assert "Confidence: 30% — the diff was read; no test was run" in (review_dir / "REVIEW.md").read_text()
+    rejected = run(*args, "--confidence", "30", "--confidence-reason", "the diff was read")
+    assert rejected.returncode == 2 and "unrecognized arguments" in rejected.stderr, rejected.stderr
+    assert not (review_dir / "REVIEW.md").exists(), "a rejected call writes nothing"
+    assert run(*args).returncode == 0
+    assert "Confidence:" not in (review_dir / "REVIEW.md").read_text()
 
 
 def main() -> int:
