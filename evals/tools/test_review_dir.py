@@ -49,8 +49,12 @@ def run(*arguments: str) -> tuple[int, str, str]:
 
 
 def writable_task() -> Path:
-    """A task directory this process may write, under the workspace so no sandbox denies it."""
-    base = Path(tempfile.mkdtemp(prefix="review-dir-", dir=ROOT / "evals"))
+    """A task directory this process may write, under the system temp root.
+
+    It must be writable and must not live in the repository: a temp directory inside `evals/` was
+    left behind on every run, so the suite polluted the tree it was checking.
+    """
+    base = Path(tempfile.mkdtemp(prefix="review-dir-"))
     (base / ".task-id").write_text(json.dumps({"slug": "probe"}), encoding="utf-8")
     return base
 

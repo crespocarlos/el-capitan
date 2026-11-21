@@ -35,6 +35,7 @@ from lint_naming import installed_tool_names  # noqa: E402
 from lint_progress import (  # noqa: E402
     lint_edit_discipline,
     lint_hook_registration,
+    lint_local_state_tracked,
     lint_progress_transitions,
 )
 from lint_prompts import lint_rule_setup, lint_skill_setup, lint_tool_surface  # noqa: E402
@@ -84,6 +85,7 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     rules = rule_names(root)
     findings.extend(lint_documents(root, all_files, installed_names, rules, router_path(root)))
     findings.extend(lint_hook_registration(root))
+    findings.extend(lint_local_state_tracked(root))
     if budget:
         findings.extend(lint_budget(root, all_files, rules))
     return findings

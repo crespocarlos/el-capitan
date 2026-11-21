@@ -66,6 +66,9 @@ jobs:
       - name: Review workspace tests
         run: python3 evals/tools/test_review_dir.py
 
+      - name: Tracked local-state tests
+        run: python3 evals/tools/test_tracked_state.py
+
       - name: Python structural shape
         run: python3 evals/tools/test_python_shape.py
 

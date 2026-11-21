@@ -10,7 +10,14 @@ a guard that silently stopped guarding.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
+
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(_TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_ROOT))
+
+from lib.git import run_git  # noqa: E402
 
 from lint_files import line_no, rel
 
@@ -62,6 +69,31 @@ def lint_edit_discipline(root: Path, paths: list[Path]) -> Findings:
             for pattern, message in SHELL_EDITS:
                 for _ in pattern.finditer(line):
                     findings.append((rel(root, path), line_index + 1, "shell-file-edit", message))
+    return findings
+
+
+def lint_local_state_tracked(root: Path) -> Findings:
+    """No per-run state under `.agent/` may be tracked by git.
+
+    Task specs, review scratch, and journals are written by crew commands into `.agent/`, and two of
+    them were committed by an earlier `git add -A` and later swept away by another. `.gitignore` owns
+    the rule; this check makes a regression a lint failure instead of a silent commit.
+    """
+    inside = run_git(root, ["rev-parse", "--is-inside-work-tree"], check=False)
+    if inside.returncode != 0:
+        return []
+    listed = run_git(root, ["ls-files", ".agent"], check=False)
+    if listed.returncode != 0:
+        return []
+    allowed = {".agent/tools", ".agent/_SPEC_TEMPLATE.md", ".agent/_BUG_SPEC_TEMPLATE.md",
+               ".agent/_MEMORY_TEMPLATE.md", ".agent/_JOURNAL_TEMPLATE.md"}
+    findings: Findings = []
+    for line in listed.stdout.splitlines():
+        if not line.startswith(".agent/") or line in allowed or line.startswith(".agent/tools/"):
+            continue
+        findings.append((line, 1, "tracked-local-state",
+                         "per-run state under .agent/ is being version-controlled; "
+                         "add it to .gitignore and run git rm --cached"))
     return findings
 
 
