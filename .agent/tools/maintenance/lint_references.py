@@ -20,11 +20,9 @@ INSTALLED = re.compile(r"~/.agent/bin/([\w.-]+)")
 RULE_FILE = re.compile(r"([\w-]+\.mdc)")
 AGENT_REF = re.compile(r"(?:subagent_type:\s*|@)([\w-]+)")
 ROUTING_ROW = re.compile(r"\|\s*`crew ")
-# A prompt asks a command for repo facts instead of running git itself: a bare `git rev-parse` or
-# `git branch --show-current` prints nothing when it fails, and the prompt then acts on an empty
-# variable. `crew-repo-info.py` is the one answer. Mutations stay raw only where the user approved
-# them, so `git commit`/`add`/`push` are not flagged. `crew-diff.sh` and `guard-shell.sh` are
-# exempt: the first emits diff content, the second is the hook that reads git in order to police it.
+# A prompt asks a command for repo facts instead of running git: a failing `git rev-parse` prints
+# nothing and the prompt then acts on an empty variable. Mutations and diff reads stay raw, and
+# crew-diff.sh and guard-shell.sh are exempt (diff content, and the hook that polices git).
 GIT_FACT = re.compile(
     r"`?git\s+(?:-\S+\s+)*(?:rev-parse|branch\s+--show-current|branch\s+-vv|branch\s+--merged"
     r"|remote\s+get-url|worktree\s+list)|\$\(git\s+(?:-\S+\s+)*(?:rev-parse|branch|remote)")
