@@ -60,7 +60,7 @@ jobs:
       - name: Python structural shape
         run: python3 evals/tools/test_python_shape.py
 
-      - name: Command surface (catalog kinds, wrappers, install links)
+      - name: Command surface (catalog kinds, install links)
         run: python3 evals/tools/test_command_names.py
 
       - name: Python syntax

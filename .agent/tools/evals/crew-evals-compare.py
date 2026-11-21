@@ -75,14 +75,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
+def main() -> int:
     args = build_parser().parse_args()
     rs = rows(fetch_scores(args.since))
     if not rs:
-        sys.exit("no scores found")
+        print("no scores found", file=sys.stderr)
+        return 1
     {"runs": cmd_runs, "compare": cmd_compare, "detail": cmd_detail,
      "traces": cmd_traces, "diagnose": cmd_diagnose}[args.cmd](rs, args)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

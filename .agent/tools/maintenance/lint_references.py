@@ -27,7 +27,7 @@ def lint_repo_paths(root: Path, paths: list[Path]) -> Findings:
     """Flag backticked repo-relative paths that no longer exist."""
     findings: Findings = []
     for path in paths:
-        text = path.read_text(errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
         for match in REPO_PATH.finditer(text):
             target = match.group(1)
             if any(char in target for char in "<>*${}"):
@@ -44,7 +44,7 @@ def lint_installed_names(
     """Every `~/.agent/bin/<name>` reference resolves to a cataloged command."""
     findings: Findings = []
     for path in all_files:
-        text = path.read_text(errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
         name = rel(root, path)
         for match in INSTALLED.finditer(text):
             script = match.group(1)
@@ -137,10 +137,10 @@ def lint_documents(
     """The per-document checks over every in-scope file, plus the installed-name sweep."""
     findings: Findings = []
     agents = {path.stem for path in (root / ".cursor/agents").glob("*.md")}
-    routed_commands = routing_commands(router.read_text() if router.exists() else "")
+    routed_commands = routing_commands(router.read_text(encoding="utf-8") if router.exists() else "")
     findings.extend(lint_installed_names(root, all_files, installed_names))
     for path in all_files:
-        text = path.read_text(errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
         name = rel(root, path)
         for match in re.finditer(r"tasks/(?:\$REPO|<repo>)", text):
             findings.append((name, line_no(text, match.start()), "stale-task-path",

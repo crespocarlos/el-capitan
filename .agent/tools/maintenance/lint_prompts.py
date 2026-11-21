@@ -89,7 +89,7 @@ def lint_skill_setup(root: Path) -> Findings:
 def load_tool_surface(root: Path) -> tuple[dict[str, list[str]], set[str], Findings]:
     """Read the MCP-server and native-tool allowlists that tool references are resolved against."""
     try:
-        data = json.loads((root / MANIFEST).read_text())
+        data = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         return {}, set(), [(MANIFEST, 1, "invalid-tool-catalog", str(error))]
     findings: Findings = []

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from task_state import (
     PREDICATES,
+    TaskState,
     head,
     load,
     name,
@@ -27,7 +28,7 @@ from task_typed_tests import typed_tests_problem
 REVIEWED_AT = re.compile(r"^Reviewed at:\s*([0-9a-f]{7,40})\s*$", re.M)
 
 
-def load_task(task_dir: str | Path) -> dict | None:
+def load_task(task_dir: str | Path) -> TaskState | None:
     if not (Path(task_dir) / "SPEC.md").is_file():
         print(f"error: no SPEC.md in {task_dir}", file=sys.stderr)
         return None
@@ -46,11 +47,11 @@ def mark_approved(task_dir: str | Path) -> int:
         print(f"error: {name(r)} is {head(r) or 'unset'}, not DRAFTING; nothing written",
               file=sys.stderr)
         return 1
-    if unresolved(r["text"]):
+    if unresolved(r.text):
         print(f"error: {name(r)} still has [NEEDS CLARIFICATION] items; a spec with open items "
               f"cannot be approved", file=sys.stderr)
         return 1
-    problem = typed_tests_problem(r["task"] / "SPEC.md")
+    problem = typed_tests_problem(r.task / "SPEC.md")
     if problem:
         print(f"error: {name(r)}: {problem}; fix the ## Tests block before approving",
               file=sys.stderr)
@@ -58,17 +59,17 @@ def mark_approved(task_dir: str | Path) -> int:
     return 0 if set_status(r, "APPROVED", "DRAFTING → APPROVED") else 1
 
 
-def update_task_branch(r: dict, branch: str) -> bool:
+def update_task_branch(r: TaskState, branch: str) -> bool:
     """Record the branch actually being implemented, keeping the drafting branch.
 
     `.task-id.branch` is the resolution key, so overwriting it strands the checkout the spec was
     written in. `spec_branch` holds the drafting branch and resolution matches either; writing
     metadata before SPEC.md means an interrupt cannot leave the status advanced with no branch.
     """
-    metadata_path = r["task"] / ".task-id"
+    metadata_path = r.task / ".task-id"
     tmp = metadata_path.with_name(".task-id.tmp")
     try:
-        metadata = json.loads(metadata_path.read_text())
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if not isinstance(metadata, dict):
             raise ValueError("not an object")
         if metadata.get("branch") == branch:
@@ -76,7 +77,7 @@ def update_task_branch(r: dict, branch: str) -> bool:
         if metadata.get("spec_branch") in (None, ""):
             metadata["spec_branch"] = metadata.get("branch", "")
         metadata["branch"] = branch
-        tmp.write_text(json.dumps(metadata, indent=2) + "\n")
+        tmp.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         tmp.replace(metadata_path)
         return True
     except (OSError, ValueError) as error:
@@ -98,7 +99,7 @@ def mark_implementing(task_dir: str | Path, branch: str = "") -> int:
         print(f"error: {name(r)} is {head(r) or 'unset'}, not APPROVED; nothing written",
               file=sys.stderr)
         return 1
-    if unresolved(r["text"]):
+    if unresolved(r.text):
         print(f"error: {name(r)} still has [NEEDS CLARIFICATION] items; resolve them before "
               f"implementing", file=sys.stderr)
         return 1
@@ -113,7 +114,7 @@ def read_reviewed_at(task: Path) -> str:
     review = task / "REVIEW.md"
     if not review.exists():
         return ""
-    matches = REVIEWED_AT.findall(review.read_text())
+    matches = REVIEWED_AT.findall(review.read_text(encoding="utf-8"))
     return matches[-1] if matches else ""
 
 
@@ -136,18 +137,18 @@ def ancestry_problem(reviewed_at: str) -> str | None:
             "run from the implementation checkout")
 
 
-def done_problems(r: dict, branch: str) -> list[str]:
+def done_problems(r: TaskState, branch: str) -> list[str]:
     """Every reason this spec may not close out yet, in the order the gates apply."""
     problems = []
-    task_branch = r["meta"].get("branch")
+    task_branch = r.meta.get("branch")
     if branch and task_branch and branch != task_branch:
         problems.append(f"task branch is {task_branch}, current branch is {branch}")
     if not (PREDICATES["all_checked"](r, None) and PREDICATES["has_checkboxes"](r, None)):
-        problems.append(f"{r['open']} unchecked criteria/tasks" if r["open"]
+        problems.append(f"{r.open} unchecked criteria/tasks" if r.open
                         else "no checked criteria")
     if not PREDICATES["verdict_ok"](r, None):
-        problems.append(f"review verdict is {r['verdict']}, need pass or warn")
-    reviewed_at = read_reviewed_at(r["task"])
+        problems.append(f"review verdict is {r.verdict}, need pass or warn")
+    reviewed_at = read_reviewed_at(r.task)
     if reviewed_at:
         problem = ancestry_problem(reviewed_at)
         if problem:

@@ -104,7 +104,7 @@ def lint_tool_catalog(root: Path) -> Findings:
     if not manifest.exists():
         return [(".agent/tools", 1, "missing-tool-catalog", "add tools.json")]
     try:
-        data = json.loads(manifest.read_text())
+        data = json.loads(manifest.read_text(encoding="utf-8"))
         entries, scripts = data["tools"], data.get("scripts", [])
         assets, modules = data.get("assets", []), data.get("modules", [])
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:

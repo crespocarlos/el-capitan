@@ -15,6 +15,8 @@ Rules:
 - no run of more than `MAX_COMMENT_BLOCK` consecutive comment lines;
 - no bare-name import of a generic module name, which is what made `store`, `report`, and
   `findings` collide on `sys.path`;
+- no string path concatenation (`"/" + name`), which loses a separator to an empty segment and
+  says nothing about whether a join was meant at all;
 - exactly one `atomic_write` and one `gh` runner exist in the whole tree.
 """
 from __future__ import annotations
@@ -145,6 +147,29 @@ def check_imports(path: Path, tree: ast.AST) -> list[tuple[str, int, str, str]]:
     return found
 
 
+def is_path_segment(node: ast.AST) -> bool:
+    """True for the right-hand side of a concatenation that could be a path component."""
+    return isinstance(node, (ast.Name, ast.Attribute, ast.Call, ast.Subscript, ast.JoinedStr))
+
+
+def check_path_concat(path: Path, tree: ast.AST) -> list[tuple[str, int, str, str]]:
+    """No string literal carrying `/` is added to a name, so a path join must be deliberate.
+
+    `"/" + part` builds the same string as an f-string but hides which half owns the separator, and
+    it silently degrades when `part` is empty or already absolute. Either `PurePosixPath` or an
+    explicit prefix test says what the code means.
+    """
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Add):
+            continue
+        for literal, other in ((node.left, node.right), (node.right, node.left)):
+            if (isinstance(literal, ast.Constant) and isinstance(literal.value, str)
+                    and "/" in literal.value and is_path_segment(other)):
+                found.append((display(path), node.lineno, "string-path-concat", ast.unparse(node)))
+    return found
+
+
 def check_unique_functions(modules: dict[Path, ast.AST]) -> list[tuple[str, int, str, str]]:
     found = []
     for name in UNIQUE_FUNCTIONS:
@@ -190,6 +215,7 @@ def main() -> int:
 
         violations.extend(check_comment_blocks(path, source))
         violations.extend(check_imports(path, tree))
+        violations.extend(check_path_concat(path, tree))
 
     violations.extend(check_unique_functions(parsed))
 
@@ -204,6 +230,7 @@ def main() -> int:
           f"{len(indent_files)} files with non-4-space indent, "
           f"{count('long-comment-block')} long comment blocks, "
           f"{count('bare-generic-import')} bare-name imports, "
+          f"{count('string-path-concat')} string path concatenations, "
           f"{count('long-module')} modules over {MAX_MODULE_LINES} lines, "
           f"{count('shared-helper-count')} shared-helper problems")
     bad = bool(violations)

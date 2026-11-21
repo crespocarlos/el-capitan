@@ -36,6 +36,7 @@ from task_report import (  # noqa: E402
     print_status_file,
     reconcile,
 )
+from task_state import RulesError  # noqa: E402
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
@@ -68,21 +69,25 @@ def main() -> int:
     if args.status_file:
         return print_status_file(args.status_file)
     if args.mark_approved:
-        sys.exit(mark_approved(args.mark_approved))
+        return mark_approved(args.mark_approved)
     if args.mark_implementing:
-        sys.exit(mark_implementing(args.mark_implementing, args.branch or ""))
+        return mark_implementing(args.mark_implementing, args.branch or "")
     if args.mark_done:
         if not args.pr_url:
             parser.error("--mark-done requires --pr-url")
-        sys.exit(mark_done(args.mark_done, args.pr_url, args.branch, args.force))
+        return mark_done(args.mark_done, args.pr_url, args.branch, args.force)
     if args.apply and not args.reconcile:
         parser.error("--apply requires --reconcile")
-    rows = load_rows(args.tasks_dir)
-    if not args.reconcile:
-        print_listing(rows, args)
-        return 0
-    return reconcile(rows, args.apply)
+    try:
+        rows = load_rows(args.tasks_dir)
+        if not args.reconcile:
+            print_listing(rows, args)
+            return 0
+        return reconcile(rows, args.apply)
+    except RulesError as error:
+        print(str(error), file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
-    sys.exit(main() or 0)
+    sys.exit(main())

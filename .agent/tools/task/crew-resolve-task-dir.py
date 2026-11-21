@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -36,6 +35,7 @@ if str(_TASK_DIR) not in sys.path:
     sys.path.insert(0, str(_TASK_DIR))
 
 from task_resolve import (  # noqa: E402
+    ResolverUnavailable,
     best_match,
     matching_tasks,
     resolve_context,
@@ -64,7 +64,7 @@ def print_matches(matches: list[tuple[str, str]], record: dict, as_json: bool) -
     if as_json:
         print(json.dumps({"remote": record["remote"], "branch": record["branch"], "matches": [
             {"task_dir": task_dir, "created_at": created_at,
-             "status": read_status(os.path.join(task_dir, "SPEC.md"))}
+             "status": read_status(Path(task_dir) / "SPEC.md")}
             for created_at, task_dir in matches
         ]}))
         return
@@ -74,7 +74,11 @@ def print_matches(matches: list[tuple[str, str]], record: dict, as_json: bool) -
 
 def main() -> int:
     args = build_parser().parse_args()
-    current_remote, current_branch = resolve_context(args.remote, args.branch)
+    try:
+        current_remote, current_branch = resolve_context(args.remote, args.branch)
+    except ResolverUnavailable as error:
+        print(str(error), file=sys.stderr)
+        return 1
     matches = matching_tasks(current_remote, current_branch)
     if not matches:
         if args.json:

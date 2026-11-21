@@ -52,7 +52,7 @@ install — and a module cannot leak into the command surface.
   `task_gates.py`. The package prefix keeps basenames unique across packages, which matters because
   all of them share one `~/.agent/bin` at depth one.
 - **Sourced files** keep a plain name and are exempt from the prefix rule: `task-env.sh` must stay
-  `task-env.sh` because `source` needs a real path and cannot go through a wrapper.
+  `task-env.sh` because `source` needs a real file at that exact path.
 - A rename is a breaking change applied in one change. Do not add a compatibility wrapper for an old
   basename; update every caller instead. `.claude/hooks/`, `rules/`, and `.cursor/` are the caller
   surface, and `rg -n --hidden "agent/bin/" .cursor .claude rules install.sh` lists it.

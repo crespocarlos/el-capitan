@@ -38,7 +38,8 @@ def locate_suite(repo: Path, suite_id: str) -> Path:
     expected = f"@kbn/evals-suite-{suite_id}"
     for manifest in repo.rglob("kibana.jsonc"):
         try:
-            identifier = re.search(r'''["']id["']\s*:\s*["']([^"']+)["']''', manifest.read_text())
+            identifier = re.search(r'''["']id["']\s*:\s*["']([^"']+)["']''',
+                                   manifest.read_text(encoding="utf-8", errors="replace"))
         except OSError:
             continue
         if identifier and identifier.group(1) == expected:
@@ -53,7 +54,8 @@ def evaluator_sources(suite: Path) -> dict[str, str]:
         if not path.is_file() or path.suffix not in {".ts", ".tsx"}:
             continue
         try:
-            for name in re.findall(r"""name\s*:\s*['"]([^'"]+)['"]""", path.read_text()):
+            for name in re.findall(r"""name\s*:\s*['"]([^'"]+)['"]""",
+                                   path.read_text(encoding="utf-8", errors="replace")):
                 sources[name] = str(path)
         except OSError:
             continue

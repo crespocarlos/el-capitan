@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from lib.files import atomic_write  # noqa: F401  re-exported by crew-review-findings.py
@@ -38,6 +39,76 @@ SELECT_RULES = {
     "architecture": re.compile(r"router|orchestrator|install|dispatch|tools\.json|(^|/)\.claude/"),
 }
 DISPOSITIONS = {"patch", "decide", "defer", "dropped", "merged"}
+# Absent is not the same as empty: `kind` and `evidence` are optional, and a record must not grow a
+# key the persona never wrote, because `normalize` republishes the finding for later steps to parse.
+ABSENT = object()
+
+
+@dataclass
+class Finding:
+    """One review finding: the fields the gates read, plus everything else the persona wrote.
+
+    Built once by `read_findings` at the JSON boundary, then passed inward, so no gate re-derives
+    the shape from string keys. `to_json` writes back exactly the keys that arrived — an unknown
+    key stays in `extra` rather than being silently dropped on the way through `normalize`.
+    """
+
+    title: str
+    label: str
+    file: object = ABSENT
+    line: object = ABSENT
+    kind: object = ABSENT
+    disposition: object = ABSENT
+    persona: object = ABSENT
+    hunks: object = ABSENT
+    verified: object = ABSENT
+    evidence: object = ABSENT
+    validation: object = ABSENT
+    reason: object = ABSENT
+    memory_ids: object = ABSENT
+    fingerprint: str = ""
+    extra: dict = field(default_factory=dict)
+
+    def is_emitted(self) -> bool:
+        """True for a finding the review stands behind, as opposed to one it deferred."""
+        return self.disposition in EMITTED
+
+    def text(self, name: str) -> str:
+        """An optional field rendered as text: empty when absent, else `str(value)` as before."""
+        value = getattr(self, name)
+        return "" if value is ABSENT else str(value)
+
+    def to_json(self) -> dict:
+        """The finding as JSON, with a key present only when the persona supplied it."""
+        out: dict = {"title": self.title, "label": self.label}
+        for key, value in (("file", self.file), ("line", self.line), ("kind", self.kind),
+                           ("disposition", self.disposition), ("persona", self.persona),
+                           ("hunks", self.hunks), ("verified", self.verified),
+                           ("evidence", self.evidence), ("validation", self.validation),
+                           ("reason", self.reason), ("memory_ids", self.memory_ids)):
+            if value is not ABSENT:
+                out[key] = value
+        out.update(self.extra)
+        out["fingerprint"] = self.fingerprint
+        return out
+
+    def merge(self, other: Finding) -> None:
+        """Fold a duplicate into this finding: union the personas each one named and the hunks cited.
+
+        A finding that only one of the two anchored still inherits the other's anchors, because the
+        merged record is what later steps read; leaving the first one's empty list would lose the
+        hunk the duplicate cited.
+        """
+        if isinstance(other.persona, list):
+            for persona in other.persona:
+                if not isinstance(self.persona, list):
+                    self.persona = []
+                if persona not in self.persona:
+                    self.persona.append(persona)
+        ours = [] if self.hunks is ABSENT else self.hunks
+        theirs = [] if other.hunks is ABSENT else other.hunks
+        if isinstance(ours, list) and isinstance(theirs, list):
+            self.hunks = list(dict.fromkeys(ours + theirs))
 
 
 def mode_arg(value: str) -> str:
@@ -90,53 +161,66 @@ def read_json_object(path: Path, key: str) -> dict:
     return payload
 
 
-def fingerprint(finding: dict) -> str:
+def fingerprint(finding: Finding) -> str:
     material = "|".join(
         [
-            str(finding.get("file", "")).strip(),
-            str(finding.get("label", "")).strip().lower(),
-            normalized_title(str(finding["title"])),
+            str(finding.file if finding.file is not ABSENT else "").strip(),
+            str(finding.label).strip().lower(),
+            normalized_title(str(finding.title)),
         ]
     )
     return hashlib.sha1(material.encode()).hexdigest()
 
 
-def read_findings(path: Path) -> list[dict]:
-    data = json.loads(path.read_text())
+def to_finding(finding: dict, index: int) -> Finding:
+    """Build the record from one JSON object, refusing a value the vocabulary does not allow."""
+    if not isinstance(finding, dict) or not isinstance(finding.get("title"), str):
+        raise ValueError(f"finding {index} requires a string title")
+    label = str(finding.get("label", "")).lower()
+    if label not in LABELS:
+        raise ValueError(f"finding {index} has invalid label: {label!r}")
+    disposition = finding.get("disposition")
+    if disposition is not None and disposition not in DISPOSITIONS:
+        raise ValueError(f"finding {index} has invalid disposition: {disposition!r}")
+    # Optional: every review recorded before `kind` existed has none, and refusing those would make
+    # the tool unable to re-read its own history. A typo is different — an unknown value is rejected
+    # so the vocabulary cannot drift one spelling at a time.
+    kind = ABSENT
+    if "kind" in finding:
+        kind = str(finding["kind"]).strip().lower()
+        if kind not in KINDS:
+            raise ValueError(
+                f"finding {index} has invalid kind: {finding['kind']!r} "
+                f"(expected one of {', '.join(sorted(KINDS))})"
+            )
+    persona = ABSENT
+    if "persona" in finding or "personas" in finding:
+        persona = canonical_personas(finding.get("persona", finding.get("personas")))
+    known = {"title", "label", "file", "line", "kind", "disposition", "persona", "personas",
+             "hunks", "verified", "evidence", "validation", "reason", "memory_ids", "fingerprint"}
+    record = Finding(
+        title=finding["title"], label=label, kind=kind, persona=persona,
+        file=finding.get("file", ABSENT), line=finding.get("line", ABSENT),
+        disposition=finding.get("disposition", ABSENT), hunks=finding.get("hunks", ABSENT),
+        verified=finding.get("verified", ABSENT), evidence=finding.get("evidence", ABSENT),
+        validation=finding.get("validation", ABSENT), reason=finding.get("reason", ABSENT),
+        memory_ids=finding.get("memory_ids", ABSENT),
+        extra={key: value for key, value in finding.items() if key not in known},
+    )
+    record.fingerprint = fingerprint(record)
+    return record
+
+
+def read_findings(path: Path) -> list[Finding]:
+    data = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(data, dict) and isinstance(data.get("findings"), list):
         data = data["findings"]
     if not isinstance(data, list):
         raise ValueError("finding input must be a JSON list or an object with a findings list")
-    result = []
-    for index, finding in enumerate(data, 1):
-        if not isinstance(finding, dict) or not isinstance(finding.get("title"), str):
-            raise ValueError(f"finding {index} requires a string title")
-        label = str(finding.get("label", "")).lower()
-        if label not in LABELS:
-            raise ValueError(f"finding {index} has invalid label: {label!r}")
-        disposition = finding.get("disposition")
-        if disposition is not None and disposition not in DISPOSITIONS:
-            raise ValueError(f"finding {index} has invalid disposition: {disposition!r}")
-        normalized = {**finding, "label": label}
-        # Optional: every review recorded before this field existed has no `kind`, and refusing those
-        # would make the tool unable to re-read its own history. A typo is a different matter — an
-        # unknown value is rejected so the vocabulary cannot drift one spelling at a time.
-        if "kind" in finding:
-            kind = str(finding["kind"]).strip().lower()
-            if kind not in KINDS:
-                raise ValueError(
-                    f"finding {index} has invalid kind: {finding['kind']!r} "
-                    f"(expected one of {', '.join(sorted(KINDS))})"
-                )
-            normalized["kind"] = kind
-        if "persona" in finding or "personas" in finding:
-            normalized.pop("personas", None)
-            normalized["persona"] = canonical_personas(finding.get("persona", finding.get("personas")))
-        result.append({**normalized, "fingerprint": fingerprint(normalized)})
-    return result
+    return [to_finding(finding, index) for index, finding in enumerate(data, 1)]
 
 
-def check_findings(findings: list[dict]) -> None:
+def check_findings(findings: list[Finding]) -> None:
     """Per-finding rules that need no changed-file list.
 
     Split out from `check_strict` because `persist` used to reach every per-finding rule only when
@@ -146,14 +230,14 @@ def check_findings(findings: list[dict]) -> None:
     the sentence was required.
     """
     for f in findings:
-        evidence = f.get("evidence")
-        if f["label"] in {"blocking", "attention"} and not (
-            f.get("verified") is True
+        evidence = None if f.evidence is ABSENT else f.evidence
+        if f.label in {"blocking", "attention"} and not (
+            f.verified is True
             and isinstance(evidence, str)
             and EVIDENCE_LOCATION.fullmatch(evidence)
         ):
             raise ValueError(
-                f"unverified {f['label']} finding {f['title']!r}: set verified=true with evidence as path:line "
+                f"unverified {f.label} finding {f.title!r}: set verified=true with evidence as path:line "
                 "(or path:line@headSHA), "
                 "or downgrade to 'needs more info'"
             )
@@ -161,44 +245,57 @@ def check_findings(findings: list[dict]) -> None:
             # A type error is a caller bug, not an absent location: fail loudly rather than let the
             # file gate below skip a malformed value as though the finding had cited nothing.
             raise ValueError(
-                f"finding {f['title']!r}: evidence must be a string path:line, got {type(evidence).__name__}"
+                f"finding {f.title!r}: evidence must be a string path:line, got {type(evidence).__name__}"
             )
-        if f.get("verified") is True:
+        if f.verified is True:
             # `verified: true` asserts a second read happened. Without its conclusion recorded, the
             # next reader has only a boolean and an anchor and cannot tell why the check passed —
             # which is the reasoning the consolidator used to discard.
-            validation = f.get("validation")
+            validation = None if f.validation is ABSENT else f.validation
             if not isinstance(validation, str) or not validation.strip():
                 raise ValueError(
-                    f"finding {f['title']!r} is verified but records no validation sentence; "
+                    f"finding {f.title!r} is verified but records no validation sentence; "
                     "state what the verification read and concluded"
                 )
 
 
-def check_strict(findings: list[dict], files: list[str] | None = None) -> None:
-    emitted = [f for f in findings if f.get("disposition") in EMITTED]
+def is_path_prefix(name: str, location: str) -> bool:
+    """True when two evidence paths name the same path, allowing one to be a trailing suffix.
+
+    A finding may cite `profile.ts` while the reviewed set names `src/user/profile.ts`, and the
+    reverse occasionally happens when a persona anchors on an absolute path. The suffix must land on
+    a `/` boundary, so `profile.ts` does not match `myprofile.ts`. This compares already-normalized
+    evidence strings rather than joining filesystem paths: `PurePosixPath` would collapse `..` and
+    drop a leading separator, changing which evidence is accepted.
+    """
+    if name == location:
+        return True
+    shorter, longer = (name, location) if len(name) <= len(location) else (location, name)
+    return longer.endswith(f"/{shorter}")
+
+
+def check_strict(findings: list[Finding], files: list[str] | None = None) -> None:
+    emitted = [f for f in findings if f.is_emitted()]
     check_findings(emitted)
     for f in emitted:
-        evidence = f.get("evidence")
+        evidence = None if f.evidence is ABSENT else f.evidence
         if files and evidence:
             # Shape is not enough: evidence must point at something under review, or a
             # finding about an untouched file is reported as verified. A finding with no
             # evidence is allowed here — `blocking`/`attention` were already required to have
             # it above, and a nit may stay unanchored, so there is nothing to check.
             location = evidence.split("@", 1)[0].rsplit(":", 1)[0]
-            matches = [name for name in files
-                       if name == location or name.endswith("/" + location) or location.endswith("/" + name)]
-            if not matches:
+            if not any(is_path_prefix(name, location) for name in files):
                 raise ValueError(
-                    f"finding {f['title']!r} cites {location}, which is not in the reviewed file set"
+                    f"finding {f.title!r} cites {location}, which is not in the reviewed file set"
                 )
-    nits = [f for f in emitted if f["label"] == "nit"]
-    findings_only = len(emitted) - len(nits)
+    nits = [f for f in emitted if f.label == "nit"]
+    severity = len(emitted) - len(nits)
     # Counted separately: a nit must never consume a severity slot, so the two budgets do not
     # trade against each other.
-    if findings_only > MAX_FINDINGS:
+    if severity > MAX_FINDINGS:
         raise ValueError(
-            f"{findings_only} emitted non-nit findings exceed the cap of {MAX_FINDINGS}; "
+            f"{severity} emitted non-nit findings exceed the cap of {MAX_FINDINGS}; "
             "drop the lowest severity or route pre-existing findings to 'defer'"
         )
     if len(nits) > MAX_NITS:
@@ -219,24 +316,20 @@ def normalize(args: argparse.Namespace) -> int:
         check_hunk_refs(findings, hunk_ids(args.hunks))
     kept, duplicates = {}, []
     for finding in findings:
-        existing = kept.get(finding["fingerprint"])
+        existing = kept.get(finding.fingerprint)
         if existing:
-            for persona in finding.get("persona", []):
-                if persona not in existing.setdefault("persona", []):
-                    existing["persona"].append(persona)
-            if isinstance(existing.get("hunks", []), list) and isinstance(finding.get("hunks", []), list):
-                existing["hunks"] = list(dict.fromkeys(existing.get("hunks", []) + finding.get("hunks", [])))
+            existing.merge(finding)
             duplicates.append(
-                {"fingerprint": finding["fingerprint"], "duplicate_of": existing["title"], "title": finding["title"]}
+                {"fingerprint": finding.fingerprint, "duplicate_of": existing.title, "title": finding.title}
             )
         else:
-            kept[finding["fingerprint"]] = finding
+            kept[finding.fingerprint] = finding
     if args.strict:
         check_strict(list(kept.values()), args.files)
-    payload = {"findings": list(kept.values()), "duplicates": duplicates}
+    payload = {"findings": [finding.to_json() for finding in kept.values()], "duplicates": duplicates}
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
-        args.output.write_text(text)
+        args.output.write_text(text, encoding="utf-8")
     else:
         print(text, end="")
     return 0

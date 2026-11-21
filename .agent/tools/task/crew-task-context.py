@@ -24,7 +24,7 @@ from task_artifacts import (  # noqa: E402
     build_context,
     markdown_context,
 )
-from task_resolve import resolve_record  # noqa: E402
+from task_resolve import ResolverUnavailable, resolve_record  # noqa: E402
 from task_state import read_status  # noqa: E402
 
 
@@ -35,7 +35,7 @@ def cached_identity(directory: str) -> tuple[dict | None, int]:
         print(f"task-context: {path} is not a task directory (no .task-id)", file=sys.stderr)
         return None, 2
     try:
-        metadata = json.loads((path / ".task-id").read_text())
+        metadata = json.loads((path / ".task-id").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         print(f"task-context: unreadable .task-id in {path}: {error}", file=sys.stderr)
         return None, 2
@@ -60,7 +60,11 @@ def resolve_task(args: argparse.Namespace) -> tuple[dict | None, int]:
     )
     if directory:
         return cached_identity(directory)
-    return resolve_record(args.remote, args.branch), 0
+    try:
+        return resolve_record(args.remote, args.branch), 0
+    except ResolverUnavailable as error:
+        print(str(error), file=sys.stderr)
+        return None, 1
 
 
 def parse_artifact_selection(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str]:

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from evals_query import spans
 from evals_report import commit_order, match, summarize_trace
+from evals_rows import EvalRow
 from evals_sources import classify_paths, evaluator_sources, git, locate_suite
 
 
@@ -41,22 +42,22 @@ def trace_summary(trace_id: object) -> dict:
             "errors": errors}
 
 
-def rows_by_commit(rows_: list[dict]) -> dict[str, dict]:
+def rows_by_commit(rows_: list[EvalRow]) -> dict[str, dict]:
     by_commit: dict[str, dict] = collections.defaultdict(dict)
     for row in rows_:
-        by_commit[row["commit"]][(row["example"], row["rep"])] = row
+        by_commit[row.commit][(row.example, row.rep)] = row
     return by_commit
 
 
 def paired_rows(
-    rows_: list[dict], baseline: str, candidate: str
-) -> tuple[list[tuple[str, object]], list[dict], list[dict]]:
+    rows_: list[EvalRow], baseline: str, candidate: str
+) -> tuple[list[tuple[str, object]], list[EvalRow], list[EvalRow]]:
     """The keys both commits scored, and each commit's row for those keys in order."""
     by_commit = rows_by_commit(rows_)
     paired = sorted(
         key for key in (set(by_commit[baseline]) & set(by_commit[candidate]))
-        if by_commit[baseline][key]["score"] is not None
-        and by_commit[candidate][key]["score"] is not None
+        if by_commit[baseline][key].score is not None
+        and by_commit[candidate][key].score is not None
     )
     return (paired, [by_commit[baseline][key] for key in paired],
             [by_commit[candidate][key] for key in paired])
@@ -83,32 +84,32 @@ def failing_examples(
     """The worst regressed pairs, ordered by how much worse the candidate scored."""
     ordered = sorted(
         paired, key=lambda key: (
-            by_commit[candidate][key]["score"] - by_commit[baseline][key]["score"]
+            by_commit[candidate][key].score - by_commit[baseline][key].score
             if direction != "minimize" else
-            by_commit[baseline][key]["score"] - by_commit[candidate][key]["score"]
+            by_commit[baseline][key].score - by_commit[candidate][key].score
         )
     )
     failing = []
     for key in ordered[:top]:
         before, after = by_commit[baseline][key], by_commit[candidate][key]
-        failing.append({"example": after["example"], "repetition": after["rep"],
-                        "baseline_score": before["score"], "candidate_score": after["score"],
-                        "explanation": after["why"],
-                        "baseline_trace": trace_summary(before["trace"]),
-                        "candidate_trace": trace_summary(after["trace"])})
+        failing.append({"example": after.example, "repetition": after.rep,
+                        "baseline_score": before.score, "candidate_score": after.score,
+                        "explanation": after.why,
+                        "baseline_trace": trace_summary(before.trace),
+                        "candidate_trace": trace_summary(after.trace)})
     return failing
 
 
 def evaluator_report(
-    key: tuple[str, str], rows_: list[dict], baseline: str, candidate: str,
+    key: tuple[str, str], rows_: list[EvalRow], baseline: str, candidate: str,
     sources: dict, comparable: bool, top: int,
 ) -> dict:
     """One experiment/evaluator pair: its pairing, verdict, and any regressed examples."""
     experiment, evaluator = key
     paired, before_rows, after_rows = paired_rows(rows_, baseline, candidate)
-    baseline_scores = [row["score"] for row in before_rows]
-    candidate_scores = [row["score"] for row in after_rows]
-    direction = next((row["direction"] for row in rows_ if row["direction"]), "maximize")
+    baseline_scores = [row.score for row in before_rows]
+    candidate_scores = [row.score for row in after_rows]
+    direction = next((row.direction for row in rows_ if row.direction), "maximize")
     p_value, non_tie_pairs = sign_test_pvalue(baseline_scores, candidate_scores)
     delta = (statistics.mean(candidate_scores) - statistics.mean(baseline_scores)) if paired else None
     verdict, reason = verdict_for(p_value, len(paired), comparable, delta, direction)
@@ -127,22 +128,22 @@ def evaluator_report(
             "delta": delta, "failing_examples": failing}
 
 
-def diagnose_single(rs: list[dict], args) -> int:
+def diagnose_single(rs: list[EvalRow], args) -> int:
     """One commit's lowest scores, with a trace summary per score; makes no delta claim."""
     candidate = next((commit for commit in commit_order(rs) if match(commit, args.baseline)), None)
     if not candidate:
         raise SystemExit("unknown candidate commit; run `runs`")
-    selected = [row for row in rs if row["commit"] == candidate and row["score"] is not None]
+    selected = [row for row in rs if row.commit == candidate and row.score is not None]
     bundle = {
         "candidate": candidate,
         "mode": "single",
         "low_scores": [
-            {"experiment": row["exp_full"], "evaluator": row["ev"], "example": row["example"],
-             "repetition": row["rep"], "score": row["score"], "direction": row["direction"],
-             "explanation": row["why"], "trace": trace_summary(row["trace"])}
+            {"experiment": row.exp_full, "evaluator": row.ev, "example": row.example,
+             "repetition": row.rep, "score": row.score, "direction": row.direction,
+             "explanation": row.why, "trace": trace_summary(row.trace)}
             for row in sorted(
                 selected,
-                key=lambda row: row["score"] if row["direction"] != "minimize" else -row["score"],
+                key=lambda row: row.score if row.direction != "minimize" else -row.score,
             )[:args.top]
         ],
     }
@@ -150,7 +151,7 @@ def diagnose_single(rs: list[dict], args) -> int:
     return 0
 
 
-def compare_commit(rs: list[dict], args) -> tuple[str, str]:
+def compare_commit(rs: list[EvalRow], args) -> tuple[str, str]:
     """The baseline and candidate commits `diagnose` compares, or SystemExit naming the gap."""
     if not args.candidate:
         raise SystemExit("diagnose requires BASELINE CANDIDATE, or CANDIDATE --single")
@@ -161,14 +162,14 @@ def compare_commit(rs: list[dict], args) -> tuple[str, str]:
     return baseline, candidate
 
 
-def cmd_diagnose(rs: list[dict], args) -> None:
+def cmd_diagnose(rs: list[EvalRow], args) -> None:
     """Attribute a score change between two commits, or describe one commit's low scores."""
     if args.single:
         diagnose_single(rs, args)
         return
     baseline, candidate = compare_commit(rs, args)
-    selected = [row for row in rs if row["commit"] in {baseline, candidate}]
-    suites = {row["suite"] for row in selected if row["suite"]}
+    selected = [row for row in rs if row.commit in {baseline, candidate}]
+    suites = {row.suite for row in selected if row.suite}
     if len(suites) != 1:
         raise SystemExit(f"diagnose requires one suite, found: {sorted(suites) or 'none'}")
     repo = Path(args.repo).expanduser().resolve()
@@ -185,7 +186,7 @@ def cmd_diagnose(rs: list[dict], args) -> None:
     prompt_diff = git(repo, "diff", "--unified=3", baseline, candidate, "--", *surfaces["prompt"])
     grouped = collections.defaultdict(list)
     for row in selected:
-        grouped[(row["exp_full"], row["ev"])].append(row)
+        grouped[(row.exp_full, row.ev)].append(row)
     comparable = not surfaces["evaluator"] and not surfaces["dataset"]
     reports = [evaluator_report(key, rows_, baseline, candidate, sources, comparable, args.top)
                for key, rows_ in sorted(grouped.items())]

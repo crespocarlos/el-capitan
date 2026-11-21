@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Comparison rendering: rows from score documents, the tables, and the per-trace summary.
 
-Everything a person reads on stdout lives here, so the shapes are in one place: `rows` normalizes a
-score document, `common_prefix` trims a shared experiment-name prefix, and the `cmd_*` functions
-print one section each. `evals_diagnose.py` builds the JSON bundle for machine consumption.
+Everything a person reads on stdout lives here, so the shapes are in one place: `common_prefix`
+trims a shared experiment-name prefix, `rows` keeps one row per scored cell, and the `cmd_*`
+functions print one section each. The row record itself is `evals_rows.EvalRow`, and
+`evals_diagnose.py` builds the JSON bundle for machine consumption.
 """
 from __future__ import annotations
 
@@ -12,9 +13,9 @@ import json
 import os
 import re
 import statistics
-import sys
 
 from evals_query import spans
+from evals_rows import EvalRow, to_row  # noqa: F401  re-exported for the compare entry point
 
 COST_NAMES = {"Input Tokens", "Output Tokens", "Tool Calls", "Latency",
               "reported_input_tokens", "reported_output_tokens"}
@@ -29,7 +30,7 @@ def common_prefix(values: list[str]) -> str:
     return prefix[:boundary + 2] if boundary >= 0 else ""
 
 
-def rows(docs: list[dict]) -> list[dict]:
+def rows(docs: list[dict]) -> list[EvalRow]:
     """One row per (run, example, repetition, evaluator), keyed so a duplicate score is ignored."""
     seen, out = set(), []
     prefix = common_prefix([d.get("experiment_name", "") for d in docs])
@@ -39,28 +40,14 @@ def rows(docs: list[dict]) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-        out.append({
-            "commit": d["metadata"]["git"]["commit_sha"][:8],
-            "time": d["@timestamp"],
-            "run": d["experiment_id"],
-            "exp": d.get("experiment_name", d["experiment_id"]).removeprefix(prefix)[:34],
-            "exp_full": d.get("experiment_name", d["experiment_id"]),
-            "example": d["example"]["id"],
-            "rep": d["task"].get("repetition_index"),
-            "trace": d["task"].get("trace_id"),
-            "ev": d["evaluator"]["name"],
-            "score": d["evaluator"].get("score"),
-            "why": (d["evaluator"].get("explanation") or "").replace("\n", " "),
-            "direction": d["evaluator"].get("direction", "maximize"),
-            "suite": d.get("metadata", {}).get("suite_id"),
-        })
+        out.append(to_row(d, prefix))
     return out
 
 
-def commit_order(rs: list[dict]) -> list[str]:
+def commit_order(rs: list[EvalRow]) -> list[str]:
     first = {}
     for r in rs:
-        first[r["commit"]] = min(first.get(r["commit"], r["time"]), r["time"])
+        first[r.commit] = min(first.get(r.commit, r.time), r.time)
     return sorted(first, key=first.get)  # oldest first
 
 
@@ -76,12 +63,12 @@ def match(commit: str, prefix: str) -> bool:
     return commit.startswith(prefix)
 
 
-def cmd_runs(rs: list[dict], _args) -> None:
+def cmd_runs(rs: list[EvalRow], _args) -> None:
     groups = collections.defaultdict(lambda: {"t": [], "exps": collections.defaultdict(set)})
     for r in rs:
-        g = groups[r["commit"]]
-        g["t"].append(r["time"])
-        g["exps"][r["exp"]].add((r["example"], r["rep"]))
+        g = groups[r.commit]
+        g["t"].append(r.time)
+        g["exps"][r.exp].add((r.example, r.rep))
     for commit in reversed(commit_order(rs)):
         g = groups[commit]
         print(f"{commit}  {min(g['t'])[:16]} -> {max(g['t'])[11:16]}")
@@ -91,20 +78,20 @@ def cmd_runs(rs: list[dict], _args) -> None:
                   f"{sorted(set(reps.values()))}")
 
 
-def cmd_compare(rs: list[dict], args) -> None:
+def cmd_compare(rs: list[EvalRow], args) -> None:
     order = commit_order(rs)
     picked = ([c for p in args.commits for c in order if match(c, p)] if args.commits
               else order[-3:])
     if not picked:
-        sys.exit("no matching commits; run `runs`")
+        raise SystemExit("no matching commits; run `runs`")
     print("columns:", " | ".join(picked), "   (mean(n) over examples and repetitions)")
-    experiments = sorted({r["exp"] for r in rs
-                          if r["commit"] in picked and args.exp.lower() in r["exp"].lower()})
+    experiments = sorted({r.exp for r in rs
+                          if r.commit in picked and args.exp.lower() in r.exp.lower()})
     for exp in experiments:
         by = collections.defaultdict(lambda: collections.defaultdict(list))
         for r in rs:
-            if r["exp"] == exp and r["commit"] in picked and r["score"] is not None:
-                by[r["ev"]][r["commit"]].append(r["score"])
+            if r.exp == exp and r.commit in picked and r.score is not None:
+                by[r.ev][r.commit].append(r.score)
         names = sorted(by, key=lambda name: (name not in COST_NAMES, name.lower()))
         if not names:
             continue
@@ -115,17 +102,17 @@ def cmd_compare(rs: list[dict], args) -> None:
             print("  " + name.ljust(34) + "".join(x.rjust(14) for x in cells))
 
 
-def cmd_detail(rs: list[dict], args) -> None:
+def cmd_detail(rs: list[EvalRow], args) -> None:
     order = commit_order(rs)
     commit = next((c for c in reversed(order) if match(c, args.commit)), None)
     if not commit:
-        sys.exit("unknown commit")
-    for r in sorted((r for r in rs if r["commit"] == commit and r["score"] is not None
-                     and r["score"] < args.below and r["ev"] not in COST_NAMES
-                     and args.ev in r["ev"]),
-                    key=lambda r: (r["exp"], r["example"], r["rep"] or 0, r["ev"])):
-        print(f"[{r['exp']}] {r['example'][:34]} rep{r['rep']} {r['ev']} = {r['score']:.2f}\n"
-              f"    {r['why'][:args.chars]}")
+        raise SystemExit("unknown commit")
+    for r in sorted((r for r in rs if r.commit == commit and r.score is not None
+                     and r.score < args.below and r.ev not in COST_NAMES
+                     and args.ev in r.ev),
+                    key=lambda r: (r.exp, r.example, r.rep or 0, r.ev)):
+        print(f"[{r.exp}] {r.example[:34]} rep{r.rep} {r.ev} = {r.score:.2f}\n"
+              f"    {r.why[:args.chars]}")
 
 
 def summarize_trace(spans_: list[dict]) -> tuple[int, int, dict, dict, int, int, int, list[str]]:
@@ -168,15 +155,15 @@ def summarize_trace(spans_: list[dict]) -> tuple[int, int, dict, dict, int, int,
     return llm, tokens, dict(tools), dict(kinds), len(conversations), ctx, grounded, errors
 
 
-def cmd_traces(rs: list[dict], args) -> None:
+def cmd_traces(rs: list[EvalRow], args) -> None:
     order = commit_order(rs)
     commit = next((c for c in reversed(order) if match(c, args.commit)), None)
     if not commit:
-        sys.exit("unknown commit")
+        raise SystemExit("unknown commit")
     traces = {}
     for r in rs:
-        if r["commit"] == commit and r["trace"]:
-            traces[(r["exp"], r["example"], r["rep"])] = r["trace"]
+        if r.commit == commit and r.trace:
+            traces[(r.exp, r.example, r.rep)] = r.trace
     for (exp, example, rep), trace in sorted(traces.items(),
                                              key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or 0)):
         llm, tokens, tools, kinds, cycles, ctx, grounded, errors = summarize_trace(spans([trace]))

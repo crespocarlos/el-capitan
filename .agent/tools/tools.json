@@ -195,6 +195,15 @@
       "smoke": "imported by crew-evals-compare.py"
     },
     {
+      "name": "evals_rows.py",
+      "dir": "evals",
+      "kind": "module",
+      "category": "evals",
+      "owner": "crew-evals",
+      "help": "imported by crew-evals-compare.py",
+      "smoke": "imported by crew-evals-compare.py"
+    },
+    {
       "name": "evals_diagnose.py",
       "dir": "evals",
       "kind": "module",

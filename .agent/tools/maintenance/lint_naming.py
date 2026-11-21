@@ -44,7 +44,7 @@ def installed_tool_names(root: Path) -> set[str]:
     is a broken invocation and reports as one.
     """
     try:
-        data = json.loads((root / MANIFEST).read_text())
+        data = json.loads((root / MANIFEST).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return set()
     return {entry.get("name") for section, _ in CATALOG_SECTIONS

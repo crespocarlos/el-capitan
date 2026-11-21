@@ -7,14 +7,16 @@ point adds only argument handling; task context adds only the artifact reader.
 """
 from __future__ import annotations
 
-import glob
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 from task_state import read_status
+
+
+class ResolverUnavailable(RuntimeError):
+    """Git state that cannot resolve a task: the caller exits 1 rather than reporting "no task"."""
 
 
 def git_output(args: list[str]) -> str:
@@ -27,22 +29,20 @@ def git_output(args: list[str]) -> str:
 def resolve_context(remote: str = "", branch: str = "") -> tuple[str, str]:
     """The remote and branch to match on, from the overrides or the current git context.
 
-    An unresolvable remote or a detached HEAD is a broken pipeline state, not "no task": the caller
-    aborts on exit 1 rather than silently taking the no-task path.
+    An unresolvable remote or a detached HEAD is a broken pipeline state, not "no task": this raises
+    so the entry point can exit 1 instead of silently taking the no-task path.
     """
     if remote:
         current_remote = remote
     else:
         current_remote = git_output(["git", "remote", "get-url", "origin"])
         if not current_remote:
-            print("No git remote configured; cannot resolve task state.", file=sys.stderr)
-            sys.exit(1)
+            raise ResolverUnavailable("No git remote configured; cannot resolve task state.")
     if branch:
         return current_remote, branch
     current_branch = git_output(["git", "branch", "--show-current"])
     if not current_branch:
-        print("Not on a branch; crew commands require an active branch.", file=sys.stderr)
-        sys.exit(1)
+        raise ResolverUnavailable("Not on a branch; crew commands require an active branch.")
     return current_remote, current_branch
 
 
@@ -53,10 +53,9 @@ def matching_tasks(current_remote: str, current_branch: str) -> list[tuple[str, 
     matching only `branch` stranded the drafting checkout after implementation.
     """
     matches = []
-    for task_id_file in glob.glob(os.path.expanduser("~/.agent/tasks/*/.task-id")):
+    for task_id_file in sorted((Path.home() / ".agent" / "tasks").glob("*/.task-id")):
         try:
-            with open(task_id_file) as handle:
-                data = json.load(handle)
+            data = json.loads(task_id_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             print(f"Warning: malformed .task-id at {task_id_file} — skipping.", file=sys.stderr)
             continue
@@ -64,7 +63,7 @@ def matching_tasks(current_remote: str, current_branch: str) -> list[tuple[str, 
         if data.get("spec_branch"):
             task_branches.add(data["spec_branch"])
         if data.get("repo_remote_url", "") == current_remote and current_branch in task_branches:
-            matches.append((data.get("created_at", ""), str(Path(task_id_file).parent)))
+            matches.append((data.get("created_at", ""), str(task_id_file.parent)))
     return matches
 
 
@@ -78,7 +77,7 @@ def best_match(matches: list[tuple[str, str]]) -> str:
         return matches[0][1]
     best, best_date = None, ""
     for created_at, task_dir in matches:
-        spec_status = read_status(os.path.join(task_dir, "SPEC.md"))
+        spec_status = read_status(Path(task_dir) / "SPEC.md")
         if spec_status is not None and spec_status.lower() != "done":
             if best is None or created_at > best_date:
                 best, best_date = task_dir, created_at
@@ -89,17 +88,18 @@ def best_match(matches: list[tuple[str, str]]) -> str:
 
 def resolved_record(best: str, current_remote: str, current_branch: str) -> dict:
     """The resolver's JSON record for one chosen task directory."""
+    task = Path(best)
     try:
-        metadata = json.loads((Path(best) / ".task-id").read_text())
+        metadata = json.loads((task / ".task-id").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         metadata = {}
     return {
         "task_dir": best, "remote": current_remote, "branch": current_branch,
-        "status": read_status(os.path.join(best, "SPEC.md")),
+        "status": read_status(task / "SPEC.md"),
         "slug": metadata.get("slug"), "created_at": metadata.get("created_at"),
-        "has_spec": (Path(best) / "SPEC.md").is_file(),
-        "has_report": (Path(best) / "REPORT.md").is_file(),
-        "has_review": (Path(best) / "REVIEW.md").is_file(),
+        "has_spec": (task / "SPEC.md").is_file(),
+        "has_report": (task / "REPORT.md").is_file(),
+        "has_review": (task / "REVIEW.md").is_file(),
     }
 
 

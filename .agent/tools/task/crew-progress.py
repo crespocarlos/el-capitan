@@ -12,9 +12,10 @@ import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Append a pipeline transition to PROGRESS.md."
     )
@@ -22,12 +23,12 @@ def main() -> None:
     parser.add_argument("transition", help='Transition string e.g. "APPROVED → IMPLEMENTING"')
     args = parser.parse_args()
 
-    task_dir = args.task_dir
+    task_dir = Path(args.task_dir)
     transition = args.transition
 
-    if not os.path.isdir(task_dir):
+    if not task_dir.is_dir():
         print(f"log-progress: task_dir does not exist: {task_dir}", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     wf = os.environ.get("CREW_WORKFLOW", "")
     crew = os.environ.get("CREW_MEMBER", "")
@@ -45,10 +46,10 @@ def main() -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] TRANSITION: {transition}{suffix}\n"
 
-    progress_path = os.path.join(task_dir, "PROGRESS.md")
-    with open(progress_path, "a", encoding="utf-8") as f:
-        f.write(line)
+    with (task_dir / "PROGRESS.md").open("a", encoding="utf-8") as handle:
+        handle.write(line)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

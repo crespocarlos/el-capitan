@@ -42,7 +42,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | --- | --- | --- | --- | --- |
 | `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py` | `transitions.json` | Guidance context, task state, resolution, gates, worktrees |
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
-| `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
+| `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py` | `memory_store.py`, `memory_units.py`, `memory_recall.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
 | `maintenance/` | `crew-lint.py` | `lint_catalog.py`, `lint_naming.py`, `lint_prompts.py`, `lint_references.py`, `lint_progress.py`, `lint_budget.py`, `lint_files.py` | — | Repository validation, one module per lint family |
 | `lib/` | — | `files.py`, `git.py`, `cli.py` | — | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
@@ -158,11 +158,12 @@ module.
   remote are left to `crew cleanup`.
 - The Elasticsearch tools are read-only. `crew-evals-inspect.py` and `crew-evals-compare.py` use `ES_URL`,
   plus `ES_API_KEY` or `ES_USER`/`ES_PASS`. `evals_query.py` owns that access for the compare tool
-  (the HTTP call and the paged score/trace queries), `evals_report.py` the printed tables and the
-  per-trace summary, `evals_diagnose.py` the sign test and the change-attribution bundle, and
-  `evals_sources.py` the suite lookup and changed-path classification. `evals/compare_run.py`
-  imports the compare tool by path and reads `common_prefix`, `sign_test_pvalue`, and
-  `classify_paths` from it, which is why the entry point re-exports them.
+  (the HTTP call and the paged score/trace queries), `evals_rows.py` the row record built from one
+  score document, `evals_report.py` the printed tables and the per-trace summary, `evals_diagnose.py`
+  the sign test and the change-attribution bundle, and `evals_sources.py` the suite lookup and
+  changed-path classification. `evals/compare_run.py` imports the compare tool by path and reads
+  `common_prefix`, `sign_test_pvalue`, and `classify_paths` from it, which is why the entry point
+  re-exports them.
 - The repository is standard-library-only. `requirements.txt` documents that deliberate absence of
   third-party dependencies.
 

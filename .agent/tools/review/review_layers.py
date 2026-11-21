@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from review_findings import EMITTED, read_json_object
+from review_findings import ABSENT, Finding, read_json_object
 
 SEVERITIES = {"high", "medium", "low", "nit"}
 MAX_LAYERS = 8
@@ -129,7 +129,7 @@ def check_coverage(hunks_path: Path, layers_path: Path) -> dict:
     return {"hunks": len(known), "layers": len(layers)}
 
 
-def check_hunk_refs(findings: list[dict], known: list[str]) -> None:
+def check_hunk_refs(findings: list[Finding], known: list[str]) -> None:
     """Emitted findings name the hunks whose change causes them, and only real ones.
 
     A blocking or attention finding that no hunk caused is about code the change did not
@@ -137,32 +137,32 @@ def check_hunk_refs(findings: list[dict], known: list[str]) -> None:
     """
     known_set = set(known)
     for f in findings:
-        if f.get("disposition") not in EMITTED:
+        if not f.is_emitted():
             continue
-        refs = f.get("hunks", [])
+        refs = [] if f.hunks is ABSENT else f.hunks
         if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
-            raise ValueError(f"finding {f['title']!r}: hunks must be a list of hunk ids")
+            raise ValueError(f"finding {f.title!r}: hunks must be a list of hunk ids")
         unknown = [ref for ref in refs if ref not in known_set]
         if unknown:
-            raise ValueError(f"finding {f['title']!r} cites unknown hunk(s): {', '.join(unknown)}")
-        if f["label"] in {"blocking", "attention"} and not refs:
+            raise ValueError(f"finding {f.title!r} cites unknown hunk(s): {', '.join(unknown)}")
+        if f.label in {"blocking", "attention"} and not refs:
             raise ValueError(
-                f"{f['label']} finding {f['title']!r} cites no hunk; name the hunk(s) whose change "
+                f"{f.label} finding {f.title!r} cites no hunk; name the hunk(s) whose change "
                 "causes it, or route it to defer"
             )
 
 
-def layer_coverage(layers: list[dict], findings: list[dict]) -> str:
-    emitted = [f for f in findings if f.get("disposition") in EMITTED]
+def layer_coverage(layers: list[dict], findings: list[Finding]) -> str:
+    emitted = [f for f in findings if f.is_emitted()]
     lines = ["### Coverage by layer"]
     for layer in layers:
         assigned = set(layer["hunks"])
-        hits = [f for f in emitted if assigned & set(f.get("hunks", []))]
-        result = "; ".join(f"[{f['label']}] {f['title']}" for f in hits) or "no findings"
+        hits = [f for f in emitted if assigned & set([] if f.hunks is ABSENT else f.hunks)]
+        result = "; ".join(f"[{f.label}] {f.title}" for f in hits) or "no findings"
         lines.append(f"- {layer.get('title') or layer['id']} ({', '.join(layer['hunks'])}): {result}")
-    unmapped = [f for f in emitted if not f.get("hunks")]
+    unmapped = [f for f in emitted if not (f.hunks is not ABSENT and f.hunks)]
     if unmapped:
-        lines.append("- outside the map: " + "; ".join(f"[{f['label']}] {f['title']}" for f in unmapped))
+        lines.append("- outside the map: " + "; ".join(f"[{f.label}] {f.title}" for f in unmapped))
     return "\n".join(lines) + "\n"
 
 

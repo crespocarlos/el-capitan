@@ -71,7 +71,6 @@ def main() -> int:
 
     files: dict[str, str] = {}
     targets = []
-    failed = 0
     for path in args.paths:
         try:
             guidance = guidance_paths(root, path)
@@ -81,11 +80,10 @@ def main() -> int:
                 )
             targets.append({"path": str(path), "guidance": [str(item) for item in guidance]})
         except (OSError, ValueError) as error:
-            failed += 1
             targets.append({"path": str(path), "guidance": [], "error": str(error)})
 
     print(json.dumps({"root": str(root), "files": files, "targets": targets}, indent=2))
-    if failed == len(args.paths):
+    if sum(1 for target in targets if "error" in target) == len(args.paths):
         print("error: no target resolved", file=sys.stderr)
         return 1
     return 0

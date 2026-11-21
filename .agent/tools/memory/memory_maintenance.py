@@ -46,7 +46,7 @@ def init_store() -> int:
     for directory in (root / "global", root / "repos", root / "observations", root / ".inbox"):
         directory.mkdir(exist_ok=True)
     ignore = root / ".gitignore"
-    existing = ignore.read_text() if ignore.exists() else ""
+    existing = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
     # `.sessions` holds raw tool telemetry; never commit it alongside approved units.
     additions = [line for line in (".index.sqlite", ".lock", ".sessions/")
                  if line not in existing.splitlines()]

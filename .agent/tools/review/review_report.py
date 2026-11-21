@@ -17,7 +17,7 @@ from pathlib import Path
 
 from review_findings import (
     CODE_MODES,
-    EMITTED,
+    Finding,
     atomic_write,
     canonical_personas,
     check_findings,
@@ -145,18 +145,18 @@ def reviewed_at(args: argparse.Namespace, report: str) -> str:
     return report.rstrip() + f"\n\nReviewed at: {head}\n"
 
 
-def append_deferred(owner: Path, rows: list[dict]) -> None:
+def append_deferred(owner: Path, rows: list[Finding]) -> None:
     """Append each deferred finding to DEFERRED.md, skipping one already recorded."""
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     path = owner / "DEFERRED.md"
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     with path.open("a", encoding="utf-8") as handle:
         for f in rows:
-            where = f"{f.get('file', '')}:{f.get('line', '')}".strip(":")
-            reason = f.get("reason", "pre-existing or out of scope")
-            if f"[{f['label']}] {f['title']} — `{where}`" in existing:
+            where = f"{f.text('file')}:{f.text('line')}".strip(":")
+            reason = f.text("reason") or "pre-existing or out of scope"
+            if f"[{f.label}] {f.title} — `{where}`" in existing:
                 continue
-            handle.write(f"- [{stamp}] [{f['label']}] {f['title']} — `{where}` — {reason}\n")
+            handle.write(f"- [{stamp}] [{f.label}] {f.title} — `{where}` — {reason}\n")
 
 
 def persist(args: argparse.Namespace) -> int:
@@ -166,7 +166,7 @@ def persist(args: argparse.Namespace) -> int:
     coverage_section = coverage_gap = ""
     if args.strict:
         coverage_section, coverage_gap = strict_gates(args, owner, findings)
-    report = args.report.read_text()
+    report = args.report.read_text(encoding="utf-8")
     # The two generated sections are derived from --findings and --files, so a report carrying its
     # own copy would render the table twice and a reader could not tell which is authoritative.
     # Match a real level-3 heading only: a finding may quote one verbatim.
@@ -190,10 +190,10 @@ def persist(args: argparse.Namespace) -> int:
         # Per-finding rules always; the path-scoped evidence gate only when a path set exists. A spec
         # or idea review passes no paths, and gating the whole check on `--files` silently skipped
         # the `validation` requirement in exactly those modes.
-        check_findings([f for f in findings if f.get("disposition") in EMITTED])
+        check_findings([f for f in findings if f.is_emitted()])
         if args.files:
-            check_strict([f for f in findings if f.get("disposition") in EMITTED], args.files)
-    rows = [f for f in findings if f.get("disposition") == "defer"]
+            check_strict([f for f in findings if f.is_emitted()], args.files)
+    rows = [f for f in findings if f.disposition == "defer"]
     args.review_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(args.review_dir / "REVIEW.md", report)
     task_report = "REVIEW.md" if args.mode in CODE_MODES else f"REVIEW.{args.mode}.md"

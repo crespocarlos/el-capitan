@@ -147,7 +147,8 @@ def initialize_database() -> None:
 
 @contextmanager
 def store_lock() -> Iterator[None]:
-    lock = (memory_root() / ".lock").open("a+")
+    # Binary mode: this file only carries an flock, and a text open would need an encoding it never uses.
+    lock = (memory_root() / ".lock").open("a+b")
     try:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         yield
