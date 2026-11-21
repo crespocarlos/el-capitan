@@ -32,13 +32,13 @@ source ~/.agent/bin/crew-diff.sh --full
 If that exits 1 (no committed changes on branch), fall back:
 
 ```bash
-CHANGED_FILES=$(git diff --cached --name-only)
+CHANGED_FILES=$(~/.agent/bin/crew-repo-info.py --field staged)
 ```
 
 If that returns empty, fall back:
 
 ```bash
-CHANGED_FILES=$(git diff --name-only)
+CHANGED_FILES=$(~/.agent/bin/crew-repo-info.py --field changed)
 ```
 
 ### Step 3: Extract exported symbols

@@ -62,7 +62,7 @@ install — and a module cannot leak into the command surface.
 ```
 .agent/tools/
   tools.json  TOOLS.md  requirements.txt   catalog and its documentation
-  lib/            cli.py files.py git.py    shared helpers: argparse factory, atomic write, git/gh
+  lib/            cli.py files.py git.py git_remote.py  shared helpers: argparse factory, atomic write, git/gh
   task/           Task state, worktrees, progress and metric logging
   review/         Review pipeline: findings, layers, personas, report, hunk parsing
   memory/         Typed memory store and retrieval
@@ -72,8 +72,10 @@ install — and a module cannot leak into the command surface.
 
 Rules that the structural gate enforces:
 
-- No module over 200 lines. The entry point of a command stays under 120 and holds argument handling
-  and exit codes only; logic lives in modules.
+- No module over 200 lines, in every package under `.agent/tools/` — `lib/`, `task/`, `review/`,
+  `review/nightshift/`, `memory/`, `evals/`, and `maintenance/` alike. The capped set is derived from
+  the tree, so a new package is capped without anyone remembering to add it. The entry point of a
+  command stays under 120 and holds argument handling and exit codes only; logic lives in modules.
 - No function over 50 lines. If it does not fit, the branch boundary inside it is a function.
 - Every top-level function carries a return annotation.
 - Four-space indent, no tabs, in every file.
@@ -82,11 +84,12 @@ Rules that the structural gate enforces:
 - **Git lives in `lib/git.py`.** No other Python module builds a `git` or `gh` argv, because a
   hand-rolled call reads empty output when git fails and then acts on it. Import the helper for the
   question — root, branch, remote, default branch, ancestry, blob, diff base — and let `GitError`
-  reach the caller. Prompts follow the same rule in their own terms: a prompt asks a command
-  (`crew-repo-info.py`, `crew-diff.sh`), never git, and raw git stays only where the user approved
-  a mutation. Local reads use git alone; the two network reads (`default_branch`, `fetch_remote`)
-  try `gh` first because it carries the authentication, fall back to git, and raise naming both.
-  `evals/tools/test_python_shape.py` fails a git argv outside `lib/`.
+  reach the caller. `lib/git_remote.py` holds the network half and `git.py` re-exports it. Prompts
+  follow the same rule in their own terms: a prompt asks a command (`crew-repo-info.py`,
+  `crew-worktree.py`, `crew-diff.sh`), never git, and raw git stays only where the user approved a
+  mutation. Local reads use git alone; the network reads (`default_branch`, `fetch_remote`,
+  `remote_tip`, `behind_count`) try `gh` first because it carries the authentication, fall back to
+  git, and raise naming both. `evals/tools/test_python_shape.py` fails a git argv outside `lib/`.
 
 ## Exit codes
 

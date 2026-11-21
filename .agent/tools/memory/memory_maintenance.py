@@ -1,46 +1,36 @@
 #!/usr/bin/env python3
-"""Memory maintenance: init, reindex, doctor, stats, consolidate, ingest, and inbox import.
+"""Memory maintenance: init, reindex, doctor, stats, and consolidate.
 
-Store lifecycle and bulk operations that do not fit the unit or recall paths. Depends on
-`store.py`, `units.py`, and `recall.py`.
+Store lifecycle and the bulk operations that report on the whole store. Ingesting external
+Markdown is `memory_ingest`, and inbox drafting and importing is `memory_inbox`, because each has
+its own failure modes; both are re-exported here so `crew-mem.py` keeps one import site.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sqlite3
-import subprocess
 import sys
 from pathlib import Path
 
-from memory_store import (
-    MemoryError,
-    atomic_write,
-    canonical_scope,
-    commit_external_changes,
-    duplicate_candidates,
+from lib.files import atomic_write
+from memory_commit import mutate, run_git
+from memory_context import is_stale
+from memory_frontmatter import render_unit
+from memory_index import (
     ensure_store,
-    git_commit,
     initialize_database,
-    memory_root,
-    mutate,
-    normalized,
-    observation_directory,
-    parse_unit,
     refresh,
-    repo_key,
-    run_git,
-    scope_directory,
-    slug,
-    store_lock,
-    tokens,
     write_indexes_for_scopes,
 )
-from memory_units import archive, render_unit
-from memory_recall import is_stale
+from memory_paths import memory_root, normalized, repo_key, tokens
+from memory_units import archive
+from memory_ingest import ingest, parse_imports, write_units  # noqa: F401 — re-exported
+from memory_inbox import import_inbox, imported_path, inbox_report  # noqa: F401 — re-exported
 
 
 def init_store() -> int:
+    """Create every store directory, the ignore file, and the index."""
     root = memory_root()
     root.mkdir(parents=True, exist_ok=True)
     for directory in (root / "global", root / "repos", root / "observations", root / ".inbox"):
@@ -61,6 +51,7 @@ def init_store() -> int:
 
 def reindex(args: argparse.Namespace) -> int:
     ensure_store()
+
     def change():
         return []
     code = mutate("mem: reindex", change)
@@ -101,32 +92,8 @@ def duplicate_report(rows: list) -> list[str]:
     return report
 
 
-def inbox_report(conn: sqlite3.Connection, source: Path) -> str:
-    """The verdict for one inbox draft: NOOP, UPDATE, SUPERSEDE, ADD, or an inbox error."""
-    try:
-        candidate = parse_unit(source, inferred_scope=repo_key())
-    except (OSError, ValueError) as error:
-        return f"inbox error: {source.name}: {error}"
-    existing = conn.execute("""
-        SELECT id, title, body FROM units
-        WHERE scope = ? AND type = ? AND status = 'active'
-    """, (candidate["scope"], candidate["type"])).fetchall()
-    exact = next((row for row in existing if row["body"] == candidate["body"]), None)
-    same_title = next(
-        (row for row in existing if normalized(row["title"]) == normalized(candidate["title"])),
-        None,
-    )
-    overlap = duplicate_candidates(conn, candidate)
-    if exact:
-        return f"NOOP inbox: {source.name} matches {exact['id']}"
-    if same_title:
-        return f"UPDATE inbox: {source.name} replaces {same_title['id']}"
-    if overlap:
-        return f"SUPERSEDE inbox: {source.name} overlaps {' '.join(overlap)}"
-    return f"ADD inbox: {source.name}"
-
-
 def consolidate(args: argparse.Namespace) -> int:
+    """Report what consolidation would do, then archive the confirmed units."""
     ensure_store()
     conn = refresh()
     report, archives = [], []
@@ -164,18 +131,6 @@ def consolidate(args: argparse.Namespace) -> int:
     return 0
 
 
-def imported_path(unit: dict) -> Path:
-    base = scope_directory(unit["scope"]) / f"{unit['type']}_{slug(unit['title'])}.md"
-    if not base.exists():
-        return base
-    try:
-        if parse_unit(base)["id"] == unit["id"]:
-            return base
-    except ValueError:
-        pass
-    return scope_directory(unit["scope"]) / f"{unit['type']}_{slug(unit['title'])}-{unit['id'][:8]}.md"
-
-
 def write_units(writes: list[tuple[Path, str]]) -> list[tuple[Path, str | None]]:
     """Commit, then write each rendered unit, and return each file's previous content.
 
@@ -193,157 +148,3 @@ def write_units(writes: list[tuple[Path, str]]) -> list[tuple[Path, str | None]]
     refreshed.close()
     run_git(["add", "-A"])
     return backups
-
-
-def restore_units(backups: list[tuple[Path, str | None]]) -> None:
-    """Put every written unit back the way it was, deleting the ones that did not exist."""
-    for path, previous in backups:
-        if previous is None:
-            path.unlink(missing_ok=True)
-        else:
-            atomic_write(path, previous)
-
-
-def parse_imports(source: Path, destination_scope: str) -> tuple[list, list[str], list[str]]:
-    """Parse the source units; returns the parsed pairs, the skipped names, and the errors."""
-    parsed, errors, skipped = [], [], []
-    for path in sorted(source.glob("*.md")):
-        if path.name in {"MEMORY.md", "INDEX.md"}:
-            skipped.append(path.name)
-            continue
-        try:
-            unit = parse_unit(
-                path, source_path=f"import/{path.name}", inferred_scope=destination_scope
-            )
-            unit["scope"] = destination_scope
-            parsed.append((path, unit))
-        except (OSError, ValueError) as error:
-            errors.append(f"parse error: {path.name}: {error}")
-    return parsed, skipped, errors
-
-
-def ingest(args: argparse.Namespace) -> int:
-    """Copy external Markdown units without ever modifying their source directory."""
-    ensure_store()
-    source = Path(args.path).expanduser()
-    if not source.is_dir():
-        print(f"source directory unavailable: {source}", file=sys.stderr)
-        return 1
-    destination_scope = canonical_scope(args.repo or repo_key())
-    parsed, skipped, errors = parse_imports(source, destination_scope)
-    for name in skipped:
-        print(f"skipped: {name}")
-    for error in errors:
-        print(error, file=sys.stderr)
-    if args.dry_run:
-        for _, unit in parsed:
-            print(unit["id"])
-        return 0
-    with store_lock():
-        conn = refresh(write_indexes=False)
-        existing = {
-            row["id"]: row["body"] for row in conn.execute("SELECT id, body FROM units")
-        }
-        writes = []
-        for _, unit in parsed:
-            target = imported_path(unit)
-            rendered = render_unit(unit)
-            same_id = existing.get(unit["id"])
-            if same_id is not None and same_id == unit["body"]:
-                continue
-            if target.exists() and target.read_text(encoding="utf-8") == rendered:
-                continue
-            writes.append((target, rendered))
-        if not writes:
-            print("no changes")
-            return 0
-        backups: list[tuple[Path, str | None]] = []
-        try:
-            backups = write_units(writes)
-            git_commit(f"mem: ingest {args.source} {len(writes)} units")
-        except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
-            restore_units(backups)
-            print(str(error), file=sys.stderr)
-            return 2
-    for path, unit in parsed:
-        if any(target.name.startswith(f"{unit['type']}_{slug(unit['title'])}") for target, _ in writes):
-            print(unit["id"])
-    return 0
-
-
-def gather_inbox(
-    conn: sqlite3.Connection, sources: list[Path]
-) -> tuple[list[tuple[Path, str]], list[Path], list[str], list[str]]:
-    """Parse the chosen drafts; returns writes, removals, errors, and duplicate reports."""
-    writes, removals, errors, duplicates = [], [], [], []
-    for source in sources:
-        if not source.exists():
-            errors.append(f"inbox file not found: {source.name}")
-            continue
-        try:
-            unit = parse_unit(source, inferred_scope=repo_key())
-        except (OSError, ValueError) as error:
-            errors.append(f"parse error: {source.name}: {error}")
-            continue
-        candidate_duplicates = duplicate_candidates(conn, unit)
-        if candidate_duplicates:
-            duplicates.append(f"{source.name}: duplicate {' '.join(candidate_duplicates)}")
-            continue
-        target = imported_path(unit)
-        writes.append((target, render_unit(unit)))
-        removals.append(source)
-    return writes, removals, errors, duplicates
-
-
-def apply_inbox(writes: list[tuple[Path, str]], removals: list[Path]) -> int:
-    """Write the imported units, remove the consumed drafts, and commit; 0 or 2 on failure."""
-    backups: list[tuple[Path, str | None]] = []
-    try:
-        commit_external_changes()
-        for path, rendered in writes:
-            previous = path.read_text(encoding="utf-8") if path.exists() else None
-            atomic_write(path, rendered)
-            backups.append((path, previous))
-        for source in removals:
-            backups.append((source, source.read_text(encoding="utf-8")))
-            source.unlink()
-        refreshed = refresh(write_indexes=False)
-        backups.extend(write_indexes_for_scopes(refreshed))
-        refreshed.close()
-        run_git(["add", "-A"])
-        git_commit(f"mem: import-inbox {len(writes)} units")
-    except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
-        restore_units(backups)
-        print(str(error), file=sys.stderr)
-        return 2
-    return 0
-
-
-def import_inbox(args: argparse.Namespace) -> int:
-    ensure_store()
-    inbox = memory_root() / ".inbox"
-    wanted = set(args.files or [])
-    sources = sorted(inbox.glob("*.md")) if args.all or not wanted else [
-        inbox / name for name in wanted
-    ]
-    if not sources:
-        print("no changes")
-        return 0
-    with store_lock():
-        conn = refresh(write_indexes=False)
-        writes, removals, errors, duplicates = gather_inbox(conn, sources)
-        if writes:
-            code = apply_inbox(writes, removals)
-            if code:
-                return code
-        for path, _ in writes:
-            print(path.stem)
-        for error in errors:
-            print(error, file=sys.stderr)
-        for duplicate in duplicates:
-            print(f"skipped: {duplicate}", file=sys.stderr)
-        if errors:
-            return 1
-        if duplicates and not writes:
-            return 3
-    return 0

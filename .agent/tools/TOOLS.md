@@ -40,12 +40,13 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py` | `transitions.json` | Guidance context, task state, resolution, gates, worktrees, repository facts |
-| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py` | `transitions.json` | Guidance context, task state, resolution, gates, worktrees, repository facts |
+| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_vocabulary.py`, `review_models.py`, `review_gates.py`, `review_layers.py`, `review_map.py`, `review_personas.py`, `review_classify.py`, `review_coverage.py`, `review_report.py`, `review_persist_gates.py`, `review_parse.py`, `review_limits.py`, `assemble_config.py`, `assemble_common.py`, `assemble_map.py`, `assemble_files.py`, `assemble_personas.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py` | `memory_store.py`, `memory_units.py`, `memory_recall.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
+| `memory/` | `crew-mem.py` | `memory_store.py`, `memory_paths.py`, `memory_scalars.py`, `memory_frontmatter.py`, `memory_index.py`, `memory_commit.py`, `memory_add.py`, `memory_units.py`, `memory_cite.py`, `memory_search.py`, `memory_context.py`, `memory_journal.py`, `memory_journal_add.py`, `memory_recall.py`, `memory_inbox.py`, `memory_ingest.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
 | `maintenance/` | `crew-lint.py` | `lint_catalog.py`, `lint_naming.py`, `lint_prompts.py`, `lint_references.py`, `lint_progress.py`, `lint_budget.py`, `lint_files.py` | — | Repository validation, one module per lint family |
-| `lib/` | — | `files.py`, `git.py`, `cli.py` | — | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
+| `lib/` | — | `files.py`, `git.py`, `git_remote.py`, `cli.py` | — | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
 The table is grouped by `kind`, which is what the manifest declares: a row's Commands column is
@@ -58,8 +59,12 @@ file at that exact path.
 `crew-mem.py`, `crew-review-findings.py`, `crew-ls.py`, `crew-task-context.py`, `crew-evals-compare.py`,
 and `crew-lint.py` are argparse entry points over their modules: each parses the command line and
 dispatches, and holds no command logic. Modules import each other by their namespaced name in
-dependency order (`memory_store` → `memory_units` → `memory_recall` → `memory_maintenance`;
-`review_findings` → `review_personas`/`review_layers` → `review_report`; `task_state` →
+dependency order (`memory_paths` → `memory_scalars` → `memory_frontmatter` → `memory_index` →
+`memory_commit` → `memory_add`/`memory_units`/`memory_cite` → `memory_search`/`memory_context`/
+`memory_journal` → `memory_inbox`/`memory_ingest`/`memory_maintenance`, with `memory_store` the
+façade that re-exports all of it; `review_vocabulary` → `review_models` → `review_gates` →
+`review_findings` → `review_classify`/`review_coverage`/`review_map` → `review_layers`/
+`review_personas` → `review_persist_gates` → `review_report`; `task_state` →
 `task_resolve`/`task_typed_tests` → `task_gates`/`task_report`/`task_artifacts`; `evals_query` →
 `evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_naming`/`lint_budget` →
 `lint_catalog`/`lint_prompts`/`lint_references` → `lint_progress`), so a module never imports back
@@ -67,6 +72,11 @@ into one that imports it. A hyphenated entry point cannot be a module, so it put
 and `.agent/tools` on `sys.path` once, which is also what makes `lib` importable. The entry points
 re-export the names their public contract names, so `crew-assemble-packages.py` and the tests can
 keep importing them from the command file rather than reaching into a private module.
+
+**The module ceiling covers every package.** No module under `.agent/tools/` exceeds 200 lines,
+wherever it lives: `test_python_shape.py` derives the capped set from the tree rather than from a
+list, so a package added tomorrow is capped the moment its directory exists. There is no per-package
+exception and no exception by filename.
 
 The one structural rule the split enforces: no module in `task/`, `maintenance/`, or `evals/`
 exceeds 200 lines (`evals/tools/test_python_shape.py` reports `long-module`), and the
@@ -182,34 +192,50 @@ module.
   server over HTTP for e2e runs and cannot be generalized. `doctor` is read-only and never calls
   `/api/state`, which advances the queue and can start a run. It never uses the queue or
   `post-comment` endpoints, because queued runs post a PR comment by default. Exit 3 means the
-  server is unreachable.
+  server is unreachable. The entry point holds argparse and exit codes only; the `review/nightshift/`
+  package beside it holds the HTTP client (`client.py`), the checkout and machine probes
+  (`location.py`), the preflight table (`checks.py`), its assembly (`doctor.py`), and the run
+  operations (`commands.py`).
 - `crew-default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the single
   definition used by skills and `crew-worktree.py`: the ref walk now lives in `lib/git.py`
   (`default_branch`), and this script is a thin wrapper over `crew-repo-info.py --network`.
 - `crew-repo-info.py` is the one command that answers the facts a prompt used to ask git for:
-  `root`, `branch`, `head`, `head_short`, `dirty`, `staged`, `staged_dirty`, `remote`, `remote_url`,
-  `repo` (owner/repo), `repo_name`, `origin_repo`, and `default_branch`. `staged` is the name list
-  staged against HEAD and `staged_dirty` the subset still edited afterwards, which is what `crew
-  commit`'s fast path checks: an edited-but-restaged file keeps the same staged names, so the list
-  alone cannot prove a review still applies. `--field NAME` prints one value bare, so a prompt
-  assigns it instead of parsing; `--json` prints the whole record; `--root PATH` reads another
-  checkout, which is how a worktree's branch is read without `cd`. `--remote` defaults to `upstream`
-  when it exists and `origin` otherwise, so a fork reports the repo its PR targets. `--network`
-  resolves the default branch through `gh` first and `git` second; without it the answer comes from
-  the local symref, so a prompt pays no round trip for a branch it does not need. `--diff-base` and
+  `root`, `branch`, `head`, `head_short`, `dirty`, `changed`, `staged`, `staged_dirty`, `remote`,
+  `remote_url`, `repo` (owner/repo), `repo_name`, `origin_repo`, and `default_branch`. `changed` is
+  the working-tree name list and `staged` the index list, which is what `crew test` falls back to
+  when `crew-diff.sh` reports no committed change; `staged_dirty` is the subset of `staged` still
+  edited afterwards, which is what `crew commit`'s fast path checks: an edited-but-restaged file
+  keeps the same staged names, so the list alone cannot prove a review still applies. `--field NAME`
+  prints one value bare, so a prompt assigns it instead of parsing; `--json` prints the whole record;
+  `--root PATH` reads another checkout, which is how a worktree's branch is read without `cd`.
+  `--remote` defaults to `upstream` when it exists and `origin` otherwise, so a fork reports the repo
+  its PR targets. `--network` resolves the default branch through `gh` first and `git` second;
+  without it the answer comes from the local symref, so a prompt pays no round trip for a branch it
+  does not need — which is why the hook scripts may call it on every write. `--diff-base` and
   `--fork-point` answer the diff question `crew-diff.sh` used to walk itself. Exit 1 when the fact
   asked for is unavailable, because a printed null with exit 0 is the silent-empty answer this
   command exists to remove.
 - **Git is reached through `lib/git.py`, never through a hand-rolled call.** No Python module outside
   that file builds a `git` or `gh` argv, and no prompt runs git to learn the root, branch, remote, or
   diff base — it asks `crew-repo-info.py` or sources `crew-diff.sh`. A module imports the helper for
-  its question; a local read (root, branch, HEAD, ancestry, status, index, blob) uses git alone,
-  while the network reads (default branch, remote tip, fetch, compare) try `gh` first because it
-  carries the authentication and fall back to git, raising `GitError` that names both failures.
-  Prompt files keep raw git only for a mutation the user approved (`git add`, `git commit`,
-  `git worktree remove`) and for documentation that says what must never run.
-- `crew-worktree.py` is stateful. Its usage output is available with `--help`; do not use smoke
-  tests that create worktrees.
+  its question; a local read (root, branch, HEAD, ancestry, status, index, blob) lives in `git.py`
+  and uses git alone, while the remote questions (default branch, remote tip, fetch, compare) live in
+  `lib/git_remote.py`, try `gh` first because it carries the authentication, and fall back to git,
+  raising `GitError` that names both failures. `git.py` re-exports them, and `git_remote` reads the
+  runner through `git.py`'s globals, so a caller that patches `run_git` or `gh` is the one they call.
+  Prompt files keep raw git only for a mutation the user approved (`git add`, `git commit`) and for
+  documentation that says what must never run.
+- `crew-worktree.py` has four operations, and it is the command a prompt uses for every worktree
+  question and mutation. With no operation it resolves `BRANCH`'s worktree, creating it when absent
+  (`-b BRANCH BASE` creates the branch too). `--list` prints JSON: each worktree's `path`, `branch`,
+  `main` (the checkout it ran in), `merged` (an ancestor of the default branch), and `gone` (its
+  upstream tracking ref was deleted), plus `stale` naming the paths a cleanup may offer. `fetch`
+  refreshes the remote and prunes deleted branches. `sync --branch NAME` fetches `NAME` and checks it
+  out here, creating it from `origin/NAME` when it does not exist — what `crew implement` uses
+  instead of assembling `git fetch` and `git checkout -b`. `--remove PATH [--branch NAME] [--force]`
+  removes the worktree first and the branch only after that succeeded, so a refused worktree leaves
+  its branch alive and a refused delete names the branch it kept; `--force` is `-D`. It is stateful,
+  so its usage output is available with `--help`; do not use smoke tests that create worktrees.
 - `crew-worktree.py` auto-prunes only worktrees whose remote branch is gone and that are clean. It
   deletes the local branch with `git branch -d` and keeps unmerged ones; merged branches with a live
   remote are left to `crew cleanup`.

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Report concerns: persist a review report and append outcome records.
+"""Assembling a persisted review report: the gates, the sections it appends, and its identity.
 
-Split out of `crew-review-findings.py`. `persist` writes the consolidated report to the review
-directory and the task-level REVIEW file, appends deferred findings, and enforces the persona and
-layer gates. Depends on `findings.py`, `personas.py`, and `layers.py`.
+`persist` writes the consolidated report to the review directory and the task-level REVIEW file,
+appends deferred findings, and enforces the persona and layer gates. Three things it does are worth
+keeping in one place: the two generated sections are derived from `--findings` and `--files` so a
+report carrying its own copy would render the table twice; a missing layer map is written into the
+report rather than only to stderr, because stderr is invisible in the artifact; and the reviewed
+commit is recorded, so a review of a different tree is detectable later.
 """
 from __future__ import annotations
 
@@ -14,25 +17,18 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from lib.files import atomic_write
 from lib.git import GitError, rev_parse
 from review_findings import (
     CODE_MODES,
     Finding,
-    atomic_write,
     canonical_personas,
     check_findings,
     check_strict,
     read_findings,
-    read_json_object,
 )
-from review_layers import check_coverage, check_hunk_refs, hunk_ids, layer_coverage
-from review_personas import (
-    GENERATED_SECTIONS,
-    HUNKS_FILE,
-    LAYERS_FILE,
-    check_persona_coverage,
-    package_violations,
-)
+from review_personas import GENERATED_SECTIONS
+from review_persist_gates import check_personas_present, strict_gates
 
 
 def heading_lines(text: str) -> set[str]:
@@ -66,62 +62,6 @@ def validate_review_dir(args: argparse.Namespace) -> Path:
             "PR reviews must persist outside task state; use /tmp/crew-review-<repo>/review/<timestamp>"
         )
     return owner
-
-
-def check_personas_present(args: argparse.Namespace) -> None:
-    """Require a persona list and both artifacts for each, then prove each one produced output.
-
-    Persona evidence is not a strict-only gate: a report persisted without proof that each
-    dispatched persona ran is indistinguishable from a full review, so `--personas` is required
-    on every call. `--strict` only adds the diff gates that need a clean tree to check.
-    """
-    if not args.personas:
-        raise ValueError(
-            "--personas is required: a persisted review must name the personas that produced it"
-        )
-    missing = [
-        f"{persona}.{kind}.md"
-        for persona in canonical_personas(args.personas, split_commas=False)
-        for kind in ("in", "out")
-        if not (args.review_dir / f"{persona}.{kind}.md").is_file()
-    ]
-    if missing:
-        raise ValueError(f"missing persona artifacts in {args.review_dir}: {', '.join(missing)}")
-    check_persona_coverage(args.review_dir, args.personas)
-
-
-def strict_gates(args: argparse.Namespace, owner: Path, findings: list[dict]) -> tuple[str, str]:
-    """Under `--strict`, enforce the layer, hunk, and package gates.
-
-    Returns the coverage section to append and the coverage gap to report. A layer map is what
-    proves the personas were pointed at the whole diff, so a hunk nobody was asked to read is a
-    silent hole rather than a style point.
-    """
-    layers_path = args.review_dir / LAYERS_FILE
-    hunks_path = args.review_dir / HUNKS_FILE
-    coverage_section = coverage_gap = ""
-    if layers_path.is_file():
-        if not hunks_path.is_file():
-            raise ValueError(
-                f"{layers_path} has no sibling {HUNKS_FILE}; a layer map without a hunk index cannot be checked"
-            )
-        check_coverage(hunks_path, layers_path)
-        coverage_section = layer_coverage(read_json_object(layers_path, "layers")["layers"], findings)
-    elif hunks_path.is_file():
-        coverage_gap = (
-            f"{HUNKS_FILE} has no {LAYERS_FILE}: hunk coverage was not enforced, so no layer of "
-            "this diff is proven to have been read"
-        )
-    if hunks_path.is_file():
-        check_hunk_refs(findings, hunk_ids(hunks_path))
-    # Directories written before package.diff existed hold diff.patch and the full spec, so the
-    # package rules only apply to a review that was packaged under them.
-    if (args.review_dir / "package.diff").is_file():
-        violations, _ = package_violations(args.review_dir, args.personas, args.mode,
-                                           owner / "SPEC.md", hunks_path)
-        if violations:
-            raise ValueError("; ".join(violations))
-    return coverage_section, coverage_gap
 
 
 def reviewed_at(args: argparse.Namespace, report: str) -> str:
@@ -160,6 +100,7 @@ def append_deferred(owner: Path, rows: list[Finding]) -> None:
 
 
 def persist(args: argparse.Namespace) -> int:
+    """Write the report, the coverage section, and the deferred findings, after every gate."""
     owner = validate_review_dir(args)
     findings = read_findings(args.findings) if args.findings else []
     check_personas_present(args)
@@ -205,6 +146,7 @@ def persist(args: argparse.Namespace) -> int:
 
 
 def outcome(args: argparse.Namespace) -> int:
+    """Append one audit record for a finding's outcome to the review directory's journal."""
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "review_dir": str(args.review_dir),

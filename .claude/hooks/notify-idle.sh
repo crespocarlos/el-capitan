@@ -4,8 +4,8 @@
 set +e
 exec 2>/dev/null
 
-REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo 'unknown')
-BRANCH=$(git branch --show-current 2>/dev/null || echo '')
+REPO=$(basename "$(~/.agent/bin/crew-repo-info.py --field root 2>/dev/null || echo '')" 2>/dev/null || echo 'unknown')  # crew-lint: allow-swallow
+BRANCH=$(~/.agent/bin/crew-repo-info.py --field branch 2>/dev/null || echo '')  # crew-lint: allow-swallow
 
 if [[ "$(uname)" == "Darwin" ]]; then
   osascript \

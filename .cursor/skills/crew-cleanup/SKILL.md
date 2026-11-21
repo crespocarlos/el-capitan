@@ -11,31 +11,31 @@ description: "Remove stale worktrees interactively. Trigger: 'crew cleanup'."
 ### Step 1: Refresh remote state
 
 ```bash
-git fetch --prune --quiet
+~/.agent/bin/crew-worktree.py fetch
 ```
 
 ### Step 2: List all worktrees
 
 ```bash
-git worktree list
+~/.agent/bin/crew-worktree.py --list
 ```
 
-Parse each worktree path and its checked-out branch. The main worktree is the first entry in that
-listing, and it is never removed; `~/.agent/bin/crew-repo-info.py --root <path> --field branch` reads
-another worktree's branch without changing directory.
+That prints JSON: `worktrees` carries each one's `path`, `branch`, `main`, `merged`, and `gone`,
+and `stale` names the paths a cleanup may offer. The main worktree is the one with `main: true`, and
+it is never removed; `~/.agent/bin/crew-repo-info.py --root <path> --field branch` reads another
+worktree's branch without changing directory.
 
 ### Step 3: Classify each worktree
 
-For each non-main worktree, determine its status:
+For each non-main worktree, the `--list` fields already carry the verdict:
 
-- **Gone**: branch's remote tracking ref is deleted (`git branch -vv` shows `: gone]`)
-- **Merged**: branch is merged into the default branch (`git branch --merged origin/<default>`)
-- **Active**: neither gone nor merged — still in use
+- **Gone**: `gone: true` — the branch's remote tracking ref is deleted
+- **Merged**: `merged: true` — the branch is merged into the default branch
+- **Active**: neither — still in use
 
 ```bash
 DEFAULT_BRANCH=$(~/.agent/bin/crew-default-branch.sh)
 ```
-
 ### Step 4: Present the table
 
 Show all worktrees with their status:
@@ -58,23 +58,25 @@ Ask: "Remove all stale worktrees? (or specify numbers to keep)"
 For each confirmed removal:
 
 ```bash
-git worktree remove <path> && git branch -d <branch>   # merged
-git worktree remove <path> && git branch -D <branch>   # gone, confirmed in Step 5
+~/.agent/bin/crew-worktree.py --remove <path> --branch <branch>               # merged
+~/.agent/bin/crew-worktree.py --remove <path> --branch <branch> --force       # gone, confirmed in Step 5
 ```
 
-Chain with `&&`: if removal is refused, the branch must survive. Report the refused worktree and
-leave its task directories in place; do not offer them in the task-directory step below. If `-d`
-refuses after the worktree is removed, keep the branch and report it. Use `-D` only for gone
-branches the user confirmed; for those rows, show the unique-commit count in Step 4 (`git rev-list
---count origin/$(~/.agent/bin/crew-default-branch.sh)..<branch>`). Squash-merged branches show a nonzero
-count, so treat it as information, not proof of unmerged work.
+One command per removal, because the worktree and its branch are one decision: it removes the
+worktree first and deletes the branch only after that succeeded, so a refused worktree leaves its
+branch alive. Report the refused worktree and leave its task directories in place; do not offer them
+in the task-directory step below. If the branch delete refuses after the worktree is removed, the
+command says so and keeps the branch — report it. `--force` is `-D`, so use it only for gone branches
+the user confirmed; for those rows, show the unique-commit count in Step 4
+(`git rev-list --count origin/$(~/.agent/bin/crew-default-branch.sh)..<branch>`). Squash-merged
+branches show a nonzero count, so treat it as information, not proof of unmerged work.
 
 Also remove associated task directories. Multiple tasks can share the same branch (the spec says
 "Multiple specs can coexist per branch"), so collect all matches and confirm each individually
 before removing:
 
 ```bash
-WORKTREE_REMOTE=$(git -C <worktree-path> remote get-url origin 2>/dev/null || echo "")
+WORKTREE_REMOTE=$(~/.agent/bin/crew-repo-info.py --root <worktree-path> --field remote_url 2>/dev/null || echo "")
 WORKTREE_BRANCH=<branch>
 
 # Collect all task dirs for this worktree's remote+branch using the resolve script
@@ -116,24 +118,24 @@ Show what was removed:
 Removed N worktrees, N branches, N task directories.
 ```
 
-List any that failed removal (e.g. uncommitted changes in the worktree — `git worktree remove` will
-refuse). Also list worktrees removed with the branch kept (`-d` refused) and any skipped task
-directories.
+List any that failed removal (e.g. uncommitted changes in the worktree — `crew-worktree.py
+--remove` refuses). Also list worktrees removed with the branch kept (the branch delete refused) and
+any skipped task directories.
 
 ## Rules
 
 - Never remove the main worktree
-- `git branch -D` only for gone branches the user confirmed; merged branches use `-d`
+- `--force` only for gone branches the user confirmed; merged branches use the plain `--remove`
 - Always confirm before removing — never silent
-- If a worktree has uncommitted changes, `git worktree remove` refuses. Report it and skip it; this
-  skill never forces removal. The user removes it manually.
+- If a worktree has uncommitted changes, `crew-worktree.py --remove` refuses. Report it and skip it;
+  this skill never forces removal. The user removes it manually.
 
 ## Plain-language gates
 
 Use plain language, without compressed summaries, before:
 
-- Running `git worktree remove` on any worktree — list all worktrees to be removed plainly (path +
-  branch) before executing; this cannot be undone without re-checking out the branch
+- Running `crew-worktree.py --remove` on any worktree — list all worktrees to be removed plainly
+  (path + branch) before executing; this cannot be undone without re-checking out the branch
 - Any worktree with uncommitted changes — state the files at risk explicitly
 
 Continue after confirmation.

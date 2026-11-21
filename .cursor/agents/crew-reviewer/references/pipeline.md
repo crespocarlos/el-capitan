@@ -22,7 +22,8 @@ numbered steps below, next to the invocation that uses it.
 output, and `crew-resolve-task-dir.py` answers with the newest non-DONE task for the current branch —
 usually an unrelated feature. Report the artifacts as `<path> (outside task state)`; that is a
 successful persist, not the `review not persisted` failure below. Pass the PR head SHA to `--head`,
-never `git rev-parse HEAD`; the local checkout never contains the PR head (PR mode fetches nothing).
+and never read it from this checkout with a raw git call: the local checkout never contains the PR
+head, because PR mode fetches nothing.
 `persist` rejects a PR review directory whose owner has `SPEC.md`; no exception may overwrite a
 task's `REVIEW.md`.
 

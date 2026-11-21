@@ -9,7 +9,7 @@ line, and the rule it violates, so a failure names what to change instead of onl
 Rules:
 - every top-level function has a return annotation;
 - no function spans more than `MAX_FUNCTION_LINES` lines;
-- no module in `task/`, `maintenance/`, or `evals/` exceeds `MAX_MODULE_LINES` lines, which is what
+- no module in any package under `.agent/tools/` exceeds `MAX_MODULE_LINES` lines, which is what
   forces an oversized tool into a package instead of one file;
 - every logical line starts at a multiple-of-four column, with no tabs;
 - no run of more than `MAX_COMMENT_BLOCK` consecutive comment lines;
@@ -33,9 +33,6 @@ TOOLS = ROOT / ".agent" / "tools"
 
 MAX_FUNCTION_LINES = 50
 MAX_COMMENT_BLOCK = 4
-# The three packages that were re-cut in this change. `memory/` and `review/` were re-cut earlier
-# and `memory_store.py` is a deliberate exception recorded in the spec, so neither is judged here.
-CAPPED_PACKAGES = ("task", "maintenance", "evals")
 MAX_MODULE_LINES = 200
 GENERIC_MODULES = {"store", "units", "recall", "maintenance",
                    "findings", "layers", "personas", "report"}
@@ -46,6 +43,19 @@ def module_files() -> list[Path]:
     return sorted(
         path for path in TOOLS.rglob("*.py") if "__pycache__" not in path.parts
     )
+
+
+def package_directories() -> frozenset[str]:
+    """Every directory name under `.agent/tools/`, read from the tree rather than listed here.
+
+    A name list is how the ceiling went unenforced for three packages: the rule was right and its
+    scope was a literal that nobody widened. Derived, a package is capped the moment it exists.
+    """
+    return frozenset(path.name for path in TOOLS.rglob("*")
+                     if path.is_dir() and "__pycache__" not in path.parts)
+
+
+CAPPED_PACKAGES = package_directories()
 
 
 def display(path: Path) -> str:

@@ -11,7 +11,8 @@ authentication. Without it the answer comes from the local `refs/remotes/<remote
 so a prompt that needs just the root or the branch costs no round trip.
 
 `--field` prints one value bare, so a prompt can assign what it needs (`BRANCH=$(... --field
-branch)`) instead of parsing a listing. `head_short` and `dirty` carry the two facts a handoff
+branch)`) instead of parsing a listing. `changed` and `staged` are the two name lists a prompt falls
+back to when it needs the files to test; `head_short` and `dirty` carry the two facts a handoff
 records, so a resumed session compares the same source rather than re-deriving them.
 
 `--diff-base` and `--fork-point` answer the other question a prompt used to ask git directly: where a
@@ -22,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -30,93 +30,11 @@ _TOOLS_ROOT = Path(__file__).resolve().parents[1]
 if str(_TOOLS_ROOT) not in sys.path:
     sys.path.insert(0, str(_TOOLS_ROOT))
 
-from lib.git import (  # noqa: E402
-    GitError,
-    base_ref,
-    current_branch,
-    default_branch,
-    dirty_files,
-    fork_point,
-    head_sha,
-    remotes,
-    remote_url,
-    run_git,
-    staged_paths,
-    toplevel,
-    unstaged_paths,
-)
+from lib.git import GitError, base_ref, fork_point  # noqa: E402
+from task_repo_facts import collect  # noqa: E402
 
-SLUG = re.compile(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/*$")
-FIELDS = ("root", "branch", "head", "head_short", "dirty", "staged", "staged_dirty", "remote",
-          "remote_url", "repo", "repo_name", "origin_repo", "default_branch")
-
-
-def primary_remote(names: list[str]) -> str:
-    """`upstream` when it exists, then `origin`, then the first configured remote.
-
-    A fork's PR targets its upstream, so the preference that selects the PR base selects the remote
-    this command reports; a checkout whose remote has another name still gets an answer.
-    """
-    for preferred in ("upstream", "origin"):
-        if preferred in names:
-            return preferred
-    return names[0] if names else ""
-
-
-def slug_of(url: str | None) -> str | None:
-    """The `owner/repo` a remote URL names, or None when the URL carries no such path."""
-    if not url:
-        return None
-    match = SLUG.search(url)
-    return f"{match.group(1)}/{match.group(2)}" if match else None
-
-
-def local_default(root: Path, remote: str) -> str | None:
-    """The default branch from the local symref alone, so no request leaves the machine."""
-    result = run_git(root, ["symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD"],
-                     check=False)
-    name = result.stdout.strip()
-    return name.removeprefix(f"{remote}/") if result.returncode == 0 and name else None
-
-
-def collect(args: argparse.Namespace) -> dict:
-    """The record every caller reads: root, branch, head, the remotes, and the default branch."""
-    try:
-        root = toplevel(args.root)
-        names = remotes(root)
-    except GitError as error:
-        raise SystemExit(f"repo-info: {error}") from error
-    remote = args.remote or primary_remote(names)
-    urls = {name: remote_url(root, name) for name in names}
-    record = {
-        "root": str(root),
-        "branch": None,
-        "head": None,
-        "head_short": None,
-        "dirty": [],
-        "staged": [],
-        "staged_dirty": [],
-        "remote": remote,
-        "remote_url": urls.get(remote),
-        "repo": slug_of(urls.get(remote)),
-        "repo_name": (slug_of(urls.get(remote)) or "/").split("/")[-1] or None,
-        "origin_repo": slug_of(urls.get("origin")),
-        "remotes": {name: url for name, url in urls.items() if url},
-        "default_branch": None,
-    }
-    try:
-        record["branch"] = current_branch(root)
-        record["head"] = head_sha(root)
-        record["head_short"] = head_sha(root, short=True)
-        record["dirty"] = dirty_files(root)
-        record["staged"] = staged_paths(root)
-        record["staged_dirty"] = unstaged_paths(root, record["staged"])
-    except GitError as error:
-        print(f"repo-info: {error}", file=sys.stderr)
-    if remote:
-        record["default_branch"] = (default_branch(root, remote) if args.network
-                                    else local_default(root, remote))
-    return record
+FIELDS = ("root", "branch", "head", "head_short", "dirty", "changed", "staged", "staged_dirty",
+          "remote", "remote_url", "repo", "repo_name", "origin_repo", "default_branch")
 
 
 def report(record: dict, as_json: bool) -> None:

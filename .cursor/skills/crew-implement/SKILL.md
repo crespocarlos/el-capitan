@@ -98,12 +98,10 @@ Read the branch name from SPEC.md:
 If `## Branch:` is absent or empty, derive it from the SPEC.md type and goal (type-prefix/slug, ≤50
 chars), propose it, and confirm before proceeding.
 
-  - **worktree** — fetch the default branch and create a worktree:
+  - **worktree** — create a worktree for the branch:
 
   ```bash
-  DEFAULT_BRANCH=$(~/.agent/bin/crew-default-branch.sh)
-  git fetch origin "$DEFAULT_BRANCH"
-  cd "$(~/.agent/bin/crew-worktree.py -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH")"
+  cd "$(~/.agent/bin/crew-worktree.py -b "$BRANCH_NAME" "origin/$(~/.agent/bin/crew-default-branch.sh)")"
   ```
 
 After the worktree is created: **bootstrap dependencies.** Read the repo's `AGENTS.md` (or
@@ -115,12 +113,10 @@ worktree directory.
 > "Create a new branch (`$BRANCH_NAME`), or commit directly to `<current-branch>`? (new-branch /
 > here)"
 
-  - **new-branch** — create and checkout the branch:
+  - **here** — create the branch, fetching it first:
 
     ```bash
-    DEFAULT_BRANCH=$(~/.agent/bin/crew-default-branch.sh)
-    git fetch origin "$DEFAULT_BRANCH"
-    git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
+    ~/.agent/bin/crew-worktree.py sync --branch "$BRANCH_NAME"
     ```
 
   - **here** — work in the current directory on the current branch as-is.

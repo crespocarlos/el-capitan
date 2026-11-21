@@ -54,7 +54,9 @@ probe=$(dirname "$path")
 while [ ! -d "$probe" ] && [ "$probe" != "/" ] && [ "$probe" != "." ]; do
   probe=$(dirname "$probe")
 done
-repo=$(git -C "$probe" rev-parse --show-toplevel 2>/dev/null || true)
+# A failure here leaves `repo` empty, which the branch below treats as "outside permitted
+# worktrees" and denies: refusing the write is the safe direction, so the call is allowed to fail.
+repo=$(~/.agent/bin/crew-repo-info.py --root "$probe" --field root 2>/dev/null || true)  # crew-lint: allow-swallow
 [ -n "$repo" ] && repo=$(cd "$repo" && pwd -P)
 
 msg=""

@@ -373,6 +373,15 @@
       "smoke": "imported by memory and review modules"
     },
     {
+      "name": "git_remote.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by lib/git.py, which re-exports its helpers",
+      "smoke": "imported by lib/git.py"
+    },
+    {
       "name": "cli.py",
       "dir": "lib",
       "kind": "module",
@@ -445,7 +454,169 @@
       "smoke": "imported by crew-task-context.py"
     },
     {
+      "name": "task_repo_facts.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "repository",
+      "help": "imported by crew-repo-info.py",
+      "smoke": "imported by crew-repo-info.py"
+    },
+    {
+      "name": "task_worktrees.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-worktree.py",
+      "smoke": "imported by crew-worktree.py"
+    },
+    {
+      "name": "task_worktree_create.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-worktree.py",
+      "smoke": "imported by crew-worktree.py"
+    },
+    {
+      "name": "task_worktree_cli.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-worktree.py",
+      "smoke": "imported by crew-worktree.py"
+    },
+    {
+      "name": "task_worktree_prune.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-worktree.py",
+      "smoke": "imported by crew-worktree.py"
+    },
+    {
       "name": "memory_store.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_paths.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by every memory module",
+      "smoke": "imported by every memory module"
+    },
+    {
+      "name": "memory_scalars.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by memory_frontmatter.py",
+      "smoke": "imported by memory_frontmatter.py"
+    },
+    {
+      "name": "memory_frontmatter.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_index.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by every memory module",
+      "smoke": "imported by every memory module"
+    },
+    {
+      "name": "memory_commit.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_add.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by memory_units.py",
+      "smoke": "imported by memory_units.py"
+    },
+    {
+      "name": "memory_cite.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by memory_units.py",
+      "smoke": "imported by memory_units.py"
+    },
+    {
+      "name": "memory_search.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_context.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_journal.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_journal_add.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_inbox.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_ingest.py",
       "dir": "memory",
       "kind": "module",
       "category": "memory",
@@ -488,6 +659,186 @@
       "owner": "crew-reviewer",
       "help": "imported by crew-review-findings.py",
       "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_vocabulary.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_models.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_gates.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_parse.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-hunks.py",
+      "smoke": "imported by crew-review-hunks.py"
+    },
+    {
+      "name": "review_limits.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_parse.py",
+      "smoke": "imported by review_parse.py"
+    },
+    {
+      "name": "review_classify.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_coverage.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_map.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_persist_gates.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_report.py",
+      "smoke": "imported by review_report.py"
+    },
+    {
+      "name": "assemble_config.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "assemble_common.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "assemble_map.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "assemble_files.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "assemble_personas.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "assemble_build.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "client.py",
+      "dir": "review/nightshift",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-e2e",
+      "help": "imported by crew-nightshift-e2e.py",
+      "smoke": "imported by crew-nightshift-e2e.py"
+    },
+    {
+      "name": "location.py",
+      "dir": "review/nightshift",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-e2e",
+      "help": "imported by crew-nightshift-e2e.py",
+      "smoke": "imported by crew-nightshift-e2e.py"
+    },
+    {
+      "name": "checks.py",
+      "dir": "review/nightshift",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-e2e",
+      "help": "imported by crew-nightshift-e2e.py",
+      "smoke": "imported by crew-nightshift-e2e.py"
+    },
+    {
+      "name": "doctor.py",
+      "dir": "review/nightshift",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-e2e",
+      "help": "imported by crew-nightshift-e2e.py",
+      "smoke": "imported by crew-nightshift-e2e.py"
+    },
+    {
+      "name": "commands.py",
+      "dir": "review/nightshift",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-e2e",
+      "help": "imported by crew-nightshift-e2e.py",
+      "smoke": "imported by crew-nightshift-e2e.py"
     },
     {
       "name": "review_personas.py",
