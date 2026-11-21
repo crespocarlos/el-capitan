@@ -71,9 +71,14 @@ def imported_path(unit: dict) -> Path:
 
 def gather_inbox(
     conn: sqlite3.Connection, sources: list[Path]
-) -> tuple[list[tuple[Path, str]], list[Path], list[str], list[str]]:
-    """Parse the chosen drafts; returns writes, removals, errors, and duplicate reports."""
-    writes, removals, errors, duplicates = [], [], [], []
+) -> tuple[list[tuple[Path, str]], list[Path], list[str], list[str], list[str]]:
+    """Parse the chosen drafts; returns writes, removals, errors, duplicates, and imported ids.
+
+    The ids are captured here because the import removes each draft, so nothing later can read its
+    frontmatter. They are what a caller sees: an `id:` is the handle every other command accepts,
+    while the filename is only where the draft happened to live.
+    """
+    writes, removals, errors, duplicates, ids = [], [], [], [], []
     for source in sources:
         if not source.exists():
             errors.append(f"inbox file not found: {source.name}")
@@ -90,7 +95,8 @@ def gather_inbox(
         target = imported_path(unit)
         writes.append((target, render_unit(unit)))
         removals.append(source)
-    return writes, removals, errors, duplicates
+        ids.append(unit["id"])
+    return writes, removals, errors, duplicates, ids
 
 
 def apply_inbox(writes: list[tuple[Path, str]], removals: list[Path]) -> int:
@@ -130,13 +136,13 @@ def import_inbox(args: argparse.Namespace) -> int:
         return 0
     with store_lock():
         conn = refresh(write_indexes=False)
-        writes, removals, errors, duplicates = gather_inbox(conn, sources)
+        writes, removals, errors, duplicates, ids = gather_inbox(conn, sources)
         if writes:
             code = apply_inbox(writes, removals)
             if code:
                 return code
-        for path, _ in writes:
-            print(path.stem)
+        for ident in ids:
+            print(ident)
         for error in errors:
             print(error, file=sys.stderr)
         for duplicate in duplicates:

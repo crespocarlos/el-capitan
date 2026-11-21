@@ -82,6 +82,17 @@ from review_report import outcome, persist  # noqa: E402,F401
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 
 
+from review_workspace import cleanup_stale, report, review_dir  # noqa: E402
+
+
+def review_dir_command(args: argparse.Namespace) -> int:
+    """Create the review directory and print it; `--prune` also trims old temp dirs."""
+    chosen = review_dir(args.task_dir or None, args.repo or None, args.mode)
+    if args.prune:
+        cleanup_stale(chosen.parent, chosen)
+    return report(chosen, args.task_dir)
+
+
 def add_normalize_parsers(commands) -> None:
     """`normalize`, `persist`, and `select`: the candidate pipeline's write and dispatch steps."""
     normalize_parser = commands.add_parser("normalize")
@@ -162,10 +173,19 @@ def main() -> int:
     add_normalize_parsers(commands)
     add_map_parsers(commands)
     add_context_parsers(commands)
+    workspace_parser = commands.add_parser(
+        "review-dir", help="create and print the directory this review writes into")
+    workspace_parser.add_argument("--task-dir", default="",
+                                  help="the resolved task directory, empty when there is none")
+    workspace_parser.add_argument("--mode", default="self", help="pr always uses a temp directory")
+    workspace_parser.add_argument("--repo", default="", help="named in the temp path")
+    workspace_parser.add_argument("--prune", action="store_true",
+                                  help="remove temp review directories beyond the newest ten")
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "coverage": coverage, "validate-map": validate_map,
-                "spec-context": spec_context, "check-packages": check_packages}
+                "spec-context": spec_context, "check-packages": check_packages,
+                "review-dir": review_dir_command}
     try:
         return handlers[args.command](args)
     except (OSError, ValueError, json.JSONDecodeError) as error:

@@ -1,10 +1,16 @@
 ## Review artifacts
 
 Persistence is mandatory for every mode; `crew commit` and `crew review address` read its output.
-Set `REVIEW_ROOT` before auto-apply. For self, changes, spec, and idea reviews, resolve `TASK_DIR`
-first (see Pipeline Integration below) and use `REVIEW_ROOT="$TASK_DIR/review/$(date
-+%Y%m%d%H%M%S)"`; use `/tmp/crew-review-<repo>/review/$(date +%Y%m%d%H%M%S)` when `TASK_DIR` is
-empty. For PR review, do not resolve `TASK_DIR` at all — always use the `/tmp` form. Persist each
+Let a command choose the directory, so a sandbox that denies the task path falls back instead of
+failing:
+
+```bash
+REVIEW_ROOT=$(~/.agent/bin/crew-review-findings.py review-dir \
+  --task-dir "${TASK_DIR:-}" --mode <mode> --repo "$(basename "$PWD")" --prune)
+```
+
+It creates the directory, prints the path that works, and names the reason on stderr when it is not
+under `TASK_DIR`. A PR review passes `--mode pr`, which always uses the temp form. Persist each
 dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`, where
 `<persona>` is one of `adversarial`, `architecture`, `code-quality`, `product-flow`,
 `prompt-quality`, `explorer`.

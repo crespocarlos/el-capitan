@@ -229,8 +229,13 @@ Body.
         consolidation = command(store, 'consolidate', '--dry-run')
         consolidation_output = consolidation.stdout
         inbox_import = command(store, 'import-inbox', '--all')
+        imported_ids = inbox_import.stdout.split()
+        inbox_ids_are_handles = bool(imported_ids) and all(
+            command(store, 'show', ident, '--scope', 'acme-alpha').returncode == 0
+            for ident in imported_ids)
         observation_checks = {
             'journal_source_unchanged': source_unchanged_after_import,
+            'inbox_import_reports_usable_ids': inbox_ids_are_handles,
             'journal_imported_paragraphs': len(observation_ids) == 3,
             'journal_reimport_idempotent': repeated_import.returncode == 0 and repeated_import.stdout.strip() == 'no changes',
             'journal_add_writes_direct_observation': (
@@ -270,7 +275,7 @@ Body.
             ),
             'inbox_import_isolates_invalid_drafts': (
                 inbox_import.returncode == 1
-                and 'procedure_valid-inbox-import' in inbox_import.stdout
+                and 'candidate-valid-import' in inbox_import.stdout
                 and (inbox / 'invalid-import.md').exists()
                 and not (inbox / 'valid-import.md').exists()
                 and (store / 'repos' / 'acme-alpha' / 'procedure_valid-inbox-import.md').exists()

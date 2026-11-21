@@ -20,6 +20,9 @@ survive; this file decides how a surviving one reads.
    fix or a code block. Every sentence adds information.
 6. In idea and spec reviews, `Fix:` is required on every `[blocking]` and `[concern]` finding, specific
    enough to apply mechanically.
+7. `verified: true` requires a one-sentence `validation` saying what the check read and what it
+   concluded. `normalize --strict` rejects a verified finding without it, so a missing sentence costs a
+   round trip. Mark a finding unverified instead of guessing a validation line.
 
 ## Code review
 

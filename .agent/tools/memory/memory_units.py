@@ -88,10 +88,16 @@ def listing(args: argparse.Namespace) -> int:
 
 
 def show(args: argparse.Namespace) -> int:
-    """Print one stored unit exactly as it is on disk."""
+    """Print one stored unit exactly as it is on disk.
+
+    The search covers the current repository's scope and global, which is where a unit named in a
+    prompt usually lives. `--scope` reaches a unit filed under another repository, so an id printed
+    by `import-inbox` is always reachable even when the draft named a different scope than this
+    checkout resolves to.
+    """
     ensure_store()
     conn = refresh()
-    path = unit_path(conn, args.id)
+    path = unit_path(conn, args.id, args.scope)
     if not path:
         print("unknown id", file=sys.stderr)
         return 1

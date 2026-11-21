@@ -63,6 +63,9 @@ jobs:
       - name: Git library tests
         run: python3 evals/tools/test_git_lib.py
 
+      - name: Review workspace tests
+        run: python3 evals/tools/test_review_dir.py
+
       - name: Python structural shape
         run: python3 evals/tools/test_python_shape.py
 

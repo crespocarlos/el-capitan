@@ -859,6 +859,15 @@
       "smoke": "imported by crew-review-findings.py"
     },
     {
+      "name": "review_workspace.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
       "name": "review_report.py",
       "dir": "review",
       "kind": "module",

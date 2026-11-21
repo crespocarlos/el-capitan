@@ -71,6 +71,8 @@ def add_read_parsers(commands) -> None:
                                 help="truncate output past N chars, with a marker")
     show_parser = commands.add_parser("show", help="print one unit")
     show_parser.add_argument("id")
+    show_parser.add_argument("--scope", default=None,
+                             help="look in this scope instead of the current repo, then global")
 
 
 def add_write_parsers(commands) -> None:
