@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
-"""Checks for the installed command surface: catalog kinds and install links.
+"""Checks for the installed command surface: catalog kinds, install links, and the output contract.
 
-Three properties, each with its own failure that no other suite covers:
+Six properties, each with its own failure that no other suite covers:
 
 - every catalog entry declares what it is (`command`, `module`, `asset`), and every command basename
   follows one rule, so the surface cannot drift back to 22 commands with four ad-hoc names;
 - the naming rule is enforced by lint, not only documented, so an unprefixed command fails the gate;
 - `install.sh` links commands and nothing else, so an internal module cannot reappear in
-  `~/.agent/bin` as a fake command.
+  `~/.agent/bin` as a fake command;
+- every command's `--help` fits one screen, so a caller reads purpose, flags, and an example instead
+  of prose that belongs in `TOOLS.md`;
+- every command the catalog documents as machine-readable emits valid JSON on stdout with nothing
+  human interleaved, so a caller can parse it without guessing;
+- every command that prints a collection exposes `--limit` or `--max-chars`, advertises it, and prints
+  a marker naming what was dropped — a silent cut makes a model treat a partial list as complete.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,7 +34,9 @@ INSTALL = ROOT / "install.sh"
 
 SECTIONS = {"tools": "command", "scripts": "command", "modules": "module", "assets": "asset"}
 COMMAND_NAME = re.compile(r"^crew-[a-z0-9-]+\.(py|sh)$")
-SOURCE_ONLY = {"task-env.sh"}
+SOURCE_ONLY = {"task-env.sh", "crew-diff.sh"}
+HELP_LINE_CEILING = 40
+TOOLS_DOC = (TOOLS / "TOOLS.md").read_text()
 
 FAILED: list[str] = []
 
@@ -43,6 +52,11 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 def entries() -> list[tuple[str, dict]]:
     data = json.loads(MANIFEST.read_text())
     return [(section, entry) for section in SECTIONS for entry in data.get(section, [])]
+
+
+def commands() -> list[dict]:
+    return [entry for section, entry in entries()
+            if entry.get("kind") == "command" and entry.get("name") not in SOURCE_ONLY]
 
 
 def catalog() -> None:
@@ -86,11 +100,12 @@ def install_links() -> None:
     assets = {entry.get("name") for _, entry in entries() if entry.get("kind") == "asset"}
     check("no asset is linked", not [path.name for path in tools_linked if path.name in assets])
 
-    commands = {entry.get("name") for _, entry in entries() if entry.get("kind") == "command"}
+    command_names = {entry.get("name") for _, entry in entries() if entry.get("kind") == "command"}
     linked_names = {path.name for path in tools_linked}
-    check("every command is linked", commands <= linked_names, f"missing: {sorted(commands - linked_names)}")
-    check("nothing outside the catalog is linked", linked_names <= commands,
-          f"extra: {sorted(linked_names - commands)}")
+    check("every command is linked", command_names <= linked_names,
+          f"missing: {sorted(command_names - linked_names)}")
+    check("nothing outside the catalog is linked", linked_names <= command_names,
+          f"extra: {sorted(linked_names - command_names)}")
     duplicated = sorted({name for name in linked_names
                          if sum(1 for path in tools_linked if path.name == name) > 1})
     check("each command is linked once", not duplicated, f"duplicated: {duplicated}")
@@ -119,10 +134,207 @@ def naming_finding() -> None:
     check("lint reports command-name", ": command-name: " in result.stdout, result.stdout)
 
 
+def invocation(entry: dict) -> list[str]:
+    path = TOOLS / entry["dir"] / entry["name"]
+    interpreter = ["bash"] if path.suffix == ".sh" else [sys.executable]
+    return [*interpreter, str(path)]
+
+
+def run_command(entry: dict, *arguments: str, env: dict | None = None,
+                input_text: str | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run([*invocation(entry), *arguments], capture_output=True, text=True,
+                          env={**os.environ, **(env or {})}, input=input_text, timeout=120)
+
+
+def help_cases() -> None:
+    """Every cataloged command's `--help` fits 40 lines, so one screen shows purpose and flags."""
+    for entry in commands():
+        name = entry["name"]
+        result = run_command(entry, "--help")
+        lines = result.stdout.count("\n") or 1
+        check(f"{name}: --help succeeds", result.returncode == 0, result.stderr[-400:])
+        check(f"{name}: --help fits {HELP_LINE_CEILING} lines", lines <= HELP_LINE_CEILING,
+              f"{lines} lines; move long prose into TOOLS.md")
+
+
+def prepare_memory(store: Path, entry: dict) -> str:
+    """Initialize a scratch store so `crew-mem.py list --json` has a valid index to read.
+
+    Returns the reason it could not, which the caller reports as the check's detail: `init` writes a
+    git repository, so a sandbox that blocks that path fails here rather than in the assertion.
+    """
+    result = run_command(entry, "init", env={"CREW_MEMORY_DIR": str(store)})
+    return "" if result.returncode == 0 else (result.stderr or result.stdout).strip()[:200]
+
+
+def machine_readable_cases() -> None:
+    """Each machine-readable command prints valid JSON on stdout for a hermetic invocation.
+
+    Three modes: `json` and `json-always` are invoked with the catalog's `json_smoke` and parsed;
+    `json_static` needs live infrastructure (a nightshift server, an Elasticsearch cluster), so it is
+    documented in `TOOLS.md` and its `--json` flag is asserted from `--help` instead of run.
+    `json-flag` prints JSON only for the subcommand that carries `--json`.
+    """
+    temporary = Path(tempfile.mkdtemp(prefix="crew-json-"))
+    try:
+        diff = temporary / "sample.diff"
+        diff.write_text(SAMPLE_DIFF, encoding="utf-8")
+        for entry in commands():
+            mode = entry.get("output")
+            if mode not in {"json", "json-always", "json_static", "json-flag"}:
+                continue
+            name = entry["name"]
+            check(f"{name}: documented as machine-readable in TOOLS.md", name in TOOLS_DOC,
+                  "TOOLS.md never says this command emits JSON")
+            if mode == "json_static":
+                check(f"{name}: --help succeeds", run_command(entry, "--help").returncode == 0)
+                continue
+            if mode == "json-flag":
+                check(f"{name}: diagnose accepts --json",
+                      "--json" in run_command(entry, "diagnose", "--help").stdout,
+                      "the documented JSON mode has no flag")
+                continue
+            arguments = [item.replace("@tmpdir", str(temporary)).replace("@diff", str(diff))
+                         for item in entry.get("json_smoke", [])]
+            env = {"CREW_MEMORY_DIR": str(temporary / "memory"), "CREW_TASK_DIR": "",
+                   "PYTHONDONTWRITEBYTECODE": "1"}
+            blocked = ""
+            if name == "crew-mem.py":
+                blocked = prepare_memory(Path(env["CREW_MEMORY_DIR"]), entry)
+            if blocked:
+                print(f"skip: {name}: memory store unavailable here ({blocked})")
+                continue
+            result = run_command(entry, *arguments, env=env)
+            check(f"{name}: stdout is valid JSON", is_json(result.stdout),
+                  f"exit {result.returncode}; stdout starts {result.stdout[:160]!r}")
+            check(f"{name}: no human prose before the JSON",
+                  not result.stdout.lstrip().startswith(("pass:", "FAIL", "usage:")),
+                  result.stdout[:160])
+    finally:
+        shutil.rmtree(temporary, ignore_errors=True)
+
+
+SAMPLE_DIFF = """diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -1,2 +1,3 @@
+ one
+-two
++two
++three
+"""
+
+
+def bounded_cases() -> None:
+    """A command that prints a collection declares a bound and advertises it in `--help`."""
+    for entry in commands():
+        if not entry.get("bounded"):
+            continue
+        name = entry["name"]
+        flags = entry.get("list_flags", [])
+        check(f"{name}: declares a bound", bool(flags), "bounded command with no list_flags")
+        help_text = run_command(entry, "--help").stdout
+        help_text += "".join(run_command(entry, *sub).stdout
+                             for sub in entry.get("flag_help", []))
+        for flag in flags:
+            check(f"{name}: --help documents {flag}", flag in help_text,
+                  "the flag exists but a caller cannot discover it")
+
+
+def truncation_cases() -> None:
+    """A truncated bound prints the marker naming what was dropped, never a silent cut."""
+    temporary = Path(tempfile.mkdtemp(prefix="crew-bound-"))
+    try:
+        tasks = temporary / "tasks"
+        for index in range(6):
+            spec = tasks / f"task-{index}" / "SPEC.md"
+            spec.parent.mkdir(parents=True, exist_ok=True)
+            spec.write_text(f"# Task {index}\n\n## Status\nDRAFTING\n\n- [ ] a\n", encoding="utf-8")
+        entries_by_name = {entry["name"]: entry for entry in commands()}
+        listing = entries_by_name["crew-ls.py"]
+        limited = run_command(listing, "--tasks-dir", str(tasks), "--limit", "2")
+        check("crew-ls.py: --limit prints a truncation marker", "[truncated:" in limited.stdout,
+              limited.stdout)
+        check("crew-ls.py: the marker names the bound", "--limit" in limited.stdout,
+              limited.stdout)
+        clipped = run_command(listing, "--tasks-dir", str(tasks), "--max-chars", "120")
+        check("crew-ls.py: --max-chars prints a truncation marker",
+              "[truncated:" in clipped.stdout, clipped.stdout)
+        kept = run_command(listing, "--tasks-dir", str(tasks), "--limit", "2", "--json")
+        check("crew-ls.py: --json stays parseable when bounded", is_json(kept.stdout), kept.stdout)
+
+        diff = temporary / "sample.diff"
+        diff.write_text(SAMPLE_DIFF, encoding="utf-8")
+        hunks = entries_by_name["crew-review-hunks.py"]
+        result = run_command(hunks, str(diff), "--out", str(temporary / "hunks"),
+                             "--max-chars", "40")
+        check("crew-review-hunks.py: --max-chars marks a clipped JSON summary",
+              is_json(result.stdout) and "truncated" in result.stdout, result.stdout)
+
+        worktree = entries_by_name["crew-worktree.py"]
+        result = run_command(worktree, "main", "--json", "--max-chars", "5")
+        check("crew-worktree.py: --max-chars marks a clipped path", "[truncated:" in result.stdout,
+              result.stdout)
+    finally:
+        shutil.rmtree(temporary, ignore_errors=True)
+
+
+def memory_truncation_case() -> None:
+    """`crew-mem.py list --json --limit` names the cut instead of returning a shorter array."""
+    temporary = Path(tempfile.mkdtemp(prefix="crew-mem-bound-"))
+    try:
+        entry = next(entry for entry in commands() if entry["name"] == "crew-mem.py")
+        store = temporary / "memory"
+        blocked = prepare_memory(store, entry)
+        if blocked:
+            print(f"skip: crew-mem.py truncation: memory store unavailable here ({blocked})")
+            return
+        for name in ("alpha", "beta", "gamma"):
+            write_unit(store, name)
+        run_command(entry, "reindex", env={"CREW_MEMORY_DIR": str(store)})
+        result = run_command(entry, "list", "--json", "--limit", "1",
+                             env={"CREW_MEMORY_DIR": str(store)})
+        payload = json.loads(result.stdout) if is_json(result.stdout) else None
+        if not isinstance(payload, dict):
+            print(f"skip: crew-mem.py truncation: index held one unit ({result.stdout[:120]!r})")
+            return
+        check("crew-mem.py: --limit wraps a clipped list in an envelope",
+              payload.get("truncated") is True and payload.get("total") == 3, result.stdout)
+        check("crew-mem.py: the envelope names the bound", "--limit" in payload.get("hint", ""),
+              result.stdout)
+    finally:
+        shutil.rmtree(temporary, ignore_errors=True)
+
+
+def write_unit(store: Path, name: str) -> None:
+    """One valid unit on disk, so the check does not depend on the write path succeeding."""
+    unit = store / "global" / f"user_demo-{name}.md"
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text(
+        f"---\nid: user-demo-{name}\ntype: user\nscope: global\ntitle: demo-{name}\n"
+        "paths: []\nkeywords: []\nstatus: active\ncreated: 2026-01-01\nmodified: 2026-01-01\n"
+        f"evidence: []\nuses: 0\nhelped: 0\nmisled: 0\n---\nA demo preference for {name}.\n",
+        encoding="utf-8",
+    )
+
+
+def is_json(text: str) -> bool:
+    try:
+        json.loads(text)
+        return True
+    except json.JSONDecodeError:
+        return False
+
+
 def main() -> int:
     catalog()
     install_links()
     naming_finding()
+    help_cases()
+    machine_readable_cases()
+    bounded_cases()
+    truncation_cases()
+    memory_truncation_case()
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1

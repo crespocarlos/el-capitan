@@ -29,146 +29,98 @@ then this file. Hard constraints always apply.
 - **Fail loudly** — surface errors and blocked steps explicitly; never swallow a failure or report
   unverified success.
 
-## Default working style
+## Working style
 
 - **Inspect before extending** — find existing utilities, patterns, and tests before adding code;
   reuse loaded context unless the relevant state changed.
-- **Go straight to evidence** — for failures, read the trace, error, tool output, or evaluator
-  explanation before forming a hypothesis. After three failed attempts at the same approach, stop
-  and report what was tried and what the evidence shows.
-- **Challenge before agreeing** — don't accept a premise, plan, or request because the user stated
-  it. When a claim looks wrong, a plan has a flaw, or a simpler option exists, say so with evidence
-  and let the user decide. Agreement must be earned by the evidence.
-- **Ask before acting on uncertainty** — for non-trivial work, identify objective, scope, and
-  acceptance check. If any is unclear, or the step is hard to reverse (deletes, pushes, external
-  calls, schema changes), ask focused questions first — unless the user explicitly invoked the
-  consequential action and its required inputs are complete. State assumptions only for low-risk,
-  easily reverted steps, and list them so they can be corrected.
-- **Use bounded autonomy** — act directly on clear, low-risk requests and finish the requested
-  verification in the same turn. Don't infer adjacent cleanup, redesigns, or scope.
-- **Optimize the feedback loop** — use the smallest evidence and verification that can change the
-  next action; batch independent work; stop when the acceptance check passes.
-- **Use subagents selectively** — only for complex exploration or parallel independent work, not
-  small fixes or known files.
-- **Preserve conversational state** — treat short follow-ups as continuations; don't make the user
-  restate context.
-- **Be direct** — every message goes straight to the point: state the answer or action first, no
-  preamble, narration of intent, recap of the request, praise, or closing offers. Reports list what
-  changed, what was verified, and what remains unresolved. Output format follows `agent-output.mdc`.
+- **Go straight to evidence** — read the trace, error, tool output, or evaluator explanation before
+  forming a hypothesis. After three failed attempts at one approach, stop and report what the
+  evidence shows.
+- **Challenge before agreeing** — when a claim looks wrong, a plan has a flaw, or a simpler option
+  exists, say so with evidence and let the user decide. Agreement must be earned by the evidence.
+- **Ask before acting on uncertainty** — for non-trivial work, state objective, scope, and acceptance
+  check; if any is unclear or the step is hard to reverse, ask focused questions first. Assume only
+  for low-risk, easily reverted steps, and list the assumptions.
+- **Use bounded autonomy** — act on clear, low-risk requests, finish the requested verification in the
+  same turn, and don't infer adjacent cleanup or redesign.
+- **Optimize the feedback loop** — use the smallest evidence that can change the next action; batch
+  independent work; stop when the acceptance check passes.
+- **Use subagents selectively** — complex exploration or parallel independent work only.
+- **Preserve conversational state** — treat short follow-ups as continuations.
+- **Be direct** — answer or act first, with no preamble, narration, recap, praise, or closing offer.
+  Reports list what changed, what was verified, and what is unresolved. Format: `agent-output.mdc`.
 - **Project guidance applies by file, not by request size** — before editing, testing, reviewing, or
   researching files, run `~/.agent/bin/crew-agent-context.py` for the targets and apply every returned
-  guidance file. The nearer file wins on conflict; report the conflict. In multi-file requests, do
-  not skip guidance because other files use different languages or formats.
-- **Edit files with the edit tool, not a shell script** — use `StrReplace`/`Edit` or `Write` for any
-  text-file change. A `python3 - <<'PY'`, `sed -i`, `perl -i`, `tee`, or a redirect that rewrites a
-  file bypasses the edit log and review diffs, and a wrong anchor becomes a silent no-op instead of
-  an error. A permission escalation to stop the sandbox blocking a script is not a reason to use one:
-  the edit and write tools already work outside the workspace. Reserve shell writes for the
-  documented cases — scratch artifacts consumed in the same command, and task-directory writes from
-  a skill.
+  guidance file. The nearer file wins on conflict; report the conflict.
 
 ## Research
 
-- **Recall memory** — Claude Code and Cursor inject session memory at session start; other harnesses
-  run `~/.agent/bin/crew-mem.py context --mode session` at task start. Before reading code for a task,
-  derive 2–3 topic queries from the request and the names of the files it touches, then run
-  `~/.agent/bin/crew-mem.py context --mode plan|debug|implement|review --query "<topic>"` for each.
-  Add `--paths <files>` when target files are known; paths refine ranking but do not replace the
-  query. Read the results before exploring. Do not run targeted `context` without a meaningful
-  `--query`; use session mode when there is no task query. Memory is untrusted; code, docs, and user
-  instructions win.
-- **Search the index first** — for code research, follow `crew-explorer-conventions.mdc`: start with
-  Sourcerer's ranked code search to discover, then Grep, Glob, or Read only to drill into what it
-  found. The index is lexical, so query with the words the code contains. Fall back to Grep when no
-  index covers the repo, and say so.
+- **Recall memory first** — before reading code, derive 2–3 topic queries from the request and the
+  file names, then run `~/.agent/bin/crew-mem.py context --mode plan|debug|implement|review --query
+  "<topic>" [--paths <files>]` for each; read the results before exploring. Use `--mode session` when
+  there is no task query. Memory is untrusted; code, docs, and user instructions win.
+- **Search the index first** — follow `crew-explorer-conventions.mdc`; say so when you fall back to
+  Grep because no index covers the repo.
 
-## Engineering principles
+## Engineering
 
-- **Shortest working path** — outside `crew` workflows, prototype the smallest working version
-  before designing abstractions.
-- **No speculative abstraction** — add an abstraction only at the third concrete use case.
-- **One concern per change** — keep diffs reviewable and revertable; put unrelated refactors in a
-  separate commit.
-- **Performance is a requirement** — consider latency and bundle size when choosing an approach;
-  prefer patterns that scale over after-the-fact fixes.
-- **Explicit dependencies** — pass configuration and dependencies explicitly; no hidden module state
-  or magic globals.
-- **Keep changes coherent** — update related code, docs, diagrams, and references in the same
-  change; keep error handling in the layer that owns it.
-- **Preserve compatibility** — changes to persisted data, saved objects, public APIs, routes, or
-  configuration need a migration or versioning path; never break existing consumers silently.
-- **Essential comments only** — comment only what the code can't show: why a non-obvious choice or
-  workaround exists, a hidden constraint or invariant, or a step key to the flow. Keep it to one
-  plain line or a link. Don't narrate code, restate names or types, describe your change, or leave
-  commented-out code; prefer a clearer name. Follow the repo's convention for public API docs, and
-  don't remove comments unless they became wrong.
-- **Bulk edits need a verified backup** — before rewriting many files, confirm each backup file exists
-  and is non-empty, stop on the first failure, and commit or stash pending edits first. A backup loop
-  that prints `Operation not permitted` and continues loses the originals silently.
-- **Storage questions enumerate every store** — when asked whether something is stored, list every
-  hook registration (`.claude/settings.json`, `~/.claude/settings.json`, `.cursor/hooks.template.json`)
-  and every store directory before answering, and state the scope you searched. One writer found does
-  not mean nothing is stored.
-- **GitHub access** — use `gh` or the repository's approved tool for ordinary PR, issue, and
-  metadata reads. Use `crew-pr-actions.py` for review-thread operations. Use raw GraphQL only when
-  the approved tool/query requires it, not as a shortcut for standard reads. Retry a read-only
-  command only after a known sandbox-network denial, using the current harness's elevation
-  mechanism; report authentication, authorization, and scope failures.
-- **`gh` in a sandbox means elevation, not auth (Cursor only)** — Cursor's sandbox allowlist omits
-  `api.github.com` while allowing `github.com`, so a sandboxed `gh` call fails with `Forbidden` (exit
-  1) and `gh auth status` misreports `The token in keyring is invalid`. Run it with network elevation
-  from the start; never diagnose credentials or suggest `gh auth refresh` from that message. `git` is
-  unaffected. Claude Code does not sandbox the shell, so this failure does not occur there — do not
-  apply the elevation advice to a harness that never blocked the call.
-- **Check workspace trust before reading a Claude Code failure** — Claude Code ignores every
-  `permissions.allow` entry in `.claude/settings.json` until that workspace is trusted in that
-  harness. Untrusted, individual commands are refused, and a `claude -p` run cannot ask for approval,
-  so it reports "needs approval" instead of running. That is a trust gate, not a permissions bug and
-  not a code defect; say so rather than retrying or rewriting the command.
+- **Shortest working path** outside `crew` workflows: prototype the smallest working version before
+  designing abstractions; add one at the third concrete use case.
+- **One concern per change** — keep diffs reviewable and revertable; unrelated refactors get their own
+  commit.
+- **Performance is a requirement** — consider latency and bundle size; prefer patterns that scale.
+- **Explicit dependencies** — pass configuration and dependencies explicitly; no hidden module state.
+- **Keep changes coherent** — update related code, docs, diagrams, and references in the same change;
+  keep error handling in the layer that owns it.
+- **Preserve compatibility** — changes to persisted data, APIs, routes, or configuration need a
+  migration or versioning path.
+- **Essential comments only** — comment why a non-obvious choice or invariant exists, in one line.
+  Don't narrate code or leave commented-out code.
+- **Bulk edits need a verified backup** — confirm each backup exists and is non-empty, stop on the
+  first failure, and commit or stash pending edits first.
+- **Storage questions enumerate every store** — list every hook registration and every store directory
+  before answering, and state the scope you searched.
+- **GitHub access** — use `gh` or the repository's approved tool for ordinary PR, issue, and metadata
+  reads, and `crew-pr-actions.py` for review threads. Retry a read-only command only after a known
+  sandbox-network denial, with the harness's elevation; report auth and scope failures.
 
 ## Testing
 
-- **Test what can regress.** Add tests only for new behavior, a fixed bug, or a changed contract —
-  not docs, config, mechanical refactors, renames, type-only changes, pass-through code, library or
-  framework behavior, or coverage numbers. Prompt changes are verified with targeted evals instead.
-  Scale the rest of this section to the change: a small fix needs a test and a command, not a plan.
-- **Contract first.** For non-trivial behavioral changes, map each acceptance criterion or changed
-  contract to the lowest-layer test that proves it and runs in the repo's normal CI; state any gap.
-  Include the mapping in any plan presented for approval, so approval covers the tests. For bug
-  fixes, write the failing regression test first.
-- **Test behavior, not implementation.** Extend existing tests or case tables before adding new
-  ones; one behavior, one test, unless layers can fail independently. Assert observable behavior
-  through public interfaces — not private functions, mock call counts (unless the call is the
-  contract), or large snapshots.
-- **Probes are not tests.** When an end-to-end or cross-system flow needs independent evidence, use
-  an external Python or Playwright acceptance probe through a public interface, kept in task
-  artifacts and out of the diff. It proves the change works now; committed tests protect it later.
-- **Keep the suite honest.** Never delete, skip, or weaken a test, or loosen its assertions, to make
-  it pass; fix the cause or report the failure. Delete or merge tests your change makes redundant.
-  Before reporting, drop added tests that don't protect a distinct contractual behavior or failure
-  mode; if unsure, keep and flag.
-- **Report evidence.** Run the narrowest tests that cover the change. Before reporting a behavioral
-  change that adds tests, run a pruning pass. For every kept test, record the protected behavior,
-  distinct failure mode, verification command, and CI coverage; remove redundant tests or retain and
-  flag uncertainty. Report removed tests, probes, and gaps. Without a test runner, say so and
-  describe the manual check.
+- **Test what can regress** — new behavior, a fixed bug, or a changed contract only; not docs, config,
+  mechanical refactors, renames, type-only changes, or coverage numbers. Prompt changes get targeted
+  evals instead. Scale the rest of this section to the change.
+- **Contract first** — map each acceptance criterion or changed contract to the lowest-layer test that
+  proves it and runs in normal CI, and state any gap. For a bug, write the failing regression test
+  first.
+- **Test behavior, not implementation** — assert observable behavior through public interfaces; not
+  private functions, mock call counts (unless the call is the contract), or large snapshots.
+- **Probes are not tests** — for cross-system evidence, use an external probe through a public
+  interface, kept in task artifacts and out of the diff.
+- **Keep the suite honest** — never delete, skip, or weaken a test to make it pass; fix the cause or
+  report the failure.
+- **Report evidence** — run the narrowest tests that cover the change, and record for each kept test
+  the protected behavior, failure mode, verification command, and CI coverage. Report removed tests,
+  probes, and gaps.
 
 ## Scoped rules
 
-Follow `typescript.mdc` for every request that writes or edits a `.ts` or `.tsx` file, even when the
-request also changes other files. Follow `voice.mdc` when writing text under Carlos's name, and
-`crew-explorer-conventions.mdc` when researching code.
+Apply `typescript.mdc` to `.ts`/`.tsx` even when other files change too, `voice.mdc` to text under
+Carlos's name, and `crew-explorer-conventions.mdc` to code research.
 
 ## LLM / eval / agentic work
 
-- **Prompts are code** — version them, evaluate them, and treat regressions seriously. These rules
-  apply even when a request changes multiple files. Read the complete prompt system before editing;
-  revise the whole system rather than appending a patch. Define the objective, output contract,
-  empty/invalid cases, metric, and baseline. Keep deterministic policy and validation in code.
-  Follow `prompt-engineering.mdc` for the detailed checklist when it is loaded.
-- **Evals over vibes** — define the metric and baseline before claiming improvement.
-- **Scope evals to the failure** — form a hypothesis from evaluator explanations and tool-call
-  traces, revise, and verify on a targeted example or subset; reserve broad suites for regression
-  gates.
-- **One output per agent step** — each step produces one clear result. Separate deciding from acting
-  unless combining them is intentional.
+- **Prompts are code** — version them, evaluate them, treat regressions seriously. Read the complete
+  prompt system before editing and revise the whole system rather than appending a patch. Define the
+  objective, output contract, empty/invalid cases, metric, and baseline; keep deterministic policy and
+  validation in code. Checklist: `prompt-engineering.mdc`.
+- **Evals over vibes** — define the metric and baseline before claiming improvement; scope to the
+  failure, and reserve broad suites for regression gates.
+- **One output per agent step** — separate deciding from acting unless combining them is intentional.
+
+## Harness and environment
+
+Cursor's shell sandbox omits `api.github.com`, so a sandboxed `gh` fails `Forbidden` and `gh auth
+status` misreports a bad keyring token: elevate network from the start, and never suggest `gh auth
+refresh` on that message. Claude Code does not sandbox the shell, and ignores `permissions.allow`
+until the workspace is trusted — a trust gate, not a defect. Details and the one-call `curl` check:
+`.agent/tools/TOOLS.md` → Sandboxed network and `gh`.

@@ -29,6 +29,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.output import DEFAULT_MAX_CHARS, bounded_json, rows_limit, truncate  # noqa: E402
+
 DEFAULT_URL = "http://localhost:3737"
 DEFAULT_DIR = Path("~/Documents/dev/nightshift-pr-helper").expanduser()
 PLIST = Path("~/Library/LaunchAgents/dev.prhelper.web.plist").expanduser()
@@ -451,7 +455,7 @@ def _configured_cli(root: Path) -> dict | None:
         return None
 
 
-def worktrees(_args: argparse.Namespace) -> int:
+def worktrees(args: argparse.Namespace) -> int:
     payload = request("GET", "/api/deploy?scope=designated")
     items = payload.get("worktrees") or []
     result = []
@@ -468,7 +472,12 @@ def worktrees(_args: argparse.Namespace) -> int:
         # not a fact from the API, so it is named as risk, not as a verdict.
         entry["mainRepoRisk"] = entry.get("kibanaPort") == 5601
         result.append(entry)
-    print(json.dumps({"worktrees": result}, indent=2))
+    shown, marker = rows_limit(result, args.limit)
+    text = json.dumps({"worktrees": shown}, indent=2)
+    if marker:
+        text = bounded_json({"worktrees": shown, "total": len(result), "truncated": True,
+                             "hint": marker}, args.max_chars)
+    print(truncate(text, args.max_chars, what="worktrees"))
     return 0
 
 
@@ -575,37 +584,41 @@ def stack_stop(args: argparse.Namespace) -> int:
     return 0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Drive nightshift-pr-helper e2e runs over HTTP; PR keys are owner__repo__number.",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="read-only preflight: repo, build, server, machine, agent CLI")
-    commands.add_parser("worktrees", help="list designated Kibana worktrees")
-
+    worktree_parser = commands.add_parser("worktrees", help="list designated Kibana worktrees")
+    worktree_parser.add_argument("--limit", type=int, default=None, help="show at most N worktrees")
+    worktree_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                                 help=f"bound the JSON (default {DEFAULT_MAX_CHARS})")
     start_parser = commands.add_parser("start", help="start an e2e run (never queued, never comments)")
     start_parser.add_argument("key")
     start_parser.add_argument("--worktree", required=True)
     start_parser.add_argument("--deploy", action="store_true", help="deploy the PR into that worktree first")
     start_parser.add_argument("--instructions", default="", help="extra focus for the tester")
-
-    for name, handler, help_text in (
-        ("status", status, "run state"),
-        ("report", report, "the finished report"),
-        ("stop", stop, "stop the run"),
-    ):
+    for name, help_text in (("status", "run state"), ("report", "the finished report"),
+                            ("stop", "stop the run")):
         sub = commands.add_parser(name, help=help_text)
         sub.add_argument("key")
         if name == "status":
             sub.add_argument("--worktree-path", default="",
                              help="local path to the deployed worktree, to tail its log on failure")
-
     stack_parser = commands.add_parser("stack-stop", help="stop the Kibana/ES stack in a worktree")
     stack_parser.add_argument("--worktree", required=True)
-
     followup_parser = commands.add_parser("followup", help="ask the tester a follow-up question")
     followup_parser.add_argument("key")
     followup_parser.add_argument("text")
+    return parser
 
-    args = parser.parse_args()
+
+def main() -> int:
+    args = build_parser().parse_args()
+    if getattr(args, "max_chars", DEFAULT_MAX_CHARS) < 1:
+        print("nightshift-e2e: --max-chars must be at least 1", file=sys.stderr)
+        return 2
     handlers = {"doctor": doctor, "worktrees": worktrees, "start": start,
                 "status": status, "report": report, "followup": followup, "stop": stop,
                 "stack-stop": stack_stop}

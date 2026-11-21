@@ -72,8 +72,7 @@ case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: mem
 
 The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces
 and special characters replaced with hyphens, truncated to ~50 characters. Examples: "Add retry
-logic for async search" → `add-retry-logic-for-async-search`, "Convert evals to @kbn/evals format" →
-`convert-evals-to-kbn-evals-format`.
+logic for async search" → `add-retry-logic-for-async-search`.
 
 **Template selection** — infer from request content:
 - Use `_BUG_SPEC_TEMPLATE.md` if any of these signals are present:
@@ -104,8 +103,8 @@ Task/Agent tool call:
 
     ## Repo context
     Repo: <repo name>
-    Likely modules: <any hints from the issue about which files/packages are involved>
-    Specific files mentioned: <any file paths from the issue, or "none">
+    Likely modules: <hints from the issue about which files/packages are involved>
+    Specific files mentioned: <paths from the issue, or "none">
 
     ## Project guidance
     <output of `~/.agent/bin/crew-agent-context.py <specific files mentioned or likely module paths>`; use the repository root when none are known>
@@ -121,12 +120,7 @@ Task/Agent tool call:
     Explore now. Follow the output format in your persona definition.
 ```
 
-**Claude Code (Agent tool — inline session):** Same prompt structure, dispatch via Agent tool by
-name. The main session can dispatch subagents natively.
-
-| Explorer | Subagent name |
-|---|---|
-| Codebase explorer | `specwriter-explorer` |
+Claude Code dispatches the same prompt through its Agent tool by name.
 
 The explorer returns: files involved, canonical pattern examples (with inline excerpts), test
 locations + commands, and build config. Use this summary as the foundation for the spec.
@@ -139,9 +133,9 @@ semantic-search calls to fill gaps. Don't re-explore broadly; fill the specific 
 one is available, otherwise a text search followed by a narrowed read. Read at most 2 full files
 (config files or small utilities only).
 
-**Research conventions before drafting.** The exploration summary should include 1–2 canonical
-examples with inline excerpts. The spec's `## Hints` section embeds these — the implementer
-shouldn't need to read those files again.
+**Research conventions before drafting.** The explorer summary includes 1–2 canonical examples with
+inline excerpts; the spec's `## Hints` section embeds them, so the implementer need not read those
+files again.
 
 ### Step 2b: Clarify
 
@@ -176,13 +170,13 @@ they see only the improved spec in the output.
    - `specwriter-adversarial` — stress-tests acceptance criteria (including structural constraints
      embedded as AC bullets), surfaces missing edge cases
 
-2. **Dispatch** both in parallel. Each critic is a registered subagent — dispatch by name, passing
-   only the draft spec as context (not the persona prompt):
+2. **Dispatch** both critics in parallel, each as a registered subagent dispatched by name, passing
+   only the draft spec as context (never the persona prompt):
 
 **Cursor (Task tool):**
    ```
    Task tool call per critic:
-     subagent_type: <subagent name from table below>
+     subagent_type: specwriter-scope | specwriter-adversarial
      run_in_background: true
      prompt: |
        ## Critique context
@@ -199,13 +193,7 @@ they see only the improved spec in the output.
        Produce your critique now. Follow the output format in your persona definition.
    ```
 
-**Claude Code (Agent tool — inline session):** Same prompt structure, dispatch via Agent tool by
-name. The main session can dispatch subagents natively.
-
-   | Critic | Subagent name |
-   |---|---|
-   | Scope + Implementer | `specwriter-scope` |
-   | Adversarial | `specwriter-adversarial` |
+Claude Code dispatches the same prompt through its Agent tool by name.
 
 3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error),
    proceed with the available findings — do not block on a single failure.

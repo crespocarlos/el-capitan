@@ -405,6 +405,8 @@ test "$(status_of reviewed-ancestor)" = DONE
 
 bad_tools="$home/bad-tools"; mkdir -p "$bad_tools"
 cp "$ls_tool" "$root"/.agent/tools/task/task_*.py "$root/.agent/tools/task/crew-progress.py" "$bad_tools/"
+# crew-ls.py imports `lib.output` from the tools root, so the fixture carries that package too.
+cp -R "$root/.agent/tools/lib" "$home/lib"
 printf '{bad' > "$bad_tools/transitions.json"
 python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" >/dev/null
 fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile

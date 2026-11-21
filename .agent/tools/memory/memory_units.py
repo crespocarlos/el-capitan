@@ -14,6 +14,7 @@ import sqlite3
 import subprocess
 import sys
 
+from lib.output import json_payload, print_lines, rows_limit
 from memory_store import (
     TYPES,
     MemoryError,
@@ -242,8 +243,16 @@ def listing(args: argparse.Namespace) -> int:
         values.append(args.status)
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     rows = conn.execute("SELECT id, type, scope, status, title FROM units" + where + " ORDER BY id", values)
-    for row in rows:
-        print(f"{row['id']}\t{row['type']}\t{row['scope']}\t{row['status']}\t{row['title']}")
+    entries = [dict(row) for row in rows]
+    if args.json:
+        print(json_payload(entries, args.limit, args.max_chars, what="memory units"))
+        return 0
+    printed, marker = rows_limit(entries, args.limit)
+    lines = ["\t".join(str(entry[key]) for key in ("id", "type", "scope", "status", "title"))
+             for entry in printed]
+    if marker:
+        lines.append(marker)
+    print_lines(lines, args.max_chars, what="memory units", flag="--limit")
     return 0
 
 

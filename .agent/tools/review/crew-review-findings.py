@@ -1,40 +1,16 @@
 #!/usr/bin/env python3
 """Normalize review findings, persist review reports, and append outcome records.
 
-This file is the argparse entry point only: parsing, validation, personas, layers, and report
-persistence live in the sibling `review_findings.py`, `review_personas.py`, `review_layers.py`,
-and `review_report.py` modules. `Path(__file__).resolve()` follows the installed `~/.agent/bin`
-symlink back to this directory, so the siblings and the `lib` package above them are found from
-either invocation path.
+Subcommands: `normalize`, `persist`, `select`, `coverage`, `validate-map`, `spec-context`,
+`check-packages`, `outcome`. This file is the argparse entry point only: parsing, validation,
+personas, layers, and report persistence live in the sibling `review_findings.py`,
+`review_personas.py`, `review_layers.py`, and `review_report.py` modules. `Path(__file__).resolve()`
+follows the installed `~/.agent/bin` symlink back to this directory, so the siblings and the `lib`
+package above them are found from either invocation path.
 
-Input finding JSON requires title and label; file, line, persona, evidence,
-disposition, reason, and memory_ids are optional. `normalize` canonicalizes
-persona names, fingerprints file|label-category|normalized-title with SHA-1,
-and deduplicates exact fingerprints. `persist` writes the consolidated report
-to the review directory and to the task-level REVIEW.md (self, changes, pr) or
-REVIEW.<mode>.md (spec, idea) so code verdicts that crew-commit and
-crew-address-review read are never overwritten, and appends deferred findings to DEFERRED.md.
-`outcome` appends an immutable JSONL record whose `persona` is a list of
-canonical names. `coverage` fails when a hunk id is unassigned, assigned twice, or
-unknown to the hunk index; `validate-map` applies that rule plus the review-map contract
-to a whole `review.json`, and `persist --strict` runs `coverage` whenever `layers.json`
-sits next to `hunks.json`. `persist` requires `--review-dir` to be `<task>/review/<ts>`.
-`select` prints the reviewer personas a review must dispatch. `persist` always
-enforces persona coverage: a dispatched persona must have a real `.in.md` and
-`.out.md`, and no artifact may be empty, a placeholder, or an orchestrator
-summary in place of the persona's response. `normalize --strict` rejects emitted blocking/attention
-findings without `verified` and `evidence`, more than MAX_FINDINGS emitted
-findings, and more than MAX_NITS emitted nits (so polish cannot occupy a
-severity slot). `--strict` adds the hunk-coverage and evidence-path gates, which
-need a clean diff to check. `--personas` is separate from `--strict` so a PR
-review can skip the diff gates while still proving every persona ran.
-`--files` is an evidence allowlist, not a diff check: it records what was reviewed and
-gates evidence paths against it. It is deliberately not compared with `git diff`, because
-`persist` runs in three modes with no single base ref. Tree identity is `--head`, which
-`crew-ls.py --mark-done` requires to be an ancestor of HEAD. In PR mode the head is the
-GitHub SHA, which the local checkout never fetches, so `--head` is recorded without a
-local existence check; it still belongs in every PR review. A PR review also gets a
-warning when it persists into a task dir that has a SPEC.md, because a PR is not a task.
+The full contract — required finding fields, fingerprints, the strict gates, `--files` as an
+evidence allowlist rather than a diff check, and `--head` tree identity — is documented in
+`.agent/tools/TOOLS.md` under this command.
 """
 from __future__ import annotations
 
@@ -103,6 +79,7 @@ from review_personas import (  # noqa: E402,F401
     spec_sections,
 )
 from review_report import outcome, persist  # noqa: E402,F401
+from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 
 
 def add_normalize_parsers(commands) -> None:
@@ -110,6 +87,8 @@ def add_normalize_parsers(commands) -> None:
     normalize_parser = commands.add_parser("normalize")
     normalize_parser.add_argument("input", type=Path)
     normalize_parser.add_argument("--output", type=Path)
+    normalize_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                                  help="bound the printed JSON; --output is never truncated")
     normalize_parser.add_argument("--strict", action="store_true")
     normalize_parser.add_argument("--hunks", type=Path,
                                   help="hunks.json; with --strict, emitted findings must cite real hunk ids")
@@ -131,20 +110,26 @@ def add_normalize_parsers(commands) -> None:
     select_parser.add_argument("--paths", nargs="*", default=[])
     select_parser.add_argument("--contract", action="store_true", help="a spec or PR contract supplies acceptance criteria")
     select_parser.add_argument("--compat", action="store_true", help="the change alters behavior of an existing consumer")
+    select_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                               help="bound the printed JSON")
 
 
 def add_map_parsers(commands) -> None:
     """`coverage` and `validate-map`: the layer map's two gates."""
-    coverage_parser = commands.add_parser("coverage")
+    coverage_parser = commands.add_parser("coverage", help="fail on a hunk nobody was asked to read")
     coverage_parser.add_argument("--hunks", required=True, type=Path,
-                                 help="hunks.json from review-hunks.py")
+                                 help="hunks.json from crew-review-hunks.py")
     coverage_parser.add_argument("--layers", required=True, type=Path,
                                  help="layers.json written by the reviewer-layers pre-pass")
-    validate_parser = commands.add_parser("validate-map")
+    coverage_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                                 help="bound the printed JSON")
+    validate_parser = commands.add_parser("validate-map", help="check a whole review.json map")
     validate_parser.add_argument("--review", required=True, type=Path,
                                  help="review.json written by crew explain")
     validate_parser.add_argument("--hunks", required=True, type=Path,
                                  help="hunks.json the map was built from")
+    validate_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                                 help="bound the printed JSON")
 
 
 def add_context_parsers(commands) -> None:
@@ -171,7 +156,8 @@ def add_context_parsers(commands) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Normalize findings, persist reviews, select personas, and gate layer maps.")
     commands = parser.add_subparsers(dest="command", required=True)
     add_normalize_parsers(commands)
     add_map_parsers(commands)

@@ -30,11 +30,12 @@ from memory_maintenance import (  # noqa: E402
 from memory_recall import context, journal_add, journal_import, search  # noqa: E402
 from memory_store import STATUSES, TYPES, MemoryError  # noqa: E402
 from memory_units import add, archive, cite, listing, show, supersede  # noqa: E402
+from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 
 
 def add_unit_parsers(commands) -> None:
     """`add`: one unit written from stdin, with its type, scope, title, and metadata."""
-    add_parser = commands.add_parser("add")
+    add_parser = commands.add_parser("add", help="write one unit from stdin")
     add_parser.add_argument("--type", required=True, choices=sorted(TYPES))
     add_parser.add_argument("--scope", required=True)
     add_parser.add_argument("--title", required=True)
@@ -46,14 +47,17 @@ def add_unit_parsers(commands) -> None:
 
 def add_read_parsers(commands) -> None:
     """`search`, `context`, and `show`: the read paths over the index."""
-    search_parser = commands.add_parser("search")
+    search_parser = commands.add_parser("search", help="full-text search; --json for machines")
     search_parser.add_argument("query")
     search_parser.add_argument("--repo", help="repository scope; '*' searches every scope")
     search_parser.add_argument("--type", choices=sorted(TYPES))
     search_parser.add_argument("--include-observations", action="store_true")
     search_parser.add_argument("--top", type=int, default=5)
     search_parser.add_argument("--json", action="store_true")
-    context_parser = commands.add_parser("context")
+    search_parser.add_argument("--limit", type=int, default=None, help="print at most N results")
+    search_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                               help="truncate output past N chars, with a marker")
+    context_parser = commands.add_parser("context", help="ranked recall for a plan or review")
     context_parser.add_argument("--repo")
     context_parser.add_argument("--query", default="")
     context_parser.add_argument("--paths", nargs="*", default=[])
@@ -62,15 +66,22 @@ def add_read_parsers(commands) -> None:
     context_parser.add_argument("--min-score", type=float, default=0.35)
     context_parser.add_argument("--include-observations", action="store_true")
     context_parser.add_argument("--json", action="store_true")
-    show_parser = commands.add_parser("show")
+    context_parser.add_argument("--limit", type=int, default=None, help="print at most N results")
+    context_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                                help="truncate output past N chars, with a marker")
+    show_parser = commands.add_parser("show", help="print one unit")
     show_parser.add_argument("id")
 
 
 def add_write_parsers(commands) -> None:
     """The unit mutations that are not `add`: list, supersede, archive, and cite."""
-    list_parser = commands.add_parser("list")
+    list_parser = commands.add_parser("list", help="list units; --json for machines")
     list_parser.add_argument("--scope")
     list_parser.add_argument("--status", choices=sorted(STATUSES))
+    list_parser.add_argument("--json", action="store_true")
+    list_parser.add_argument("--limit", type=int, default=None, help="print at most N units")
+    list_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                             help="truncate output past N chars, with a marker")
     supersede_parser = commands.add_parser("supersede")
     supersede_parser.add_argument("old")
     supersede_parser.add_argument("new")
@@ -112,9 +123,9 @@ def add_journal_parsers(commands) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Typed, repo-scoped memory: units, search, journal.")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("init")
+    commands.add_parser("init", help="create the store and index")
     add_unit_parsers(commands)
     add_read_parsers(commands)
     add_write_parsers(commands)

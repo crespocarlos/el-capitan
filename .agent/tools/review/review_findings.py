@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from lib.files import atomic_write  # noqa: F401  re-exported by crew-review-findings.py
+from lib.output import DEFAULT_MAX_CHARS, bounded_json
 
 LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
 # Severity says how bad; `kind` says what sort of defect, and the two are independent. Kept out of
@@ -331,5 +332,6 @@ def normalize(args: argparse.Namespace) -> int:
     if args.output:
         args.output.write_text(text, encoding="utf-8")
     else:
-        print(text, end="")
+        # `--max-chars` bounds the printed copy only; a written file must stay complete.
+        print(bounded_json(payload, args.max_chars, what="findings"), end="\n")
     return 0

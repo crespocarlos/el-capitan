@@ -11,6 +11,7 @@ import json
 import sys
 from pathlib import Path
 
+from lib.output import bounded_json
 from review_findings import ABSENT, Finding, read_json_object
 
 SEVERITIES = {"high", "medium", "low", "nit"}
@@ -167,7 +168,7 @@ def layer_coverage(layers: list[dict], findings: list[Finding]) -> str:
 
 
 def coverage(args: argparse.Namespace) -> int:
-    print(json.dumps(check_coverage(args.hunks, args.layers), sort_keys=True))
+    print(bounded_json(check_coverage(args.hunks, args.layers), args.max_chars, what="coverage"))
     return 0
 
 
@@ -211,7 +212,7 @@ def validate_map(args: argparse.Namespace) -> int:
         for error in errors:
             print(f"review-findings: {error}", file=sys.stderr)
         return 1
-    print(json.dumps({"ok": True, "hunks": len(known),
-                      "layers": len(review["layers"]), "warnings": len(warnings)},
-                     sort_keys=True))
+    print(bounded_json({"ok": True, "hunks": len(known),
+                        "layers": len(review["layers"]), "warnings": len(warnings)},
+                       args.max_chars, what="map validation"))
     return 0

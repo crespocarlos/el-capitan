@@ -77,6 +77,39 @@ module.
 
 - Executable Python tools expose `--help` and use exit code `2` for unavailable infrastructure or
   invalid invocation.
+- **`--help` fits one screen.** Every cataloged command's `--help` is at most 40 lines: purpose, one
+  line per flag, one example when the invocation is not obvious. Reference material lives in this
+  document, which a model reads only when it needs the detail;
+  `evals/tools/test_command_names.py` enforces the ceiling.
+- **The output contract is data in `tools.json`.** Each command entry may carry `output`
+  (`human`, `json`, `json-always`, `json-flag`, `json_static`, `source-only`), `bounded` with the
+  `list_flags` it accepts, and a `json_smoke` invocation. The same test asserts every documented JSON
+  mode parses and every bounded command advertises its flag, so a new flag cannot go undocumented and
+  a documented flag cannot go missing.
+
+| Command | Output | Bound |
+|---|---|---|
+| `crew-agent-context.py` | JSON always | — |
+| `crew-lint.py` | findings, or JSON with `--json` | — |
+| `crew-ls.py` | table, `--tsv`, `--md`, or JSON with `--json` | `--limit`, `--max-chars` |
+| `crew-mem.py` | text; JSON for `search`, `context`, `list` with `--json` | `--limit`, `--max-chars` |
+| `crew-review-findings.py` | text; JSON for `select`, `coverage`, `normalize`, `validate-map` | `--max-chars` |
+| `crew-review-hunks.py` | JSON summary | `--max-chars` |
+| `crew-nightshift-e2e.py` | JSON always (needs a nightshift server) | `--limit`, `--max-chars` |
+| `crew-evals-inspect.py` | JSON always (needs Elasticsearch) | `--limit`, `--max-chars` |
+| `crew-evals-compare.py` | tables; JSON for `diagnose --json` | — |
+| `crew-task-context.py` | Markdown, or JSON with `--json` | `--max-chars` |
+| `crew-worktree.py` | the path, or JSON with `--json` | `--max-chars` |
+| `crew-resolve-task-dir.py` | the path, or JSON with `--json` | — |
+| `crew-pr-actions.py` | a plan or result as JSON | — |
+| `crew-assemble-packages.py`, `crew-metric.py`, `crew-progress.py` | human text | — |
+
+- **Truncation is never silent.** `--max-chars` and `--limit` print one `[truncated: …]` marker naming
+  what was dropped and which flag raises the bound; `--json` output becomes
+  `{"items": [...], "total": N, "truncated": true, "hint": ...}` rather than an array that looks
+  complete. The rule lives once, in `lib/output.py`; text keeps its head unless it is an append-only
+  log or a report whose identity fields come last, which keeps its tail — the same rule
+  `crew-task-context.py` applies per artifact.
 - `tools.json` also declares the external tool surface that lint resolves. `mcp_servers` maps an MCP
   server name to the tool names this repository uses on it; `native_tools` lists the harness tool ids
   an agent may name in a `tools:` line. `crew-lint.py` reports `mcp-tool-unknown` for an
@@ -211,10 +244,14 @@ harness that produces that failure.
    — with the matching `dir` and `kind` — in the same change. A `kind: command` entry must be
    `crew-`-prefixed and executable; a `kind: module` entry is snake_case, not executable, and never
    linked.
-2. Give it `--help`, or document a specific exception in `help`.
+2. Give it `--help` at most 40 lines, or document a specific exception in `help`.
 3. Assign one category and one owning skill, agent, or `repository`.
-4. Add a deterministic smoke command if the CLI is safe to invoke.
-5. Run `python3 .agent/tools/maintenance/crew-lint.py` and the listed smoke command.
+4. Declare its output contract in the same entry: `output` (`human`, `json`, `json-always`,
+   `json-flag`, `json-static`), `bounded` with `list_flags` when it prints a collection, and a
+   `json_smoke` invocation the test can run hermetically. Add the row to the contract table above.
+5. Add a deterministic smoke command if the CLI is safe to invoke.
+6. Run `python3 .agent/tools/maintenance/crew-lint.py`, the listed smoke command, and
+   `python3 evals/tools/test_command_names.py`.
 
 ## Compatibility policy
 

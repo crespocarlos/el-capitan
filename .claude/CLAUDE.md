@@ -1,93 +1,42 @@
 # Shared rules
 
-Canonical rule files, shared with Cursor. Claude Code has no glob support and does not read
-`alwaysApply`, so a rule that applies unconditionally to every request must be imported here as well
-as marked `alwaysApply: true`; without the import it is invisible to this harness. Situational rules
-(`voice.mdc`, `crew-explorer-conventions.mdc`) stay out of this list on purpose — Cursor loads them
-when its glob matches and otherwise the model requests them.
+Canonical rules live in `rules/` and are shared with Cursor. Claude Code reads no `alwaysApply` and
+no globs, so a rule that must hold on every request is imported here as well as marked always-on;
+without the import it is invisible to this harness.
 
-@~/.cursor/rules/personal.mdc @~/.cursor/rules/prompt-engineering.mdc
+Two rules stay glob-scoped, so importing them would charge every request for them: read
+`typescript.mdc` before writing a `.ts` or `.tsx` file, and `crew-explorer-conventions.mdc` applies to code research; `voice.mdc` to
+text published under Carlos's name.
+
+@~/.cursor/rules/personal.mdc
+@~/.cursor/rules/agent-output.mdc
+@~/.cursor/rules/crew-router.mdc
+@~/.cursor/rules/crew-orchestrator.mdc
+@~/.cursor/rules/memory-capture.mdc
+@~/.cursor/rules/prompt-engineering.mdc
 @~/.cursor/rules/typescript.mdc
-@~/.cursor/rules/agent-output.mdc @~/.cursor/rules/crew-router.mdc
-@~/.cursor/rules/crew-orchestrator.mdc @~/.cursor/rules/memory-capture.mdc
 
 ---
 
 # el-capitan
 
-Route `crew <command>` triggers to the right crew member. If the message doesn't start with `crew`,
-respond normally — no routing.
+Routing, workflows, and the pipeline state machine live in the imported rules; this file adds only
+what is specific to this harness.
 
-## Routing
+## Invocation
 
-See `rules/crew-router.mdc`.
+**Orchestrators** (`crew-reviewer`, `crew-specwriter`, `crew-pr-resolver`) run **inline in the main
+session**: read `~/.claude/agents/crew-<name>.md` and execute it directly. Claude Code cannot nest
+agent calls, so an orchestrator in a subagent cannot dispatch its personas.
 
-**Mapped workflows:** for an explicit `crew <command>`, do **not** call Claude's `Skill` tool. Read
-the routed `~/.claude/skills/<mapped-skill>/SKILL.md` file and execute its workflow inline. Skills
-without `disable-model-invocation: true` may also activate for a matching non-`crew` request.
+For an explicit `crew <command>`, do not call Claude's `Skill` tool: read the routed
+`~/.claude/skills/<name>/SKILL.md` and execute its workflow inline.
 
-## How to invoke agents (CRITICAL)
+**Persona subagents** are dispatched by the orchestrator from the main session, each with its own
+context window. Fallback priority when the Agent tool is unavailable: file-based `claude -p`
+dispatch, then inline sequential runs (degraded: ordering bias) only when nothing else works.
 
-**Orchestrator agents** (crew-reviewer, crew-specwriter, crew-pr-resolver) run **inline in the main
-session** — read their protocol from `~/.claude/agents/crew-<name>.md` and execute it directly. Do
-NOT dispatch them via Agent tool. Claude Code does not support nested Agent tool calls (subagents
-cannot spawn subagents), so orchestrators must run in the main session to be able to dispatch
-persona subagents.
-
-**Persona subagents** (reviewer-adversarial, specwriter-scope, specwriter-adversarial, etc.) are
-dispatched BY the orchestrator via the Agent tool from the main session — each gets its own context
-window.
-
-Dispatch fallback priority (when Agent tool is unavailable):
-1. **`claude -p` file-based dispatch** — parallel CLI processes
-2. **Inline sequential** — degraded; ordering bias; only when no other option
-
-**This routing is authoritative.** Read the file, follow its instructions. Do not override with
-judgment calls.
-
-**Task state**: resolve via `~/.agent/bin/crew-resolve-task-dir.py`. Scans `~/.agent/tasks/*/.task-id`,
-matches `repo_remote_url` + `branch`.
-
-## Pipeline
-
-```
-DRAFTING → [Gate 1: approve spec] → APPROVED → IMPLEMENTING (implement, review, commit) → [Gate 2: PR title/description/base/target approval] → DONE
-```
-
-Drive each step manually: `crew spec` → `crew implement` → `crew review` → `crew commit` → `crew
-open pr`.
-
-## PROGRESS.md
-
-Append-only. Format: `[YYYY-MM-DD HH:MM] TRANSITION: X → Y`. Pipeline state is derived from git/gh —
-not this file.
-
-## Memory
-
-The shared store at `~/.agent/memory` is the durable, harness-neutral source of truth. It contains
-typed, repo-scoped Markdown units; SQLite FTS5 is only a rebuildable retrieval index. Session
-context arrives through the session-start hook; code, documentation, and user instructions always
-override memory.
-
-Do not write memories automatically. Use `crew remember:` only for durable information not available
-from code, git, or rules. `crew memory seed` drafts journal candidates for explicit user approval.
-Existing Claude Code or Codex memory may be imported as a read-only source with `crew-mem.py ingest`;
-never reconfigure or modify its source repository.
-
-## Invariants
-
-- Explicit routing only — `crew` prefix required
-- Never start `build` implementation without an approved SPEC.md; the lightweight path is the only
-  exception
-- Done = acceptance criteria pass, not "looks right"
-- Explicit handoffs: every skill step that hands off must name the next step and say "proceed
-  immediately"
-- **Type-check without emitting when `node_modules` is a symlink** (`test -L node_modules`):
-  emitting builds write `.d.ts` files into the main repo through the symlink. Use `tsc --noEmit -p
-  <tsconfig>`; if no no-emit form exists, report the type-check as skipped.
-- **`crew implement` always follows crew-builder's protocol.** Changes made under `crew implement`
-  go through crew-builder — via subagent (Cursor Task tool) or by following crew-builder's protocol
-  directly. Never skip the protocol and implement ad-hoc.
+Task state: resolve with `~/.agent/bin/crew-resolve-task-dir.py`.
 
 <!-- el-capitan:memory -->
 Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/crew-mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.

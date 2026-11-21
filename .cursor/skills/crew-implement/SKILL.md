@@ -49,14 +49,9 @@ find ~/.agent/tasks -name "SPEC.md" -type f -exec stat -f "%m %N" {} \; 2>/dev/n
 For each found SPEC.md, read its first line (title) and `## Status` field to build a list.
 
 - If specs exist (under the current branch or elsewhere), present non-DONE specs sorted by last
-  modified (newest first):
+  modified (newest first) as a table of #, repo/branch/task, title, status, and last modified:
 
-> "Found these specs:" > > | #   | Repo / Branch / Task                             | Title
-| Status       | Last modified | > | --- | ------------------------------------------------ |
----------------------------- | ------------ | ------------- | > | 1   | kibana / main /
-add-retry-logic                  | Retry logic for async search | APPROVED     | 2 hours ago   | > |
-2   | kibana / feature/error-handling / improve-errors | Improve error boundaries     | IMPLEMENTING
-| 3 days ago    | > > "Which one? (or run `crew spec` to draft a new one)"
+> "Found these specs: [table] — Which one? (or run `crew spec` to draft a new one)"
 
 When the user picks one, set `TASK_DIR` to that spec's parent directory and continue.
 
@@ -196,29 +191,11 @@ When the Implementation Report is available:
 
 1. ```bash ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
    ```
-2. **Journal (draft, never automatic)** — draft an immutable observation only when it holds something
-   non-derivable from code, git, or the spec: a decision that will constrain future work, or a
-   surprise with a lesson. Derive it from SPEC.md + REPORT.md:
-   - What was built and why it matters (always)
-   - What broke or surprised during implementation, if REPORT.md has structural observations (omit if nothing notable)
-   - Patterns or constraints discovered worth remembering (omit if nothing new)
-
-   Show the title and 1–3 plain-prose paragraphs, each one self-contained idea, then ask
-   `Store this journal entry? (yes / no)`. Only on `yes`, run
-   `~/.agent/bin/crew-mem.py journal add --title "Implemented: <title>" --tags <tags> --repo <scope>` with
-   the prose on stdin. On `no`, or when nothing qualifies, write nothing and report `journal: none`.
-   On non-zero exit print `warning: memory unavailable` and continue. Observations are immutable, so
-   the approval step is mandatory (`memory-capture.mdc`; `CLAUDE.md`: do not write memories
-   automatically).
-
-3. **Memory candidates** — inspect the completed spec, report, verification output,
-   and journal entry. Draft zero to three typed candidates in
-   `~/.agent/memory/.inbox/` only when they are durable, non-derivable, and
-   backed by a file, command, or journal evidence pointer. Do not import them.
-   Show each candidate (or `none`) in the completion handoff and ask for one
-   batch approval; `crew memory seed` or `crew-mem.py import-inbox` performs the
-   later promotion.
-4. **Tell the user — this output is mandatory, do not skip it:**
+2. **Draft the post-run memory writes** per [completion handoff](references/completion-handoff.md):
+   the optional journal entry first (ask `Store this journal entry? (yes / no)`), then zero to three
+   typed candidates in `~/.agent/memory/.inbox/`, which are never imported here. Both are drafts; the
+   approval step is mandatory (`memory-capture.mdc`).
+3. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Status stays `IMPLEMENTING` until the PR is opened."
    > "Working directory: `<WORK_DIR>` — run tests from there."
    > Next: `crew review`, then `crew commit`, then `crew open pr`.

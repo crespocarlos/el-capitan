@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Task listing and rendering: the table, the `--tsv` line, and the reconcile report.
+"""Task listing and rendering: the table, the `--tsv` line, the JSON array, and the reconcile report.
 
 Rendering is separate from `task_gates.py` because it never writes: a listing failure is a display
 problem, while a gate failure must refuse. Both read the record `task_state.py` builds, so a change
@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from lib.output import json_payload, print_lines, rows_limit
 from task_state import (
     STATUS,
     TaskState,
@@ -52,32 +53,56 @@ def table_rows(rows: list[TaskState], show_done: bool, markdown: bool) -> list[t
         for r in shown]
 
 
-def print_table(rows: list[TaskState], show_done: bool, markdown: bool = False) -> None:
+def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
+                limit: int | None) -> list[str]:
+    """The rendered table, bounded to `limit` data rows with a marker line when rows were dropped."""
     table = table_rows(rows, show_done, markdown)
+    header, body = table[0], table[1:]
+    shown, marker = rows_limit(body, limit)
+    rendered: list[str] = []
     if markdown:
-        for index, row in enumerate(table):
-            print("| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |")
+        for index, row in enumerate([header, *shown]):
+            rendered.append("| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |")
             if index == 0:
-                print("|" + "|".join(["---"] * 5) + "|")
+                rendered.append("|" + "|".join(["---"] * 5) + "|")
     else:
-        widths = [max(len(row[i]) for row in table) for i in range(5)]
-        for row in table:
-            print("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
+        widths = [max(len(row[i]) for row in [header, *shown]) for i in range(5)]
+        for row in [header, *shown]:
+            rendered.append("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
     open_count = sum(1 for r in rows if head(r) != "DONE")
     done_rows = [r for r in rows if head(r) == "DONE"]
     unreviewed = sum(1 for r in done_rows if r.verdict.lower() not in ("pass", "warn"))
-    print()
-    print(f"{len(rows)} tasks: {open_count} open, {len(done_rows)} done"
-          + ("" if show_done else f" ({unreviewed} without a review pass; --all lists them)"))
+    rendered.append("")
+    rendered.append(f"{len(rows)} tasks: {open_count} open, {len(done_rows)} done"
+                    + ("" if show_done
+                       else f" ({unreviewed} without a review pass; --all lists them)"))
+    if marker:
+        rendered.append(marker)
+    return rendered
+
+
+def json_row(r: TaskState) -> dict:
+    """One task as machine-readable state: the fields an agent branches on, no display text."""
+    return {"slug": name(r), "directory": str(r.task), "status": r.status or "",
+            "state": head(r) or "", "branch": r.branch_name(""), "verdict": r.verdict,
+            "age_days": r.age, "open": r.open, "done": r.done}
 
 
 def print_listing(rows: list[TaskState], args) -> None:
-    if args.tsv:
-        for r in rows:
-            print("\t".join([name(r), r.branch_name("?"), r.status or "?",
-                             r.verdict, f"{r.age}d"]))
+    """The listing in whichever shape the flags select, bounded by `--limit` and `--max-chars`."""
+    if getattr(args, "json", False):
+        print(json_payload([json_row(r) for r in rows], args.limit, args.max_chars, what="tasks"))
         return
-    print_table(rows, args.all, args.md)
+    if args.tsv:
+        printed, marker = rows_limit(rows, args.limit)
+        lines = ["\t".join([name(r), r.branch_name("?"), r.status or "?",
+                            r.verdict, f"{r.age}d"]) for r in printed]
+        if marker:
+            lines.append(marker)
+        print_lines(lines, args.max_chars, what="task rows", flag="--limit")
+        return
+    print_lines(table_lines(rows, args.all, args.md, args.limit), args.max_chars,
+                what="task table", flag="--max-chars")
 
 
 def load_rows(tasks_dir: Path) -> list[TaskState]:

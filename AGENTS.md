@@ -1,228 +1,65 @@
 # el-capitan — Agent Guide
 
-El-capitan is a spec-driven agentic engineering pipeline. All files are markdown, shell scripts, and
-Python utilities — there is no build step and no package manager. It contains:
-
-- **Orchestration rules** — `rules/crew-orchestrator.mdc`, `crew-router.mdc` (always loaded)
-- **Agent protocols** — `.cursor/agents/crew-*.md`, `specwriter-*.md`, `reviewer-*.md`,
-  `tester-*.md`
-- **Skill files** — `.cursor/skills/<name>/SKILL.md`
-- **Pipeline templates** — `.agent/_SPEC_TEMPLATE.md`, `_BUG_SPEC_TEMPLATE.md` (symlinks to the
-  portable `spec-writing` skill's `references/`)
-- **Tools** — `.agent/tools/` (CLIs grouped into `task/`, `review/`, `memory/`, `evals/`,
-  `maintenance/`, cataloged in `TOOLS.md` / `tools.json`). Every `kind: command` entry installs flat
-  into `~/.agent/bin/`; modules are imported and never linked.
+Spec-driven agentic engineering pipeline. Markdown, shell, and Python only — no build step, no
+package manager.
 
 ## Bootstrap
 
-No setup required. Skip the bootstrap step in any worktree.
-
-```bash
-# Nothing to run — no node_modules, no Cargo.toml, no pyproject.toml
-```
+None. Skip the bootstrap step in any worktree; there is nothing to install or build.
 
 ## Tests
 
-Ten hermetic checks, also run in CI (`.github/workflows/validate.yml`):
+Hermetic suites, also run in CI (`.github/workflows/validate.yml`). Verification of a change means
+those plus the **Acceptance criteria** in SPEC.md. Which suites cover what, and which need a full
+permission run: `.agent/tools/AGENTS.md`. `crew test` reads typed `## Tests` commands from a spec and
+returns WARN when it finds none.
 
-```bash
-python3 .agent/tools/maintenance/crew-lint.py --budget          # conventions, catalog, references, token budget
-bash .claude/hooks/fixtures/run.sh                  # guard hooks, crew-ls gates, status reconcile
-python3 evals/memory/run.py                         # memory retrieval and scope isolation
-python3 evals/reviewer/test_review_findings.py      # normalize/persist/coverage/validate-map
-python3 evals/reviewer/test_scoring.py              # reviewer eval scoring and fixture coverage
-python3 evals/reviewer/test_personas.py             # persona contract, labels, tools, budgets
-python3 evals/tools/test_review_hunks.py            # hunk ids shared by the map and the gate
-python3 evals/tools/test_assemble_packages.py       # packages share one header; prompt tier not doubled
-python3 evals/tools/test_nightshift_e2e.py          # nightshift e2e client against a stub server
-python3 evals/tools/test_install_blocks.py          # install.sh managed blocks stay idempotent
-```
+## Layout
 
-`crew test` looks for typed `## Tests` commands in a spec; with none it returns WARN. Verification of
-a change means the ten commands above plus the **Acceptance criteria** in SPEC.md. Specs use the
-two-line `## Status\n<value>` form.
-
-## File layout
-
-```
-.cursor/
-  rules/
-    crew-orchestrator.mdc       ← pipeline state machine, autopilot logic
-    crew-router.mdc             ← command routing table (single source of truth)
-    crew-explorer-conventions.mdc ← shared conventions for explorer subagents
-    personal.mdc                ← personal preferences (alwaysApply)
-  agents/       ← canonical agent source files (15 agents)
-  skills/       ← canonical skill source files (19 skills, incl. portable spec-writing)
-.claude/
-  CLAUDE.md     ← Claude Code project context (references @AGENTS.md)
-  agents/       ← symlink → ../.cursor/agents
-  skills/       ← symlink → ../.cursor/skills
-  hooks/        ← guard hooks (edit/shell/git/publish/review-address) plus session and telemetry
-.agent/
-  _SPEC_TEMPLATE.md      ← symlink → ../.cursor/skills/spec-writing/references/spec-template.md
-  _BUG_SPEC_TEMPLATE.md  ← symlink → ../.cursor/skills/spec-writing/references/bug-spec-template.md
-  _JOURNAL_TEMPLATE.md
-  tools/        ← every command and module, grouped by responsibility; `kind: command` installs flat into ~/.agent/bin/
-    lib/        ← `.agent/tools/lib/` shared helpers: files.py (atomic_write, read_json), git.py (run_git, gh), cli.py
-    task/       ← crew-ls.py over task_state/task_resolve/task_report/task_gates/task_artifacts/task_typed_tests,
-                  plus the task_status.py status contract, guidance context, and worktrees
-    review/     ← crew-review-findings.py, crew-review-hunks.py, crew-assemble-packages.py, crew-pr-actions.py,
-                  crew-nightshift-e2e.py over the review_* modules, and crew-diff.sh
-    memory/     ← crew-mem.py plus its memory_store/units/recall/maintenance modules
-    evals/      ← crew-evals-compare.py over evals_query/evals_report/evals_diagnose/evals_sources, and crew-evals-inspect.py
-    maintenance/← crew-lint.py over one lint_* module per family (catalog, naming, prompts, references, progress, budget)
-    tools.json, TOOLS.md, requirements.txt  ← the catalog, the naming standard, the dependency note
-install.sh      ← creates symlinks from ~/.cursor/, ~/.claude/, ~/.agent/tools/ → this repo
-```
-
-## Symlink rules
-
-`.cursor/agents/` and `.cursor/skills/` are the canonical sources. `.claude/agents/` and
-`.claude/skills/` are symlinks pointing to them — edit only the `.cursor/` paths (symlinks follow
-automatically).
-
-```bash
-# Verify symlinks
-ls -la .claude/agents   # should show → ../.cursor/agents
-ls -la .claude/skills   # should show → ../.cursor/skills
-```
-
-## Editing files
-
-Edit text files with the edit tool (`StrReplace`/`Edit`) or the write tool (`Write`), never through a
-shell command. A `python3 - <<'PY'` script, `sed -i`, `perl -i`, `tee`, or a redirect that rewrites a
-file hides the change from the edit log, defeats review diffs, and turns a wrong `str.replace` into a
-silent no-op when the anchor text has moved. The same applies under a permission escalation: turning
-the sandbox off to make a script run is not a reason to use a script.
-
-Shell heredocs remain correct for their documented purpose — building a scratch artifact, a context
-package, or JSON that is consumed in the same command, and writing to a task directory from a skill.
-They are not a substitute for editing a tracked file.
-
-## Editing conventions
-
-- **Agent files** (`.cursor/agents/*.md`) — YAML frontmatter (`name`, `description`, optional
-  `readonly`, `tools`, `maxTurns`) followed by protocol prose. The harnesses read different subsets:
-  Cursor reads `name`, `description`, `model`, `readonly`, `is_background` and ignores `tools` and
-  `maxTurns`, inheriting every parent tool instead, so `readonly: true` is Cursor's only tool
-  restriction; Claude Code reads `tools` and `maxTurns` and ignores `readonly`. `tools` therefore speaks
-  Claude Code's ids (`Read`, `Grep`, `Glob`, `Bash`, `Agent`, …), and each frontmatter states which
-  harness reads each key. `crew-lint` resolves every `mcp__<server>__<tool>` reference and every bare
-  `tools:` id against the `mcp_servers` and `native_tools` allowlists in `.agent/tools/tools.json`, so
-  register a new server or tool id there in the same change, and never put an id like that in prose.
-  Do not set `model:`; see `rules/crew-router.mdc` for the model-inheritance rule. Follow the existing
-  style in the file you're editing.
-- **Skill files** (`.cursor/skills/<name>/SKILL.md`) — workflow header, execution model, numbered
-  steps. Follow `crew-commit/SKILL.md` as the canonical example.
-- **Routing** — `crew-router.mdc` is the single source of truth. `.claude/CLAUDE.md` says "do not
-  duplicate it here" — do not add routing entries to CLAUDE.md.
-- **Templates** — spec templates live in `.cursor/skills/spec-writing/references/` (edit there;
-  `.agent/_*SPEC_TEMPLATE.md` are symlinks). Changes affect all future specs.
-- **Tool budget in explorers** — `specwriter-explorer.md` and `tester-explorer.md` each declare a
-  ≤8 tool call budget in prose and set `maxTurns: 8`. The prose is guidance, not an enforced cap: Cursor
-  ignores `maxTurns`, and Claude Code enforces it as a turn limit (not a call limit). If you add a new
-  discovery step that consumes a slot, update the budget breakdown comment.
-- **Guards are hooks, not prose** — a rule that must hold every time belongs in
-  `.claude/hooks/`, registered in both `.claude/settings.json` and `.cursor/hooks.template.json`. Add
-  it to `.claude/hooks/fixtures/run.sh` with an allow case as well as a deny case: a gate that denies
-  unconditionally passes every deny test while breaking the session. `crew-lint` fails an
-  unregistered hook, and a rule whose violation a hook already blocks should not also carry a
-  paragraph of rationale in `personal.mdc`.
-- **Adding a reviewer persona** — five changes, three of them in code (steps 2, 4 and 5), or the
-  persona is dispatched with no package, or never dispatched at all:
-  1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
-     `description`, the search/read `tools` for this harness, `readonly: true`, `maxTurns: 12`) and a
-     persona prompt (identity, scope boundaries, focus areas, severity definitions, output format).
-     Copy the frontmatter from an existing persona rather than inventing tool names; see the
-     harness-split note above for which harness reads which key. Never require a specific tool by
-     name in the prompt body: the two harnesses' tool surfaces differ, one inherits every parent
-     tool while the other honours a declared subset, and a named tool may not exist on the other
-     side. Reviewers are analysis-only; set `readonly: false` only if the persona must write, and
-     say why.
-  2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
-     `crew-review-findings.py`; `select` is what dispatch reads, so `crew-reviewer` Step 4's prose alone
-     dispatches nothing. `select` never returns `explorer`, so that persona stays manually dispatched.
-  3. **Context tier** — assign the persona to a tier in
-     `.cursor/agents/crew-reviewer/references/context-tiers.md`.
-  4. **Package assembly** — add the name to `PRIMARY_KINDS` in `crew-assemble-packages.py` with the layer
-     kinds its lens reads first. The tool derives its persona list from `PERSONAS`, so a name missing
-     from `PRIMARY_KINDS` stops the run with a message naming it instead of silently writing no
-     package.
-  5. **Fixture** — add the persona to an `evals/reviewer/fixtures.json` case, or its prompt is
-     unmeasured.
-
-  For example, an SRE team could add `reviewer-observability.md`, selected on monitoring/alerting
-  paths, checking query quality, false-positive risk, and alert actionability.
-
-## Using crew commands on this repo
-
-The pipeline is self-applicable — you can use crew commands to improve el-capitan itself:
-
-```
-crew spec "add X feature to the pipeline"   # draft a spec for a pipeline improvement
-crew implement                               # implement it in a worktree
-crew test                                   # will return WARN (no test runner) — verify acceptance criteria
-```
-
-The worktree will be created at `~/worktrees/el-capitan-<branch>/`. No bootstrap is needed.
-
-## Files you will commonly edit
-
-| File | What it controls |
+| Path | Contents |
 |---|---|
-| `rules/crew-router.mdc` | Command routing and subagent dispatch table |
-| `rules/crew-orchestrator.mdc` | Pipeline state machine, autopilot logic |
-| `rules/crew-explorer-conventions.mdc` | Shared conventions for explorer subagents |
-| `.cursor/agents/crew-specwriter.md` | Spec drafting protocol (Steps 1-6) |
-| `.cursor/agents/crew-builder.md` | Implementation protocol + Completion Protocol |
-| `.cursor/agents/crew-reviewer.md` | Multi-lens review orchestration |
-| `.cursor/agents/specwriter-explorer.md` | Codebase exploration for spec writing |
-| `.cursor/agents/specwriter-scope.md` | Scope and implementer critic for spec writing |
-| `.cursor/agents/tester-explorer.md` | Test file and convention discovery |
-| `.cursor/skills/crew-test/SKILL.md` | Test runner skill |
-| `.cursor/skills/spec-writing/SKILL.md` | Portable spec-writing procedure (used by crew-specwriter) |
-| `.cursor/skills/spec-writing/references/spec-template.md` | Standard spec template |
-| `.cursor/skills/spec-writing/references/bug-spec-template.md` | Bug spec template |
+| `rules/` | Always-loaded rules; `crew-router.mdc` is the routing source of truth |
+| `.cursor/agents/`, `.cursor/skills/` | Canonical agent and skill sources — edit only here |
+| `.claude/` | `CLAUDE.md`, guard hooks, and symlinks to `.cursor/agents` and `.cursor/skills` |
+| `.agent/tools/` | Every command and module; catalog in `tools.json`, prose in `TOOLS.md` |
+| `.agent/_*TEMPLATE.md` | Spec and journal templates, symlinked from skill `references/` |
+| `evals/` | Hermetic suites, one file per tool or family |
+| `install.sh` | Links `~/.cursor/`, `~/.claude/`, `~/.agent/bin/` from the catalog |
 
-## Verification pattern
+Tool-tree layout, module naming, exit codes, and output contracts: `.agent/tools/AGENTS.md`. Which
+file controls which behavior: `.cursor/skills/crew-diagnose/references/protocol-map.md`.
 
-Changes to agent/skill files are verified by reading them and checking the acceptance criteria in
-the SPEC.md. Most checks are `grep`-based:
+## Editing
 
-```bash
-grep "keyword" .cursor/agents/target-file.md   # presence check
-python3 .agent/tools/maintenance/crew-lint.py --budget   # routing, catalog, reference integrity, token budget
-bash .claude/hooks/fixtures/run.sh   # hook guards, crew-ls gates, status reconciliation
-python3 evals/memory/run.py   # memory retrieval, scope isolation, conflict handling
-python3 evals/reviewer/test_review_findings.py   # normalize/persist/coverage/validate-map
-python3 evals/reviewer/test_scoring.py   # reviewer eval scoring, fixture coverage
-python3 evals/reviewer/test_personas.py   # persona contract, labels, tools, budgets
-python3 evals/tools/test_review_hunks.py   # hunk ids shared by the layer map and the gate
-python3 evals/tools/test_assemble_packages.py   # one shared header; prompt tier not doubled
-python3 evals/tools/test_nightshift_e2e.py   # nightshift e2e client against a stub server
-python3 evals/tools/test_install_blocks.py   # install.sh managed blocks stay idempotent
-```
+Use the edit or write tool for every text change. A `python3 - <<'PY'`, `sed -i`, `tee`, or a
+redirect that rewrites a tracked file bypasses the edit log and the review diff; shell heredocs are
+for scratch artifacts and task-directory writes only.
 
-All ten are hermetic (no network, no API key, no nightshift install) and run in CI via
-`.github/workflows/validate.yml`.
-`evals/run.py` and `evals/reviewer/run.py` make model calls and need an API key; they are not part of
-the deterministic gate.
+- **Agent and skill files** — frontmatter then protocol prose. Per-key harness behavior, the tool-id
+  registry, the 12,000-byte ceiling, and the `references/` rule: `.agent/tools/AGENTS.md` →
+  Authoring agent and skill files. `crew-lint` enforces all of it.
+- **Routing and state** — `crew-router.mdc` routes; `crew-orchestrator.mdc` owns the state machine
+  and autopilot rules. Neither is duplicated in `.claude/CLAUDE.md`.
+- **Templates** — edit `.cursor/skills/spec-writing/references/`; `.agent/_*SPEC_TEMPLATE.md` are
+  symlinks, so a change affects every future spec.
+- **Explorer budget** — `specwriter-explorer.md` and `tester-explorer.md` declare ≤8 tool calls and
+  `maxTurns: 8`; update the breakdown when you add a discovery step.
+- **Guards are hooks, not prose** — a rule that must hold every time lives in `.claude/hooks/`,
+  registered in both hook configs with an allow and a deny case in `fixtures/run.sh`. `crew-lint`
+  fails an unregistered hook.
+- **Reviewer personas** — five changes, three of them in code; the procedure is
+  [persona authoring](.cursor/agents/crew-reviewer/references/persona-authoring.md).
+
+## Self-application
+
+The pipeline improves itself: `crew spec "add X to the pipeline"`, then `crew implement` (worktree at
+`~/worktrees/el-capitan-<branch>/`), `crew test`, `crew commit`.
 
 ## Persistent memory
 
-`crew-mem.py` manages typed, repo-scoped Markdown memories in `~/.agent/memory`; SQLite FTS5 is a
-rebuildable index, not the source of truth. Run `bash install.sh` once to initialize the store and
-install harness-neutral read instructions. Agents retrieve memory automatically. Repository scope
-uses the upstream repository's bare name when available, so forks and upstream worktrees share their
-memory.
-
-Journal entries are immutable `observation` evidence in the same store. `crew-mem.py search` and ranked
-`crew-mem.py context` (plan, implement, review, debug) include them; the unranked `--mode session`
-listing excludes them unless `--include-observations` is passed. Import legacy journals read-only
-with `crew-mem.py journal import`.
-
-Use `crew remember: <lesson>` only for durable, non-derivable information; use `crew memory seed` to
-draft journal candidates for approval, and `crew memory doctor` to diagnose the store. `crew-mem.py
-ingest --source claude|codex --path <directory>` imports external memory read-only and never
-reconfigures or edits its source repository. Verify with `python3 evals/memory/run.py` and `python3
-.agent/tools/maintenance/crew-lint.py`.
+`crew-mem.py` keeps typed, repo-scoped Markdown units in `~/.agent/memory`; SQLite FTS5 is a
+rebuildable index, not the source of truth. Scope is the upstream repository's bare name, so forks and
+worktrees share memory. Agents retrieve it automatically, and code, docs, and user instructions win
+over it. Capture only durable, non-derivable lessons (`crew remember:`), draft candidates with `crew
+memory seed`, diagnose with `crew memory doctor`. Read contract:
+`~/.cursor/skills/crew-memory/references/contract.md`.

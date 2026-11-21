@@ -103,6 +103,19 @@ that failed to look.
   naming what was dropped and how to get the rest — never truncate silently, because a model that
   receives a cut list assumes it was complete.
 
+## Authoring agent and skill files
+
+- **Frontmatter keys are harness-specific.** Cursor reads `name`, `description`, `readonly`, and
+  `is_background`; it ignores `tools` and `maxTurns` and inherits every parent tool, so `readonly: true`
+  is its only tool restriction. Claude Code reads `tools` and `maxTurns` and ignores `readonly`.
+  `tools` therefore speaks Claude Code ids, and each frontmatter says which harness reads which key.
+  Do not set `model:`.
+- **Tool ids resolve against the catalog.** `crew-lint` checks every id against `mcp_servers` and
+  `native_tools` in `tools.json`; register a new one there, never only in prose.
+- **Skill files** follow the workflow header, execution model, numbered steps shape;
+  `crew-commit/SKILL.md` is the canonical example. Material a step needs only sometimes goes in
+  `references/` and is linked, not inlined. An agent or skill file stays under 12,000 bytes.
+
 ## Editing
 
 Use the edit or write tool for every text change. A `python3 - <<'PY'`, `sed -i`, or redirect that

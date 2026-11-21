@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 """List crew task state without failing on malformed task metadata.
 
-(default)    table of open specs, then a count of done specs; --all lists done specs; --md prints
-             a Markdown table; --tsv prints the machine format (slug, branch, status, verdict, age).
---reconcile  report IMPLEMENTING specs ready to open a PR (all criteria checked, review pass or warn),
-             stalled IMPLEMENTING specs, and idle DRAFTING/APPROVED specs (>14d).
---apply      with --reconcile, write ON-HOLD (naming the prior status) for idle specs and log to
-             PROGRESS.md. Never sets DONE (crew open pr does, via --mark-done), ABANDONED or approval.
---mark-implementing TASK_DIR   set IMPLEMENTING when crew implement starts; only from APPROVED.
---mark-done TASK_DIR --pr-url URL [--branch NAME] [--force]
-             set DONE from crew open pr; only from IMPLEMENTING, with all criteria checked, a review
-             pass or warn, the reviewed commit as an ancestor of HEAD, and --branch matching the
-             task's branch. --force is a user-invoked escape hatch that skips those evidence checks.
-Rules live in transitions.json and are tried in file order; the first match wins.
+Modes: the table (default), `--md` (Markdown, for pasting into chat), `--tsv` (slug, branch,
+status, verdict, age), `--json` (machine-readable array). `--all` includes done specs;
+`--limit` and `--max-chars` bound a long listing, and `--status-file SPEC.md` prints one spec's
+`## Status` value.
+
+`--reconcile` reports IMPLEMENTING specs ready for a PR, stalled ones, and idle DRAFTING/APPROVED
+specs; `--apply` writes ON-HOLD for the idle ones and logs it. `--mark-approved`,
+`--mark-implementing`, and `--mark-done` are the three transition gates; rules live in
+`transitions.json`, tried in file order, first match wins.
 
 This file is the argparse entry point only: the record, the writes, and the reconcile rules live in
-`task_state.py`, and rendering plus the gates live in `task_report.py`. `Path(__file__).resolve()`
-follows the installed `~/.agent/bin` symlink back to this directory, so the siblings are found from
-either invocation path.
+`task_state.py`, and rendering plus the gates live in `task_report.py` and `task_gates.py`.
 """
 from __future__ import annotations
 
@@ -26,9 +21,11 @@ import sys
 from pathlib import Path
 
 _TASK_DIR = Path(__file__).resolve().parent
-if str(_TASK_DIR) not in sys.path:
-    sys.path.insert(0, str(_TASK_DIR))
+for _path in (_TASK_DIR.parent, _TASK_DIR):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
+from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 from task_gates import mark_approved, mark_done, mark_implementing  # noqa: E402
 from task_report import (  # noqa: E402
     load_rows,
@@ -38,16 +35,25 @@ from task_report import (  # noqa: E402
 )
 from task_state import RulesError  # noqa: E402
 
+SUMMARY = "List task state: table, --md, --tsv, or --json; reconcile and transition gates."
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=SUMMARY)
     parser.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
     parser.add_argument("--tsv", action="store_true",
                         help="tab-separated slug, branch, status, verdict, age")
     parser.add_argument("--md", action="store_true", help="Markdown table, for pasting into chat")
+    parser.add_argument("--json", action="store_true",
+                        help="machine-readable JSON array on stdout, diagnostics on stderr")
     parser.add_argument("--all", action="store_true", help="list done specs too")
-    parser.add_argument("--reconcile", action="store_true")
-    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--limit", type=int, default=None, help="show at most N tasks")
+    parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                        help="truncate output past N chars with a marker")
+    parser.add_argument("--reconcile", action="store_true",
+                        help="report ready, stalled, and idle specs")
+    parser.add_argument("--apply", action="store_true",
+                        help="with --reconcile, write ON-HOLD for idle specs")
     parser.add_argument("--mark-approved", metavar="TASK_DIR",
                         help="record Gate 1: set APPROVED from DRAFTING")
     parser.add_argument("--status-file", metavar="SPEC.md",
@@ -56,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="set IMPLEMENTING when crew implement starts")
     parser.add_argument("--mark-done", metavar="TASK_DIR",
                         help="set DONE after crew open pr; needs --pr-url")
-    parser.add_argument("--pr-url")
+    parser.add_argument("--pr-url", help="PR URL recorded by --mark-done")
     parser.add_argument("--branch", help="current branch; must match the task's branch")
     parser.add_argument("--force", action="store_true",
                         help="skip the evidence checks in --mark-done")
@@ -78,6 +84,10 @@ def main() -> int:
         return mark_done(args.mark_done, args.pr_url, args.branch, args.force)
     if args.apply and not args.reconcile:
         parser.error("--apply requires --reconcile")
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be at least 1")
+    if args.max_chars < 1:
+        parser.error("--max-chars must be at least 1")
     try:
         rows = load_rows(args.tasks_dir)
         if not args.reconcile:

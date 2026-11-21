@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.output import DEFAULT_MAX_CHARS, truncate  # noqa: E402
 
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -102,6 +107,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-b", "--new-branch", action="store_true", help="create branch from BASE")
     parser.add_argument("--dry-run", action="store_true", help="print mutating actions without running them")
+    parser.add_argument("--json", action="store_true", help="print the path as JSON on stdout")
+    parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                        help=f"bound stdout past N chars with a marker (default {DEFAULT_MAX_CHARS})")
     parser.add_argument("branch", nargs="?", help="branch to resolve or create")
     parser.add_argument("base", nargs="?", help="base ref; required with --new-branch")
     args = parser.parse_args()
@@ -109,7 +117,15 @@ def parse_args() -> argparse.Namespace:
         parser.error("branch is required")
     if args.new_branch and not args.base:
         parser.error("--new-branch requires BASE")
+    if args.max_chars < 1:
+        parser.error("--max-chars must be at least 1")
     return args
+
+
+def emit(args: argparse.Namespace, path: str) -> None:
+    """Print the resolved worktree path, as JSON under `--json`, bounded by `--max-chars`."""
+    text = json.dumps({"path": path, "branch": args.branch}) if args.json else path
+    print(truncate(text, args.max_chars, what="worktree path"))
 
 
 def main() -> int:
@@ -118,11 +134,11 @@ def main() -> int:
         prune_stale(args.dry_run)
         top = Path(git_stdout("rev-parse", "--show-toplevel")).resolve()
         if git("branch", "--show-current", check=False).stdout.strip() == args.branch:
-            print(top)
+            emit(args, str(top))
             return 0
         for path, branch in worktrees():
             if branch == args.branch:
-                print(path)
+                emit(args, str(path))
                 return 0
         target = top.parent / "worktrees" / f"{top.name}-{args.branch.replace('/', '-')}"
         if target.is_dir():
@@ -141,7 +157,7 @@ def main() -> int:
             else:
                 command.extend([str(target), f"origin/{args.branch}"])
             print(f"dry-run: {' '.join(command)}", file=sys.stderr)
-            print(target)
+            emit(args, str(target))
             return 0
         target.parent.mkdir(parents=True, exist_ok=True)
         if args.new_branch:
@@ -156,7 +172,7 @@ def main() -> int:
         if created.returncode:
             print(created.stderr.strip(), file=sys.stderr)
             return created.returncode
-        print(target.resolve())
+        emit(args, str(target.resolve()))
         return 0
     except (OSError, subprocess.CalledProcessError) as error:
         print(f"manage-worktree: {error}", file=sys.stderr)

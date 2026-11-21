@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 """Split a unified diff into numbered hunks for the reviewer layer map.
 
-Writes `hunks.json`, `hunks.md`, `hunks.index.md`, and `package.diff` to `--out`. Every hunk gets a stable id
-(`h1`, `h2`, …) in diff order, and a file with no textual hunk (binary, pure rename, mode change)
-still gets one, so every changed file can be placed in a layer. Ids are assigned here and nowhere
-else: they are the vocabulary the persona Reading map and the `crew-review-findings.py coverage` gate
-share. `hunks.md` carries the index plus each hunk body and feeds the layer-mapping pass;
-`hunks.index.md` is the index alone, for a persona package that already holds the diff, and
-`package.diff` is that diff with generated files' bodies omitted.
+Writes `hunks.json`, `hunks.md`, `hunks.index.md`, and `package.diff` to `--out`. Every hunk gets a
+stable id (`h1`, `h2`, …) in diff order, and a file with no textual hunk (binary, pure rename, mode
+change) still gets one, so every changed file can be placed in a layer — the ids the persona Reading
+map and the `coverage` gate share. `hunks.md` feeds the layer-mapping pass, `hunks.index.md` the
+persona package that already holds the diff, and `package.diff` omits generated files' bodies.
 
-Self-contained on purpose. Hunk parsing is project-agnostic, so it must not depend on another
-checkout being installed; a review that silently loses its layer map because an external tool is
-missing is worse than one that never had a map.
-
-Size limits keep a generated or enormous file from consuming the layer-map prompt: a file over
-`SUPPRESS_LINES`/`SUPPRESS_CHARS` keeps its hunk ids but drops its lines, and a generated file shows
-a short taste. Hunks stay addressable either way, which is what coverage needs.
+Self-contained on purpose: parsing is project-agnostic, because a review that silently loses its
+layer map to a missing external tool is worse than one that never had a map. A file over
+`SUPPRESS_LINES`/`SUPPRESS_CHARS` keeps its hunk ids and drops its lines, so hunks stay addressable.
 """
 from __future__ import annotations
 
@@ -24,6 +18,10 @@ import json
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lib.output import DEFAULT_MAX_CHARS, bounded_json  # noqa: E402
 
 GENERATED = re.compile(
     r"(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum|Cargo\.lock|poetry\.lock|uv\.lock"
@@ -308,10 +306,13 @@ def package_diff(diff: str, parsed: dict) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Split a unified diff into numbered hunks for the reviewer layer map.")
     parser.add_argument("diff", type=Path, help="unified diff file, or - for stdin")
     parser.add_argument("--out", type=Path, required=True,
                         help="directory for hunks.json, hunks.md, hunks.index.md, and package.diff")
+    parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                        help="bound the printed JSON summary")
     args = parser.parse_args()
 
     if str(args.diff) == "-":
@@ -342,8 +343,9 @@ def main() -> int:
     (args.out / "package.diff").write_text(package_diff(text, parsed), encoding="utf-8")
     omitted = [entry["path"] for entry in parsed["files"] if entry["byName"]]
     heuristic = [entry["path"] for entry in parsed["files"] if entry["generated"] and not entry["byName"]]
-    print(json.dumps({"hunks": len(parsed["hunks"]), "files": len(parsed["files"]),
-                      "omitted": omitted, "keptDespiteContentFlag": heuristic, "out": str(args.out)}))
+    summary = {"hunks": len(parsed["hunks"]), "files": len(parsed["files"]),
+               "omitted": omitted, "keptDespiteContentFlag": heuristic, "out": str(args.out)}
+    print(bounded_json(summary, args.max_chars, what="hunk summary"))
     return 0
 
 

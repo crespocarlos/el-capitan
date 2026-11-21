@@ -13,6 +13,7 @@ import re
 import sys
 from pathlib import Path
 
+from lib.output import bounded_json
 from review_findings import (
     CODE_MODES,
     PERSONA_STATUSES,
@@ -304,7 +305,8 @@ def select(args: argparse.Namespace) -> int:
         required.setdefault("architecture", "plan boundaries and compatibility")
     if args.contract:
         required["product-flow"] = "--contract"
-    print(json.dumps({"required": sorted(required), "reasons": required}, indent=2, sort_keys=True))
+    payload = {"required": sorted(required), "reasons": required}
+    print(bounded_json(payload, args.max_chars, what="selected personas"))
     return 0
 
 

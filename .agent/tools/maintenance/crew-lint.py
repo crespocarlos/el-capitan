@@ -13,6 +13,7 @@ exit code.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -23,7 +24,11 @@ _MAINTENANCE_DIR = Path(__file__).resolve().parent
 if str(_MAINTENANCE_DIR) not in sys.path:
     sys.path.insert(0, str(_MAINTENANCE_DIR))
 
-from lint_budget import lint_budget  # noqa: E402
+from lint_budget import (  # noqa: E402
+    MAX_ALWAYS_RULE_TOKENS,
+    always_on_files,
+    lint_budget,
+)
 from lint_catalog import lint_tool_catalog  # noqa: E402
 from lint_files import files  # noqa: E402
 from lint_naming import installed_tool_names  # noqa: E402
@@ -54,6 +59,15 @@ def router_path(root: Path) -> Path:
     return router if router.exists() else root / ".cursor/rules/crew-router.mdc"
 
 
+def budget_report(root: Path) -> None:
+    """Print the always-on measurement to stderr, so stdout stays one finding per line."""
+    sizes = always_on_files(root)
+    print(f"always-on: {sum(size // 4 for _, size in sizes)} tokens "
+          f"(ceiling {MAX_ALWAYS_RULE_TOKENS})", file=sys.stderr)
+    for name, size in sizes:
+        print(f"  {size:>7} bytes  {size // 4:>6} tokens  {name}", file=sys.stderr)
+
+
 def lint(root: Path, budget: bool) -> list[Finding]:
     """Every check over one repository root; findings are `(path, line, rule, message)` tuples."""
     findings: list[Finding] = []
@@ -76,16 +90,25 @@ def lint(root: Path, budget: bool) -> list[Finding]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Validate repository conventions; --budget adds the size gates.")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
-    parser.add_argument("--budget", action="store_true")
+    parser.add_argument("--budget", action="store_true", help="also check the always-on and prompt ceilings")
+    parser.add_argument("--json", action="store_true",
+                        help="print findings as a JSON array on stdout; the measurement goes to stderr")
     args = parser.parse_args()
     if not args.root.is_dir():
         print(f"error: root does not exist: {args.root}", file=sys.stderr)
         return 2
-    findings = lint(args.root.resolve(), args.budget)
-    for path, line, rule, message in findings:
-        print(f"{path}:{line}: {rule}: {message}")
+    root = args.root.resolve()
+    if args.budget:
+        budget_report(root)
+    findings = lint(root, args.budget)
+    if args.json:
+        print(json.dumps([{"path": path, "line": line, "rule": rule, "message": message}
+                          for path, line, rule, message in findings], indent=2))
+    else:
+        for path, line, rule, message in findings:
+            print(f"{path}:{line}: {rule}: {message}")
     return 1 if findings else 0
 
 

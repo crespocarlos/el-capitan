@@ -8,7 +8,9 @@
       "category": "task",
       "owner": "repository",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json-always",
+      "json_smoke": ["AGENTS.md"]
     },
     {
       "name": "crew-lint.py",
@@ -17,7 +19,9 @@
       "category": "maintenance",
       "owner": "repository",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json",
+      "json_smoke": ["--json", "--root", "."]
     },
     {
       "name": "crew-ls.py",
@@ -26,7 +30,11 @@
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json",
+      "bounded": true,
+      "list_flags": ["--limit", "--max-chars"],
+      "json_smoke": ["--json", "--tasks-dir", "@tmpdir"]
     },
     {
       "name": "crew-pr-actions.py",
@@ -35,7 +43,10 @@
       "category": "review",
       "owner": "crew-pr-resolver",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json-always",
+      "json_smoke": ["reply", "--repo", "owner/repo", "--pr", "1", "--thread-id", "T",
+                     "--comment-id", "C", "--body", "b"]
     },
     {
       "name": "crew-review-findings.py",
@@ -44,7 +55,9 @@
       "category": "review",
       "owner": "crew-reviewer",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json",
+      "json_smoke": ["select", "--mode", "self"]
     },
     {
       "name": "crew-review-hunks.py",
@@ -53,7 +66,11 @@
       "category": "review",
       "owner": "crew-reviewer",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json-always",
+      "bounded": true,
+      "list_flags": ["--max-chars"],
+      "json_smoke": ["@diff", "--out", "@tmpdir/hunks"]
     },
     {
       "name": "crew-assemble-packages.py",
@@ -62,7 +79,8 @@
       "category": "review",
       "owner": "crew-reviewer",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "human"
     },
     {
       "name": "crew-nightshift-e2e.py",
@@ -71,7 +89,12 @@
       "category": "review",
       "owner": "crew-e2e",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json-static",
+      "json_static": true,
+      "bounded": true,
+      "flag_help": [["worktrees", "--help"]],
+      "list_flags": ["--limit", "--max-chars"]
     },
     {
       "name": "crew-evals-compare.py",
@@ -80,7 +103,8 @@
       "category": "evals",
       "owner": "crew-evals",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json-flag"
     },
     {
       "name": "crew-evals-inspect.py",
@@ -89,7 +113,12 @@
       "category": "evals",
       "owner": "crew-evals",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json-static",
+      "json_static": true,
+      "bounded": true,
+      "flag_help": [["failures", "--help"]],
+      "list_flags": ["--limit", "--max-chars"]
     },
     {
       "name": "crew-metric.py",
@@ -98,7 +127,8 @@
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "human"
     },
     {
       "name": "crew-progress.py",
@@ -107,7 +137,8 @@
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "human"
     },
     {
       "name": "crew-mem.py",
@@ -116,7 +147,12 @@
       "category": "memory",
       "owner": "crew-memory",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json",
+      "bounded": true,
+      "flag_help": [["list", "--help"]],
+      "list_flags": ["--limit", "--max-chars"],
+      "json_smoke": ["list", "--json", "--limit", "1"]
     },
     {
       "name": "crew-resolve-task-dir.py",
@@ -125,7 +161,9 @@
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json",
+      "json_smoke": ["--json"]
     },
     {
       "name": "crew-task-context.py",
@@ -134,7 +172,12 @@
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json",
+      "json_smoke": ["--json", "--remote", "https://example.invalid/none.git",
+                     "--branch", "none"],
+      "bounded": true,
+      "list_flags": ["--max-chars"]
     },
     {
       "name": "crew-worktree.py",
@@ -143,7 +186,11 @@
       "category": "task",
       "owner": "crew-implement",
       "help": "argparse",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "json",
+      "json_smoke": ["main", "--json"],
+      "bounded": true,
+      "list_flags": ["--max-chars"]
     }
   ],
   "scripts": [
@@ -154,7 +201,8 @@
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "--help",
-      "smoke": "--help"
+      "smoke": "--help",
+      "output": "human"
     },
     {
       "name": "task-env.sh",
@@ -163,7 +211,8 @@
       "category": "task",
       "owner": "crew-orchestrator",
       "help": "source-only",
-      "smoke": "source-only"
+      "smoke": "source-only",
+      "output": "source-only"
     },
     {
       "name": "crew-diff.sh",
@@ -172,7 +221,8 @@
       "category": "review",
       "owner": "crew-reviewer",
       "help": "source-only",
-      "smoke": "source-only"
+      "smoke": "source-only",
+      "output": "source-only"
     }
   ],
   "modules": [
@@ -292,6 +342,15 @@
       "owner": "repository",
       "help": "imported by memory and review modules",
       "smoke": "imported by memory and review modules"
+    },
+    {
+      "name": "output.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by command entry points (bounding and truncation markers)",
+      "smoke": "imported by command entry points (bounding and truncation markers)"
     },
     {
       "name": "git.py",
