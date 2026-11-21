@@ -8,6 +8,7 @@ that worked, so a caller never has to retry or fall back itself.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -49,6 +50,23 @@ def review_dir(task_dir: str | None, repo: str | None = None, mode: str = "self"
     if chosen is None:
         raise OSError(f"no writable review directory: tried {base / stamp}")
     return chosen
+
+
+def claim(path: Path, mode: str, repo: str | None, task_dir: str | None) -> None:
+    """Write `run.json` so a run identifies itself without anyone guessing from a timestamp.
+
+    The directory name is a timestamp, which says when but not what: two reviews of different
+    repositories or modes look identical in a `/tmp` listing. `run.json` records what the directory
+    is for, so a person or an agent can pick the right one instead of taking the newest by mtime.
+    """
+    record = {
+        "mode": mode,
+        "repo": repo or None,
+        "task_dir": task_dir or None,
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "tool": "crew-review-findings.py review-dir",
+    }
+    (path / "run.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
 
 def report(path: Path, task_dir: str | None) -> int:

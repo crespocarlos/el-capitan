@@ -1,0 +1,7 @@
+{
+  "mode": "self",
+  "repo": "probe",
+  "task_dir": "/Users/ccrespo/Documents/dev/el-capitan/evals/review-dir-1b7aybrj",
+  "created": "2026-11-21T19:32:11",
+  "tool": "crew-review-findings.py review-dir"
+}

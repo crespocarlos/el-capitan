@@ -82,12 +82,13 @@ from review_report import outcome, persist  # noqa: E402,F401
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 
 
-from review_workspace import cleanup_stale, report, review_dir  # noqa: E402
+from review_workspace import claim, cleanup_stale, report, review_dir  # noqa: E402
 
 
 def review_dir_command(args: argparse.Namespace) -> int:
     """Create the review directory and print it; `--prune` also trims old temp dirs."""
     chosen = review_dir(args.task_dir or None, args.repo or None, args.mode)
+    claim(chosen, args.mode, args.repo or None, args.task_dir or None)
     if args.prune:
         cleanup_stale(chosen.parent, chosen)
     return report(chosen, args.task_dir)

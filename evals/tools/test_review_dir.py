@@ -139,6 +139,24 @@ def prune_cases(workspace) -> None:
     shutil.rmtree(base, ignore_errors=True)
 
 
+def claim_cases(workspace) -> None:
+    """A new directory records what it is, and does not pretend to have paths yet."""
+    task = writable_task()
+    try:
+        chosen = workspace.review_dir(str(task), "probe", "self")
+        workspace.claim(chosen, "self", "probe", str(task))
+        record = json.loads((chosen / "run.json").read_text(encoding="utf-8"))
+        check("run.json records the mode", record.get("mode") == "self", record)
+        check("run.json records the repo", record.get("repo") == "probe", record)
+        check("run.json records the task directory", record.get("task_dir") == str(task), record)
+        check("run.json records when it was created", bool(record.get("created")), record)
+        check("paths.txt is absent until the diff step", not (chosen / "paths.txt").exists(),
+              sorted(p.name for p in chosen.iterdir()))
+    finally:
+        restore(task)
+        shutil.rmtree(task, ignore_errors=True)
+
+
 def main() -> int:
     workspace = load_workspace()
     task_cases(workspace)
@@ -146,6 +164,7 @@ def main() -> int:
     pr_cases(workspace)
     report_cases()
     prune_cases(workspace)
+    claim_cases(workspace)
     print("all review-dir checks passed" if not FAILED else f"review-dir: {len(FAILED)} failed")
     return 1 if FAILED else 0
 

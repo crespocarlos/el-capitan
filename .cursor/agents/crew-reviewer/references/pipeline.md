@@ -10,7 +10,14 @@ REVIEW_ROOT=$(~/.agent/bin/crew-review-findings.py review-dir \
 ```
 
 It creates the directory, prints the path that works, and names the reason on stderr when it is not
-under `TASK_DIR`. A PR review passes `--mode pr`, which always uses the temp form. Persist each
+under `TASK_DIR`. A PR review passes `--mode pr`, which always uses the temp form. It also writes
+`run.json` (mode, repo, task, creation time), so a `/tmp` listing identifies a run without guessing
+from the timestamp — never pick a review directory with `ls -td | head -1`, which takes the newest
+mtime rather than the run you are in.
+
+`paths.txt` is written by the diff step below and does not exist before it. A script that needs the
+changed paths must run that step first; treat a missing `paths.txt` as "the review has not reached
+the diff", not as a broken directory. Persist each
 dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`, where
 `<persona>` is one of `adversarial`, `architecture`, `code-quality`, `product-flow`,
 `prompt-quality`, `explorer`.
