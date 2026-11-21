@@ -2,7 +2,9 @@
 
 **A spec-driven AI engineering crew for Cursor and Claude Code.**
 
-El Capitan gives you a team of coordinated AI agents that follow a structured pipeline — from drafting a spec to opening a pull request. You stay in control at two gates: you approve the spec before any code is written, and you approve the PR before anything is pushed. Everything in between is automated.
+El Capitan gives you a team of coordinated AI agents that follow a structured pipeline — from drafting
+a spec to opening a pull request. You stay in control at two gates: you approve the spec before any
+code is written, and you approve the PR before anything is pushed. Everything in between is automated.
 
 Gate 1 is recorded on approval: `crew-specwriter` stops until the user approves, then runs
 `crew-ls.py --mark-approved "$TASK_DIR"` to move the spec to `APPROVED`. Gate 2 is the push and PR
@@ -11,10 +13,57 @@ Autopilot chains between gates, never through them.
 
 Works in any git repository. All state lives outside your repos. No cloud sync, no vendor lock-in.
 
+## Who this is for
+
+You will get value from it if you already use an AI coding agent daily and want the pipeline around it
+to be reproducible: a written spec, a review with several lenses, a commit gate. It assumes you are
+comfortable with git branches, worktrees, and reading shell.
+
+It is **not** a plugin you install and forget. It registers hooks in your editor, blocks some shell
+commands, and expects you to work in its vocabulary (`spec`, `gate`, `review`, `handoff`). If you want
+an autocomplete-style assistant, this is the wrong tool.
+
+## What it changes on your machine
+
+`install.sh` writes outside this repository. Knowing this before running it matters more than any
+feature list below.
+
+| Path | What lands there |
+|---|---|
+| `~/.cursor/rules/`, `~/.cursor/agents/`, `~/.cursor/skills/` | Symlinks into this repo; `~/.cursor/hooks.json` is merged, not replaced |
+| `~/.claude/CLAUDE.md`, `~/.claude/agents/`, `~/.claude/skills/`, `~/.claude/hooks/` | Symlinks, plus hook registrations merged into `~/.claude/settings.json` |
+| `~/.codex/AGENTS.md` | Managed instruction block, same content as the Claude Code one |
+| `~/.agent/bin/` | One symlink per command in the catalog |
+| `~/.agent/memory/`, `~/.agent/tasks/`, `~/.agent/journal/` | Your data: memory units, task state, telemetry. Created once, never overwritten |
+
+**It registers hooks that can block your commands**: a destructive-git guard, a secret-scanning commit
+guard, a write-boundary check, and a shell-expansion guard. They are described in
+[Claude Code hooks](#claude-code-hooks), and each is one small file you can read first.
+
+**There is no uninstaller.** To reverse an install, remove the symlinks under `~/.cursor`, `~/.claude`,
+and `~/.agent/bin`, delete the `el-capitan` hook entries from `~/.claude/settings.json` and
+`~/.cursor/hooks.json`, and delete the managed block in `~/.codex/AGENTS.md`. Your `~/.agent/memory`
+data is untouched by those steps, so delete it separately if you want it gone.
+
+## Compatibility
+
+| Requirement | Version |
+|---|---|
+| Python | 3.9 or newer (CI runs 3.9.6) |
+| Cursor or Claude Code | Current release. Both harnesses are supported; each has small differences that [Agent behavior](#the-crew) files and `rules/` document in place |
+| Git, `gh`, `jq` | Any recent version |
+
+There is no tagged release yet: `install.sh` symlinks to your clone, so updating is `git pull`. Treat
+this as pre-1.0 — the command surface is stable, internal module layout is not.
+
 ---
+
 
 ## Contents
 
+- [Who this is for](#who-this-is-for)
+- [What it changes on your machine](#what-it-changes-on-your-machine)
+- [Compatibility](#compatibility)
 - [How it works](#how-it-works)
 - [Workflows](#workflows)
 - [Quick start](#quick-start)
@@ -26,6 +75,25 @@ Works in any git repository. All state lives outside your repos. No cloud sync, 
 - [Configuration](#configuration)
 - [Extending el-capitan](#extending-el-capitan)
 - [License](#license)
+
+---
+
+## Glossary
+
+Terms used throughout this README, and in what the agents say to you.
+
+| Term | Meaning |
+|---|---|
+| **Spec** | A `SPEC.md` in a task directory: problem, acceptance criteria, tests, tasks. The artifact the implementer works from. |
+| **Gate** | A point where the pipeline stops for your approval. Gate 1 approves the spec; Gate 2 approves the PR. |
+| **Task directory** | `~/.agent/tasks/<uuid>/`, outside any repo. Holds the spec, progress log, review, and report. |
+| **Autopilot** | Working through the next pipeline step without re-prompting, between gates only. |
+| **Persona** | One reviewer lens (adversarial, architecture, code quality, product flow, prompt quality) that reads a package and returns findings. |
+| **Hunk** | One contiguous changed block in a diff. Numbered `h1`, `h2`, … so a finding and a gate can cite the same change. |
+| **Layer map** | The diff grouped into ordered layers (`layers.json`) so each persona reads in a sensible order. Every hunk sits in exactly one layer. |
+| **Package** | The context one persona receives: contract, mode, hunk reference, guidance, memory, spec, and the diff. |
+| **Finding** | One reported issue, with a severity label, a `file:line` anchor, evidence, and a verdict. |
+| **Crew member** | The agent that owns a stage: specwriter, builder, reviewer, PR resolver. |
 
 ---
 
@@ -101,7 +169,7 @@ Terminal: all threads resolved and pushed
 ## Quick start
 
 ```bash
-git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
+git clone https://github.com/crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
@@ -160,7 +228,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/crespocarlos/el-capitan/
 Or clone first if you prefer to review before running:
 
 ```bash
-git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
+git clone https://github.com/crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
@@ -176,7 +244,7 @@ bash install.sh
 **To reinstall on a new machine:**
 
 ```bash
-git clone git@github.com:crespocarlos/el-capitan.git ~/el-capitan
+git clone https://github.com/crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
