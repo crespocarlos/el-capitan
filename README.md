@@ -387,17 +387,23 @@ install time:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `guard-shell.sh` holds every shell rule in one process: destructive git (`git reset --hard`, `git clean -f`, force pushes including `-f` and through `git -C`/`-c`), pulling a PR into the local checkout (`gh pr checkout`, `pull/<n>` refs) and local PR-ref reads; commits whose staged lines match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists; Python snippets that rewrite a tracked file; and a bare `=word` that zsh would expand as a command path and abort the rest of the line. Directory parsing reads the command, not text inside a quoted commit message, and falls back to the session `cwd` when the named path is not a repository. Fails closed: unparsable input or a missing `jq` denies the command. |
-| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-write-boundary.sh` blocks writes outside the active worktree. Fails closed. |
-| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `review-address-gate.sh` blocks edits between a `crew review address` verdict table and your own answer to it. The two markers carry the session and review directory they belong to, so a marker left behind by an earlier review allows rather than denying an unrelated edit; only a `UserPromptSubmit` turn from your side writes the approval. |
-| `UserPromptSubmit` | Each turn | `review-address-approval.sh` records an approval that matches the armed session and review directory. Inert unless the gate is armed. |
-| `UserPromptSubmit` / `SessionStart` | Each turn | `mode-anchor.sh` injects the active task, status, branch, and task directory so a long session does not drift out of the pipeline. Fails silent by design. |
+| `PreToolUse` / Cursor `beforeShellExecution` | Bash | Four rules, one per file under `guard/`: `destructive-git.sh` (destructive git: `git reset --hard`, `git clean -f`, force pushes including `-f` and through `git -C`/`-c`, and the escaped form); `local-pr-ref.sh` (`gh pr checkout` and local `pull/<n>` reads); `source-edit.sh` (Python snippets that rewrite a tracked file); `zsh-equals.sh` (a bare unquoted `=word` that zsh expands as a command path and which aborts the rest of the line — `echo ====` and longer, while a quoted separator and a lone `=` pass). A fifth, `credentials.sh`, blocks commits whose staged lines match known secret formats and `gh pr create` without `--repo` when an `upstream` remote exists. |
+| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-write-boundary.sh` blocks writes outside the active worktree. |
+| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-task-spec-owner.sh` blocks a `SPEC.md` whose slug does not match the task directory's recorded slug. |
+| `UserPromptSubmit` | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
-| `SessionStart` | Session begins | Loads bounded memory context and records session state (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
+| `SessionStart` | Session begins | Loads bounded memory context, applies the spec status policy, and refreshes the anchor (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
 | `SessionEnd` / `Stop` | Session ends | `session-event.sh <start\|end\|session>` records session telemetry |
 
-Guard hooks fail closed and always return explicit JSON allow or deny decisions.
-Telemetry hooks fail open and remain local-only.
+Every hook follows one contract: blocking is exit `2` with one line on stderr (Cursor's shell events
+get their own JSON deny), no objection is exit `0` and no output, and a hook that cannot read its
+input reports one line and exits `0`. Failures are non-blocking except for `guard/credentials.sh`,
+which alone is registered `onFailure: "block"` / `failClosed: true`; because Cursor reads *silence*
+from a fail-closed hook as a failure, that one rule also prints an allow payload when it has no
+objection. The shared preamble is `.claude/hooks/lib/hook.sh`.
+
+The review-address gate is a `permissions.ask` rule in `.claude/settings.json`, not a hook, so there
+is no marker file and no approval-recording hook.
 
 
 ### Persistent memory

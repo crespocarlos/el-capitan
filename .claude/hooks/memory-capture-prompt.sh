@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # Ask the agent for one user-approved memory proposal after a substantive session.
+# `{}` is the quiet answer in every case, including unreadable input, so a Stop hook never blocks.
 set -euo pipefail
+HOOK_NAME=memory-capture-prompt
+# shellcheck source=lib/hook.sh
+. "$(dirname "$0")/lib/hook.sh"
+hook_input
 
-INPUT=$(cat)
-INPUT="$INPUT" python3 - <<'PY'
+INPUT="$HOOK_INPUT" python3 - <<'PY'
 import hashlib
 import json
 import os
 from pathlib import Path
 
-try:
-    event = json.loads(os.environ["INPUT"])
-except json.JSONDecodeError:
-    print("{}")
-    raise SystemExit
-
+event = json.loads(os.environ["INPUT"])
 session = str(event.get("session_id") or event.get("conversation_id") or "unknown")
 session_id = hashlib.sha256(session.encode()).hexdigest()[:24]
 root = Path(os.environ.get("CREW_MEMORY_DIR", Path.home() / ".agent" / "memory"))

@@ -88,7 +88,7 @@ python3 - "$home/merge.json" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1]))
 commands = [h["command"] for entries in data["hooks"].values() for e in entries for h in e.get("hooks", [])]
-assert any("guard-shell.sh" in c for c in commands), "guard-shell.sh is not registered"
+assert any("guard/credentials.sh" in c for c in commands), "guard/credentials.sh is not registered"
 assert any("session-event.sh" in c and " start" in c for c in commands), "session-event start is not registered"
 PY
 
@@ -104,8 +104,10 @@ PY
 python3 "$root/.claude/merge_cursor_hooks.py" "$root/.cursor/hooks.template.json" "$home/hooks.json" >/dev/null
 if grep -q 'check-publish.sh' "$home/hooks.json"; then exit 1; fi
 python3 "$root/.claude/merge_cursor_hooks.py" "$root/.cursor/hooks.template.json" "$home/hooks.json" >/dev/null
+# Idempotent: a second merge leaves exactly the template's own entries, with no duplicate.
 count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['hooks']['beforeShellExecution']))" "$home/hooks.json")
-test "$count" = 1
+template_count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['hooks']['beforeShellExecution']))" "$root/.cursor/hooks.template.json")
+test "$count" = "$template_count"
 printf '{bad' > "$home/broken.json"
 if python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/broken.json" >/dev/null 2>&1; then exit 1; fi
 test "$(cat "$home/broken.json")" = '{bad'

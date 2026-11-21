@@ -39,6 +39,11 @@
       "Bash(agent-builder *)",
       "WebFetch(domain:github.com)",
       "WebSearch"
+    ],
+    "ask": [
+      "Bash(~/.agent/bin/crew-review-findings.py:*)",
+      "Edit(~/.agent/tasks/**)",
+      "Write(~/.agent/tasks/**)"
     ]
   },
   "hooks": {
@@ -48,7 +53,24 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/guard-shell.sh\""
+            "command": "bash \"$HOME/.claude/hooks/guard/destructive-git.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/guard/local-pr-ref.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/guard/source-edit.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/guard/zsh-equals.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"",
+            "onFailure": "block"
           }
         ]
       },
@@ -62,10 +84,6 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\""
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/review-address-gate.sh\""
           }
         ]
       }
@@ -164,10 +182,6 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/mode-anchor.sh\""
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/review-address-approval.sh\"; exit 0"
           }
         ]
       }

@@ -23,9 +23,28 @@ printf '%s\n' "$prompt" | jq -e '.followup_message' >/dev/null
 again=$(printf '%s' '{"conversation_id":"repeat"}' \
   | HOME="$home" bash "$root/.claude/hooks/memory-capture-prompt.sh")
 test "$(printf '%s' "$again" | jq -r 'keys | length')" -eq 0
-printf '%s' '{"hook_event_name":"beforeShellExecution","command":"git reset --hard"}' | bash "$root/.claude/hooks/guard-shell.sh" | jq -e '.permission == "deny"' >/dev/null
-printf '%s' '{"hook_event_name":"PreToolUse","tool_input":{"command":"git reset --hard"}}' | bash "$root/.claude/hooks/guard-shell.sh" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
-guard() { jq -n --arg c "$1" '{hook_event_name:"beforeShellExecution",command:$c}' | bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission'; }
+printf '%s' '{"hook_event_name":"beforeShellExecution","command":"git reset --hard"}' \
+  | bash "$root/.claude/hooks/guard/destructive-git.sh" | jq -e '.permission == "deny"' >/dev/null
+rc=0
+printf '%s' '{"hook_event_name":"PreToolUse","tool_input":{"command":"git reset --hard"}}' \
+  | bash "$root/.claude/hooks/guard/destructive-git.sh" >/dev/null 2>&1 || rc=$?
+test "$rc" -eq 2
+# Each shell rule is its own hook, so a fixture verdict is the join over all five: deny when any rule
+# denies, allow when no rule objects. That is what the old single process produced. A rule that prints
+# `{}` has declined — the credential rule's empty decision under Cursor's `failClosed` — so only an
+# explicit `permission: deny` counts.
+guard_dir="$root/.claude/hooks/guard"
+GUARDS="destructive-git local-pr-ref source-edit zsh-equals credentials"
+guard() { # <command> [cwd] [home]
+  local c=$1 d=${2:-$PWD} h=${3:-$HOME} rule out verdict=allow json
+  json=$(jq -n --arg c "$c" --arg d "$d" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}')
+  for rule in $GUARDS; do
+    out=$(printf '%s' "$json" | HOME="$h" bash "$guard_dir/$rule.sh") || true
+    if [ -n "$out" ] && [ "$(printf '%s' "$out" | jq -r '.permission // "none"' 2>/dev/null)" = deny ]; then
+      verdict=deny
+    fi  done
+  printf '%s' "$verdict"
+}
 test "$(guard 'gh pr checkout 301097')" = deny
 test "$(guard 'cd x && gh pr co 12')" = deny
 test "$(guard 'gh pr chec\kout 12')" = deny
@@ -59,13 +78,21 @@ test "$(guard 'gh pr view 1 --jq "$.headRefOid"')" = allow
 # A quoted message is data, not a command.
 test "$(guard 'git commit -m "please do not git reset --hard here"')" = allow
 large_command="git reset --hard; # $(head -c 70000 < /dev/zero | tr '\0' x)"
-jq -n --arg c "$large_command" '{hook_event_name:"beforeShellExecution",command:$c}' \
-  | bash "$root/.claude/hooks/guard-shell.sh" | jq -e '.permission == "deny"' >/dev/null
-printf '%s' '{"hook_event_name":"preToolUse","file_path":"/outside/file"}' | bash "$root/.claude/hooks/check-write-boundary.sh" | jq -e '.permission == "deny"' >/dev/null
-printf '%s' '{"hook_event_name":"PreToolUse","tool_input":{"file_path":"/outside/file"}}' | bash "$root/.claude/hooks/check-write-boundary.sh" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+test "$(guard "$large_command")" = deny
+printf '%s' '{"hook_event_name":"preToolUse","file_path":"/outside/file"}' \
+  | bash "$root/.claude/hooks/check-write-boundary.sh" | jq -e '.permission == "deny"' >/dev/null
+rc=0
+printf '%s' '{"hook_event_name":"PreToolUse","tool_input":{"file_path":"/outside/file"}}' \
+  | bash "$root/.claude/hooks/check-write-boundary.sh" >/dev/null 2>&1 || rc=$?
+test "$rc" -eq 2
 # `..` must be normalized before the containment check, and a new directory must not be
 # mistaken for an escape.
-boundary() { jq -n --arg p "$1" --arg c "$repo" '{hook_event_name:"PreToolUse",tool_input:{file_path:$p},cwd:$c}' | bash "$root/.claude/hooks/check-write-boundary.sh" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; }
+boundary() {
+  local rc=0
+  jq -n --arg p "$1" --arg c "$repo" '{hook_event_name:"PreToolUse",tool_input:{file_path:$p},cwd:$c}' \
+    | bash "$root/.claude/hooks/check-write-boundary.sh" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 2 ]; then printf deny; else printf allow; fi
+}
 repo="$home/brepo"; git init -q "$repo"
 test "$(boundary "$repo/new.md")" = allow
 test "$(boundary "$repo/deep/a/b/c.ts")" = allow
@@ -80,7 +107,7 @@ test "$(boundary "$HOME/.claude/agents/x.md")" = allow
 test "$(boundary "$HOME/.cursor/skills/x/SKILL.md")" = allow
 test "$(boundary "/tmp/scratch.json")" = allow
 
-source_edit_guard() { local h=${3:-$home}; jq -n --arg c "$1" --arg d "$2" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | HOME="$h" bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission'; }
+source_edit_guard() { guard "$1" "$2" "${3:-$home}"; }
 source_repo="$home/source-repo"; git init -q "$source_repo"
 mkdir -p "$source_repo/src"; printf 'export const value = 1;\n' > "$source_repo/src/handler.ts"
 git -C "$source_repo" add src/handler.ts
@@ -96,34 +123,47 @@ test "$(source_edit_guard "$cwd_write" "$source_repo/src" "$home")" = deny
 abs_write=$'python3 - <<\'PY\'\nfrom pathlib import Path\nPath("src/handler.ts").write_text("x")\nPY'
 abs_write=${abs_write/python3//usr/bin/python3}
 test "$(source_edit_guard "$abs_write" "$source_repo" "$home")" = deny
+rc=0
 jq -n --arg c "$tracked_write" --arg d "$source_repo" \
   '{hook_event_name:"PreToolUse",tool_input:{command:$c},cwd:$d}' \
-  | HOME="$home" bash "$root/.claude/hooks/guard-shell.sh" \
-  | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+  | HOME="$home" bash "$root/.claude/hooks/guard/source-edit.sh" >/dev/null 2>&1 || rc=$?
+test "$rc" -eq 2
 # `preToolUse` (lowercase) is Cursor's shape, distinct from Claude Code's `PreToolUse` and from
 # `beforeShellExecution`; exercise its own command-extraction path in both directions.
 test "$(jq -n --arg c "$tracked_write" --arg d "$source_repo" \
   '{hook_event_name:"preToolUse",tool_input:{command:$c},cwd:$d}' \
-  | HOME="$home" bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission')" = deny
+  | HOME="$home" bash "$root/.claude/hooks/guard/source-edit.sh" | jq -r '.permission')" = deny
+cursor_verdict() {
+  local out; out=$(cat)
+  if [ -z "$out" ]; then printf allow; return; fi
+  printf '%s' "$out" | jq -r '.permission // "none"'
+}
 test "$(jq -n --arg c "$scratch_write" --arg d "$source_repo" \
   '{hook_event_name:"preToolUse",tool_input:{command:$c},cwd:$d}' \
-  | HOME="$home" bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission')" = allow
+  | HOME="$home" bash "$root/.claude/hooks/guard/source-edit.sh" | cursor_verdict)" = allow
 
-# zsh equals-expansion: `echo =====` is a command lookup, not text, and it aborts the rest of the
-# line. The guard must catch the unquoted form only — quoting it, a lone `=`, assignments, flags,
-# comments, and bracket tests are all legitimate.
-equals_guard() { jq -n --arg c "$1" '{hook_event_name:"beforeShellExecution",command:$c}' \
-  | bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission'; }
+# zsh equals-expansion: measured with `zsh -c '<cmd>; echo after'`, an unquoted word whose first
+# character is `=` is a command lookup that aborts the rest of the line, at every length. A lone `=`
+# is the one unquoted form zsh reads as text; quoting is always text.
+equals_guard() { guard "$1"; }
 test "$(equals_guard 'echo =====')" = deny
+test "$(equals_guard 'echo ====')" = deny
 test "$(equals_guard 'echo ==')" = deny
 test "$(equals_guard 'cat a | cut -c1-9; echo =====; grep -n x b')" = deny
 test "$(equals_guard 'g "label" f "pattern"; echo x == y')" = deny
 test "$(equals_guard 'echo =ls')" = deny
 test "$(equals_guard "echo '====='")" = allow
+test "$(equals_guard "echo '===='")" = allow
 test "$(equals_guard "printf '%s\\n' '-----'")" = allow
 test "$(equals_guard 'echo =')" = allow
 test "$(equals_guard 'x=1; y=2; echo "$x$y"')" = allow
 test "$(equals_guard 'rg --glob=!*.md x')" = allow
+test "$(equals_guard 'printf "%s\n" "a=b"')" = allow
+test "$(equals_guard 'jq -n "{a:1}"')" = allow
+test "$(equals_guard 'grep -c "=" f')" = allow
+test "$(equals_guard 'rg -n "===" f')" = allow
+test "$(equals_guard 'echo "a=b"')" = allow
+test "$(equals_guard 'echo a==b')" = allow
 test "$(equals_guard '[ "$a" = "$b" ] && echo same')" = allow
 test "$(equals_guard '[[ "$a" == "$b" ]] && echo same')" = allow
 test "$(equals_guard 'printf "%s\n" "a==b"')" = allow
@@ -142,22 +182,29 @@ test "$(equals_guard $'cat <<-EOF\n\tbody == data\n\tEOF\nrm -f /tmp/x')" = allo
 # The rule is gated on the shell that runs the command, never on the login shell: a bash-executing
 # harness must not deny what it runs correctly. Pin both directions explicitly, or CI (bash) and a
 # developer's macOS (zsh) disagree and the suite passes for the wrong reason.
-harness_guard() { jq -n --arg c 'echo =====' --arg e "$1" '{hook_event_name:$e,tool_input:{command:$c}}' \
-  | CREW_SHELL_IS_ZSH="$2" bash "$root/.claude/hooks/guard-shell.sh" \
-  | jq -r '.hookSpecificOutput.permissionDecision // .permission'; }
-test "$(harness_guard PreToolUse 1)" = deny
-test "$(harness_guard PreToolUse "")" = allow
+# A deny is exit 2 with no stdout on Claude's event; an allow is exit 0 with no stdout.
+harness_guard() {
+  local rc=0
+  jq -n --arg c 'echo =====' --arg e "$1" '{hook_event_name:$e,tool_input:{command:$c}}' \
+    | CREW_SHELL_IS_ZSH="$2" bash "$root/.claude/hooks/guard/zsh-equals.sh" >/dev/null 2>&1 || rc=$?
+  printf '%s' "$rc"
+}
+test "$(harness_guard PreToolUse 1)" = 2
+test "$(harness_guard PreToolUse "")" = 0
 # SHELL is irrelevant now, including when it is unset: with `set -u` an unguarded expansion would
 # abort with no JSON, which is the failure this case pins.
 test "$(jq -n --arg c 'echo =====' '{hook_event_name:"beforeShellExecution",command:$c}' \
-  | env -u SHELL bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission')" = deny
+  | env -u SHELL bash "$root/.claude/hooks/guard/zsh-equals.sh" | jq -r '.permission')" = deny
 
 # Task spec guard: a spec titled for one task must not be written into another task's directory.
 # This is the failure that destroyed a completed spec: resolve-task-dir returns the newest non-DONE
 # task for the branch, which on a single-branch repo is unrelated finished work.
-spec_guard() { jq -n --arg p "$1" --arg c "$2" '{hook_event_name:"PreToolUse",tool_input:{file_path:$p,content:$c}}' \
-  | HOME="$home" bash "$root/.claude/hooks/check-task-spec-owner.sh" \
-  | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; }
+spec_guard() {
+  local rc=0
+  jq -n --arg p "$1" --arg c "$2" '{hook_event_name:"PreToolUse",tool_input:{file_path:$p,content:$c}}' \
+    | HOME="$home" bash "$root/.claude/hooks/check-task-spec-owner.sh" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 2 ]; then printf deny; else printf allow; fi
+}
 mkdir -p "$home/.agent/tasks/AAA-other"
 jq -n '{slug:"align-agent-tool-frontmatter"}' > "$home/.agent/tasks/AAA-other/.task-id"
 test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Reviewer finding kind axis and confidence')" = deny
@@ -167,61 +214,31 @@ mkdir -p "$home/.agent/tasks/BBB-new"
 test "$(spec_guard "$home/.agent/tasks/BBB-new/SPEC.md" '# Spec: Reviewer finding kind axis')" = allow
 test "$(spec_guard "$home/somewhere/SPEC.md" '# Spec: anything at all')" = allow
 test "$(spec_guard "$home/.agent/tasks/AAA-other/REPORT.md" '# Spec: Reviewer finding kind axis')" = allow
+# The comparison is on the whole slug, in the one direction the pipeline builds it: an edited title may
+# extend the recorded slug, and nothing shorter may pass on a shared prefix — the defect the
+# 18-character prefix allowed.
+test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Align agent tool frontmatter')" = allow
+test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Align agent')" = deny
+test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Alignment agent tool frontmatter')" = deny
 
-# review-address gate: no pending marker means an ordinary edit, so the hook must allow rather
-# than block every write in the session. This is the direction that fails silently if wrong.
-# `gate` sends a session id, because a marker is scoped to the session that armed it.
-gate() { jq -n --arg e "$1" --arg s "${2:-sess-A}" '{hook_event_name:$e,session_id:$s,tool_input:{file_path:"/x"}}' \
-  | HOME="$home" bash "$root/.claude/hooks/review-address-gate.sh" | jq -r '.permission'; }
-arm() { jq -n --arg s "$1" --arg r "${2:-/review/1}" '{session:$s,review_dir:$r}' \
-  > "$home/.agent/review-address/pending"; }
-gate_state="$home/.agent/review-address"
-rm -rf "$gate_state"
-test "$(gate preToolUse)" = allow
-test "$(gate PreToolUse)" = allow
-# Pending without approval denies — the state the gate exists for.
-mkdir -p "$gate_state"; arm sess-A
-test "$(gate preToolUse)" = deny
-# A legacy bare-text marker belongs to a version with no session scoping, so it is stale.
-: > "$gate_state/pending"
-test "$(gate preToolUse)" = allow
-# A marker armed by another session is stale too: the table it answered is not on screen. This is
-# the case that blocked an unrelated edit in practice.
-arm sess-OTHER
-test "$(gate preToolUse sess-A)" = allow
-# Arm again for this session, then approve through the real user-turn hook.
-arm sess-A
-printf '%s' '{"prompt":"all","session_id":"sess-A"}' \
-  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test "$(gate preToolUse sess-A)" = allow
-# An approval from a different review in the same session does not authorize this one.
-rm -f "$gate_state/approved"
-jq -n --arg s sess-A --arg r /review/OTHER '{session:$s,review_dir:$r,prompt:"all"}' > "$gate_state/approved"
-test "$(gate preToolUse sess-A)" = deny
-# An approval written for another session does not authorize this one either.
-jq -n --arg s sess-OTHER --arg r /review/1 '{session:$s,review_dir:$r,prompt:"all"}' > "$gate_state/approved"
-test "$(gate preToolUse sess-A)" = deny
-# The approval writer ignores anything that is not an answer to the table.
-rm -f "$gate_state/approved"
-arm sess-A
-printf '%s' '{"prompt":"what does this function do?","session_id":"sess-A"}' \
-  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test ! -f "$gate_state/approved"
-printf '%s' '{"prompt":"all","session_id":"sess-A"}' \
-  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test -f "$gate_state/approved"
-# A user turn from a session that did not arm the gate records nothing.
-rm -f "$gate_state/approved"
-printf '%s' '{"prompt":"all","session_id":"sess-OTHER"}' \
-  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test ! -f "$gate_state/approved"
-# A bare number list is the cherry-pick answer the table asks for.
-printf '%s' '{"prompt":"1, 3","session_id":"sess-A"}' \
-  | HOME="$home" bash "$root/.claude/hooks/review-address-approval.sh"
-test -f "$gate_state/approved"
-rm -rf "$gate_state"
+# review-address gate: replaced by a `permissions.ask` rule on the review-address edits, so there is
+# no marker to arm, no state file, and no hook. The guarantee is the settings entry itself: the ask
+# rule names the task-directory paths the skill writes, and no hook may read a marker.
+ask_status=$(python3 - "$root/.claude/settings.json" <<'PY'
+import json, sys
+ask = json.load(open(sys.argv[1]))["permissions"].get("ask") or []
+wanted = ("Edit(~/.agent/tasks", "Write(~/.agent/tasks")
+print("ask" if any(e.startswith(wanted) for e in ask) else "missing")
+PY
+)
+test "$ask_status" = ask
+# No hook and no settings entry may touch the retired marker directory: the gate is a permission
+# rule now, so any mention of that state path is a leftover. `run.sh` itself is excluded — it names
+# the path only to assert this.
+test -z "$(rg -l 'review-address' "$root/.claude/hooks" "$root/.claude/settings.json" \
+  "$root/.cursor/hooks.template.json" 2>/dev/null | grep -v 'fixtures/run.sh' || true)"
 
-publish() { jq -n --arg c "$1" --arg d "${2:-$repo}" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}' | bash "$root/.claude/hooks/guard-shell.sh" | jq -r '.permission'; }
+publish() { guard "$1" "${2:-$repo}"; }
 repo="$home/repo"
 git init -q "$repo"
 printf 'clean\n' > "$repo/a.txt"; git -C "$repo" add a.txt
@@ -256,7 +273,10 @@ git -C "$other" -c user.name=x -c user.email=x@y commit -qm ok
 test "$(publish "cd '$other' && git commit -m clean", "$repo")" = allow
 test "$(publish "git -C \"$other\" commit -m clean", "$repo")" = allow
 git -C "$repo" rm -q --cached e.txt
-jq -n --arg d "$repo" '{hook_event_name:"PreToolUse",tool_input:{command:"gh pr create"},cwd:$d}' | bash "$root/.claude/hooks/guard-shell.sh" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+rc=0
+jq -n --arg d "$repo" '{hook_event_name:"PreToolUse",tool_input:{command:"gh pr create"},cwd:$d}' \
+  | bash "$root/.claude/hooks/guard/credentials.sh" >/dev/null 2>&1 || rc=$?
+test "$rc" -eq 2
 
 tasks="$home/tasks"; mkdir -p "$tasks"
 mkspec() { mkdir -p "$tasks/$1"; printf '%s' "$2" > "$tasks/$1/SPEC.md"; [ -z "${3:-}" ] || printf '%s\n' "$3" > "$tasks/$1/REVIEW.md"; [ -z "${4:-}" ] || touch -t "$4" "$tasks/$1"/*; return 0; }

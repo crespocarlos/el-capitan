@@ -21,6 +21,7 @@ PATTERNS = (
     ".claude/settings.json",
     ".cursor/hooks.template.json",
     ".claude/hooks/*.sh",
+    ".claude/hooks/guard/*.sh",
 )
 
 

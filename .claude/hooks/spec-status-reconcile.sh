@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# Applies the spec status policy at session start; prints changes, failures, and the unreviewed-done count.
+# Applies the spec status policy at session start, prints changes, failures, the unreviewed-done
+# count, and refreshes the cached pipeline anchor that `mode-anchor.sh` prints each turn.
 set -uo pipefail
+HOOK_NAME=spec-status
+# shellcheck source=lib/hook.sh
+. "$(dirname "$0")/lib/hook.sh"
+# shellcheck source=lib/anchor.sh
+. "$(dirname "$0")/lib/anchor.sh"
+
+# Not `set -e`: a missing tool is reported and the session continues.
 tool="$HOME/.agent/bin/crew-ls.py"
 if [ ! -x "$tool" ]; then
   printf 'spec-status: reconcile failed (%s missing)\n' "$tool"
@@ -12,6 +20,7 @@ out=$(python3 "$tool" --reconcile --apply 2>"$err")
 rc=$?
 if [ "$rc" -ne 0 ]; then
   printf 'spec-status: reconcile failed (exit %s: %s)\n' "$rc" "$(head -n 1 "$err")"
+  anchor_refresh >/dev/null
   exit 0
 fi
 failure=$(grep -m1 '^error:' "$err") || true
@@ -29,4 +38,6 @@ fi
 if [ "${unreviewed:-0}" -gt 0 ]; then
   printf 'spec-status: %s done spec(s) lack a review pass; run crew-ls --reconcile to list\n' "$unreviewed"
 fi
+# The anchor is refreshed after reconcile, so it reflects the statuses this session just applied.
+anchor_refresh >/dev/null
 exit 0

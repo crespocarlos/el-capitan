@@ -22,8 +22,8 @@ narration.
   pull the PR ref, and never `git switch` or add a worktree for it. Read the diff with `gh pr diff`
   and file contents at the head SHA with `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"`
   (quoted: an unquoted `?ref=` is a zsh glob and the command dies before `gh` runs); verification in
-  PR mode uses those reads, never the working tree. The shell hook `guard-shell.sh` denies
-  `gh pr checkout` and `pull/<n>` fetches.
+  PR mode uses those reads, never the working tree. The shell hooks `guard/local-pr-ref.sh` and
+  `guard/destructive-git.sh` deny `gh pr checkout` and `pull/<n>` fetches.
 - Keep every `gh` evidence read a single literal command with a quoted URL, and redirect output to a
   file on its own. The `gh`/`git` guard rejects commands a shell loop or variable expansion produces,
   so a `for` loop over changed paths fails even though each individual read is allowed. Never guess a

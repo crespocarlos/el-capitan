@@ -373,6 +373,19 @@ if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
   fi
 fi
 link_dir_files "$SCRIPT_DIR/.claude/hooks" ~/.claude/hooks
+# The guard rules and the shared preamble live in subdirectories, and each is linked as a whole
+# directory: a hook sources `lib/hook.sh` relative to its own file, so a flat copy of the `.sh` files
+# would break that line. `prune_broken_symlinks` does not recurse, so these two are managed here. A
+# real directory at the destination is an earlier partial install of the same names, replaced so the
+# link exists; only these two names are ever removed, and only when this repo ships them.
+for sub in lib guard; do
+  if [ -d "$SCRIPT_DIR/.claude/hooks/$sub" ]; then
+    if [ -d "$HOME/.claude/hooks/$sub" ] && [ ! -L "$HOME/.claude/hooks/$sub" ]; then
+      run rm -rf "$HOME/.claude/hooks/$sub"
+    fi
+    run ln -sfn "$SCRIPT_DIR/.claude/hooks/$sub" "$HOME/.claude/hooks/$sub"
+  fi
+done
 # Runs after the merge above, so a retired script's registration is already gone; this removes the
 # link that pointed at it, and only links whose target is inside this repo.
 prune_broken_symlinks ~/.claude/hooks

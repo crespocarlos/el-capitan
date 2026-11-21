@@ -21,12 +21,14 @@ RULE_FILE = re.compile(r"([\w-]+\.mdc)")
 AGENT_REF = re.compile(r"(?:subagent_type:\s*|@)([\w-]+)")
 ROUTING_ROW = re.compile(r"\|\s*`crew ")
 # A prompt asks a command for repo facts instead of running git: a failing `git rev-parse` prints
-# nothing and the prompt then acts on an empty variable. Mutations and diff reads stay raw, and
-# crew-diff.sh and guard-shell.sh are exempt (diff content, and the hook that polices git).
+# nothing and the prompt then acts on an empty variable. Mutations and diff reads stay raw.
+# `.claude/hooks/` is exempt as a tree: a hook is not a prompt, it inspects the exact tree the tool
+# call names rather than the session's, and it already handles a failure on every one of those calls.
 GIT_FACT = re.compile(
     r"`?git\s+(?:-\S+\s+)*(?:rev-parse|branch\s+--show-current|branch\s+-vv|branch\s+--merged"
     r"|remote\s+get-url|worktree\s+list)|\$\(git\s+(?:-\S+\s+)*(?:rev-parse|branch|remote)")
-GIT_FACT_EXEMPT = ("crew-diff.sh", "guard-shell.sh")
+GIT_FACT_EXEMPT = ("crew-diff.sh",)
+GIT_FACT_EXEMPT_PREFIX = ".claude/hooks/"
 Findings = list[tuple[str, int, str, str]]
 
 
@@ -164,9 +166,11 @@ def lint_git_facts(name: str, text: str) -> Findings:
     Those questions have one answer, `crew-repo-info.py`, and the shell snippets a prompt used to
     carry failed silently: `$(git rev-parse ...)` on a broken checkout yields an empty string that
     the next step treats as a real value. Diff and log reads are not flagged — they read commit
-    output, not a repo fact — and neither are approved mutations.
+    output, not a repo fact — and neither are approved mutations. Hook scripts are exempt: they are
+    not prompts, they inspect the tree their own tool call names, and every one of those calls
+    already handles a failure.
     """
-    if name.endswith(GIT_FACT_EXEMPT):
+    if name.endswith(GIT_FACT_EXEMPT) or name.startswith(GIT_FACT_EXEMPT_PREFIX):
         return []
     return [(name, line_no(text, match.start()), "git-fact-in-prompt",
              "ask crew-repo-info.py (or crew-worktree.py for worktrees) instead of running git")

@@ -3,6 +3,10 @@
 # Called by Notification hook on idle_prompt.
 set +e
 exec 2>/dev/null
+HOOK_NAME=notify-idle
+# shellcheck source=lib/hook.sh
+. "$(dirname "$0")/lib/hook.sh"
+hook_input
 
 REPO=$(basename "$(~/.agent/bin/crew-repo-info.py --field root 2>/dev/null || echo '')" 2>/dev/null || echo 'unknown')  # crew-lint: allow-swallow
 BRANCH=$(~/.agent/bin/crew-repo-info.py --field branch 2>/dev/null || echo '')  # crew-lint: allow-swallow

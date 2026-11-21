@@ -93,25 +93,17 @@ Never apply any change during this step. Collect all verdicts first.
 
 ### Step 3: Report and ask for approval
 
-**Both modes** — write the pending marker first, then present the table. The marker is what arms
-`review-address-gate.sh`: while it names this session and this review and no matching user approval
-exists, every `Edit`/`Write` is denied, so the table cannot be skipped. Create it immediately before
-the table, never after the edits.
+**Both modes** — present the table, then ask. Never edit before the answer.
 
-In idea mode the marker is required only when the target is a file, because only then can an approved
-revision write to disk; a pasted-text idea edits nothing and the marker would deny nothing.
+The harness asks before this flow records anything: `.claude/settings.json` carries a
+`permissions.ask` rule for `Edit`/`Write` under the task directory and for
+`crew-review-findings.py`, so writing the outcome log or the review artifacts prompts for approval,
+and the prompt arrives with the table still on screen. There is no marker file and no state to clear:
+nothing can be left behind to block an unrelated edit later.
 
-```bash
-# The marker carries its identity: a session id and the review directory. The gate ignores a marker
-# from another session, so a forgotten one cannot block unrelated work.
-mkdir -p "$HOME/.agent/review-address"
-jq -n --arg session "${CLAUDE_SESSION_ID:-$CURSOR_CONVERSATION_ID}" --arg review "$REVIEW_ROOT" \
-  '{session:$session, review_dir:$review}' > "$HOME/.agent/review-address/pending"
-```
-
-If neither session variable is set in this harness, the marker records an empty session and the gate
-treats it as stale, so the table has no structural protection — say so rather than pretending the gate
-is armed.
+That prompt does not cover edits to the source files the findings cite — a permission rule cannot see
+which flow is running. Those are authorized by the answer to the question below, and only by it. If you
+are about to edit without having shown the table, stop.
 
 Code mode table:
 
@@ -147,12 +139,8 @@ Follow [outcome logging](references/outcome-logging.md) after the user responds 
 
 ### Step 4: Execute approved fixes
 
-Only after the user responds. Clear the gate marker in the same command that starts the edits —
-leaving it in place denies every edit, and clearing it before the user answers defeats the gate:
-
-```bash
-rm -f "$HOME/.agent/review-address/pending" "$HOME/.agent/review-address/approved"
-```
+Only after the user responds. The ask rule is what holds the gate, so an edit that the harness did
+not prompt for means the rule is missing — say so rather than proceeding silently.
 
 **Code mode:** apply each approved edit, reading the file immediately before editing if it wasn't
 already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; if an

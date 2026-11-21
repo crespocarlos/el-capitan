@@ -66,13 +66,19 @@ def lint_edit_discipline(root: Path, paths: list[Path]) -> Findings:
 
 
 def lint_hook_registration(root: Path) -> Findings:
-    """Every hook script is named in a settings file, or it never runs."""
+    """Every hook script is named in a settings file, or it never runs.
+
+    `guard/` and `lib/` are both walked: a rule that moved into `guard/` is still a hook that must be
+    registered, while `lib/` holds sourced files, which a registration never names.
+    """
     findings: Findings = []
     referenced = ""
     for config in SETTINGS_FILES:
         if (root / config).exists():
             referenced += (root / config).read_text(errors="replace")
-    for hook in (root / ".claude/hooks").glob("*.sh"):
+    hooks = sorted((root / ".claude/hooks").glob("*.sh"))
+    hooks += sorted((root / ".claude/hooks/guard").glob("*.sh"))
+    for hook in hooks:
         if hook.name not in referenced:
             findings.append((rel(root, hook), 1, "unregistered-hook",
                              "hook is not registered in a settings file"))

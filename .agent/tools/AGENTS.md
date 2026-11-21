@@ -13,10 +13,29 @@ python3 evals/tools/test_command_names.py                # catalog kinds, instal
 
 The three are fast and cover structure. Behavioral changes also need the suite for the area you
 touched — `evals/memory/run.py` for memory, `evals/reviewer/test_*.py` for review,
-`evals/tools/test_*.py` for a single tool. Two suites create temporary git repositories and fail
-inside the Cursor sandbox with `Operation not permitted`: `bash .claude/hooks/fixtures/run.sh` and
-`python3 evals/memory/run.py`. Run those with full permissions, and check exit codes directly rather
-than piping to `tail`, which hides them.
+`evals/tools/test_*.py` for a single tool. Three suites create temporary git repositories and fail
+inside the Cursor sandbox with `Operation not permitted`: `bash .claude/hooks/fixtures/run.sh`,
+`python3 evals/tools/test_hooks_contract.py`, and `python3 evals/memory/run.py`. Run those with full
+permissions, and check exit codes directly rather than piping to `tail`, which hides them.
+
+## Hooks
+
+Hook scripts under `.claude/hooks/` are shell, and the module ceiling does not apply to them — but
+each one obeys the same contract, and the test that pins it is `evals/tools/test_hooks_contract.py`.
+Blocking is exit `2` with one line on stderr (Cursor gets its own JSON deny instead); no objection is
+exit `0` with no output; an input a hook cannot read is one stderr line and exit `0`. A hook never
+mixes the two blocking mechanisms, and only `guard/credentials.sh` fails closed, because only that
+rule's failure is a credential leak. Cursor reads *silence* from a fail-closed hook as a failure, so
+that one rule also prints an allow payload when it has no objection.
+
+- **One rule per hook.** A new shell rule is its own file under `guard/`, registered on the Bash
+  matcher in both settings files. It sources `lib/hook.sh` for the input, event, field, and
+  deny/allow helpers rather than repeating the preamble.
+- **Register it in both configs.** `crew-lint.py` fails an unregistered hook, and a file that is
+  never registered is a guard that silently stopped guarding.
+- **Keep each rule file under 60 lines.** Anything longer is two rules.
+- **Pin both directions in the fixtures.** `.claude/hooks/fixtures/run.sh` is the verdict contract;
+  a new rule adds its allow and deny cases there and to the contract test's per-hook matrix.
 
 ## Language floor
 

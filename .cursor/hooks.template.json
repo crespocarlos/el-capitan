@@ -3,14 +3,16 @@
   "hooks": {
     "sessionStart": [{"command": "bash \"$HOME/.claude/hooks/cursor-memory-context.sh\""}],
     "beforeShellExecution": [
-      {"command": "bash \"$HOME/.claude/hooks/guard-shell.sh\"", "failClosed": true}
+      {"command": "bash \"$HOME/.claude/hooks/guard/destructive-git.sh\"", "failClosed": false},
+      {"command": "bash \"$HOME/.claude/hooks/guard/local-pr-ref.sh\"", "failClosed": false},
+      {"command": "bash \"$HOME/.claude/hooks/guard/source-edit.sh\"", "failClosed": false},
+      {"command": "bash \"$HOME/.claude/hooks/guard/zsh-equals.sh\"", "failClosed": false},
+      {"command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"", "failClosed": true}
     ],
     "preToolUse": [
-      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": true},
-      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\"", "failClosed": true},
-      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/review-address-gate.sh\"", "failClosed": true}
+      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": false},
+      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\"", "failClosed": false}
     ],
-    "beforeSubmitPrompt": [{"command": "bash \"$HOME/.claude/hooks/review-address-approval.sh\"", "failClosed": false}],
     "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "postToolUseFailure": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "stop": [{"command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\"", "loop_limit": 1}]

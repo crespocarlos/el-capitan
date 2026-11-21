@@ -250,6 +250,54 @@ module.
 - The repository is standard-library-only. `requirements.txt` documents that deliberate absence of
   third-party dependencies.
 
+## Hooks
+
+`.claude/hooks/` holds the harness hooks; `.claude/settings.json` (Claude Code) and
+`.cursor/hooks.template.json` (merged into `~/.cursor/hooks.json`) register them. Every hook follows
+one contract, implemented once in `.claude/hooks/lib/hook.sh`:
+
+| Outcome | Claude Code | Cursor |
+| --- | --- | --- |
+| Block | exit `2`, one line on stderr, nothing on stdout | its own JSON deny on stdout, exit `0` |
+| No objection | exit `0`, nothing on either stream — the harness's permission flow decides | exit `0` and nothing, same as Claude |
+| Cannot judge | one line on stderr, exit `0` | one line on stderr, exit `0` |
+
+The two mechanisms are never mixed in one run, and a Claude allow is never a
+`permissionDecision: "allow"` payload, which would skip interactive approval.
+
+One measured exception: Cursor treats *no output* from a hook registered `failClosed: true` as a
+failure and blocks the command, so silence there is a block rather than a decline. The only such hook
+is `guard/credentials.sh`, and it therefore answers Cursor's `beforeShellExecution` with Cursor's
+documented allow payload when it has no objection. Every other hook stays silent on both harnesses.
+
+**Fail open by default.** A missing `jq`, an unreadable payload, or an unexpected event exits `0`
+after one stderr line, so a broken hook never blocks a tool call. One rule is the exception:
+`guard/credentials.sh`, which alone carries `onFailure: "block"` in `.claude/settings.json` and
+`failClosed: true` in `.cursor/hooks.template.json`, because a silent gap there is a credential leak.
+
+| File | Event | Purpose |
+| --- | --- | --- |
+| `guard/destructive-git.sh` | Bash | `git reset --hard`, `git clean -f`, force pushes, escaped `gh`/`git` |
+| `guard/local-pr-ref.sh` | Bash | `gh pr checkout` and `pull/<n>` reads |
+| `guard/source-edit.sh` | Bash | Python snippets that rewrite a tracked file |
+| `guard/zsh-equals.sh` | Bash | a bare unquoted `=word`, which zsh reads as a command path |
+| `guard/credentials.sh` | Bash | credential-like commits, `gh pr create` with an implied target |
+| `check-write-boundary.sh` | Write, Edit | writes outside the active worktree |
+| `check-task-spec-owner.sh` | Write, Edit | a `SPEC.md` written into another task's directory |
+| `mode-anchor.sh` | UserPromptSubmit | the cached pipeline anchor line |
+| `memory-context.sh`, `cursor-memory-context.sh` | SessionStart | bounded memory context |
+| `spec-status-reconcile.sh` | SessionStart | applies the status policy, refreshes the anchor |
+| `session-event.sh`, `log-tool-use.sh`, `notify-idle.sh` | lifecycle / PostToolUse / Notification | local telemetry and the idle notification |
+| `memory-capture-prompt.sh` | Stop | asks once for a memory candidate |
+
+One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
+reader sees one purpose per file. `lib/hook.sh` is sourced, never registered, and `lib/anchor.sh`
+holds the anchor line `spec-status-reconcile.sh` computes and `mode-anchor.sh` reprints.
+
+The review-address gate is a `permissions.ask` rule in `.claude/settings.json`, not a hook: the
+harness asks before a review-address run writes anything, so no state file, marker, or
+approval-recording hook exists to go stale.
+
 ## Sandboxed network and `gh`
 
 Every `gh` command needs `api.github.com`, which Cursor's sandbox allowlist does not include, while

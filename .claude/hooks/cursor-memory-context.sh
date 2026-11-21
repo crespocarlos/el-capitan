@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Cursor sessionStart hook: inject memory session context as additional_context.
-# Fails open: memory problems never block a session.
-cat >/dev/null 2>&1 || true
+# Cursor sessionStart hook: inject memory session context as `additional_context`.
+# Fails open: memory problems never block a session, and the harness always receives valid JSON.
+set -euo pipefail
+HOOK_NAME=cursor-memory-context
+# shellcheck source=lib/hook.sh
+. "$(dirname "$0")/lib/hook.sh"
+hook_input
+
 rc=0
 out=$(~/.agent/bin/crew-mem.py context --mode session 2>&1) || rc=$?
 case $rc in

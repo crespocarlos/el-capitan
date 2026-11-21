@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# Capture minimal, local-only session telemetry. This never writes durable memory.
+# Capture minimal, local-only session telemetry. This never writes durable memory, and it never
+# blocks a tool call: unreadable input is reported in one line and the harness's `{}` is printed.
 set -euo pipefail
+HOOK_NAME=log-tool-use
+# shellcheck source=lib/hook.sh
+. "$(dirname "$0")/lib/hook.sh"
+hook_input
 
-INPUT=$(cat)
-INPUT="$INPUT" python3 - <<'PY'
+INPUT="$HOOK_INPUT" python3 - <<'PY'
 import datetime
 import hashlib
 import json
 import os
 from pathlib import Path
 
-try:
-    event = json.loads(os.environ["INPUT"])
-except json.JSONDecodeError:
-    print("{}")
-    raise SystemExit
-
+event = json.loads(os.environ["INPUT"])
 session = str(event.get("session_id") or event.get("conversation_id") or "unknown")
 session_id = hashlib.sha256(session.encode()).hexdigest()[:24]
 event_name = str(event.get("hook_event_name") or event.get("event") or "postToolUse")

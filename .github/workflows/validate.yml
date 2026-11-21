@@ -21,6 +21,9 @@ jobs:
       - name: Hook and task-state fixtures
         run: bash .claude/hooks/fixtures/run.sh
 
+      - name: Hook stdout/stderr/exit contract
+        run: python3 evals/tools/test_hooks_contract.py
+
       - name: Install migration and idempotency
         run: bash .claude/hooks/fixtures/install.sh
 

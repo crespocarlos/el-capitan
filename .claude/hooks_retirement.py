@@ -11,6 +11,11 @@ also contain, and silently unregistering one of those would stop a working hook 
 
 A script belongs in this list only if some released revision registered it. `block-zsh-equals-expansion.sh`
 does not: it was never committed (git log --all has no entry for it), so it is deliberately absent.
+
+`guard-shell.sh`, `review-address-gate.sh`, and `review-address-approval.sh` are here because the
+hook-contract change replaced them: four shell rules now live one per file under `hooks/guard/`, and
+the review-address gate is a `permissions.ask` rule rather than a marker protocol. Any install that
+still registers them would run a script that no longer exists.
 """
 
 import re
@@ -22,6 +27,9 @@ RETIRED_SCRIPTS = (
     "session-start.sh",
     "session-end.sh",
     "session-logger.sh",
+    "guard-shell.sh",
+    "review-address-gate.sh",
+    "review-address-approval.sh",
 )
 
 # `<hooks dir>/<name>` where the hooks directory is this installer's managed destination, quoted or
