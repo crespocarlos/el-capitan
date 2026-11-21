@@ -40,7 +40,7 @@ If no review is visible in context (new session or context reset):
 ```bash
 source ~/.agent/bin/task-env.sh
 ~/.agent/bin/crew-task-context.py --artifacts spec,review,deferred,handoff --max-chars 4000
-REPO=$(basename $(git rev-parse --show-toplevel))
+REPO=$(basename "$(~/.agent/bin/crew-repo-info.py --field root)")
 OUTPUT_DIR=${TASK_DIR:-/tmp/crew-review-$REPO}
 REVIEW_FILE="$OUTPUT_DIR/REVIEW.md"
 ```

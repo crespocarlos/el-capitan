@@ -10,22 +10,24 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(_TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_ROOT))
+
+from lib.git import GitError, toplevel  # noqa: E402
+
 
 def repo_root(explicit: Path | None) -> Path:
+    """The root to resolve targets against: the override, or this checkout's own."""
     if explicit:
         return explicit.resolve()
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise ValueError(result.stderr.strip() or "not inside a git repository")
-    return Path(result.stdout.strip()).resolve()
+    try:
+        return toplevel(None)
+    except GitError as error:
+        raise ValueError(str(error)) from error
 
 
 def guidance_paths(root: Path, target: Path) -> list[Path]:

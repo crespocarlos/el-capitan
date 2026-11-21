@@ -17,16 +17,23 @@
 # compares two commits and silently drops every staged or unstaged change, which is exactly the state
 # a pre-commit review runs in. `DIFF_SOURCE` still reports which halves contributed, because a
 # reviewer benefits from knowing whether it is looking at committed or pending work.
-# Exits 1 only when there is nothing to review at all.
+#
+# The base ref and the fork point come from `crew-repo-info.py`, which owns the ref order
+# (upstream default, origin default, HEAD~1) for every caller. This file keeps only what `source`
+# needs: capturing those two values and emitting the diff.
+#
+# Exits 1 only when there is nothing to review at all, or when no fork point can be computed.
 
-_get_diff_base() {
-  # upstream/main first (forks), then origin/main, origin/master, HEAD~1 fallback
-  for ref in upstream/main upstream/master origin/main origin/master; do
-    if git rev-parse --verify "$ref" >/dev/null 2>&1; then
-      echo "$ref"; return
-    fi
-  done
-  echo "HEAD~1"
+_crew_repo_info() {
+  # Installed, both commands are links in ~/.agent/bin; in the repo this file is review/ and the
+  # command is in task/, so try the sibling first and the repository layout second.
+  local script="${BASH_SOURCE[0]}" dir
+  dir=$(python3 -c 'import os, sys; print(os.path.dirname(os.path.realpath(sys.argv[1])))' "$script")
+  if [ -f "$dir/crew-repo-info.py" ]; then
+    echo "$dir/crew-repo-info.py"
+  else
+    echo "$dir/../task/crew-repo-info.py"
+  fi
 }
 
 _get_diff_main() {
@@ -36,10 +43,10 @@ _get_diff_main() {
     shift; files=("$@")
   fi
 
-  local base fork_point
-  base=$(_get_diff_base)
-  fork_point=$(git merge-base --fork-point "$base" HEAD 2>/dev/null \
-    || git merge-base "$base" HEAD 2>/dev/null)
+  local tool base fork_point
+  tool=$(_crew_repo_info)
+  base=$(python3 "$tool" --diff-base) || return 1
+  fork_point=$(python3 "$tool" --fork-point) || return 1
 
   if [[ -z "$fork_point" ]]; then
     echo "get-diff: could not determine fork point from $base" >&2

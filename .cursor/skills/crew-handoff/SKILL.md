@@ -16,7 +16,7 @@ Code, git, and task files stay authoritative; the handoff only points at them.
 ```bash
 source ~/.agent/bin/task-env.sh
 ~/.agent/bin/crew-task-context.py --artifacts task_id,spec,progress,report,review,deferred,handoff --max-chars 4000
-REPO=$(basename "$(git rev-parse --show-toplevel)")
+REPO=$(basename "$(~/.agent/bin/crew-repo-info.py --field root)")
 HANDOFF="${TASK_DIR:-/tmp/crew-handoff-$REPO}/HANDOFF.md"
 mkdir -p "$(dirname "$HANDOFF")"
 ```
@@ -60,7 +60,7 @@ and the `## Next` list.
 
 ## Resume (`crew handoff resume`)
 
-Read `$HANDOFF`. If it is missing, say so and stop. Verify the recorded state against git (`git
-rev-parse --short HEAD`, `git status --short`) and report any drift before acting. Read every file
-under `## Pointers`, restate the goal and next action, and ask the open questions before starting
-work that depends on them.
+Read `$HANDOFF`. If it is missing, say so and stop. Verify the recorded state against
+`~/.agent/bin/crew-repo-info.py --json` (`branch`, `head_short`, `dirty`) and report any drift before
+acting. Read every file under `## Pointers`, restate the goal and next action, and ask the open
+questions before starting work that depends on them.

@@ -20,8 +20,9 @@ git fetch --prune --quiet
 git worktree list
 ```
 
-Parse each worktree path and its checked-out branch. Identify the main worktree (from `git rev-parse
---show-toplevel`) — it is never removed.
+Parse each worktree path and its checked-out branch. The main worktree is the first entry in that
+listing, and it is never removed; `~/.agent/bin/crew-repo-info.py --root <path> --field branch` reads
+another worktree's branch without changing directory.
 
 ### Step 3: Classify each worktree
 

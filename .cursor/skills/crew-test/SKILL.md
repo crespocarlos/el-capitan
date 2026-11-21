@@ -105,7 +105,7 @@ Validation`):
 - Skip blocks whose `Command` is `"none"` or empty.
 - Run each command in sequence:
   ```bash
-  cd $(git rev-parse --show-toplevel) && <command>
+  cd "$(~/.agent/bin/crew-repo-info.py --field root)" && <command>
   ```
 - Capture exit code and up to 30 lines of output per block.
 - A block PASSES if exit code is 0; FAILS otherwise.

@@ -16,7 +16,7 @@ Run these simultaneously:
 
 ```bash
 git diff --staged --stat          # size check + file list
-git diff --staged --name-only     # file list for scope check
+~/.agent/bin/crew-repo-info.py --field staged     # file list for scope check
 
 source ~/.agent/bin/task-env.sh
 ~/.agent/bin/crew-task-context.py --artifacts spec,review --max-chars 4000
@@ -34,13 +34,13 @@ review:**
 The review records the identity it approved. Verify all three:
 
 ```bash
-git rev-parse HEAD                                    # compare to "Reviewed at:" in REVIEW.md
-git diff --name-only --cached | sort                  # compare to "### Files reviewed"
-git status --porcelain -- $(git diff --name-only --cached)   # must be empty: no unstaged edits
+~/.agent/bin/crew-repo-info.py --field head          # compare to "Reviewed at:" in REVIEW.md
+~/.agent/bin/crew-repo-info.py --field staged | sort # compare to "### Files reviewed"
+~/.agent/bin/crew-repo-info.py --field staged_dirty  # must be empty: no unstaged edits
 ```
 
-Compare `HEAD` against the `Reviewed at:` line, the staged file list against `### Files reviewed`,
-and require the third command to print nothing — an edited-but-restaged file keeps the same name set,
+Compare `HEAD` against the `Reviewed at:` line, the staged list against `### Files reviewed`, and
+require `staged_dirty` to print nothing — an edited-but-restaged file keeps the same staged name set,
 so the file list alone cannot prove the review still applies. Any mismatch (new file, removed file,
 different path, new commits, or unstaged edits) → fall back to slow path.
 
@@ -142,7 +142,7 @@ change pipeline state, so this is a `METRIC` audit line, not a `TRANSITION`:
 if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
   echo "warning: task state unreadable — commit not logged to PROGRESS.md" >&2
 elif [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/crew-metric.py "$TASK_DIR" commit sha="$(git rev-parse --short HEAD)"
+  ~/.agent/bin/crew-metric.py "$TASK_DIR" commit sha="$(~/.agent/bin/crew-repo-info.py --field head_short)"
 fi
 ```
 

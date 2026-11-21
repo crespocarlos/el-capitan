@@ -40,7 +40,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py` | `transitions.json` | Guidance context, task state, resolution, gates, worktrees |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py` | `transitions.json` | Guidance context, task state, resolution, gates, worktrees, repository facts |
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_layers.py`, `review_personas.py`, `review_report.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py` | `memory_store.py`, `memory_units.py`, `memory_recall.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
@@ -99,6 +99,7 @@ module.
 | `crew-evals-inspect.py` | JSON always (needs Elasticsearch) | `--limit`, `--max-chars` |
 | `crew-evals-compare.py` | tables; JSON for `diagnose --json` | — |
 | `crew-task-context.py` | Markdown, or JSON with `--json` | `--max-chars` |
+| `crew-repo-info.py` | `key: value` lines, or JSON with `--json` | — |
 | `crew-worktree.py` | the path, or JSON with `--json` | `--max-chars` |
 | `crew-resolve-task-dir.py` | the path, or JSON with `--json` | — |
 | `crew-pr-actions.py` | a plan or result as JSON | — |
@@ -183,7 +184,30 @@ module.
   `post-comment` endpoints, because queued runs post a PR comment by default. Exit 3 means the
   server is unreachable.
 - `crew-default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the single
-  definition used by skills and `crew-worktree.py`.
+  definition used by skills and `crew-worktree.py`: the ref walk now lives in `lib/git.py`
+  (`default_branch`), and this script is a thin wrapper over `crew-repo-info.py --network`.
+- `crew-repo-info.py` is the one command that answers the facts a prompt used to ask git for:
+  `root`, `branch`, `head`, `head_short`, `dirty`, `staged`, `staged_dirty`, `remote`, `remote_url`,
+  `repo` (owner/repo), `repo_name`, `origin_repo`, and `default_branch`. `staged` is the name list
+  staged against HEAD and `staged_dirty` the subset still edited afterwards, which is what `crew
+  commit`'s fast path checks: an edited-but-restaged file keeps the same staged names, so the list
+  alone cannot prove a review still applies. `--field NAME` prints one value bare, so a prompt
+  assigns it instead of parsing; `--json` prints the whole record; `--root PATH` reads another
+  checkout, which is how a worktree's branch is read without `cd`. `--remote` defaults to `upstream`
+  when it exists and `origin` otherwise, so a fork reports the repo its PR targets. `--network`
+  resolves the default branch through `gh` first and `git` second; without it the answer comes from
+  the local symref, so a prompt pays no round trip for a branch it does not need. `--diff-base` and
+  `--fork-point` answer the diff question `crew-diff.sh` used to walk itself. Exit 1 when the fact
+  asked for is unavailable, because a printed null with exit 0 is the silent-empty answer this
+  command exists to remove.
+- **Git is reached through `lib/git.py`, never through a hand-rolled call.** No Python module outside
+  that file builds a `git` or `gh` argv, and no prompt runs git to learn the root, branch, remote, or
+  diff base — it asks `crew-repo-info.py` or sources `crew-diff.sh`. A module imports the helper for
+  its question; a local read (root, branch, HEAD, ancestry, status, index, blob) uses git alone,
+  while the network reads (default branch, remote tip, fetch, compare) try `gh` first because it
+  carries the authentication and fall back to git, raising `GitError` that names both failures.
+  Prompt files keep raw git only for a mutation the user approved (`git add`, `git commit`,
+  `git worktree remove`) and for documentation that says what must never run.
 - `crew-worktree.py` is stateful. Its usage output is available with `--help`; do not use smoke
   tests that create worktrees.
 - `crew-worktree.py` auto-prunes only worktrees whose remote branch is gone and that are clean. It

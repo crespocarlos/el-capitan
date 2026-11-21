@@ -21,7 +21,15 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from lib.files import atomic_write
-from lib.git import GitError, conflicted_paths, dirty_files as _dirty_files, run_git as _run_git
+from lib.git import (
+    GitError,
+    conflicted_paths,
+    dirty_files as _dirty_files,
+    remotes,
+    remote_url,
+    run_git as _run_git,
+    toplevel,
+)
 
 TYPES = {
     "user", "feedback", "project", "reference", "failure-shield", "procedure",
@@ -59,29 +67,25 @@ def today() -> str:
 
 
 def repo_key() -> str:
-    """The repository scope: the upstream (or origin) repository's bare name, else the directory."""
+    """The repository scope: the upstream (or origin) repository's bare name, else the directory.
+
+    One `toplevel` and one `remote_url` per remote answer what three hand-rolled calls used to ask:
+    a fork's `upstream` wins over `origin`, and a checkout with neither falls back to its directory
+    name. Git failing here is not an error for a scope — the memory store must still open — so the
+    directory fallback covers an unreadable or absent repository.
+    """
     try:
-        top = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"], text=True, capture_output=True,
-            check=True
-        ).stdout.strip()
-        remotes = subprocess.run(
-            ["git", "-C", top, "remote"], text=True, capture_output=True,
-            check=True
-        ).stdout.splitlines()
-        for remote_name in ["upstream", "origin", *remotes]:
-            remote = subprocess.run(
-                ["git", "-C", top, "remote", "get-url", remote_name], text=True,
-                capture_output=True,
-            )
-            if remote.returncode:
-                continue
-            match = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", remote.stdout.strip())
-            if match:
-                return match.group(2)
-        return Path(top).name
-    except (OSError, subprocess.CalledProcessError):
+        top = toplevel(None)
+    except GitError:
         return Path.cwd().name
+    for remote_name in ["upstream", "origin", *remotes(top)]:
+        url = remote_url(top, remote_name)
+        if not url:
+            continue
+        match = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", url)
+        if match:
+            return match.group(2)
+    return top.name
 
 
 def canonical_scope(value: str) -> str:

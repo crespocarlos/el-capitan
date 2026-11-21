@@ -10,11 +10,16 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-from task_state import (
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+for _path in (_TOOLS_ROOT, Path(__file__).resolve().parent):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+from lib.git import GitError, head_sha, is_ancestor  # noqa: E402
+from task_state import (  # noqa: E402
     PREDICATES,
     TaskState,
     head,
@@ -23,7 +28,7 @@ from task_state import (
     set_status,
     unresolved,
 )
-from task_typed_tests import typed_tests_problem
+from task_typed_tests import typed_tests_problem  # noqa: E402
 
 REVIEWED_AT = re.compile(r"^Reviewed at:\s*([0-9a-f]{7,40})\s*$", re.M)
 
@@ -122,19 +127,18 @@ def ancestry_problem(reviewed_at: str) -> str | None:
     """Why the reviewed commit does not cover HEAD, or None when it is an ancestor.
 
     `crew commit` runs after `crew review`, so HEAD is normally one or more commits ahead of the
-    reviewed tree. An unrelated or unresolvable SHA must fail rather than silently satisfy the gate.
+    reviewed tree. An unrelated or unresolvable SHA must fail rather than silently satisfy the gate:
+    a git error here is reported as unverifiable, never as approval.
     """
-    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", reviewed_at, "HEAD"],
-                              capture_output=True)
-    if ancestor.returncode == 0:
-        return None
-    if ancestor.returncode == 1:
-        current = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                                 text=True).stdout.strip()
+    try:
+        if is_ancestor(None, reviewed_at, "HEAD"):
+            return None
+        current = head_sha(None)
         return (f"review was of {reviewed_at[:12]}, which is not an ancestor of HEAD "
                 f"{current[:12]}; re-run crew review")
-    return (f"cannot verify that review {reviewed_at[:12]} covers HEAD; "
-            "run from the implementation checkout")
+    except GitError:
+        return (f"cannot verify that review {reviewed_at[:12]} covers HEAD; "
+                "run from the implementation checkout")
 
 
 def done_problems(r: TaskState, branch: str) -> list[str]:

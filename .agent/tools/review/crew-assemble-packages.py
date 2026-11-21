@@ -47,8 +47,11 @@ import importlib.util
 import json
 import pathlib
 import re
-import subprocess
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+from lib.git import GitError, blob_at, rev_parse  # noqa: E402
 
 
 def _reviewer_personas() -> tuple[str, ...]:
@@ -271,20 +274,18 @@ def staged_text(repo: pathlib.Path, path: str) -> str:
     working tree is the only source, and the label says so.
     """
     try:
-        result = subprocess.run(["git", "-C", str(repo), "show", f":{path}"],
-                                capture_output=True, text=True, check=True)
-        return result.stdout
-    except (OSError, subprocess.CalledProcessError):
+        return blob_at(repo, f":{path}")
+    except GitError:
         return (repo / path).read_text(encoding="utf-8")
 
 
 def is_staged(repo: pathlib.Path, path: str) -> bool:
+    """True when `path` has an index entry; the index is the only place `blob_at` reads."""
     try:
-        subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f":{path}"],
-                       capture_output=True, check=True)
-        return True
-    except (OSError, subprocess.CalledProcessError):
+        rev_parse(repo, f":{path}")
+    except GitError:
         return False
+    return True
 
 
 def excerpt(repo: pathlib.Path, path: str, start: int, end: int, label: str) -> str:

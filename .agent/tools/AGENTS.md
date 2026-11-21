@@ -62,7 +62,7 @@ install — and a module cannot leak into the command surface.
 ```
 .agent/tools/
   tools.json  TOOLS.md  requirements.txt   catalog and its documentation
-  lib/            cli.py files.py git.py    shared helpers: argparse factory, atomic write, gh runner
+  lib/            cli.py files.py git.py    shared helpers: argparse factory, atomic write, git/gh
   task/           Task state, worktrees, progress and metric logging
   review/         Review pipeline: findings, layers, personas, report, hunk parsing
   memory/         Typed memory store and retrieval
@@ -79,6 +79,14 @@ Rules that the structural gate enforces:
 - Four-space indent, no tabs, in every file.
 - No comment block longer than four lines. Rationale belongs in the docstring of the thing it
   explains; the code should not carry its own history.
+- **Git lives in `lib/git.py`.** No other Python module builds a `git` or `gh` argv, because a
+  hand-rolled call reads empty output when git fails and then acts on it. Import the helper for the
+  question — root, branch, remote, default branch, ancestry, blob, diff base — and let `GitError`
+  reach the caller. Prompts follow the same rule in their own terms: a prompt asks a command
+  (`crew-repo-info.py`, `crew-diff.sh`), never git, and raw git stays only where the user approved
+  a mutation. Local reads use git alone; the two network reads (`default_branch`, `fetch_remote`)
+  try `gh` first because it carries the authentication, fall back to git, and raise naming both.
+  `evals/tools/test_python_shape.py` fails a git argv outside `lib/`.
 
 ## Exit codes
 

@@ -9,8 +9,14 @@ checkout, and refuses loudly when the suite is missing rather than guessing at a
 from __future__ import annotations
 
 import re
-import subprocess
+import sys
 from pathlib import Path
+
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(_TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TOOLS_ROOT))
+
+from lib.git import GitError, output  # noqa: E402
 
 KIND_ORDER = ("prompt", "tool", "retrieval", "evaluator", "dataset", "other")
 # Tokens that place a path in a surface, checked in order; the first match wins.
@@ -24,14 +30,9 @@ PATH_TOKENS = (
 def git(repo: Path, *args: str) -> str:
     """A read-only git call in `repo`; any failure names the repository, not the caller's bug."""
     try:
-        return subprocess.run(
-            ["git", "-C", str(repo), *args], check=True, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        ).stdout
-    except (OSError, subprocess.CalledProcessError) as error:
-        message = (error.stderr.strip() if isinstance(error, subprocess.CalledProcessError)
-                   else str(error))
-        raise SystemExit(f"repository unavailable: {message}")
+        return output(repo, list(args))
+    except GitError as error:
+        raise SystemExit(f"repository unavailable: {error}") from error
 
 
 def locate_suite(repo: Path, suite_id: str) -> Path:

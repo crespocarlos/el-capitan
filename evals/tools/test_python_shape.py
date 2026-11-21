@@ -17,6 +17,7 @@ Rules:
   `findings` collide on `sys.path`;
 - no string path concatenation (`"/" + name`), which loses a separator to an empty segment and
   says nothing about whether a join was meant at all;
+- no direct git invocation outside `lib/git.py`, so one runner owns the argv and one error shape;
 - exactly one `atomic_write` and one `gh` runner exist in the whole tree.
 """
 from __future__ import annotations
@@ -170,6 +171,31 @@ def check_path_concat(path: Path, tree: ast.AST) -> list[tuple[str, int, str, st
     return found
 
 
+GIT_LIBRARY = TOOLS / "lib" / "git.py"
+
+
+def is_git_argv(node: ast.AST) -> bool:
+    """True for a list or tuple literal whose first element is the string `git`."""
+    if not isinstance(node, (ast.List, ast.Tuple)) or not node.elts:
+        return False
+    first = node.elts[0]
+    return isinstance(first, ast.Constant) and first.value == "git"
+
+
+def check_direct_git(path: Path, tree: ast.AST) -> list[tuple[str, int, str, str]]:
+    """No module outside `lib/git.py` writes a git argv, because one runner owns the error shape.
+
+    The rule catches both ways a call site hand-rolls it: `subprocess.run(["git", ...])` and a
+    literal git argv stored in a name that a command list later runs. A git call assembled from
+    strings at runtime is not visible to a syntax check, which is why `TOOLS.md` states the rule and
+    the prompt grep covers the snippets that live in Markdown.
+    """
+    if path == GIT_LIBRARY:
+        return []
+    return [(display(path), node.lineno, "direct-git", "build the argv in lib/git.py instead")
+            for node in ast.walk(tree) if is_git_argv(node)]
+
+
 def check_unique_functions(modules: dict[Path, ast.AST]) -> list[tuple[str, int, str, str]]:
     found = []
     for name in UNIQUE_FUNCTIONS:
@@ -216,6 +242,7 @@ def main() -> int:
         violations.extend(check_comment_blocks(path, source))
         violations.extend(check_imports(path, tree))
         violations.extend(check_path_concat(path, tree))
+        violations.extend(check_direct_git(path, tree))
 
     violations.extend(check_unique_functions(parsed))
 
@@ -231,6 +258,7 @@ def main() -> int:
           f"{count('long-comment-block')} long comment blocks, "
           f"{count('bare-generic-import')} bare-name imports, "
           f"{count('string-path-concat')} string path concatenations, "
+          f"{count('direct-git')} direct git calls, "
           f"{count('long-module')} modules over {MAX_MODULE_LINES} lines, "
           f"{count('shared-helper-count')} shared-helper problems")
     bad = bool(violations)

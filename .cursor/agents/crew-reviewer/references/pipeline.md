@@ -63,7 +63,7 @@ task's `REVIEW.md`.
    <self|changes|pr|spec|idea> --files <path1> <path2> ... --head <HEAD SHA> --strict --personas
    adversarial code-quality`; pass every dispatched persona as its own space-delimited argument (for
    example, add `architecture prompt-quality`). Comma-separated values such as
-   `adversarial,code-quality` are invalid. `<HEAD SHA>` is `$(git rev-parse HEAD)` for self, changes,
+   `adversarial,code-quality` are invalid. `<HEAD SHA>` is `$(~/.agent/bin/crew-repo-info.py --field head)` for self, changes,
    spec, and idea; for PR it is the head SHA from `gh pr view`, which the local checkout does not
    contain and `--head` therefore records without resolving.
    `--personas` is required on every call, and persona coverage is checked whether or not you pass

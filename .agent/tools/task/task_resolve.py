@@ -8,42 +8,39 @@ point adds only argument handling; task context adds only the artifact reader.
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
-from task_state import read_status
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+for _path in (_TOOLS_ROOT, Path(__file__).resolve().parent):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+from lib.git import GitError, current_branch, remote_url  # noqa: E402
+from task_state import read_status  # noqa: E402
 
 
 class ResolverUnavailable(RuntimeError):
     """Git state that cannot resolve a task: the caller exits 1 rather than reporting "no task"."""
 
 
-def git_output(args: list[str]) -> str:
-    result = subprocess.run(args, capture_output=True, text=True)
-    if result.returncode != 0:
-        return ""
-    return result.stdout.strip()
-
-
 def resolve_context(remote: str = "", branch: str = "") -> tuple[str, str]:
     """The remote and branch to match on, from the overrides or the current git context.
 
-    An unresolvable remote or a detached HEAD is a broken pipeline state, not "no task": this raises
-    so the entry point can exit 1 instead of silently taking the no-task path.
+    An unresolvable remote or a detached HEAD is a broken pipeline state, not "no task": git
+    answering failure raises here, and the entry point exits 1 instead of silently taking the
+    no-task path. Reading empty output as a real answer was the defect this replaced.
     """
-    if remote:
-        current_remote = remote
-    else:
-        current_remote = git_output(["git", "remote", "get-url", "origin"])
+    try:
+        current_remote = remote or remote_url(None, "origin")
         if not current_remote:
             raise ResolverUnavailable("No git remote configured; cannot resolve task state.")
-    if branch:
-        return current_remote, branch
-    current_branch = git_output(["git", "branch", "--show-current"])
-    if not current_branch:
-        raise ResolverUnavailable("Not on a branch; crew commands require an active branch.")
-    return current_remote, current_branch
+        if branch:
+            return current_remote, branch
+        return current_remote, current_branch(None)
+    except GitError as error:
+        raise ResolverUnavailable(
+            f"Cannot resolve repo and branch from git: {error}") from error
 
 
 def matching_tasks(current_remote: str, current_branch: str) -> list[tuple[str, str]]:

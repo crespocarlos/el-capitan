@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-# Print the default branch of a remote (default: origin). Order: local <remote>/HEAD ref,
-# then `git remote show` (network). If both fail: `main` with a stderr warning, or exit 1
-# with no output under --strict.
+# Print the default branch of a remote (default: origin). The answer comes from
+# `crew-repo-info.py`, which asks `gh` first and falls back to git, so the definition of "default
+# branch" lives in one place: the library, shared with crew-worktree.py and crew-diff.sh.
+#
+# If the branch cannot be resolved: `main` with a stderr warning, or exit 1 with no output under
+# --strict.
 set -euo pipefail
 
 strict=0
 remote=origin
+# Resolve the installed symlink back to this checkout, so the helper is a sibling either way.
+here=$(python3 -c 'import os, sys; print(os.path.dirname(os.path.realpath(sys.argv[1])))' \
+  "${BASH_SOURCE[0]}")
+helper="$here/crew-repo-info.py"
+
 for arg in "$@"; do
   case "$arg" in
     --help)
-      echo "usage: default-branch.sh [--strict] [remote]   (prints the remote's default branch; defaults to origin)"
+      echo "usage: crew-default-branch.sh [--strict] [remote]   (prints the remote's default branch; defaults to origin)"
       exit 0
       ;;
     --strict) strict=1 ;;
@@ -21,21 +29,15 @@ for arg in "$@"; do
   esac
 done
 
-ref=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)
-if [ -n "$ref" ]; then
-  echo "${ref#"$remote"/}"
-  exit 0
-fi
+branch=$(python3 "$helper" --network --remote "$remote" --field default_branch 2>/dev/null || true)
 
-echo "default-branch.sh: querying '$remote' (local $remote/HEAD is unset)..." >&2
-# LC_ALL=C keeps the "HEAD branch:" label untranslated.
-branch=$(LC_ALL=C git remote show "$remote" 2>/dev/null | sed -n 's/^ *HEAD branch: *//p' | head -1 || true)
-if [ -n "$branch" ] && [ "$branch" != "(unknown)" ] && [ "$branch" != "(not queried)" ]; then
+if [ -n "$branch" ]; then
   echo "$branch"
   exit 0
 fi
 
 if [ "$strict" = 1 ]; then
+  echo "default-branch.sh: no default branch for '$remote'; gh and git both failed" >&2
   exit 1
 fi
 echo "warning: default branch of '$remote' unknown; assuming main (run: git remote set-head $remote -a)" >&2

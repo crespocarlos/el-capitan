@@ -26,19 +26,17 @@ If `EXISTING_PR` is non-empty, stop and report:
 Do not proceed with PR creation.
 
 ```bash
-BRANCH=$(git branch --show-current)
+BRANCH=$(~/.agent/bin/crew-repo-info.py --field branch)
 source ~/.agent/bin/task-env.sh
 ~/.agent/bin/crew-task-context.py --artifacts spec,review --max-chars 6000
 ```
 
-Detect fork workflow using git remotes — **do not use `gh repo view`** (freezes in VS Code
-terminals):
+Detect fork workflow from the remotes this checkout has — **do not use `gh repo view`** (freezes in
+VS Code terminals):
 
 ```bash
-_parse_repo() { echo "$1" | sed 's|.*github\.com[:/]\(.*\)\.git|\1|; s|.*github\.com[:/]\(.*\)|\1|'; }
-ORIGIN_REPO=$(_parse_repo "$(git remote get-url origin 2>/dev/null)")
-UPSTREAM_URL=$(git remote get-url upstream 2>/dev/null)
-UPSTREAM_REPO=$(_parse_repo "$UPSTREAM_URL")
+ORIGIN_REPO=$(~/.agent/bin/crew-repo-info.py --field origin_repo)
+UPSTREAM_REPO=$(~/.agent/bin/crew-repo-info.py --remote upstream --field repo)
 ```
 
 **Target upstream first.** If `UPSTREAM_REPO` is non-empty, `origin` is a fork and the PR targets
@@ -46,7 +44,7 @@ UPSTREAM_REPO=$(_parse_repo "$UPSTREAM_URL")
 the repo the PR will target: the default branch of `upstream` for a fork, otherwise of `origin`.
 
 ```bash
-BASE=$(~/.agent/bin/crew-default-branch.sh "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)")
+BASE=$(~/.agent/bin/crew-repo-info.py --network --remote "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)" --field default_branch)
 ```
 
 ```bash
@@ -58,7 +56,7 @@ branch. With an `upstream` remote, that base must exist there, so check; if it d
 cannot target upstream. Say so, and switch to `origin` only after the user confirms:
 
 ```bash
-if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/crew-default-branch.sh upstream)" ]; then
+if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/crew-repo-info.py --remote upstream --field default_branch)" ]; then
   GH_PAGER=cat gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null \
     || echo "BASE '$BASE' not found on $UPSTREAM_REPO (or the check failed); ask before targeting $ORIGIN_REPO"
 fi
@@ -143,7 +141,7 @@ if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
   echo "error: task state unreadable — PR opened but spec not marked done" >&2
 elif [ -n "$TASK_DIR" ]; then
   ~/.agent/bin/crew-ls.py --mark-done "$TASK_DIR" --pr-url "$PR_URL" \
-    --branch "$(git rev-parse --abbrev-ref HEAD)" \
+    --branch "$(~/.agent/bin/crew-repo-info.py --field branch)" \
     || echo "warning: PR opened but spec not marked done" >&2
 fi
 ```

@@ -109,14 +109,12 @@ an incremental update.
 **Record the starting state** before any `--deploy` (skip for a worktree you are not deploying into):
 
 ```bash
-cd <worktree path> \
-  && git rev-parse --abbrev-ref HEAD && git rev-parse HEAD && git status --porcelain \
-  && git stash list | wc -l \
-  && shasum -a 256 kibana.dev.yml 2>/dev/null || true
+~/.agent/bin/crew-repo-info.py --root <worktree path> --json
 ```
 
-Write branch, HEAD SHA, the porcelain status, stash count, and the yaml hash to
-`$TASK_DIR/e2e-state.json` (or `/tmp/crew-e2e-<key>/e2e-state.json` without a task). This is the
+Write the branch, HEAD SHA, every dirty path, and the yaml hash to `$TASK_DIR/e2e-state.json` (or
+`/tmp/crew-e2e-<key>/e2e-state.json` without a task). The stash count and yaml hash come from the
+worktree: `git stash list | wc -l` and `shasum -a 256 kibana.dev.yml`. This is the
 baseline Step 4's teardown prints a diff against — record it even when you expect to restore nothing.
 
 **Auto-generate `--instructions`** rather than leaving it blank. Build one or two sentences of focus

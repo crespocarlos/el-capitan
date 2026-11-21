@@ -6,8 +6,8 @@ description: "Search persistent memory for past decisions, lessons, and prior in
 # Memory recall
 
 1. Scope: pass the bare repository name (`kibana`, not `OWNER/REPO`) as `--repo`, derived with
-   `basename -s .git "$(git remote get-url upstream 2>/dev/null || git remote get-url origin)"`.
-   Omit `--repo` for cross-repo questions.
+   `~/.agent/bin/crew-repo-info.py --field repo_name`, which reads the upstream remote when there is
+   one and `origin` otherwise. Omit `--repo` for cross-repo questions.
 2. Run `~/.agent/bin/crew-mem.py search "<question>" --repo <scope> --top 5`. Use `~/.agent/bin/crew-mem.py
    show <id>` for full content and `~/.agent/bin/crew-mem.py stats` for an overview.
 3. On exit 2, print `warning: memory unavailable` and stop. Do not answer from memory.

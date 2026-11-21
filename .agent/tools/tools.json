@@ -191,6 +191,17 @@
       "json_smoke": ["main", "--json"],
       "bounded": true,
       "list_flags": ["--max-chars"]
+    },
+    {
+      "name": "crew-repo-info.py",
+      "dir": "task",
+      "kind": "command",
+      "category": "task",
+      "owner": "repository",
+      "help": "argparse",
+      "smoke": "--help",
+      "output": "json",
+      "json_smoke": ["--json"]
     }
   ],
   "scripts": [

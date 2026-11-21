@@ -10,11 +10,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from lib.git import GitError, rev_parse
 from review_findings import (
     CODE_MODES,
     Finding,
@@ -138,10 +138,10 @@ def reviewed_at(args: argparse.Namespace, report: str) -> str:
     if not re.fullmatch(r"[0-9a-f]{7,40}", head):
         raise ValueError(f"--head must be a commit SHA, got {head!r}")
     if args.mode != "pr":
-        exists = subprocess.run(["git", "cat-file", "-e", f"{head}^{{commit}}"],
-                                capture_output=True)
-        if exists.returncode:
-            raise ValueError(f"--head {head} is not a commit in this repository")
+        try:
+            rev_parse(None, f"{head}^{{commit}}")
+        except GitError:
+            raise ValueError(f"--head {head} is not a commit in this repository") from None
     return report.rstrip() + f"\n\nReviewed at: {head}\n"
 
 

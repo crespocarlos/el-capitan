@@ -130,12 +130,12 @@ The UUID task directory (`$TASK_DIR`) is stable — it does not move either way.
 ### Step 5: Update progress
 
 ```bash
-~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR" --branch "$(git -C "${WORK_DIR:-$PWD}" rev-parse --abbrev-ref HEAD)"
+~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR" --branch "$(~/.agent/bin/crew-repo-info.py --root "$WORK_DIR" --field branch)"
 ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
 ```
 
-`--branch` reads `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
-separate shell, so a bare `git rev-parse` reports the drafting checkout and would record
+`--root` reads `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
+separate shell, so a bare read reports the drafting checkout and would record
 the wrong branch. `--mark-implementing` records the branch actually being implemented in
 `.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
 branch and implemented on another, and task resolution matches either: without this every

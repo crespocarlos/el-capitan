@@ -31,6 +31,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from lib.git import (  # noqa: E402
+    GitError,
+    behind_count,
+    commit_time,
+    current_branch,
+    fetch_remote,
+    remotes,
+    remote_url,
+)
 from lib.output import DEFAULT_MAX_CHARS, bounded_json, rows_limit, truncate  # noqa: E402
 
 DEFAULT_URL = "http://localhost:3737"
@@ -128,29 +137,32 @@ def is_canonical_remote(url: str) -> bool:
 
 def elastic_remote(root: Path) -> tuple[str, str]:
     """The canonical repo, under either remote name, so a clone named `origin` still passes."""
-    found = subprocess.run(["git", "-C", str(root), "remote", "-v"],
-                           capture_output=True, text=True)
-    if found.returncode:
+    try:
+        names = remotes(root)
+    except GitError:
         return "", "not a git checkout"
-    for line in found.stdout.splitlines():
-        parts = line.split()
-        if len(parts) < 2:
+    for name in names:
+        try:
+            url = remote_url(root, name)
+        except GitError:
             continue
-        if is_canonical_remote(parts[1]):
-            return parts[0], ""
+        if url and is_canonical_remote(url):
+            return name, ""
     return "", f"no remote points at {CANONICAL_REMOTE}"
 
 
 def build_is_fresh(root: Path) -> tuple[bool, str]:
     """A server serving an older build than HEAD runs code nobody reviewed."""
     build_id = root / ".next" / "BUILD_ID"
-    head = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%ct"],
-                          capture_output=True, text=True)
+    try:
+        head = commit_time(root)
+    except GitError:
+        head = None
     if not build_id.is_file():
         return False, "no build; run npm run launchd:restart-web"
-    if head.returncode or not head.stdout.strip():
+    if head is None:
         return True, ""
-    if build_id.stat().st_mtime < int(head.stdout.strip()):
+    if build_id.stat().st_mtime < head:
         return False, "build is older than HEAD; run npm run launchd:restart-web"
     return True, ""
 
@@ -233,31 +245,26 @@ def duplicate_config_keys(path: Path) -> list[str]:
 
 
 def helper_up_to_date(root: Path, remote: str) -> tuple[bool, str]:
-    """Best-effort only: a `git fetch` failure (offline, auth) must never block or hang the
-    preflight, so any error here is reported as unknown, not as a failing check."""
+    """Best-effort only: a fetch that cannot reach the network (offline, auth) must never block
+    or hang the preflight, so any error here is reported as unknown, not as a failing check.
+
+    `gh` goes first because it carries the authentication; a machine where api.github.com is
+    blocked answers through `git ls-remote` instead; a machine with neither reports unknown.
+    """
     if not remote:
         return True, "no elastic remote to compare against"
     try:
-        fetch = subprocess.run(["git", "-C", str(root), "fetch", remote, "--quiet"],
-                               capture_output=True, text=True, timeout=20)
-        if fetch.returncode:
-            return True, "could not reach the remote to check; skipping"
-        head = subprocess.run(["git", "-C", str(root), "symbolic-ref", "--short", "-q", "HEAD"],
-                              capture_output=True, text=True, timeout=5)
-        branch = head.stdout.strip() if head.returncode == 0 else ""
-        if not branch:
-            return True, "detached HEAD; skipping"
-        behind = subprocess.run(
-            ["git", "-C", str(root), "rev-list", "--count", f"HEAD..{remote}/{branch}"],
-            capture_output=True, text=True, timeout=5)
-        if behind.returncode or not behind.stdout.strip().isdigit():
-            return True, "could not compute how far behind HEAD is; skipping"
-        count = int(behind.stdout.strip())
-        if count == 0:
-            return True, f"up to date with {remote}/{branch}"
-        return False, f"{count} commit(s) behind {remote}/{branch}"
-    except (subprocess.TimeoutExpired, OSError) as error:
-        return True, f"check failed ({error}); skipping"
+        branch = current_branch(root)
+    except GitError:
+        return True, "detached HEAD; skipping"
+    try:
+        fetch_remote(root, remote, branch)
+        count = behind_count(root, remote, branch)
+    except GitError as error:
+        return True, f"could not reach the remote to check; skipping ({error})"
+    if count == 0:
+        return True, f"up to date with {remote}/{branch}"
+    return False, f"{count} commit(s) behind {remote}/{branch}"
 
 
 def tail_fatal(worktree_path: str) -> str:

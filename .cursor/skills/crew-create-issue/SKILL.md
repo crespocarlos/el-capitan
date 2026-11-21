@@ -21,8 +21,7 @@ issue. Otherwise, **create** a new one. If ambiguous, confirm in one line: `"Fil
 or open a new issue?"`
 
 ```bash
-git remote get-url origin 2>/dev/null \
-  | sed 's|.*github\.com[:/]\(.*\)\.git|\1|; s|.*github\.com[:/]\(.*\)|\1|'
+~/.agent/bin/crew-repo-info.py --field origin_repo
 ```
 
 If that returns `OWNER/REPO`, use it. If a repo is mentioned in the conversation (via URL or
