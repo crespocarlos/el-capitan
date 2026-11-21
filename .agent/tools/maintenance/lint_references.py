@@ -20,6 +20,15 @@ INSTALLED = re.compile(r"~/.agent/bin/([\w.-]+)")
 RULE_FILE = re.compile(r"([\w-]+\.mdc)")
 AGENT_REF = re.compile(r"(?:subagent_type:\s*|@)([\w-]+)")
 ROUTING_ROW = re.compile(r"\|\s*`crew ")
+# A prompt asks a command for repo facts instead of running git itself: a bare `git rev-parse` or
+# `git branch --show-current` prints nothing when it fails, and the prompt then acts on an empty
+# variable. `crew-repo-info.py` is the one answer. Mutations stay raw only where the user approved
+# them, so `git commit`/`add`/`push` are not flagged. `crew-diff.sh` and `guard-shell.sh` are
+# exempt: the first emits diff content, the second is the hook that reads git in order to police it.
+GIT_FACT = re.compile(
+    r"`?git\s+(?:-\S+\s+)*(?:rev-parse|branch\s+--show-current|branch\s+-vv|branch\s+--merged"
+    r"|remote\s+get-url|worktree\s+list)|\$\(git\s+(?:-\S+\s+)*(?:rev-parse|branch|remote)")
+GIT_FACT_EXEMPT = ("crew-diff.sh", "guard-shell.sh")
 Findings = list[tuple[str, int, str, str]]
 
 
@@ -147,4 +156,20 @@ def lint_documents(
                              "use crew-resolve-task-dir.py instead"))
         findings.extend(lint_document_refs(root, path, text, name, rules, agents,
                                            routed_commands, router))
+        findings.extend(lint_git_facts(name, text))
     return findings
+
+
+def lint_git_facts(name: str, text: str) -> Findings:
+    """Flag a prompt that runs git to learn the repo root, branch, remote, or worktree list.
+
+    Those questions have one answer, `crew-repo-info.py`, and the shell snippets a prompt used to
+    carry failed silently: `$(git rev-parse ...)` on a broken checkout yields an empty string that
+    the next step treats as a real value. Diff and log reads are not flagged — they read commit
+    output, not a repo fact — and neither are approved mutations.
+    """
+    if name.endswith(GIT_FACT_EXEMPT):
+        return []
+    return [(name, line_no(text, match.start()), "git-fact-in-prompt",
+             "ask crew-repo-info.py (or crew-worktree.py for worktrees) instead of running git")
+            for match in GIT_FACT.finditer(text)]
