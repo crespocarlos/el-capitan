@@ -40,7 +40,13 @@ def drafts(root: Path) -> list[dict]:
 
 
 def queued(root: Path) -> list[dict]:
-    """Stop-hook entries that asked for a review, so a session knows one is outstanding."""
+    """Stop-hook entries that asked for a review, so a session knows one is outstanding.
+
+    The queue is a log of asks, not a to-do list: an ask is satisfied when the drafts it produced
+    exist, and nothing else can tell. Rather than pretending to track completion, this reports the
+    count and lets `--drain` clear it once a person has decided. An append-only file that never
+    drains would report outstanding work forever.
+    """
     path = root / ".sessions" / "review-queue.jsonl"
     if not path.is_file():
         return []
@@ -51,6 +57,15 @@ def queued(root: Path) -> list[dict]:
         except json.JSONDecodeError:
             continue
     return entries
+
+
+def drain(root: Path) -> int:
+    """Clear the ask log after the drafts have been decided. The drafts themselves stay untouched."""
+    path = root / ".sessions" / "review-queue.jsonl"
+    if path.is_file():
+        path.unlink()
+    print("review queue: cleared (drafts are unaffected)")
+    return 0
 
 
 def report(root: Path, as_json: bool) -> int:
@@ -80,8 +95,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="List drafts and queued reviews awaiting a decision.")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--root", type=Path, default=None)
+    parser.add_argument("--drain", action="store_true",
+                        help="clear the ask log once every draft has been decided")
     args = parser.parse_args()
-    return report(args.root or memory_root(), args.json)
+    root = args.root or memory_root()
+    if args.drain:
+        return drain(root)
+    return report(root, args.json)
 
 
 if __name__ == "__main__":

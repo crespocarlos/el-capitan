@@ -139,6 +139,17 @@ def inbox_cases() -> None:
                                 env={**os.environ, "CREW_MEMORY_DIR": str(root)})
         check("an empty inbox says so", result.stdout.strip() == "inbox: empty", result.stdout)
         check("an empty inbox exits 0", result.returncode == 0, result.returncode)
+
+        (root / ".inbox" / "procedure-keep.md").write_text(
+            "---\nid: procedure-keep\ntype: procedure\nscope: global\ntitle: Keep me\n"
+            "status: active\ncreated: 2026-01-01\nmodified: 2026-01-01\nevidence: [x]\n---\nB.\n",
+            encoding="utf-8")
+        (root / ".sessions" / "review-queue.jsonl").write_text('{"session":"s"}\n', encoding="utf-8")
+        drained = subprocess.run([sys.executable, str(INBOX), "--drain"], capture_output=True,
+                                 text=True, env={**os.environ, "CREW_MEMORY_DIR": str(root)})
+        check("drain clears the ask log", not (root / ".sessions" / "review-queue.jsonl").exists(),
+              drained.stdout)
+        check("drain leaves the drafts alone", (root / ".inbox" / "procedure-keep.md").is_file())
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
