@@ -25,8 +25,13 @@ fi
 if grep -Eqi -- "$FORCE_PUSH" <<<"$INSPECT" && ! grep -q -- '--force-with-lease' <<<"$INSPECT"; then
   hook_deny 'Force push blocked. Use --force-with-lease, or ask the user to confirm.'
 fi
-# A backslash inside the command hides the subcommand from every pattern above.
-if grep -Eq '(^|[;&| ]+)(gh|git)[^;&|]*\\' <<<"$cmd"; then
+# A backslash inside the command hides the subcommand from every pattern above. Two kinds exist and
+# only one is an escape: `git res\et` uses a backslash to break a word, while `--jq '"#\(.x)"'` uses
+# one inside a quoted argument as a jq escape. The scan therefore blanks quoted content (so a quoted
+# backslash is invisible) and keeps everything else, which is the inverse of INSPECT only in that it
+# preserves unquoted backslashes.
+ESCAPE_VIEW=$(printf '%s' "$cmd" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g")
+if grep -Eq '(^|[;&| ]+)(gh|git)[^;&|]*\\' <<<"$ESCAPE_VIEW"; then
   hook_deny 'Escaped gh/git commands are blocked. Use the literal command form so the guard can read it.'
 fi
 hook_allow

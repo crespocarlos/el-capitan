@@ -99,6 +99,9 @@ jobs:
       - name: Write boundary tests
         run: python3 evals/tools/test_write_boundary.py
 
+      - name: Escape rule tests
+        run: python3 evals/tools/test_escape_rule.py
+
       - name: Python structural shape
         run: python3 evals/tools/test_python_shape.py
 
