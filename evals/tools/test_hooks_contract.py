@@ -51,12 +51,14 @@ BLOCKING = {
     },
     "guard/zsh-equals.sh": {
         "shell": True,
-        "claude_env": {"CREW_SHELL_IS_ZSH": "1"},
+        # The gate falls back to `$SHELL` because this harness sets no declaration: without that
+        # fallback the rule was dead code and `echo =====` went straight through.
+        "claude_env": {"SHELL": "/bin/zsh"},
         # Measured with `zsh -c '<cmd>; echo after'`: every unquoted word whose first character is
-        # `=` is a command-path lookup that prints `not found` and drops the rest of the line. A bare
-        # `=` prints as text, so it is the one unquoted form in the allow list.
+        # `=` is a command-path lookup that prints `not found` and drops the rest of the line.
         "deny": [{"command": "echo ===="}, {"command": "echo ====="},
-                 {"command": "echo x == y"}, {"command": "echo =nonesuch"}],
+                 {"command": "echo x == y"}, {"command": "echo =nonesuch"},
+                 {"command": "cat a.md; echo =======DISPATCH; cat b.md"}],
         "allow": [{"command": "echo ="}, {"command": "echo '===='"},
                   {"command": "printf '%s\\n' '---'"}, {"command": 'echo "a=b"'},
                   {"command": "x=1; echo $x"}, {"command": 'rg -n "===" f'},

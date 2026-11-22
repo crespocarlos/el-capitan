@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # zsh equals-expansion. Measured with `zsh -c '<cmd>; echo after'`: an unquoted word whose first
-# character is `=` is a command-path lookup, so `==`, `===`, `====` and `=ls` all print
-# `not found` and drop the rest of the line. `echo =` is the one safe unquoted form — zsh reads a
-# lone `=` as text — and every quoted form is text.
+# character `=` is a command-path lookup, so `==`, `===`, `====` and `=ls` all print `not found` and
+# drop the rest of the line. `echo =` is the one safe unquoted form, and every quoted form is text.
 #
-# Gate on the shell that will run the command, never on `$SHELL`: that variable is the *login* shell,
-# so a bash-executing harness on a zsh-login host would deny commands it runs correctly. Cursor's
-# shell execution is the login shell (zsh on macOS); a harness that also executes zsh declares it
-# with `CREW_SHELL_IS_ZSH=1` in the hook environment. bash expands nothing here.
+# Which shell runs the command decides whether this applies, and the rule must not guess. Three
+# signals, strongest first: the event shape (Cursor's shell execution is the login shell), an explicit
+# `CREW_SHELL_IS_ZSH` declaration, then `$SHELL`. The third was previously excluded on the grounds
+# that it names the *login* shell — true, but assuming bash instead made the rule dead code in this
+# harness: `CREW_SHELL_IS_ZSH` is set nowhere, so every `echo =====` went through. A heuristic that can
+# be wrong in a case where the alternative is silently never running is worse than the heuristic.
 set -euo pipefail
 HOOK_NAME=zsh-equals
 # shellcheck source=lib/hook.sh
@@ -16,7 +17,13 @@ hook_input
 hook_event
 cmd=$(hook_field command)
 [ -n "$cmd" ] || hook_allow
-if [ "$HOOK_EVENT" != beforeShellExecution ] && [ "${CREW_SHELL_IS_ZSH:-}" != 1 ]; then
+executing_shell=${SHELL:-/bin/sh}
+case "$executing_shell" in
+  */zsh*) login_is_zsh=1 ;;
+  *) login_is_zsh=0 ;;
+esac
+if [ "$HOOK_EVENT" != beforeShellExecution ] \
+   && [ "${CREW_SHELL_IS_ZSH:-}" != 1 ] && [ "$login_is_zsh" != 1 ]; then
   hook_allow
 fi
 
