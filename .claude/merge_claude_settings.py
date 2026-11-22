@@ -58,6 +58,54 @@ def merge_event(existing, incoming):
     return kept + appended
 
 
+def rule_command(rule):
+    """The command a `Bash(...)` rule names, or None for a rule of another tool.
+
+    A rule is `Bash(<command> *)`, and the command may contain spaces, so the prefix is everything
+    before the trailing wildcard. This is the identity used to decide whether the template owns a
+    rule: the same command must not end up in both `allow` and `ask`, which is the collision that
+    makes a permission decision depend on evaluation order.
+    """
+    if not isinstance(rule, str) or not rule.startswith("Bash(") or not rule.endswith(")"):
+        return None
+    body = rule[len("Bash("):-1]
+    return body[:-2] if body.endswith(" *") else body.rstrip(":*")
+
+
+def merge_permissions(dest, src):
+    """Reconcile the three permission lists, template rules winning for the commands it names.
+
+    `allow` and `ask` are merged rather than replaced so a user's own rules survive; a template rule
+    for a command the destination lists elsewhere is moved to the template's list, because two lists
+    claiming one command is the defect this exists to prevent. `deny` is additive: nothing is ever
+    un-denied by an install.
+    """
+    dest_perm = dest.setdefault("permissions", {})
+    src_perm = src.get("permissions", {})
+    changed = []
+    for name in ("allow", "ask"):
+        incoming = src_perm.get(name, [])
+        owned = {rule_command(rule) for rule in incoming} - {None}
+        existing = [rule for rule in dest_perm.get(name, []) if rule_command(rule) not in owned]
+        for other in ("allow", "ask"):
+            if other == name:
+                continue
+            before = dest_perm.get(other, [])
+            after = [rule for rule in before if rule_command(rule) not in owned]
+            if len(after) != len(before):
+                dest_perm[other] = after
+                changed.extend(f"moved from {other}: {rule}" for rule in before if rule not in after)
+        merged = list(dict.fromkeys(existing + incoming))
+        if merged != dest_perm.get(name, []):
+            dest_perm[name] = merged
+    for rule in src_perm.get("deny", []):
+        if rule not in dest_perm.setdefault("deny", []):
+            dest_perm["deny"].append(rule)
+    for note in changed:
+        print(f"  permissions: {note}")
+    return dest
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print("usage: merge_claude_settings.py <src> <dest>", file=sys.stderr)
@@ -86,8 +134,10 @@ def main() -> int:
     for event_type, entries in src.get("hooks", {}).items():
         dest_hooks[event_type] = merge_event(dest_hooks.get(event_type, []), entries)
 
+    merge_permissions(dest, src)
+
     for key, value in src.items():
-        if key != "hooks" and key not in dest:
+        if key not in ("hooks", "permissions") and key not in dest:
             dest[key] = value
 
     if original:

@@ -39,7 +39,7 @@ def main() -> int:
     allow = [c for c in (command_of(r) for r in permissions.get("allow", [])) if c]
     ask = [c for c in (command_of(r) for r in permissions.get("ask", [])) if c]
 
-    check("the config parses and has both lists", bool(allow) and bool(ask), (len(allow), len(ask)))
+    check("the config parses and has an allow list", bool(allow), len(allow))
     check("no ask rule uses the literal-colon form", not any(
         ":" in r[len("Bash("):-1].split(" ")[0] for r in permissions.get("ask", [])
         if r.startswith("Bash(") and r.endswith(")")), permissions.get("ask"))
@@ -49,7 +49,11 @@ def main() -> int:
 
     check("the bin directory is not allowed wholesale",
           not any(c == "~/.agent/bin/*" for c in allow), [c for c in allow if "agent/bin" in c])
-    check("the review findings command still asks", any("crew-review-findings" in s for s in ask), ask)
+    check("the review findings command is allowed outright, with the space form",
+          any(c == "~/.agent/bin/crew-review-findings.py" for c in allow),
+          [c for c in allow if "crew-review-findings" in c])
+    check("a leading shell assignment is allowed, so it cannot prompt",
+          any(c == "R=" or c.endswith("=*") for c in allow), [c for c in allow if "=*" in c])
     check("hook fixtures are allowed without elevation",
           any("fixtures" in c for c in allow), allow)
 

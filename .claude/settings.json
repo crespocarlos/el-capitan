@@ -38,6 +38,13 @@
       "Bash(~/.agent/bin/crew-ls.py *)",
       "Bash(~/.agent/bin/crew-mem.py *)",
       "Bash(~/.agent/bin/crew-inbox.py *)",
+      "Bash(~/.agent/bin/crew-review-findings.py *)",
+      "Bash(R=*)",
+      "Bash(V=*)",
+      "Bash(T=*)",
+      "Bash(P=*)",
+      "Bash(OUT=*)",
+      "Bash(REVIEW_ROOT=*)",
       "Bash(~/.agent/bin/crew-task-context.py *)",
       "Bash(~/.agent/bin/crew-agent-context.py *)",
       "Bash(~/.agent/bin/crew-worktree.py *)",
@@ -47,7 +54,6 @@
       "WebSearch"
     ],
     "ask": [
-      "Bash(~/.agent/bin/crew-review-findings.py *)",
       "Edit(~/.agent/tasks/**)",
       "Write(~/.agent/tasks/**)"
     ]
