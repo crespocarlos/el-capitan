@@ -58,7 +58,7 @@ def temp_cases() -> None:
     check("a review scratch file is allowed", state == "allow", detail)
 
     state, detail = verdict(str(Path(tempfile.gettempdir()) / "crew-review-x" / "f.json"))
-    check("any temp-root file is allowed", state == "allow", detail)
+    check("a pipeline directory under the temp root is allowed", state == "allow", detail)
 
     state, detail = verdict("/tmp/crew-review-x/f.json")
     check("the /tmp spelling is still allowed", state == "allow", detail)
@@ -78,10 +78,14 @@ def deny_cases() -> None:
 
 
 def allow_cases() -> None:
-    """A temp path needs no repository: the pipeline's scratch space is not inside one."""
+    """Only the pipeline's own directory under the temp root is allowed, never the root itself."""
+    pipeline = Path(tempfile.gettempdir()) / "crew-review-boundary-probe" / "review" / "1"
+    state, detail = verdict(str(pipeline / "layers.json"))
+    check("the pipeline's scratch directory is allowed", state == "allow", detail)
+
     outside = Path(tempfile.mkdtemp(prefix="not-a-repo-")) / "x.json"
     state, detail = verdict(str(outside))
-    check("a temp-root file is allowed even outside a repository", state == "allow", detail)
+    check("arbitrary temp files are denied", state == "deny", detail)
 
 
 def main() -> int:

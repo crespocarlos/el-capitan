@@ -22,14 +22,27 @@ normalized=$(resolve "$path") || normalized=""
 [ -n "$normalized" ] && path="$normalized"
 
 # The temp root is `$TMPDIR`, not `/tmp`: on macOS it is a per-user `/var/folders/…/T` directory,
-# and `tempfile.gettempdir()` in every review tool writes there. Allowing only `/tmp` denied the
-# review pipeline its own scratch directory, which is how a guard breaks the workflow it protects.
-# Both are consulted because a caller may name either, and `mktemp` on Linux still uses `/tmp`.
-for prefix in "$HOME/.agent" "$HOME/.claude" "$HOME/.cursor" "/tmp" "$TMPDIR"; do
+# and `tempfile.gettempdir()` in every review tool writes there. Both are consulted because a caller
+# may name either, and `mktemp` on Linux still uses `/tmp`.
+#
+# The temp root is allowed only for the pipeline's own directory, `crew-review-<repo>`, never
+# wholesale: a repository checked out under `$TMPDIR` would otherwise escape its own boundary,
+# because `<repo>/../outside.md` resolves to a path inside the temp root and a bare-prefix match
+# would allow it. That is a fixture case, and it failed when this list used `$TMPDIR` alone.
+for prefix in "$HOME/.agent" "$HOME/.claude" "$HOME/.cursor" "/tmp"; do
   resolved=$(resolve "$prefix") || continue
   [ -n "$resolved" ] || continue
   case "$path" in "$resolved"/*) hook_allow ;; esac
 done
+
+# The pipeline's scratch directory inside the temp root, matched as a glob rather than resolved:
+# `realpath` keeps `crew-review-*` literal, so a prefix comparison could never match it. Only the
+# directory the tools create is allowed, so a repository checked out elsewhere under `$TMPDIR`
+# still cannot be escaped through `<repo>/../outside.md`.
+temp_root=$(resolve "${TMPDIR:-/tmp}") || temp_root=""
+if [ -n "$temp_root" ]; then
+  case "$path" in "$temp_root"/crew-review-*/*) hook_allow ;; esac
+fi
 
 # Probe the nearest existing ancestor; a missing directory is not evidence of an escape. A failure
 # here leaves `repo` empty, which the branch below reads as "outside permitted worktrees": refusing

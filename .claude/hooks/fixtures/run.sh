@@ -179,22 +179,33 @@ test "$(equals_guard 'cat <<< "$x"; echo =====')" = deny
 test "$(equals_guard $'cat <<-EOF\n\tbody == data\n\tEOF\necho =====')" = deny
 test "$(equals_guard $'cat <<-EOF\n\tbody == data\n\tEOF\nrm -f /tmp/x')" = allow
 
-# The rule is gated on the shell that runs the command, never on the login shell: a bash-executing
-# harness must not deny what it runs correctly. Pin both directions explicitly, or CI (bash) and a
-# developer's macOS (zsh) disagree and the suite passes for the wrong reason.
+# The rule applies whenever the executing shell is zsh. Three signals decide it, strongest first:
+# the Cursor event shape, an explicit `CREW_SHELL_IS_ZSH`, then `$SHELL`. The third was previously
+# excluded, which made the rule dead code — `CREW_SHELL_IS_ZSH` is set nowhere in this repository, so
+# every `echo =====` reached zsh and failed. Both directions are pinned here so CI (bash) and a
+# developer's macOS (zsh) agree on the rule rather than passing for different reasons.
 # A deny is exit 2 with no stdout on Claude's event; an allow is exit 0 with no stdout.
 harness_guard() {
   local rc=0
   jq -n --arg c 'echo =====' --arg e "$1" '{hook_event_name:$e,tool_input:{command:$c}}' \
-    | CREW_SHELL_IS_ZSH="$2" bash "$root/.claude/hooks/guard/zsh-equals.sh" >/dev/null 2>&1 || rc=$?
+    | CREW_SHELL_IS_ZSH="$2" SHELL="$3" bash "$root/.claude/hooks/guard/zsh-equals.sh" >/dev/null 2>&1 || rc=$?
   printf '%s' "$rc"
 }
-test "$(harness_guard PreToolUse 1)" = 2
-test "$(harness_guard PreToolUse "")" = 0
-# SHELL is irrelevant now, including when it is unset: with `set -u` an unguarded expansion would
-# abort with no JSON, which is the failure this case pins.
+test "$(harness_guard PreToolUse 1 /bin/zsh)" = 2
+test "$(harness_guard PreToolUse "" /bin/zsh)" = 2
+test "$(harness_guard PreToolUse "" /bin/bash)" = 0
+# Cursor's event means its shell runs the command, so the shell it reports decides: bash allows.
+test "$(harness_guard beforeShellExecution "" /bin/bash)" = 0
+# An unset SHELL must not abort: with `set -u` an unguarded expansion would produce no JSON, which is
+# the failure this case pins. It falls back to /bin/sh, whose behaviour differs by platform (zsh on
+# macOS), so the case asserts a decision was made rather than which one.
 test "$(jq -n --arg c 'echo =====' '{hook_event_name:"beforeShellExecution",command:$c}' \
   | env -u SHELL bash "$root/.claude/hooks/guard/zsh-equals.sh" | jq -r '.permission')" = deny
+unset_shell_verdict=$(
+  jq -n --arg c 'echo =====' '{hook_event_name:"PreToolUse",tool_input:{command:$c}}' \
+    | env -u SHELL bash "$root/.claude/hooks/guard/zsh-equals.sh" >/dev/null 2>&1; echo $?
+)
+case "$unset_shell_verdict" in 0|2) ;; *) echo "unset SHELL produced $unset_shell_verdict" >&2; exit 1 ;; esac
 
 # Task spec guard: a spec titled for one task must not be written into another task's directory.
 # This is the failure that destroyed a completed spec: resolve-task-dir returns the newest non-DONE
