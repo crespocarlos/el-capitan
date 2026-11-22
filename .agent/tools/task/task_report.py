@@ -13,6 +13,7 @@ from pathlib import Path
 from lib.output import json_payload, print_lines, rows_limit
 from task_state import (
     STATUS,
+    StatusError,
     TaskState,
     decide,
     head,
@@ -20,6 +21,7 @@ from task_state import (
     load_rules,
     name,
     set_status,
+    token,
 )
 
 OPEN_ORDER = ["IMPLEMENTING", "APPROVED", "DRAFTING", "ON-HOLD"]
@@ -118,14 +120,25 @@ def load_rows(tasks_dir: Path) -> list[TaskState]:
 
 
 def print_status_file(path: str) -> int:
-    """The one reader for the `## Status` contract: hooks and tools must not re-implement it."""
+    """The one reader for the `## Status` contract: hooks and tools must not re-implement it.
+
+    A value outside the contract is still printed, so a hook can render a malformed task, but the
+    command exits 2 and names the allowed set: a token no transition rule matches is a bug in
+    whatever wrote it, and silence here is how `done` survived for 24 tasks.
+    """
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     match = STATUS.search(text)
-    print(match.group(2).strip() if match else "")
+    value = match.group(2).strip() if match else ""
+    print(value)
+    try:
+        token(value)
+    except StatusError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
     return 0
 
 

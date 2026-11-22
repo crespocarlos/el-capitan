@@ -23,7 +23,8 @@ from pathlib import Path
 for _dir in (Path(__file__).resolve().parent,):
     if (_dir / "task_status.py").is_file() and str(_dir) not in sys.path:
         sys.path.insert(0, str(_dir))
-from task_status import STATUS, head as state_head, read_status  # noqa: E402,F401  re-exported
+from task_review import review_file  # noqa: E402
+from task_status import STATUS, StatusError, head as state_head, read_status, token  # noqa: E402,F401  re-exported
 
 
 @dataclass
@@ -150,8 +151,8 @@ def load(task: Path) -> TaskState:
     if not isinstance(meta, dict):
         meta = {}
     status = STATUS.search(text)
-    review = task / "REVIEW.md"
-    verdicts = VERDICT.findall(review.read_text(encoding="utf-8")) if review.exists() else []
+    review = review_file(task)
+    verdicts = VERDICT.findall(review.read_text(encoding="utf-8")) if review else []
     newest = max((task / f).stat().st_mtime for f in ACTIVITY_FILES if (task / f).exists())
     return TaskState(
         task=task, text=text, meta=meta, status=status.group(2).strip() if status else None,

@@ -52,6 +52,31 @@ def review_dir(task_dir: str | None, repo: str | None = None, mode: str = "self"
     return chosen
 
 
+def record_task_review(task_dir: str | Path | None, review_dir_path: Path,
+                       mode: str = "") -> None:
+    """Point the task at the directory holding its review, so a gate can find it later.
+
+    `persist` writes `REVIEW.md` beside the spec in every mode but PR, and a task reviewed in PR
+    mode would otherwise have no readable review at all once the temp directory is the only copy.
+    The record is additive: a task with no `SPEC.md` is not a task and is left alone.
+    """
+    if not task_dir:
+        return
+    task = Path(task_dir)
+    if not (task / "SPEC.md").is_file():
+        return
+    record = {"review_dir": str(Path(review_dir_path).resolve())}
+    if mode:
+        record["review_mode"] = mode
+    try:
+        existing = json.loads((task / "run.json").read_text(encoding="utf-8"))
+        if isinstance(existing, dict):
+            record = {**existing, **record}
+    except (OSError, ValueError):
+        pass
+    (task / "run.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+
 def claim(path: Path, mode: str, repo: str | None, task_dir: str | None) -> None:
     """Write `run.json` so a run identifies itself without anyone guessing from a timestamp.
 
@@ -67,6 +92,7 @@ def claim(path: Path, mode: str, repo: str | None, task_dir: str | None) -> None
         "tool": "crew-review-findings.py review-dir",
     }
     (path / "run.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    record_task_review(task_dir, path, mode)
 
 
 def report(path: Path, task_dir: str | None) -> int:

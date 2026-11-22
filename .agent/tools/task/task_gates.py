@@ -9,7 +9,6 @@ HEAD. The messages are the contract the hooks and skills read, so they live with
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -19,6 +18,7 @@ for _path in (_TOOLS_ROOT, Path(__file__).resolve().parent):
         sys.path.insert(0, str(_path))
 
 from lib.git import GitError, head_sha, is_ancestor  # noqa: E402
+from task_review import review_file, reviewed_at  # noqa: E402
 from task_state import (  # noqa: E402
     PREDICATES,
     TaskState,
@@ -29,8 +29,6 @@ from task_state import (  # noqa: E402
     unresolved,
 )
 from task_typed_tests import typed_tests_problem  # noqa: E402
-
-REVIEWED_AT = re.compile(r"^Reviewed at:\s*([0-9a-f]{7,40})\s*$", re.M)
 
 
 def load_task(task_dir: str | Path) -> TaskState | None:
@@ -115,12 +113,19 @@ def mark_implementing(task_dir: str | Path, branch: str = "") -> int:
     return 0 if set_status(r, "IMPLEMENTING", "APPROVED → IMPLEMENTING") else 1
 
 
-def read_reviewed_at(task: Path) -> str:
-    review = task / "REVIEW.md"
-    if not review.exists():
-        return ""
-    matches = REVIEWED_AT.findall(review.read_text(encoding="utf-8"))
-    return matches[-1] if matches else ""
+def review_location(task: Path) -> str:
+    """A one-line statement of which file the verdict and the reviewed commit came from.
+
+    The gate prints it, so a refusal or an acceptance is auditable: a review found under a temp
+    directory and one found beside the spec are both legitimate, and the difference matters when a
+    later reader asks why a task closed.
+    """
+    review = review_file(task)
+    if review is None:
+        return "no review found (neither REVIEW.md nor the recorded review directory)"
+    if review.parent == task:
+        return f"review read from {review}"
+    return f"review read from {review} (recorded in {task / 'run.json'})"
 
 
 def ancestry_problem(reviewed_at: str) -> str | None:
@@ -152,15 +157,16 @@ def done_problems(r: TaskState, branch: str) -> list[str]:
                         else "no checked criteria")
     if not PREDICATES["verdict_ok"](r, None):
         problems.append(f"review verdict is {r.verdict}, need pass or warn")
-    reviewed_at = read_reviewed_at(r.task)
-    if reviewed_at:
-        problem = ancestry_problem(reviewed_at)
+    review = review_file(r.task)
+    commit = reviewed_at(review)
+    if commit:
+        problem = ancestry_problem(commit)
         if problem:
             problems.append(problem)
     elif branch:
         # Legacy reviews carry no identity; flag rather than block so old tasks still close.
-        print('warning: REVIEW.md has no "Reviewed at:" commit; cannot confirm it covers HEAD',
-              file=sys.stderr)
+        print(f'warning: {review or "REVIEW.md"} has no "Reviewed at:" commit; '
+              'cannot confirm it covers HEAD', file=sys.stderr)
     return problems
 
 
@@ -179,5 +185,7 @@ def mark_done(task_dir: str | Path, pr_url: str, branch: str, force: bool) -> in
     if problems and not force:
         print(f"error: {name(r)}: {'; '.join(problems)}; nothing written (--force overrides)",
               file=sys.stderr)
+        print(f"note: {review_location(r.task)}", file=sys.stderr)
         return 1
+    print(f"done: {review_location(r.task)}")
     return 0 if set_status(r, "DONE", f"IMPLEMENTING → DONE (PR opened: {pr_url})") else 1

@@ -66,6 +66,18 @@ jobs:
       - name: Review workspace tests
         run: python3 evals/tools/test_review_dir.py
 
+      - name: Task lifecycle and review-location tests
+        run: python3 evals/tools/test_lifecycle.py
+
+      - name: Task status contract tests
+        run: python3 evals/tools/test_status_contract.py
+
+      - name: Held-out prompt cases
+        run: python3 evals/prompts/run.py
+
+      - name: Prune report tests
+        run: python3 evals/tools/test_prune_report.py
+
       - name: Tracked local-state tests
         run: python3 evals/tools/test_tracked_state.py
 

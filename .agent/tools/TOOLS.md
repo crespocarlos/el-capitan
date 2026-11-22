@@ -40,12 +40,12 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py` | `transitions.json` | Guidance context, task state, resolution, gates, worktrees, repository facts |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_review.py`, `task_normalize.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py` | `transitions.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts |
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_vocabulary.py`, `review_models.py`, `review_gates.py`, `review_layers.py`, `review_map.py`, `review_personas.py`, `review_classify.py`, `review_coverage.py`, `review_report.py`, `review_persist_gates.py`, `review_parse.py`, `review_limits.py`, `assemble_config.py`, `assemble_common.py`, `assemble_map.py`, `assemble_files.py`, `assemble_personas.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py` | `memory_store.py`, `memory_paths.py`, `memory_scalars.py`, `memory_frontmatter.py`, `memory_index.py`, `memory_commit.py`, `memory_add.py`, `memory_units.py`, `memory_cite.py`, `memory_search.py`, `memory_context.py`, `memory_journal.py`, `memory_journal_add.py`, `memory_recall.py`, `memory_inbox.py`, `memory_ingest.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
-| `maintenance/` | `crew-lint.py` | `lint_catalog.py`, `lint_naming.py`, `lint_prompts.py`, `lint_references.py`, `lint_progress.py`, `lint_budget.py`, `lint_files.py` | — | Repository validation, one module per lint family |
+| `maintenance/` | `crew-lint.py`, `crew-prune.py` | `lint_catalog.py`, `lint_naming.py`, `lint_prompts.py`, `lint_references.py`, `lint_progress.py`, `lint_budget.py`, `lint_files.py`, `prune_callers.py` | — | Repository validation and the caller report, one module per lint family |
 | `lib/` | — | `files.py`, `git.py`, `git_remote.py`, `cli.py` | — | Shared helpers: one atomic write, one git/gh runner, the CLI contract |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
@@ -101,6 +101,7 @@ module.
 |---|---|---|
 | `crew-agent-context.py` | JSON always | — |
 | `crew-lint.py` | findings, or JSON with `--json` | — |
+| `crew-prune.py` | table of caller counts, or JSON with `--json` | — |
 | `crew-ls.py` | table, `--tsv`, `--md`, or JSON with `--json` | `--limit`, `--max-chars` |
 | `crew-mem.py` | text; JSON for `search`, `context`, `list` with `--json` | `--limit`, `--max-chars` |
 | `crew-review-findings.py` | text; JSON for `select`, `coverage`, `normalize`, `validate-map` | `--max-chars` |
@@ -144,6 +145,21 @@ module.
   the `--reconcile` report live in `task_report.py`, and every transition gate — `--mark-approved`,
   `--mark-implementing`, `--mark-done` — lives in `task_gates.py`, so a refused transition's message
   is defined beside the check that produced it.
+- **The status token is canonical and normalized on read.** `DRAFTING`, `APPROVED`, `IMPLEMENTING`,
+  `ON-HOLD`, `DONE` are the five states; `ABANDONED` is a user-only side state the store may hold.
+  `task_status.head` uppercases and strips trailing punctuation, so `done`, `Done`, and `DONE.` are
+  one token, and `task_status.token` rejects anything outside that set with a message naming it.
+  A writer must emit the canonical spelling: lowercase is a legacy value, never a second state.
+  `crew-ls.py --normalize-status [--apply]` previews and applies the one-shot rewrite of every stored
+  legacy token across `--tasks-dir`, reporting each file and exiting 0 when a second run finds
+  nothing left to change.
+- **A task's review may live outside the task directory.** `task_review.py` resolves it: the task's
+  own `REVIEW.md` when present, otherwise the directory `review_dir` in the task's `run.json` names.
+  Both `run.json` writers record it — `review_workspace.claim` when the review directory is created,
+  and `persist` on every write — because a PR-mode review persists to a temp directory by design and
+  would otherwise leave the close-out gate with nothing readable. The gate reads the verdict and the
+  `Reviewed at:` commit from that one file, so the two cannot disagree, and `--mark-done` prints
+  which file it read (`done:` on stdout, `note:` on stderr) so a refusal is auditable.
 - `crew-review-findings.py` records two optional fields on a finding — `kind` (what sort of defect: its
   values are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
   `other`) and `validation` (one sentence on what a `verified: true` check read and concluded, required
@@ -164,6 +180,13 @@ module.
 - `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally
   rebased; it is never used by a skill on its own initiative.
+- `crew-prune.py` reports catalog commands with no caller. A caller is a reference from a prompt
+  (rules, agents, skills, `AGENTS.md`, the templates), a hook, `install.sh`, or another tool; the
+  catalog page and tests are counted in their own columns and never decide the verdict, because
+  `TOOLS.md` names every command by construction and a test proves a command runs, not that the
+  pipeline asks for it. `uncalled` — no reference at all — is the only automatic judgment and makes
+  the command exit 1; `test-only` is listed for a person to decide. Journal mentions appear beside the
+  verdict, never instead of it. Pruning stays a human decision: this report deletes nothing.
 - `crew-pr-actions.py` is the only tool that mutates GitHub. `--execute` is the single mutation
   switch: `reply` and `resolve` without it print a plan and exit 0 without invoking `gh`, and
   `--dry-run` names that behavior explicitly (the two are mutually exclusive). The plan's `command`

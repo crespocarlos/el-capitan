@@ -29,6 +29,7 @@ from review_findings import (
 )
 from review_personas import GENERATED_SECTIONS
 from review_persist_gates import check_personas_present, strict_gates
+from review_workspace import record_task_review
 
 
 def heading_lines(text: str) -> set[str]:
@@ -139,6 +140,7 @@ def persist(args: argparse.Namespace) -> int:
     atomic_write(args.review_dir / "REVIEW.md", report)
     task_report = "REVIEW.md" if args.mode in CODE_MODES else f"REVIEW.{args.mode}.md"
     atomic_write(owner / task_report, report)
+    record_task_review(str(owner), args.review_dir)
     if rows:
         append_deferred(owner, rows)
     print(json.dumps({"review": str(owner / task_report), "deferred": len(rows)}))

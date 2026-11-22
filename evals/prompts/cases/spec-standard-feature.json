@@ -1,0 +1,15 @@
+{
+  "id": "spec-standard-feature",
+  "prompt": ".cursor/skills/spec-writing/SKILL.md",
+  "request": "Add a --limit flag to crew-ls.py so a listing of 300 tasks can be bounded, defaulting to no limit.",
+  "artifact": "# Spec: Bound the task listing\n\n## Type: feature\n## Branch: feat/bound-task-listing\n## Status\nDRAFTING\n\n## Summary\n`crew-ls.py` prints every task it finds, so a store of 300 tasks spends the whole context window on\none call. Add `--limit N` and a truncation marker naming what was dropped.\n\nOut of scope: changing the table's columns.\n\n## Acceptance criteria\n- [ ] WHEN `--limit 5` is passed against six tasks THEN exactly five rows print plus a marker — verify: `python3 evals/tools/test_command_names.py`\n- [ ] Non-regression: an unbounded listing prints every row — verify: `python3 evals/tools/test_task_context.py`\n\n## Tests\n### Unit\n- **Command**: `python3 evals/tools/test_command_names.py`\n### Validation\n- **Command**: `python3 evals/tools/test_python_shape.py`\n\n## Tasks\n- [ ] 1) Add `--limit` to the parser\n  - `crew-ls.py` accepts an integer and passes it to the listing renderer.\n  - Verify: `python3 .agent/tools/task/crew-ls.py --help`\n- [ ] 2) Print the truncation marker\n  - The table ends with the count dropped and the flag that raises it.\n  - Verify: `python3 evals/tools/test_command_names.py`\n",
+  "assertions": [
+    {"kind": "headings", "names": ["## Status", "## Acceptance criteria", "## Tests", "## Tasks"]},
+    {"kind": "typed_tests", "layers": ["Unit", "Validation"]},
+    {"kind": "criteria_verifiable"},
+    {"kind": "tasks_verify"},
+    {"kind": "absent", "patterns": ["\\[NEEDS CLARIFICATION"]}
+  ],
+  "broken": "# Spec: Bound the task listing\n\n## Acceptance criteria\n- [ ] Better bounds would be nice.\n\n## Tests\n### Unit\n- **Command**: none\n\n## Tasks\n- [ ] 1) Add the flag\n",
+  "_note": "The realistic bad output: criteria with no check, a Tests layer whose command is `none`, and a task with no Verify line."
+}

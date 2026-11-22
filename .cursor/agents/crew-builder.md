@@ -100,8 +100,9 @@ Otherwise run steps 1-4 and overwrite `REPORT.md`.
 3. Walk each `- [ ]` under **`## Acceptance criteria`** — mark `[x]` only if satisfied by the
    retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or
    explicit file inspection stated in the criterion).
-4. Leave `## Status` as `IMPLEMENTING`. The status becomes `done` only when `crew open pr` creates
-   the PR (`crew-ls.py --mark-done`). Do not write `done` here.
+4. Leave `## Status` as `IMPLEMENTING`. `DONE` is written only by `crew open pr` when it creates the
+   PR (`crew-ls.py --mark-done`); the status is not the builder's to change, and a hand-written value
+   skips the gate that proves the review passed.
 
 Then write `REPORT.md`.
 

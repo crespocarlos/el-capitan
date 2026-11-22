@@ -27,6 +27,7 @@ for _path in (_TASK_DIR.parent, _TASK_DIR):
 
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 from task_gates import mark_approved, mark_done, mark_implementing  # noqa: E402
+from task_normalize import normalize_all  # noqa: E402
 from task_report import (  # noqa: E402
     load_rows,
     print_listing,
@@ -66,6 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--branch", help="current branch; must match the task's branch")
     parser.add_argument("--force", action="store_true",
                         help="skip the evidence checks in --mark-done")
+    parser.add_argument("--normalize-status", action="store_true",
+                        help="rewrite a legacy lowercase status token to its canonical spelling")
     return parser
 
 
@@ -82,12 +85,17 @@ def main() -> int:
         if not args.pr_url:
             parser.error("--mark-done requires --pr-url")
         return mark_done(args.mark_done, args.pr_url, args.branch, args.force)
-    if args.apply and not args.reconcile:
-        parser.error("--apply requires --reconcile")
+    if args.apply and not args.reconcile and not args.normalize_status:
+        parser.error("--apply requires --reconcile or --normalize-status")
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1")
     if args.max_chars < 1:
         parser.error("--max-chars must be at least 1")
+    if args.normalize_status:
+        if not args.tasks_dir.is_dir():
+            print(f"error: no tasks directory: {args.tasks_dir}", file=sys.stderr)
+            return 2
+        return 0 if normalize_all(args.tasks_dir, args.apply) >= 0 else 1
     try:
         rows = load_rows(args.tasks_dir)
         if not args.reconcile:

@@ -110,6 +110,22 @@ Rules that the structural gate enforces:
   `remote_tip`, `behind_count`) try `gh` first because it carries the authentication, fall back to
   git, and raise naming both. `evals/tools/test_python_shape.py` fails a git argv outside `lib/`.
 
+## The task status contract
+
+`task_status.py` owns the `## Status` value; nothing else parses it, and no writer invents a spelling.
+
+- The states are `DRAFTING`, `APPROVED`, `IMPLEMENTING`, `ON-HOLD`, and `DONE`; `ABANDONED` is a
+  user-only side state. They are uppercase, and a status may carry a suffix after the token
+  (`ON-HOLD (auto-hold: …; was APPROVED)`).
+- Reads normalize: `head` uppercases and strips trailing punctuation, so a legacy `done` and a
+  `DONE` are one state. `token` rejects anything outside the set and names the allowed values, which
+  is where a typo should fail rather than at a transition that silently matches no rule.
+- Writers emit the canonical spelling. `DONE` is written only by `crew-ls.py --mark-done`, and the
+  builder never writes a status at all; a hand-written value skips the gate that proves the review
+  passed.
+- `crew-ls.py --normalize-status [--apply]` is the migration for a legacy token: it reports each
+  file, and a second run reports `0 of N` because a canonical value needs no change.
+
 ## Exit codes
 
 The contract is uniform and callers depend on it:

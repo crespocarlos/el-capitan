@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""Checks for the close-out gate: where a task's review lives and whether it can be found.
+
+The defect this guards is measured, not hypothetical: 25 of 28 `IMPLEMENTING` tasks had a
+`REPORT.md`, so the work was finished, and `--mark-done` still refused every one with `review
+verdict is ?`. A PR-mode review persists to a temp directory by design, so the gate that read only
+`<task>/REVIEW.md` could never see it. Every case here builds a task on disk and asks the real
+command, because the bug lived in the resolution of a path rather than in a predicate.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
+REVIEW_TOOLS = ROOT / ".agent" / "tools" / "review"
+CLI = TASK_TOOLS / "crew-ls.py"
+
+FAILED: list[str] = []
+
+SPEC = "# Probe task\n\n## Status\nIMPLEMENTING\n\n- [x] one criterion\n"
+
+
+def check(name: str, condition: bool, detail: object = "") -> None:
+    if condition:
+        print(f"pass: {name}")
+        return
+    FAILED.append(name)
+    print(f"FAIL: {name}{': ' + str(detail) if detail else ''}")
+
+
+def run(task: Path, *arguments: str) -> tuple[int, str, str]:
+    """Run the close-out gate with `--mark-done <task>`, keeping the argument order argparse wants."""
+    result = subprocess.run([sys.executable, str(CLI), "--mark-done", str(task), *arguments],
+                            capture_output=True, text=True)
+    return result.returncode, result.stdout, result.stderr
+
+
+def read_module(directory: Path, name: str):
+    sys.path.insert(0, str(directory))
+    return __import__(name.removesuffix(".py"))
+
+
+def make_task(base: Path, review_text: str | None = None) -> Path:
+    """A task that passes every other gate, with an optional review beside its spec."""
+    task = base / "task"
+    task.mkdir(parents=True, exist_ok=True)
+    (task / "SPEC.md").write_text(SPEC, encoding="utf-8")
+    if review_text is not None:
+        (task / "REVIEW.md").write_text(review_text, encoding="utf-8")
+    return task
+
+
+def make_temp_review(base: Path, review_text: str) -> Path:
+    """A review directory of the shape PR mode writes: outside the task, recorded in run.json."""
+    directory = base / "crew-review-probe" / "review" / "20260101000000"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "REVIEW.md").write_text(review_text, encoding="utf-8")
+    return directory
+
+
+def record(task: Path, directory: Path) -> None:
+    record_task_review = read_module(REVIEW_TOOLS, "review_workspace.py").record_task_review
+    record_task_review(str(task), directory, "pr")
+
+
+def temp_review_accepts(base: Path) -> None:
+    """A passing review in a recorded temp directory closes the task."""
+    task = make_task(base / "accept")
+    directory = make_temp_review(base / "accept", "Verdict: pass\n")
+    record(task, directory)
+    recorded = json.loads((task / "run.json").read_text(encoding="utf-8"))
+    check("persist records review_dir in run.json",
+          recorded.get("review_dir") == str(directory.resolve()), recorded)
+    check("persist records the review mode", recorded.get("review_mode") == "pr", recorded)
+    code, out, err = run(task, "--pr-url", "https://example.test/pr/1")
+    check("a passing temp review closes the task", code == 0, (code, out, err))
+    check("the closed status is DONE", "DONE" in (task / "SPEC.md").read_text(encoding="utf-8"))
+    check("the gate names the file it read", "review read from" in out and str(directory) in out, out)
+
+
+def temp_review_refuses(base: Path) -> None:
+    """A failing review in the same location still refuses, with the verdict message."""
+    task = make_task(base / "refuse")
+    directory = make_temp_review(base / "refuse", "Verdict: BLOCK\n")
+    record(task, directory)
+    code, out, err = run(task, "--pr-url", "https://example.test/pr/1")
+    check("a blocking temp review refuses", code == 1, (code, out, err))
+    check("the refusal names the verdict", "review verdict is BLOCK, need pass or warn" in err, err)
+    check("a refused task stays IMPLEMENTING",
+          "IMPLEMENTING" in (task / "SPEC.md").read_text(encoding="utf-8"))
+    check("the refusal says where the review was read", "review read from" in err, err)
+
+
+def missing_review_still_refuses(base: Path) -> None:
+    """No review anywhere refuses for the reason the operator can act on."""
+    task = make_task(base / "missing")
+    code, out, err = run(task, "--pr-url", "https://example.test/pr/1")
+    check("no review refuses", code == 1, (code, out, err))
+    check("the refusal reports the unknown verdict", "review verdict is ?" in err, err)
+    check("the refusal says no review was found", "no review found" in err, err)
+
+
+def local_review_wins(base: Path) -> None:
+    """A review beside the spec is the one the gate reads, even when run.json points elsewhere."""
+    task = make_task(base / "local", "Verdict: pass\n")
+    directory = make_temp_review(base / "local", "Verdict: BLOCK\n")
+    record(task, directory)
+    code, out, err = run(task, "--pr-url", "https://example.test/pr/1")
+    check("the local review wins over the recorded one", code == 0, (code, out, err))
+    check("the local review is the file named", f"review read from {task / 'REVIEW.md'}" in out, out)
+
+
+def stale_record_refuses(base: Path) -> None:
+    """A recorded directory the operator deleted is not a review: the gate reports what it found."""
+    task = make_task(base / "stale")
+    directory = make_temp_review(base / "stale", "Verdict: pass\n")
+    record(task, directory)
+    shutil.rmtree(directory)
+    code, out, err = run(task, "--pr-url", "https://example.test/pr/1")
+    check("a deleted review directory refuses", code == 1, (code, out, err))
+    check("a deleted review directory is reported as none", "no review found" in err, err)
+
+
+def reviewed_at_prefers_the_same_file(base: Path) -> None:
+    """The verdict and the `Reviewed at:` commit come from one file, so they cannot disagree."""
+    task = make_task(base / "identity")
+    directory = make_temp_review(base / "identity", "Verdict: pass\n\nReviewed at: 0123456789abcdef\n")
+    record(task, directory)
+    review_module = read_module(TASK_TOOLS, "task_review.py")
+    gate_module = read_module(TASK_TOOLS, "task_gates.py")
+    resolved = review_module.review_file(task)
+    check("both reads resolve to the recorded review",
+          resolved is not None and resolved.resolve() == (directory / "REVIEW.md").resolve(), resolved)
+    check("the reviewed commit comes from that file",
+          review_module.reviewed_at(resolved) == "0123456789abcdef", resolved)
+    check("the gate names the same file", str(resolved) in gate_module.review_location(task),
+          gate_module.review_location(task))
+
+
+def task_without_spec_is_not_recorded(base: Path) -> None:
+    """`record_task_review` leaves a directory that is not a task untouched."""
+    directory = base / "not-a-task"
+    directory.mkdir()
+    read_module(REVIEW_TOOLS, "review_workspace.py").record_task_review(
+        str(directory), make_temp_review(base / "ignored", "Verdict: pass\n"), "pr")
+    check("a directory with no SPEC.md gets no run.json", not (directory / "run.json").exists(),
+          sorted(p.name for p in directory.iterdir()))
+
+
+def main() -> int:
+    base = Path(tempfile.mkdtemp(prefix="crew-lifecycle-"))
+    try:
+        temp_review_accepts(base)
+        temp_review_refuses(base)
+        missing_review_still_refuses(base)
+        local_review_wins(base)
+        stale_record_refuses(base)
+        reviewed_at_prefers_the_same_file(base)
+        task_without_spec_is_not_recorded(base)
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+    print("all lifecycle checks passed" if not FAILED else f"lifecycle: {len(FAILED)} failed")
+    return 1 if FAILED else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

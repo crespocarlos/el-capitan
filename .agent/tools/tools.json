@@ -24,6 +24,17 @@
       "json_smoke": ["--json", "--root", "."]
     },
     {
+      "name": "crew-prune.py",
+      "dir": "maintenance",
+      "kind": "command",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "argparse",
+      "smoke": "--help",
+      "output": "json",
+      "json_smoke": ["--json", "--root", "."]
+    },
+    {
       "name": "crew-ls.py",
       "dir": "task",
       "kind": "command",
@@ -283,6 +294,15 @@
       "smoke": "imported by crew-evals-compare.py"
     },
     {
+      "name": "prune_callers.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-prune.py",
+      "smoke": "imported by crew-prune.py"
+    },
+    {
       "name": "lint_budget.py",
       "dir": "maintenance",
       "kind": "module",
@@ -427,7 +447,25 @@
       "smoke": "imported by crew-ls.py"
     },
     {
+      "name": "task_review.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
       "name": "task_gates.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_normalize.py",
       "dir": "task",
       "kind": "module",
       "category": "task",

@@ -1,0 +1,14 @@
+{
+  "id": "review-code-findings",
+  "prompt": ".cursor/agents/crew-reviewer.md",
+  "request": "crew review changes — two staged files: a new parser branch and its test.",
+  "artifact": "## Review: changes — one unguarded index and a test that asserts nothing\n\n1. [blocking] **`src/parse.py` — line 42**\n\n```py\nvalue = rows[index]\n```\n\n`index` arrives from the CLI unbounded, so a negative value silently reads from the tail and an\noversized one raises `IndexError`, which the caller reports as a parse failure.\n\nFix:\n\n```py\nvalue = rows[index] if 0 <= index < len(rows) else None\n```\n\n---\n\n2. [attention] **`tests/test_parse.py` — line 8**\n\n```py\nassert parse(\"a\") is not None\n```\n\nThe assertion passes for any non-None return, including the wrong value, so a regression in the\nparsed field would not fail it.\n\nFix: assert the parsed field equals the expected value.\n\n---\n\n3. [nit] **`tests/test_parse.py` — line 12** — name the fixture `empty_rows` rather than `e`.\n\nVerdict: WARN. One blocking finding is confined to the caller's validation path; nothing else in\nthe diff can misparse a well-formed input.\n\n> Next: run `crew review address` to resolve the blocking finding.\n",
+  "assertions": [
+    {"kind": "finding_contract", "anchors": true},
+    {"kind": "verdict_line", "values": ["PASS", "WARN", "BLOCK"]},
+    {"kind": "regex", "patterns": ["^> Next: .+$"]},
+    {"kind": "regex", "patterns": ["^## Review: changes — .+"]}
+  ],
+  "broken": "## Review: changes\n\n1. [critical] **parse.py** — the index is probably wrong somewhere.\n\n2. [blocking] **parser** — this will break.\n\nVerdict: looks good\n",
+  "_note": "Unanchored findings under an invented label, and a verdict outside the vocabulary the close-out gate reads."
+}

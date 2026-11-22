@@ -1,0 +1,13 @@
+{
+  "id": "router-row-per-trigger",
+  "prompt": "rules/crew-router.mdc",
+  "request": "Add a `crew prune` trigger that reports catalog commands with no caller, and keep every trigger routed.",
+  "artifact": "## Routing table\n\n| Trigger | Crew member |\n|---|---|\n| `crew spec` issue/URL/description | crew-specwriter |\n| `crew quick` description | crew-quick skill |\n| `crew implement` | crew-implement → @crew-builder |\n| `crew test` | crew-test skill |\n| `crew commit` | crew-commit |\n| `crew prune` | `~/.agent/bin/crew-prune.py` inline; print the table |\n",
+  "assertions": [
+    {"kind": "router_rows", "triggers": ["spec", "quick", "implement", "test", "commit", "prune"]},
+    {"kind": "regex", "patterns": ["^\\| `crew prune` .*\\| .+\\|$"]},
+    {"kind": "absent", "patterns": ["^\\| `crew prune` .*\\| *\\|$"]}
+  ],
+  "broken": "## Routing table\n\n| Trigger | Crew member |\n|---|---|\n| `crew spec` issue | crew-specwriter |\n| `crew prune` |  |\n| `crew test` | crew-test skill |\n",
+  "_note": "A new trigger with an empty handler and two other rows missing: the row exists but routes nowhere."
+}
