@@ -71,6 +71,19 @@
       "json_smoke": ["select", "--mode", "self"]
     },
     {
+      "name": "crew-review-stats.py",
+      "dir": "review",
+      "kind": "command",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "argparse",
+      "smoke": "--help",
+      "output": "json",
+      "bounded": true,
+      "list_flags": ["--limit", "--max-chars"],
+      "json_smoke": ["--json", "--tasks-dir", "@tmpdir"]
+    },
+    {
       "name": "crew-review-hunks.py",
       "dir": "review",
       "kind": "command",
@@ -924,6 +937,42 @@
       "owner": "crew-reviewer",
       "help": "imported by crew-review-findings.py",
       "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_cli.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_outcomes.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py and crew-review-stats.py",
+      "smoke": "imported by crew-review-findings.py and crew-review-stats.py"
+    },
+    {
+      "name": "review_corpus.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-stats.py",
+      "smoke": "imported by crew-review-stats.py"
+    },
+    {
+      "name": "review_stats.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-stats.py",
+      "smoke": "imported by crew-review-stats.py"
     }
   ],
   "assets": [

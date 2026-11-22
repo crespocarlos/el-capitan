@@ -129,14 +129,14 @@ returns stdout only; follow the evidence rules in the shared dispatch instructio
 <selector-mode> --personas <names>`. Dispatch only on exit 0; otherwise rewrite the named package and
 check again. The generated-hunk rule applies in every mode; the Tasks/Hints rule (see "Spec in every
 code-mode package" in context tiers) applies in code modes only. The output lists any check skipped
-for a missing `SPEC.md` or `hunks.json`, and a skipped check is not a pass. `persist --strict` repeats
+for a missing `SPEC.md` or `hunks.json`, and a skipped check is not a pass. `persist` repeats
 the check for a directory holding a `package.diff`, so skipping it fails the review after its cost is
 spent.
 
 **Persist both artifacts at dispatch time, not at persist time.** The package sent to each persona is
 the `.in.md` just checked. Deliver it inline, or by path under **Package delivery** in the shared
 dispatch instructions where all three conditions hold. Write the raw reply to
-`$REVIEW_ROOT/<persona>.out.md` as each returns. `persist --strict` requires both files, and
+`$REVIEW_ROOT/<persona>.out.md` as each returns. `persist` requires both files, and
 reconstructing either afterwards from a one-line summary satisfies the gate while destroying the audit
 trail — the recorded package must be the one the persona read.
 

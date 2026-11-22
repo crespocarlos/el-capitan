@@ -29,7 +29,7 @@ a map, and name the gap in the report.
 
 If `crew-review-hunks.py` exits non-zero the diff is empty or malformed: report it and continue
 without a map. Personas then get their normal size-gated package with no `## Reading map` section.
-Without `layers.json`, `persist --strict` skips the coverage gate and warns when `hunks.json` exists,
+Without `layers.json`, `persist` skips the coverage gate and warns when `hunks.json` exists,
 so an unmapped review is never silent; with one, any hunk left out is rejected, so a map is never
 partially applied.
 
@@ -39,7 +39,7 @@ When `hunks.json` exists, append each id, file, and changed-line range from `hun
 the `hunks.md` bodies, which re-quote a diff the package already holds — under `## Hunk reference`,
 paired with the hunk-citation sentence the packaging rules require (see
 [context tiers](context-tiers.md)). Without a Reading map the index imposes no reading order, but the
-heading plus that sentence is what lets every persona cite the ids `persist --strict` requires, in the
+heading plus that sentence is what lets every persona cite the ids `persist` requires, in the
 `path:line (h7)` form the rest of the pipeline reads.
 
 ## assemble.json

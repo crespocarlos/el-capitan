@@ -28,7 +28,7 @@ alternative, not a deviation, when all three hold:
 rejected for size — an observable event, and self-correcting where guessing at an output bound is not.
 A five-persona review measured at 640 KB (about 160k tokens of duplicate output) is the shape that
 triggers it. A package delivered by path is still the audit artifact: `<persona>.in.md` and
-`<persona>.out.md` stay the pair `persist --strict` requires, and the recorded package remains the one
+`<persona>.out.md` stay the pair `persist` requires, and the recorded package remains the one
 the persona read. Name the delivery in the report's `### Reviewers` section.
 
 **PR mode:** the package is the only repository evidence a persona may use. Every code excerpt must

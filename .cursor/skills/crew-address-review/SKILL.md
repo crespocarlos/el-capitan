@@ -133,9 +133,12 @@ Summary counts: N accept / N reject / N needs-input / N nit. Then ask:
 > **"Which of these should I incorporate? (`all` = all Accept/Nit rows; `none` = skip; numbers =
 > cherry-pick). For any 'Needs Input' rows, answer them here."**
 
-### Step 3b: Log non-applied outcomes
+### Step 3b: Log every decision
 
 Follow [outcome logging](references/outcome-logging.md) after the user responds and before any edit.
+The record is **not optional**: every finding this run applies, adapts, or rejects gets one appended
+outcome line, and a finding it leaves alone gets none. Recording where the decision is made is the
+only point the answer is known — asking later is what left 704 of 719 measured findings unrecorded.
 
 ### Step 4: Execute approved fixes
 
@@ -145,7 +148,7 @@ not prompt for means the rule is missing — say so rather than proceeding silen
 **Code mode:** apply each approved edit, reading the file immediately before editing if it wasn't
 already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; if an
 edit fails, log `skipped` with a reason starting `edit-failed:`, so failures are distinguishable from
-user decisions.
+user decisions. Do not continue to the summary with a decision unrecorded.
 
 **When the edit changes what a step, mode, or skill is allowed to do, sweep the file it lives in.** A
 capability change falsifies every sentence describing the old limit, and a reader meets them before the
@@ -166,7 +169,19 @@ sibling check, decisions section, and self-review.
 
 ### Summary
 
-Before the summary, draft zero to three durable, evidence-backed memory candidates into
+Before the summary, prove the record is complete. Collect the fingerprints of every finding this run
+applied, adapted, or rejected, pass them to `--acted`, and let the command decide:
+
+```bash
+~/.agent/bin/crew-review-findings.py outcomes --review-dir <review-dir> --acted <id> <id> ...
+```
+
+It prints the counts and exits 1 naming any acted fingerprint with no outcome. Exit 1 fails the
+summary: do not report the run as addressed until every one of those findings has a line, because a
+summary that omits a decision reads as a clean pass over a corpus that is missing the evidence.
+Findings left alone need no record and must not be passed to `--acted`.
+
+Before the memory candidates, draft zero to three durable, evidence-backed candidates into
 `~/.agent/memory/.inbox/` from the accepted outcomes, including Step 3b's rejected-finding candidates.
 Do not draft facts derivable from the changed files or the review record, and do not import anything.
 Show the candidate titles (or `none`) with the summary and require a later explicit batch approval

@@ -26,10 +26,12 @@ from review_findings import (
     check_findings,
     check_strict,
     read_findings,
+    strict_mode,
 )
 from review_personas import GENERATED_SECTIONS
 from review_persist_gates import check_personas_present, strict_gates
 from review_workspace import record_task_review
+import review_outcomes as outcomes
 
 
 def heading_lines(text: str) -> set[str]:
@@ -106,7 +108,8 @@ def persist(args: argparse.Namespace) -> int:
     findings = read_findings(args.findings) if args.findings else []
     check_personas_present(args)
     coverage_section = coverage_gap = ""
-    if args.strict:
+    strict = strict_mode(args)
+    if strict:
         coverage_section, coverage_gap = strict_gates(args, owner, findings)
     report = args.report.read_text(encoding="utf-8")
     # The two generated sections are derived from --findings and --files, so a report carrying its
@@ -128,7 +131,7 @@ def persist(args: argparse.Namespace) -> int:
     if args.files:
         report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(f"- `{name}`\n" for name in args.files)
     report = reviewed_at(args, report)
-    if args.strict:
+    if strict:
         # Per-finding rules always; the path-scoped evidence gate only when a path set exists. A spec
         # or idea review passes no paths, and gating the whole check on `--files` silently skipped
         # the `validation` requirement in exactly those modes.
@@ -145,6 +148,21 @@ def persist(args: argparse.Namespace) -> int:
         append_deferred(owner, rows)
     print(json.dumps({"review": str(owner / task_report), "deferred": len(rows)}))
     return 0
+
+
+def check_outcomes(args: argparse.Namespace) -> int:
+    """Report what a review recorded, and fail when an acted finding has no outcome.
+
+    Exit 1, not 2: the command ran and found a gap in the run's own bookkeeping, which is a
+    finding rather than an unusable invocation. A summary that claimed success while a decision it
+    made went unrecorded is exactly the drift this exists to make visible.
+    """
+    review_dir = args.review_dir.resolve()
+    recorded = outcomes.summary(review_dir)
+    missing = outcomes.missing(review_dir, args.acted)
+    payload = {**recorded, "acted": len(args.acted), "missing": missing}
+    print(json.dumps(payload, sort_keys=True))
+    return 1 if missing else 0
 
 
 def outcome(args: argparse.Namespace) -> int:

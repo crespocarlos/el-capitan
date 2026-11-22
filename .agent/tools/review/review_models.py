@@ -27,8 +27,8 @@ from review_vocabulary import (
     normalized_title,
 )
 
-# Absent is not the same as empty: `kind` and `evidence` are optional, and a record must not grow a
-# key the persona never wrote, because `normalize` republishes the finding for later steps to parse.
+# Absent is not the same as empty: `evidence` is optional, and a record must not grow a key the
+# persona never wrote, because `normalize` republishes the finding for later steps to parse.
 ABSENT = object()
 
 
@@ -116,9 +116,9 @@ def to_finding(finding: dict, index: int) -> Finding:
     disposition = finding.get("disposition")
     if disposition is not None and disposition not in DISPOSITIONS:
         raise ValueError(f"finding {index} has invalid disposition: {disposition!r}")
-    # Optional: every review recorded before `kind` existed has none, and refusing those would make
-    # the tool unable to re-read its own history. A typo is different — an unknown value is rejected
-    # so the vocabulary cannot drift one spelling at a time.
+    # A value outside the vocabulary is a typo and is rejected here, so the set cannot drift one
+    # spelling at a time. Absence is a different failure and is refused by `require_kind` at persist,
+    # because `normalize` must still be able to read the reviews recorded before `kind` existed.
     kind = ABSENT
     if "kind" in finding:
         kind = str(finding["kind"]).strip().lower()
@@ -130,6 +130,14 @@ def to_finding(finding: dict, index: int) -> Finding:
     persona = ABSENT
     if "persona" in finding or "personas" in finding:
         persona = canonical_personas(finding.get("persona", finding.get("personas")))
+        if not persona:
+            # An absent key is legacy data the tool must still re-read; an empty list is a caller
+            # that meant to attribute the finding and did not, so it is refused here rather than
+            # landing in an unattributed bucket that no precision number can ever explain.
+            raise ValueError(
+                f"finding {index} names no persona; attribute it to the one that raised it "
+                "(or omit the key entirely for a record written before personas were recorded)"
+            )
     known = {"title", "label", "file", "line", "kind", "disposition", "persona", "personas",
              "hunks", "verified", "evidence", "validation", "reason", "memory_ids", "fingerprint"}
     record = Finding(
@@ -143,6 +151,20 @@ def to_finding(finding: dict, index: int) -> Finding:
     )
     record.fingerprint = fingerprint(record)
     return record
+
+
+def require_kind(finding: Finding) -> None:
+    """Reject a finding with no `kind`, naming every value the vocabulary allows.
+
+    Required rather than optional, and enforced at persist: measured over 84 reviews, 713 of 719
+    findings carried no `kind`, so the one defect axis independent of severity was never populated.
+    A recorded review is re-read through `--lenient`, which is where legacy data stays readable.
+    """
+    if finding.kind is ABSENT:
+        raise ValueError(
+            f"finding {finding.title!r} has no kind; state what sort of defect it is, one of: "
+            f"{', '.join(sorted(KINDS))}"
+        )
 
 
 def read_json_object(path: Path, key: str) -> dict:

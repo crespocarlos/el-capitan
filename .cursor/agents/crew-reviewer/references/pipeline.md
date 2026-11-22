@@ -41,27 +41,32 @@ head, because PR mode fetches nothing.
 task's `REVIEW.md`.
 
 1. Write candidate findings to `$REVIEW_ROOT/candidates.json` as a JSON list (or `{"findings":
-   [...]}`) with `{persona, label, title, file, line, disposition, reason, memory_ids, hunks}`.
-   `persona` uses the names above (a list when several flagged it); `disposition` is `patch`,
+   [...]}`) with `{persona, label, title, kind, file, line, disposition, reason, memory_ids, hunks}`.
+   `persona` uses the names above (a list when several flagged it); `kind` is required and its values
+   are `KINDS` in `crew-review-findings.py`; `disposition` is `patch`,
    `decide`, `defer`, `dropped`, or `merged`; `hunks` lists the ids from `hunks.json` whose change
    causes the finding (omit it when there is no hunk index).
-2. Run `~/.agent/bin/crew-review-findings.py normalize "$REVIEW_ROOT/candidates.json" --strict --output
+2. Run `~/.agent/bin/crew-review-findings.py normalize "$REVIEW_ROOT/candidates.json" --output
    "$REVIEW_ROOT/consolidation.json"`, adding `--hunks "$REVIEW_ROOT/hunks.json"` when that file
-   exists and `--files <path1> <path2> …` always. `--files` is what moves the evidence-path gate to
-   this step: `persist --strict` rejects a finding whose `evidence` names an unchanged file, and
+   exists and `--files <path1> <path2> …` always. The evidence checks run by default, so there is no
+   flag to remember: `--lenient` is the only way to skip them, and this pipeline passes it. `--files`
+   is what moves the evidence-path gate to
+   this step: the same call rejects a finding whose `evidence` names an unchanged file, and
    without `--files` here that rejection arrives after every persona has run. Pass the same path set
    you will pass to `persist`. With `--hunks`, an emitted `blocking` or `attention` finding must cite
-   at least one hunk, and every cited id must exist; a nit may stay unanchored. `--strict` fails on an
+   at least one hunk, and every cited id must exist; a nit may stay unanchored. The default gates
+   fail on a finding with no `kind`, on an
    emitted (`patch`/`decide`) `blocking`
-   or `attention` finding without `verified: true` and an `evidence` location, and on more than
-   `MAX_FINDINGS` emitted findings or more than `MAX_NITS` emitted nits; add `verified` and
-   `evidence` to each candidate. The two caps are defined once, in `crew-review-findings.py`, and
+   or `attention` finding without `verified: true` and an `evidence` location, on a `verified` finding
+   with no `validation` sentence, and on more than
+   `MAX_FINDINGS` emitted findings or more than `MAX_NITS` emitted nits; supply all three on
+   each candidate. The two caps are defined once, in `crew-review-findings.py`, and
    restated with their rationale in `consolidation.md` — read them there rather than copying the
    numbers, so a cap change cannot leave this file stale. In PR mode evidence must use
    the PR-head form `path:line@headSHA7`, and the evidence excerpt belongs in the relevant persona
    `.in.md` or validator prompt. It canonicalizes persona names, assigns SHA-1 fingerprints over
    `file|label|normalized title`, and merges exact duplicates. When `$REVIEW_ROOT/layers.json`
-   exists, `persist --strict` also runs the hunk coverage gate (step 3).
+   exists, `persist` also runs the hunk coverage gate (step 3).
 3. For every failed, skipped, or truncated dispatch, write `<persona>.out.md` before persistence
    with `status: failed|skipped|truncated`, the failure or coverage gap, and `finding: none`. A
    `.out.md` carrying any other word — or a placeholder summary without a complete no-findings
@@ -74,27 +79,31 @@ task's `REVIEW.md`.
    write the emitted report to `$REVIEW_ROOT/report.md`,
    and run `~/.agent/bin/crew-review-findings.py persist --review-dir "$REVIEW_ROOT" --report
    "$REVIEW_ROOT/report.md" --findings "$REVIEW_ROOT/consolidation.json" --mode
-   <self|changes|pr|spec|idea> --files <path1> <path2> ... --head <HEAD SHA> --strict --personas
+   <self|changes|pr|spec|idea> --files <path1> <path2> ... --head <HEAD SHA> --personas
    adversarial code-quality`; pass every dispatched persona as its own space-delimited argument (for
    example, add `architecture prompt-quality`). Comma-separated values such as
    `adversarial,code-quality` are invalid. `<HEAD SHA>` is `$(~/.agent/bin/crew-repo-info.py --field head)` for self, changes,
    spec, and idea; for PR it is the head SHA from `gh pr view`, which the local checkout does not
    contain and `--head` therefore records without resolving.
-   `--personas` is required on every call, and persona coverage is checked whether or not you pass
-   `--strict`: each named persona must have a real `.in.md` and `.out.md`, and the run fails when
+   `--personas` is required on every call, and persona coverage is checked on every call: each
+   named persona must have a real `.in.md` and `.out.md`, and the run fails when
    every persona produced nothing or when any artifact is empty, a placeholder, or a condensed
-   digest. `--strict` adds the diff gates: hunk coverage below, and evidence paths checked against
+   digest. The evidence gates also run on every call — a finding with no `kind`, an unverified
+   `blocking`/`attention` finding, a `verified` finding with no `validation`, and evidence outside
+   `--files` all fail without a flag — plus the diff gates: hunk coverage below, and evidence paths
+   checked against
    `--files`. `--files` takes
    `nargs="*"`: pass every reviewed path as its own shell argument — quoting them all as one string
-   makes strict persistence treat that string as one nonexistent path and reject otherwise valid
+   makes the evidence check treat that string as one nonexistent path and reject otherwise valid
    evidence. `--head`
    records the approved commit so `crew commit` and `--mark-done` can detect a tree that moved.
-   With `layers.json` in `$REVIEW_ROOT`, `--strict` also requires every hunk id in `hunks.json` to
+   `--lenient` is the single supported way to skip the gates, and this pipeline never passes it.
+   With `layers.json` in `$REVIEW_ROOT`, persistence also requires every hunk id in `hunks.json` to
    sit in exactly one layer (`crew-review-findings.py coverage`, shared with `validate-map`), so a map can
    never pass validation and then fail coverage. It then appends `### Coverage by layer` to the
    report: one line per layer with its hunks and the emitted findings that cite them, or `no
    findings`, so the reader sees which layers drew scrutiny. Do not write that section yourself.
-   With `hunks.json` present, `--strict` repeats the hunk-id check from `normalize`.
+   With `hunks.json` present, `persist` repeats the hunk-id check from `normalize`.
    `persist` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
    directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
 

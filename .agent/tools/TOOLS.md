@@ -160,10 +160,25 @@ module.
   would otherwise leave the close-out gate with nothing readable. The gate reads the verdict and the
   `Reviewed at:` commit from that one file, so the two cannot disagree, and `--mark-done` prints
   which file it read (`done:` on stdout, `note:` on stderr) so a refusal is auditable.
-- `crew-review-findings.py` records two optional fields on a finding — `kind` (what sort of defect: its
-  values are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
-  `other`) and `validation` (one sentence on what a `verified: true` check read and concluded, required
-  under `--strict` in every mode).
+- `crew-review-findings.py` records two fields on a finding: `kind` (what sort of defect: its values
+  are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
+  `other`) and `validation` (one sentence on what a `verified: true` check read and concluded).
+  Both are required on a finding that reaches a gate: `kind` by `require_kind`, because measured over
+  84 recorded reviews 713 of 719 findings had none, and `validation` wherever `verified` is true.
+  `normalize` and `persist` apply those gates by default; `--lenient` is the escape and `--strict`
+  is a no-op alias kept one cycle so a script written against the old default still runs.
+- `crew-review-findings.py outcome` appends one JSONL record per decision `crew review address`
+  makes; `outcomes --review-dir <dir> --acted <id> …` reads them back and exits 1 naming any acted
+  finding with no record, which is what fails a summary that skipped one. Two journal shapes exist
+  (`<review>/outcomes.jsonl` and `<task>/review/outcomes.jsonl`) because the path follows the
+  directory the caller named, so both are read; a relative `review_dir` resolves against its own
+  journal. Precision over a corpus this thin is meaningless without that denominator, which is why
+  `crew-review-stats.py` prints it beside every ratio.
+- `crew-review-stats.py --tasks-dir <store>` measures a recorded corpus: findings by label, the
+  required field each one is missing, and precision per persona as `fixed / (fixed + rejected)` with
+  the decided count and the `unrecorded` count beside it. `--json` is the machine form, `--limit`
+  bounds the review list, `--max-chars` the whole output. A corpus with no outcome says so instead
+  of printing `0.00`, and an unreadable `--tasks-dir` exits 2 rather than reporting zero findings.
 - `crew-review-findings.py persist --files` records the reviewed paths and gates evidence against them;
   it deliberately does not compare that list with the diff. `persist` runs in three modes with no
   single base ref, so inferring one would be wrong more often than right. Tree identity is carried by
@@ -175,7 +190,7 @@ module.
   carries (rule: "Spec in every code-mode package" in `context-tiers.md`).
   `check-packages --review-dir <task>/review/<ts> --personas <names>` rejects written `.in.md`
   packages that break that rule or embed filename-generated hunks, and reports any check it skipped
-  for a missing `SPEC.md` or `hunks.json`; `persist --strict` runs it only for a directory holding
+  for a missing `SPEC.md` or `hunks.json`; `persist` runs it only for a directory holding
   a `package.diff`.
 - `crew-ls.py --mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally

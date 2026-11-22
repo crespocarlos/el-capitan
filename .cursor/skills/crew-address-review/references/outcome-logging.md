@@ -12,7 +12,12 @@ that directory does not exist, skip outcome logging and say so; never invent a p
 <review-dir>/candidates.json --output <review-dir>/findings.json` and take `<id>`, `<persona>`, and
 `<label>` from it.
 
-For every finding the user did not approve (a Needs Input row left unanswered counts as `deferred`):
+Every finding this run decides on gets one line: applied, adapted, and rejected alike. A finding it
+leaves alone gets none. Recording is part of making the decision, not a report on it, because the
+answer is only known at that moment — a later pass that reconstructs it either guesses or skips, and
+704 of 719 measured findings ended up skipped that way.
+
+For each finding the user did not approve (a Needs Input row left unanswered counts as `deferred`):
 
 ```bash
 ~/.agent/bin/crew-review-findings.py outcome --review-dir <review-dir> --fingerprint <id> \
@@ -21,7 +26,8 @@ For every finding the user did not approve (a Needs Input row left unanswered co
 ```
 
 It appends immutable JSONL records to `<review-dir>/../outcomes.jsonl`. Log `fixed` only in Step 4,
-after the edit lands.
+after the edit lands. Then run `outcomes --acted` with every fingerprint this run decided on, as the
+skill's Summary step describes, and treat exit 1 as an incomplete run.
 
 ## Rejected-finding candidates
 

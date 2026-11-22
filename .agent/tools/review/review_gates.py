@@ -11,13 +11,14 @@ both `TOOLS.md` and the consolidation protocol said the sentence was required.
 """
 from __future__ import annotations
 
-from review_models import ABSENT, Finding
+from review_models import ABSENT, Finding, require_kind
 from review_vocabulary import EVIDENCE_LOCATION, MAX_FINDINGS, MAX_NITS
 
 
 def check_findings(findings: list[Finding]) -> None:
     """Per-finding rules that need no changed-file list."""
     for f in findings:
+        require_kind(f)
         evidence = None if f.evidence is ABSENT else f.evidence
         if f.label in {"blocking", "attention"} and not (
             f.verified is True

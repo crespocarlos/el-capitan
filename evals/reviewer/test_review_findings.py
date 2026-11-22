@@ -53,9 +53,26 @@ def test_normalize_rejects_unknown_persona(tmp: Path) -> None:
 def test_normalize_accepts_legacy_persona(tmp: Path) -> None:
     source = tmp / "legacy.json"
     source.write_text(json.dumps([{"title": "x", "label": "nit", "persona": "Fresh Eyes"}]))
-    result = run("normalize", str(source))
+    result = run("normalize", str(source), "--lenient")
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["findings"][0]["persona"] == ["fresh-eyes"]
+
+
+def test_normalize_rejects_an_empty_persona_list(tmp: Path) -> None:
+    """An empty list is a caller that meant to attribute the finding and did not.
+
+    Absence stays legal, because a record written before personas were recorded has to remain
+    re-readable; an explicit `[]` is not legacy data, and letting it through creates the
+    unattributed bucket that no precision figure can account for.
+    """
+    source = tmp / "empty.json"
+    source.write_text(json.dumps([
+        {"title": "x", "label": "nit", "persona": [], "kind": "other", "disposition": "patch"}]))
+    result = run("normalize", str(source))
+    assert result.returncode == 2 and "names no persona" in result.stderr, result.stderr
+    source.write_text(json.dumps([
+        {"title": "x", "label": "nit", "kind": "other", "disposition": "patch"}]))
+    assert run("normalize", str(source)).returncode == 0, "an absent key is still readable"
 
 
 def test_persist_writes_both_reports_and_appends_deferred(tmp: Path) -> None:
@@ -65,8 +82,9 @@ def test_persist_writes_both_reports_and_appends_deferred(tmp: Path) -> None:
     report.write_text("## Verdict: PASS\n")
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
-        {"title": "Old flaky helper", "label": "attention", "file": "b.ts", "line": 4, "disposition": "defer"},
-        {"title": "Rename var", "label": "nit", "disposition": "patch"},
+        {"title": "Old flaky helper", "label": "attention", "file": "b.ts", "line": 4,
+         "disposition": "defer", "kind": "reliability"},
+        {"title": "Rename var", "label": "nit", "disposition": "patch", "kind": "other"},
     ]))
     # Persistence always names its personas and proves each one ran; a report with no
     # persona evidence is indistinguishable from a full review that skipped a lens.
@@ -96,43 +114,51 @@ def test_persist_rejects_unexpected_review_dir(tmp: Path) -> None:
     assert not (tmp / "task" / "REVIEW.md").exists()
 
 
-def test_normalize_strict_requires_verified_evidence_and_cap(tmp: Path) -> None:
+def test_normalize_requires_verified_evidence_by_default(tmp: Path) -> None:
+    """The gates are the default; `--lenient` is the documented escape.
+
+    The 2026-11-22 flip: `--strict` used to be the only way to reach these checks, and 84 recorded
+    reviews omitted it, leaving 464 `verified: true` findings with no validation sentence. So the
+    no-flag call is now the gated one, and `--strict` survives one cycle as a no-op alias.
+    """
     source = tmp / "c.json"
-    base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch"}
+    base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
+            "kind": "correctness"}
     source.write_text(json.dumps([base]))
+    assert run("normalize", str(source)).returncode == 2
     assert run("normalize", str(source), "--strict").returncode == 2
-    assert run("normalize", str(source)).returncode == 0
+    assert run("normalize", str(source), "--lenient").returncode == 0
     source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3",
                                    "validation": "read a.ts:1-9; the guard is absent"}]))
-    assert run("normalize", str(source), "--strict").returncode == 0
-    # `verified: true` claims a second read; strict now requires its conclusion too, so a bare
+    assert run("normalize", str(source)).returncode == 0
+    # `verified: true` claims a second read; the gate requires its conclusion too, so a bare
     # boolean cannot pass as evidence of one.
     source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3"}]))
-    strict = run("normalize", str(source), "--strict")
-    assert strict.returncode == 2 and "validation sentence" in strict.stderr
-    # Without --strict it still normalizes, because older artifacts have no such field.
-    assert run("normalize", str(source)).returncode == 0
+    gated = run("normalize", str(source))
+    assert gated.returncode == 2 and "validation sentence" in gated.stderr
+    # `--lenient` still normalizes, because older artifacts have no such field.
+    assert run("normalize", str(source), "--lenient").returncode == 0
     for evidence in (True, {}, "verified elsewhere", "a.ts"):
         source.write_text(json.dumps([{**base, "verified": True, "evidence": evidence,
                                        "validation": "read it"}]))
-        assert run("normalize", str(source), "--strict").returncode == 2
+        assert run("normalize", str(source)).returncode == 2
     source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3@abc1234",
                                    "validation": "read it at the PR head"}]))
-    assert run("normalize", str(source), "--strict").returncode == 0
+    assert run("normalize", str(source)).returncode == 0
     many = [{**base, "title": f"t{i}", "label": "nit"} for i in range(8)]
     source.write_text(json.dumps(many))
-    result = run("normalize", str(source), "--strict")
+    result = run("normalize", str(source))
     assert result.returncode == 2 and "cap" in result.stderr
 
 
-def test_normalize_strict_caps_nits_separately_from_total(tmp: Path) -> None:
+def test_normalize_caps_nits_separately_from_total(tmp: Path) -> None:
     source = tmp / "c.json"
     ok = {"verified": True, "evidence": "a.ts:3", "file": "a.ts", "disposition": "patch",
-          "validation": "read a.ts:1-9"}
+          "validation": "read a.ts:1-9", "kind": "correctness"}
 
     def write(items: list[dict]) -> subprocess.CompletedProcess:
         source.write_text(json.dumps(items))
-        return run("normalize", str(source), "--strict")
+        return run("normalize", str(source))
 
     # Nits are capped on their own: even one nit over budget fails while the severity findings are
     # far under their cap. This is the regression the tiering exists to prevent, so polish cannot
@@ -173,7 +199,7 @@ def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
     report.write_text("## Verdict: PASS\n")
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
-        {"title": "An unanchored nit", "label": "nit", "disposition": "patch"},
+        {"title": "An unanchored nit", "label": "nit", "disposition": "patch", "kind": "other"},
     ]))
     # `persist` prints no per-finding output and writes no findings file, so retention is proved at
     # `normalize`, which is the stage that hands `persist` its list.
@@ -188,7 +214,8 @@ def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
     assert (review_dir / "REVIEW.md").is_file()
 
     def persist_with(extra: dict) -> subprocess.CompletedProcess:
-        findings.write_text(json.dumps([{"title": "probe", "label": "nit", "disposition": "patch", **extra}]))
+        findings.write_text(json.dumps([{"title": "probe", "label": "nit", "disposition": "patch",
+                                         "kind": "other", **extra}]))
         return run("persist", "--review-dir", str(review_dir), "--report", str(report),
                    "--findings", str(findings), "--mode", "changes", "--files", "a.ts",
                    "--personas", "adversarial", "--strict")
@@ -204,7 +231,8 @@ def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
         )
     # The severity rule still binds at this call site: an unverified attention finding fails here.
     findings.write_text(json.dumps([
-        {"title": "An unverified attention finding", "label": "attention", "disposition": "patch"},
+        {"title": "An unverified attention finding", "label": "attention", "disposition": "patch",
+         "kind": "correctness"},
     ]))
     result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
                  "--findings", str(findings), "--mode", "changes", "--files", "a.ts",
@@ -615,9 +643,10 @@ def test_persist_strict_runs_coverage_only_when_layers_exist(tmp: Path) -> None:
     (review_dir / "hunks.json").unlink()
     orphan = run(*args)
     assert orphan.returncode == 2 and "hunk index" in orphan.stderr, orphan.stderr
-    # Without --strict a stray map is ignored, so plain callers never see the gate.
+    # A stray map is ignored when the caller opts out, so a caller that cannot supply an index
+    # still has a way through the gates.
     plain = run("persist", "--review-dir", str(review_dir), "--report", str(report),
-                "--personas", "adversarial")
+                "--personas", "adversarial", "--lenient")
     assert plain.returncode == 0, plain.stderr
     # A hunk index with no map means the pre-pass failed: persist, but say coverage was skipped.
     (review_dir / "layers.json").unlink()
@@ -632,7 +661,8 @@ def test_normalize_strict_requires_real_hunk_ids_on_emitted_findings(tmp: Path) 
     hunks, _ = write_map(tmp, ["h1", "h2"], [["h1", "h2"]])
     source = tmp / "c.json"
     base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
-            "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9"}
+            "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9",
+            "kind": "correctness"}
     cases = [
         ({**base, "hunks": ["h2"]}, 0, ""),
         (base, 2, "cites no hunk"),
@@ -655,7 +685,7 @@ def test_normalize_strict_merges_duplicate_hunks_and_validates_each_candidate(tm
     source = tmp / "c.json"
     base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
             "verified": True, "evidence": "a.ts:3", "persona": ["adversarial"],
-            "validation": "read a.ts:1-9"}
+            "validation": "read a.ts:1-9", "kind": "correctness"}
     source.write_text(json.dumps([
         {**base, "hunks": ["h1"]},
         {**base, "persona": ["code-quality"], "hunks": ["h2", "h1"]},
@@ -688,9 +718,10 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
         {"title": "Guard missing", "label": "attention", "disposition": "patch", "hunks": ["h1"],
-         "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9"},
-        {"title": "Rename", "label": "nit", "disposition": "patch"},
-        {"title": "Old bug", "label": "attention", "disposition": "defer"},
+         "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9",
+         "kind": "correctness"},
+        {"title": "Rename", "label": "nit", "disposition": "patch", "kind": "other"},
+        {"title": "Old bug", "label": "attention", "disposition": "defer", "kind": "reliability"},
     ]))
     args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
             "--findings", str(findings), "--strict", "--personas", "adversarial")
@@ -704,7 +735,8 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
     assert "Old bug" not in written.split("### Coverage by layer", 1)[1]
     # The same gate rejects an emitted finding that cites a hunk outside the index.
     findings.write_text(json.dumps([
-        {"title": "Ghost", "label": "attention", "disposition": "patch", "hunks": ["h7"]}]))
+        {"title": "Ghost", "label": "attention", "disposition": "patch", "hunks": ["h7"],
+         "kind": "correctness"}]))
     blocked = run(*args)
     assert blocked.returncode == 2 and "unknown hunk" in blocked.stderr, blocked.stderr
 
@@ -939,28 +971,35 @@ def test_findings_outrank_a_trailing_no_findings_verdict(tmp: Path) -> None:
     assert classify("status: dispatched\n\nraw response captured\n") == "unknown"
 
 
-def test_kind_is_validated_normalized_and_absent_legal(tmp: Path) -> None:
-    """The `kind` field's three rules, none of which had a test.
+def test_kind_is_required_at_normalize_validated_and_normalized(tmp: Path) -> None:
+    """The `kind` field's rules, and the requirement the 2026-11-22 measurement added.
 
-    Absent must pass (every recorded review predates the field), padding and case are normalized
-    rather than rejected, a typo is refused, and `kind` stays out of the fingerprint so re-classifying
-    a finding cannot create a second one.
+    Absence was legal because every recorded review predates the field; measured, that exemption
+    cost the whole axis — 713 of 719 findings carried no `kind`. It is now required, `--lenient`
+    is how a legacy artifact is re-read, padding and case are normalized rather than rejected, a
+    typo is refused with the vocabulary named, and `kind` stays out of the fingerprint so
+    re-classifying a finding cannot create a second one.
     """
     source = tmp / "c.json"
-    base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch"}
+    base = {"title": "t", "label": "nit", "file": "a.ts", "disposition": "patch"}
 
-    def normalize(payload: list[dict]) -> subprocess.CompletedProcess:
+    def normalize(payload: list[dict], *flags: str) -> subprocess.CompletedProcess:
         source.write_text(json.dumps(payload))
-        return run("normalize", str(source))
+        return run("normalize", str(source), *flags)
 
-    assert normalize([base]).returncode == 0, "an absent kind is legal"
+    missing = normalize([base])
+    assert missing.returncode == 2, "an absent kind is no longer legal"
+    assert "has no kind" in missing.stderr
+    for value in sorted(load_module().KINDS):
+        assert value in missing.stderr, f"the rejection must name {value}: {missing.stderr}"
+    assert normalize([base], "--lenient").returncode == 0, "a legacy artifact stays readable"
     padded = normalize([{**base, "kind": "  Security "}])
     assert padded.returncode == 0
     assert json.loads(padded.stdout)["findings"][0]["kind"] == "security"
     typo = normalize([{**base, "kind": "securty"}])
     assert typo.returncode == 2 and "invalid kind" in typo.stderr
     # Identity is the defect, not its classification: same file, label and title means one finding.
-    plain = json.loads(normalize([base]).stdout)["findings"][0]["fingerprint"]
+    plain = json.loads(normalize([{**base, "kind": "other"}]).stdout)["findings"][0]["fingerprint"]
     classified = json.loads(normalize([{**base, "kind": "security"}]).stdout)["findings"][0]["fingerprint"]
     assert plain == classified
 
@@ -968,7 +1007,8 @@ def test_kind_is_validated_normalized_and_absent_legal(tmp: Path) -> None:
 def test_confidence_flags_and_merge_candidates_are_gone(tmp: Path) -> None:
     """The removed --confidence flags and merge_candidates output stay removed."""
     source = tmp / "c.json"
-    base = {"label": "attention", "file": "a.yaml", "disposition": "patch"}
+    base = {"label": "attention", "file": "a.yaml", "disposition": "patch", "kind": "other",
+            "verified": True, "evidence": "a.yaml:3", "validation": "read a.yaml:1-9"}
     source.write_text(json.dumps([
         {**base, "title": "resolver falls back to empty list instead of reported rules"},
         {**base, "title": "resolver falls back to empty list ignoring reported rules"},

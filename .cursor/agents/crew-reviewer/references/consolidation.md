@@ -105,17 +105,17 @@ persistence and mention the count in one line after the list).
 
 Two things are recorded beyond the label and anchor, each under its own condition:
 
-- **`kind`** (optional) — what sort of defect, independent of severity. Record it when the finding
-  clearly fits one; omit it rather than defaulting to `other`, which destroys the triage separation
-  the field exists for. Values are the `KINDS` set in `crew-review-findings.py`; read it there rather
-  than copying it, and never invent a value, because `normalize` rejects one outside it. The
-  boundaries that matter: `correctness` produces a wrong result on valid input; `reliability` fails
+- **`kind`** (required) — what sort of defect, independent of severity. Every finding that reaches a
+  gate states one; a finding with none is rejected with the allowed values listed. Values are the
+  `KINDS` set in `crew-review-findings.py`; read it there rather than copying it, and never invent a
+  value, because the parser rejects one outside it. The boundaries that matter: `correctness` produces
+  a wrong result on valid input; `reliability` fails
   under load, timing, or an environmental condition; `testing` is missing or weak coverage of behavior
   the change introduces; `documentation` misstates what the code does; `other` is none of these.
 - **`validation`** (when `verified` is true) — one sentence on what you read and concluded, e.g.
   "confirmed: `executeEsqlQuery` returns no rows when `_source` is absent, and this query keeps only
   `data_json`". `verified: true` alone asserts a second read happened; this records why it passed.
-  `persist --strict` requires it whenever `verified` is true, in every mode, including one passing no
+  `persist` requires it whenever `verified` is true, in every mode, including one passing no
   `--files`.
 
 When a hunk index exists, carry each finding's hunk ids into its record and check them against the

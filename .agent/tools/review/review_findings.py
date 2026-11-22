@@ -52,12 +52,22 @@ def read_findings(path: Path) -> list[Finding]:
     return [to_finding(finding, index) for index, finding in enumerate(data, 1)]
 
 
+def strict_mode(args: argparse.Namespace) -> bool:
+    """True unless `--lenient` was passed: the gates are the default, the flag is the escape.
+
+    `--strict` is still accepted as a no-op alias for one cycle, because an existing script or
+    prompt that passes it must not fail for having followed the old documentation.
+    """
+    return not args.lenient
+
+
 def normalize(args: argparse.Namespace) -> int:
-    """Deduplicate exact fingerprints and, under `--strict`, apply the per-finding gates."""
+    """Deduplicate exact fingerprints and, unless `--lenient`, apply the per-finding gates."""
     from review_layers import check_hunk_refs, hunk_ids
 
     findings = read_findings(args.input)
-    if args.strict and args.hunks:
+    strict = strict_mode(args)
+    if strict and args.hunks:
         # Validate every candidate before deduplication: otherwise a duplicate's malformed
         # attribution is silently discarded, or its valid hunk never reaches the coverage report.
         check_hunk_refs(findings, hunk_ids(args.hunks))
@@ -71,7 +81,7 @@ def normalize(args: argparse.Namespace) -> int:
             )
         else:
             kept[finding.fingerprint] = finding
-    if args.strict:
+    if strict:
         check_strict(list(kept.values()), args.files)
     payload = {"findings": [finding.to_json() for finding in kept.values()], "duplicates": duplicates}
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
