@@ -40,4 +40,16 @@ if [ "${unreviewed:-0}" -gt 0 ]; then
 fi
 # The anchor is refreshed after reconcile, so it reflects the statuses this session just applied.
 anchor_refresh >/dev/null
+
+# Pending decisions are surfaced here because nothing else can: a subagent that produced them could
+# not ask, and a turn already asked once is never asked again. One line, no import — importing stays
+# a named decision.
+inbox_tool="$HOME/.agent/bin/crew-inbox.py"
+if [ -x "$inbox_tool" ]; then
+  pending=$(python3 "$inbox_tool" 2>/dev/null | head -1)
+  case "$pending" in
+    "inbox: empty"|"") ;;
+    *) printf '%s; run crew-mem.py import-inbox <file>\n' "$pending" ;;
+  esac
+fi
 exit 0

@@ -166,6 +166,17 @@
       "json_smoke": ["list", "--json", "--limit", "1"]
     },
     {
+      "name": "crew-inbox.py",
+      "dir": "memory",
+      "kind": "command",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "argparse",
+      "smoke": "--help",
+      "output": "human",
+      "json_smoke": ["--json"]
+    },
+    {
       "name": "crew-resolve-task-dir.py",
       "dir": "task",
       "kind": "command",

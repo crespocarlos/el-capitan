@@ -18,9 +18,10 @@ from pathlib import Path
 from lint_files import rel
 
 # Measured 2026-11-21 at 7,204 tokens after the trim; 9,100 leaves room for prompt-engineering.mdc,
-# which is imported because Claude Code ignores globs and prompt work is frequent here. Raise it only
-# with a new measurement; when the set grows with no new rule to justify it, trim the set instead.
-MAX_ALWAYS_RULE_TOKENS = 9100
+# which is imported because Claude Code ignores globs and prompt work is frequent here. The 2026-11-22
+# addition of the `crew inbox` routing row measured 9,112, so the ceiling carries that command too.
+# Raise it only with a new measurement; when the set grows with no new rule to justify it, trim.
+MAX_ALWAYS_RULE_TOKENS = 9150
 # An agent or skill file is read whole, so its ceiling is bytes rather than a token estimate: the
 # dispatch cost of a 12 KB prompt is already large, and prose above it belongs in a references file.
 MAX_PROMPT_FILE_BYTES = 12_000

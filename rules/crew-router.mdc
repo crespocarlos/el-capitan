@@ -40,6 +40,7 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew handoff` [resume] | crew-handoff skill |
 | `crew ls` [--all] | `~/.agent/bin/crew-ls.py --md [--all]` inline |
 | `crew prune` | `~/.agent/bin/crew-prune.py` inline |
+| `crew inbox` | `~/.agent/bin/crew-inbox.py` inline |
 
 **This table is authoritative.** Do not override it with judgment calls.
 
