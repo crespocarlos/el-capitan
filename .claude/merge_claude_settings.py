@@ -72,6 +72,36 @@ def rule_command(rule):
     return body[:-2] if body.endswith(" *") else body.rstrip(":*")
 
 
+def rule_scope(rule):
+    """(tool, glob) for a path-scoped rule such as `Write(~/.agent/tasks/**)`, else None."""
+    if not isinstance(rule, str) or "(" not in rule or not rule.endswith(")"):
+        return None
+    tool, _, scope = rule[:-1].partition("(")
+    if tool.startswith("Bash") or not scope:
+        return None
+    return tool, scope
+
+
+def superseded(existing, incoming):
+    """True when `incoming` narrows `existing`: same tool, and a scope inside the same glob prefix.
+
+    Narrowing must retire the broader rule. Merging them additively leaves `**` beside `*/SPEC.md`,
+    and the broader one still matches everything, so the install would report a fix that changes
+    nothing — the defect this reconciliation exists to prevent.
+
+    The comparison strips the wildcard portion rather than taking the parent directory: `tasks/**`
+    and `tasks/*/SPEC.md` have different parents (`tasks` and `tasks/*`) but share the prefix
+    `tasks/`, which is what makes one a narrowing of the other.
+    """
+    old, new = rule_scope(existing), rule_scope(incoming)
+    if not old or not new or old[0] != new[0]:
+        return False
+    if not old[1].endswith("/**") or new[1].endswith("/**"):
+        return False
+    shared = old[1][:-len("/**")]
+    return new[1].startswith(shared + "/")
+
+
 def merge_permissions(dest, src):
     """Reconcile the three permission lists, template rules winning for the commands it names.
 
@@ -87,6 +117,12 @@ def merge_permissions(dest, src):
         incoming = src_perm.get(name, [])
         owned = {rule_command(rule) for rule in incoming} - {None}
         existing = [rule for rule in dest_perm.get(name, []) if rule_command(rule) not in owned]
+        narrowed = [rule for rule in existing if any(superseded(rule, new) for new in incoming)]
+        if narrowed:
+            existing = [rule for rule in existing if rule not in narrowed]
+            for rule in narrowed:
+                replacement = next(new for new in incoming if superseded(rule, new))
+                print(f"  permissions: {rule} -> {replacement}")
         for other in ("allow", "ask"):
             if other == name:
                 continue

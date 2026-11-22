@@ -21,7 +21,11 @@ resolve() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1
 normalized=$(resolve "$path") || normalized=""
 [ -n "$normalized" ] && path="$normalized"
 
-for prefix in "$HOME/.agent" "$HOME/.claude" "$HOME/.cursor" "/tmp"; do
+# The temp root is `$TMPDIR`, not `/tmp`: on macOS it is a per-user `/var/folders/…/T` directory,
+# and `tempfile.gettempdir()` in every review tool writes there. Allowing only `/tmp` denied the
+# review pipeline its own scratch directory, which is how a guard breaks the workflow it protects.
+# Both are consulted because a caller may name either, and `mktemp` on Linux still uses `/tmp`.
+for prefix in "$HOME/.agent" "$HOME/.claude" "$HOME/.cursor" "/tmp" "$TMPDIR"; do
   resolved=$(resolve "$prefix") || continue
   [ -n "$resolved" ] || continue
   case "$path" in "$resolved"/*) hook_allow ;; esac

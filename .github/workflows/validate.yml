@@ -87,6 +87,9 @@ jobs:
       - name: Permission rule tests
         run: python3 evals/tools/test_permission_rules.py
 
+      - name: Write boundary tests
+        run: python3 evals/tools/test_write_boundary.py
+
       - name: Python structural shape
         run: python3 evals/tools/test_python_shape.py
 

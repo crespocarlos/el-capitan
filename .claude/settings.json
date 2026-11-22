@@ -54,8 +54,8 @@
       "WebSearch"
     ],
     "ask": [
-      "Edit(~/.agent/tasks/**)",
-      "Write(~/.agent/tasks/**)"
+      "Edit(~/.agent/tasks/*/SPEC.md)",
+      "Write(~/.agent/tasks/*/SPEC.md)"
     ]
   },
   "hooks": {
