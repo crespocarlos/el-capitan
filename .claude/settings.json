@@ -35,13 +35,19 @@
       "Bash(basename *)",
       "Bash(dirname *)",
       "Bash(realpath *)",
-      "Bash(~/.agent/bin/*)",
+      "Bash(~/.agent/bin/crew-ls.py *)",
+      "Bash(~/.agent/bin/crew-mem.py *)",
+      "Bash(~/.agent/bin/crew-inbox.py *)",
+      "Bash(~/.agent/bin/crew-task-context.py *)",
+      "Bash(~/.agent/bin/crew-agent-context.py *)",
+      "Bash(~/.agent/bin/crew-worktree.py *)",
+      "Bash(bash .claude/hooks/fixtures/*)",
       "Bash(agent-builder *)",
       "WebFetch(domain:github.com)",
       "WebSearch"
     ],
     "ask": [
-      "Bash(~/.agent/bin/crew-review-findings.py:*)",
+      "Bash(~/.agent/bin/crew-review-findings.py *)",
       "Edit(~/.agent/tasks/**)",
       "Write(~/.agent/tasks/**)"
     ]

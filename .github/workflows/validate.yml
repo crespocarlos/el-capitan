@@ -84,6 +84,9 @@ jobs:
       - name: Memory capture flow tests
         run: python3 evals/tools/test_capture_flow.py
 
+      - name: Permission rule tests
+        run: python3 evals/tools/test_permission_rules.py
+
       - name: Python structural shape
         run: python3 evals/tools/test_python_shape.py
 
