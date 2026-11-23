@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import glob
 import json
+import re
 from pathlib import Path
 
-from review_outcomes import decided, persona_names
+from review_outcomes import decided
 from review_vocabulary import CONFIDENCE
 
 FINDING_FILE = "consolidation.json"
@@ -23,8 +24,9 @@ FINDING_FILE = "consolidation.json"
 # findings that claim `verified`, because a sentence is only required where a check was claimed.
 REQUIRED_FIELDS = ("kind", "hunks", "evidence")
 DECIDED = ("fixed", "rejected")
-# A finding written before the score existed is `unscored`, never folded into a band: a zero-filled
-# distribution would read as a measured result when nothing was measured.
+# A finding with no usable band — pre-score history, or a value outside 1-5 — is `unscored`, never
+# folded into a band: a zero-filled distribution would read as a measured result when nothing was
+# measured.
 UNSCORED = "unscored"
 
 
@@ -71,6 +73,23 @@ def band(value: object) -> str:
 def band_name(score: str) -> str:
     """The word behind a score, so a report line does not print a bare number."""
     return CONFIDENCE[int(score)] if score != UNSCORED else UNSCORED
+
+
+def persona_names(value: object) -> list[str]:
+    """The persona list a finding names, tolerant of the spellings the recorded corpus holds.
+
+    Stored data is canonical in 97% of findings, so this absorbs the remainder — a comma-joined
+    string, a display-cased name, a `Reviewer ` prefix — instead of splitting precision into
+    one-row buckets. It never invents a name: an empty value yields an empty list.
+    """
+    raw = value if isinstance(value, list) else [value]
+    names: list[str] = []
+    for item in raw:
+        for part in str(item or "").split(","):
+            name = re.sub(r"\s+", "-", part.strip().lower()).removeprefix("reviewer-")
+            if name and name not in names:
+                names.append(name)
+    return names
 
 
 def bucket() -> dict:

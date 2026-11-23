@@ -158,6 +158,26 @@ def check_a_scored_label_still_scores() -> None:
     )[:2] == (0.0, 0.0)
 
 
+def check_scored_bare_labels_stay_separate_findings() -> None:
+    """Two unnumbered scored findings are two units, so a hint cannot cross between them.
+
+    `FINDING_START` splits units and `LABELS_IN_UNIT` labels them; widening only the second lets one
+    unit carry a hint from one finding and a label from another, which inflates precision.
+    """
+    output = "[attention · 4] src/a.ts:5 the timeout is dropped\n[blocking · 5] src/b.ts:9 null deref\n"
+    assert len(MODULE.finding_units(output)) == 2, MODULE.finding_units(output)
+    matched = "src/b.ts:9 null deref"
+    precision, recall, _, _ = MODULE.compute_precision_recall(
+        output, fixture(expected("blocking", matched)), "reviewer-adversarial"
+    )
+    assert (precision, recall) == (0.5, 1.0), (precision, recall)
+    # And with the correct hint on the correct label it is a full hit, in either order.
+    hit = "[blocking · 5] src/b.ts:9 null deref\n[attention · 4] src/a.ts:5 the timeout is dropped\n"
+    assert MODULE.compute_precision_recall(
+        hit, fixture(expected("blocking", matched)), "reviewer-adversarial"
+    )[:2] == (0.5, 1.0)
+
+
 CHECKS = [
     check_accepts_every_finding_marker,
     check_wrong_severity_earns_no_precision,
@@ -168,6 +188,7 @@ CHECKS = [
     check_spec_fixtures_skip_precision,
     check_every_lens_has_fixture_coverage,
     check_a_scored_label_still_scores,
+    check_scored_bare_labels_stay_separate_findings,
 ]
 
 

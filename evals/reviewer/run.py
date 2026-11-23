@@ -197,8 +197,10 @@ def score_finding_match(raw_output: str, expected: dict) -> bool:
 
 
 # A finding starts at a list marker or a bare label, which is how personas in this pipeline write
-# them. Scoring that only split on `N.` produced false negatives on every bulleted response.
-FINDING_START = re.compile(r"(?m)^(?=\s*(?:[-*+]\s+|\d+[.)]?\s+|\[(?:blocking|attention|concern|nit|needs more info)\]))", re.I)
+# them. Scoring that only split on `N.` produced false negatives on every bulleted response. The
+# bare-label branch carries the same optional score suffix as `LABELS_IN_UNIT`, because a scored bare
+# label that does not start a unit merges two findings and lets one's hint credit the other.
+FINDING_START = re.compile(r"(?m)^(?=\s*(?:[-*+]\s+|\d+[.)]?\s+|\[(?:blocking|attention|concern|nit|needs more info)(?:\s*·\s*[1-5])?\]))", re.I)
 # The label may carry its confidence score beside it (`[attention · 4]`), so the optional suffix is
 # part of the label token: matching `]` directly would stop crediting every scored finding.
 LABELS_IN_UNIT = re.compile(r"\[(blocking|attention|concern|needs more info|nit)(?:\s*·\s*[1-5])?\]", re.I)

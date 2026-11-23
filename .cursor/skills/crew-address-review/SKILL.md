@@ -28,8 +28,7 @@ throughout.
 ### Step 1: Locate findings and detect mode
 
 **Detect mode now, before any other step.** Check the `## Review: <mode>` heading (case-insensitive):
-contains "idea" or "spec" → **Idea mode**; anything else (self, changes, PR) → **Code mode**. Carry it
-through Steps 2–4 without re-detecting.
+contains "idea" or "spec" → **Idea mode**; anything else (self, changes, PR) → **Code mode**.
 
 If a `## Review:` heading is visible in the conversation, use those findings directly — do not read a
 review artifact from disk. That prohibition covers the review only: the artifact under review (a
@@ -68,18 +67,20 @@ the returned ids for `--memory-id` in Step 3b.
 1. **Read the relevant file** when a file/line is cited, to check the current state of the code.
 2. **Check whether it is already addressed**: if the fix is present in the working tree, classify
    **Already Addressed** and make no edit.
-3. **Assess validity** — is the finding grounded, and does the reasoning follow from the code?
+3. **Settle a 1-2 finding before assessing it.** A finding scored 1-2 is a question until a read
+   answers it: read the target first. If that settles the unknown, carry a raised score with the read
+   that settled it, then assess below; if not, the verdict is **Needs Input** naming the unknown.
+   Never edit a 1-2 you did not settle — that is the reviewer's doubt handed to the user as a change.
+4. **Assess validity** — is the finding grounded, and does the reasoning follow from the code?
    - Contradicts the current file state → **Reject**, stating the specific reason.
    - Correct and actionable → **Apply**.
    - Valid but the right fix differs from the reviewer's → **Adapt**, drafting the better fix.
    - Valid but outside this change's scope → **Defer**.
-4. **A finding scored 1-2 is a question until a read answers it.** Read the target: if that settles
-   the unknown the low score recorded, carry a raised score (at most +2) with the sentence you read in
-   `validation`, then evaluate it above. If not, the verdict is **Needs Input** naming the specific
-   unknown. Never edit a 1-2 you did not settle: that is the reviewer's doubt handed to the user as a
-   change. One read, no separate hunt.
 5. For `[needs more info]` findings, answer inline when the code determines the answer; otherwise
    surface it for user input.
+
+A raise travels with the decision as `--confidence`, `--confidence-from`, and `--validation`;
+[outcome logging](references/outcome-logging.md) owns that command and the ceiling.
 
 **Idea mode** — the artifact under review is what each finding is judged against, so read it first: for
 `## Review: Spec` the artifact is the task's `SPEC.md`; for `## Review: Idea` of pasted text there is
@@ -105,9 +106,9 @@ The harness asks before this flow records anything: `.claude/settings.json` carr
 `crew-review-findings.py`, so writing the outcome log or the review artifacts prompts for approval,
 with the table still on screen. There is no marker file and no state to clear.
 
-That prompt does not cover edits to the source files the findings cite — a permission rule cannot see
-which flow is running. Those are authorized by the answer to the question below, and only by it. If you
-are about to edit without having shown the table, stop.
+That prompt does not cover the source files the findings cite — a permission rule cannot see which
+flow is running. Only the answer below authorizes those edits; if you are about to edit without the
+table on screen, stop.
 
 Code mode table:
 
@@ -148,20 +149,19 @@ outcome line, and one it leaves alone gets none.
 
 ### Step 4: Execute approved fixes
 
-Only after the user responds. The ask rule is what holds the gate, so an edit that the harness did
-not prompt for means the rule is missing — say so rather than proceeding silently.
+Only after the user responds. An edit the harness did not prompt for means the ask rule is missing —
+say so rather than proceeding silently.
 
 **Code mode:** apply each approved edit, reading the file immediately before editing if it wasn't
-already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; if an
-edit fails, log `skipped` with a reason starting `edit-failed:`, so failures are distinguishable from
-user decisions. Do not continue to the summary with a decision unrecorded.
+already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; a failed
+edit is logged `skipped` with a reason starting `edit-failed:`, so failures are distinguishable from
+user decisions. Never reach the summary with a decision unrecorded.
 
 **When the edit changes what a step, mode, or skill is allowed to do, sweep the file it lives in.**
 A capability change falsifies every sentence describing the old limit, and a reader meets them before
 the corrected step. Search that file for the *specific* constraint the edit replaced — the phrase
 stating the old limit plus its close paraphrases — and report each survivor with its line. A fixed
 keyword list is too blunt: `only` and `never` sit on dozens of unrelated lines in any rule file.
-
 **Idea mode with a file target:** the same edit hygiene applies — read the file immediately before
 writing, and log the write with the Step 3b command and `--outcome fixed`. The write happens once, at
 step 8 of [idea synthesis](references/idea-synthesis.md), after verification and self-review. Synthesis

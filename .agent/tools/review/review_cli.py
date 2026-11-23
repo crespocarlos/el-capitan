@@ -117,6 +117,8 @@ def add_context_parsers(commands) -> None:
                                 help="the score this decision was made under, after any raise")
     outcome_parser.add_argument("--confidence-from", type=int, default=None,
                                 help="the score it arrived with, when this decision raised it")
+    outcome_parser.add_argument("--validation", default=None,
+                                help="the read that settled a raise; required when the score rises")
     check_parser = commands.add_parser(
         "outcomes", help="report a review's recorded outcomes; --acted fails on a missing one")
     check_parser.add_argument("--review-dir", required=True, type=Path)

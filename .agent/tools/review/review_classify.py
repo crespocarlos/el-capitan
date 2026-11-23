@@ -29,9 +29,10 @@ EXPLORER_SECTIONS = (
 )
 VERDICT_NO_FINDINGS = re.compile(r"^### Verdict:\s*no findings\s*$", re.M | re.I)
 # A severity label plus a location anchor, in either order: label first, inside leading bold, after a
-# bullet, or after the anchor. All carry the same content, and rejecting one aborts the review; the
-# anchor must still be a real `path:line`, so a bare label or a marker alone never matches.
-_SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)"
+# bullet, or after the anchor. Rejecting one aborts the review, and the anchor must still be a real
+# `path:line`. The label may carry its confidence score (`[attention · 4]`), which the contract makes
+# mandatory, so the suffix is part of the token: a bare `]` would refuse every finding now written.
+_SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)(?:\s*·\s*[1-5])?"
 _ANCHOR = r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)"
 # Optional list bullet, number, or bare ordinal: personas use `-`, `*`, `1.`, `1)`, and `2 ` alike.
 _BULLET = r"(?:[-*+]\s+)?(?:\d+[.)]?\s*)?"

@@ -57,7 +57,8 @@ def check_confidence_raise(finding: Finding) -> None:
     Consolidation and `crew review address` may raise a score only by resolving the unknown through
     a read, so a raised record carries both halves — `confidence_from` for the old value and
     `validation` for the read. Without them the increase is an assertion, which is exactly the shape
-    the score exists to tell apart from evidence. A drop is a different act and needs no record.
+    the score exists to tell apart from evidence. A pair naming one score is not a raise at all and
+    carries no information, so it is refused rather than recorded.
     """
     if finding.confidence_from is ABSENT:
         return
@@ -65,6 +66,11 @@ def check_confidence_raise(finding: Finding) -> None:
         raise ValueError(
             f"finding {finding.title!r} records confidence_from {finding.confidence_from} above its "
             f"score {finding.confidence}; a raise only ever moves up"
+        )
+    if finding.confidence is not ABSENT and finding.confidence == finding.confidence_from:
+        raise ValueError(
+            f"finding {finding.title!r} records confidence_from {finding.confidence_from} equal to "
+            "its score; an unchanged score is not a raise, so omit confidence_from"
         )
     if isinstance(finding.validation, str) and finding.validation.strip():
         return

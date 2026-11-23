@@ -52,7 +52,9 @@ artifact)` and a drop `(dropped: too vague to act on)`.
 restate. The verification read below is the only thing that may raise it: when that read resolves the
 unknown the low score was recording, raise it by at most 2 and name in `validation` what you read that
 settled it — a score is never raised by reassurance, to keep a label, or to keep a finding in the
-list. A read that does not settle it settles nothing, so a `[blocking]` or `[attention]` at 1-2 whose
+list. No gate enforces the ceiling: a raise is refused only when it moves down or carries no
+`validation`, so the number is a discipline this pass keeps rather than a check that catches it. A
+read that does not settle it settles nothing, so a `[blocking]` or `[attention]` at 1-2 whose
 unknown survives becomes `[needs more info]` at its original score with that unknown named, and you
 look no further: one pass, one read, either the score or the question. Never raise a `defer`
 candidate, since deferring is not reading it.
@@ -124,8 +126,9 @@ Three things are recorded beyond the label and anchor, each under its own condit
 - **`confidence`** (required) — the reviewer's own belief that the finding is real, 1-5, on the scale
   in the shared contract (`5 confirmed` … `1 suspicion`), rendered beside the label as
   `[attention · 4]`. It is not a severity: a `[blocking]` or `[attention]` needs 3 or higher, and a
-  `[concern]` or `[nit]` may carry any score. Record `confidence_from` whenever the score is raised,
-  which the raise rule above limits to what a read settled.
+  `[concern]` or `[nit]` may carry any score. A raise adds the record key `confidence_from` beside
+  `confidence`, never prose, which the raise rule above limits to what a read settled; a pair naming
+  one score is refused, because an unchanged score is not a raise.
 - **`validation`** (when `verified` is true) — one sentence on what you read and concluded, e.g.
   "confirmed: `executeEsqlQuery` returns no rows when `_source` is absent, and this query keeps only
   `data_json`". `verified: true` alone asserts a second read happened; this records why it passed.

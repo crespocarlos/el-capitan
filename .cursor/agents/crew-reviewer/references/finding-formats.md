@@ -90,13 +90,16 @@ sound.
 
 **Verdict:** proceed / revisit / blocked — <1 sentence: the decisive reason>
 
-1. [blocking] **<title>** — <what assumption breaks or what is fundamentally missing>. <why it matters>.
+1. [blocking · 4] **<title>** — <what assumption breaks or what is fundamentally missing>. <why it matters>.
    **Fix:** <exact change — what sentence/section to add, remove, or reframe. Specific enough for mechanical application.>
-2. [concern] **<title>** — <what weakens the plan>. <why it matters>.
+2. [concern · 3] **<title>** — <what weakens the plan>. <why it matters>.
    **Fix:** <what would strengthen it — specific framing or addition.>
-3. [needs more info] **<title>** — <what is unclear and must be resolved before moving forward>.
-4. [nit] **<title>** — <minor framing or completeness improvement>.
+3. [needs more info · 2] **<title>** — <what is unclear and must be resolved before moving forward>.
+4. [nit · 5] **<title>** — <minor framing or completeness improvement>.
 ```
+
+Both artifact kinds carry the score in the label, so a spec or idea review's findings survive
+`persist` exactly as a code review's do; `[concern]` sits where `[attention]` would, at any score.
 
 With no findings, state the verdict as `proceed` and give one sentence of reasoning.
 

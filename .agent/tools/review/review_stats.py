@@ -19,9 +19,10 @@ from review_corpus import (
     field_gaps,
     finish,
     load,
+    persona_names,
     review_dirs,
 )
-from review_outcomes import by_shape, decided, persona_names, scored
+from review_outcomes import by_shape, decided, scored
 
 
 def collect(tasks_dir: Path) -> dict:
@@ -108,10 +109,11 @@ def fix_rate(row: dict) -> str:
 
 
 def confidence_line(score: str, row: dict) -> str:
-    """One confidence band: its name, its count, and its fix rate — or the legacy row, unbanded."""
+    """One confidence row: the band, its count, and its fix rate — or the unbanded history row."""
     if score == UNSCORED:
-        return (f"- {UNSCORED}: {row['findings']} findings written before the score existed "
-                f"({row['recorded']} with a decision, {row['unrecorded']} unrecorded)")
+        return (f"- {UNSCORED}: {row['findings']} findings with no usable band — pre-score history, "
+                f"or a value outside 1-5 ({row['recorded']} with a decision, "
+                f"{row['unrecorded']} unrecorded)")
     return f"- {score} {band_name(score)}: {row['findings']} findings; {fix_rate(row)}"
 
 

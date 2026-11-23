@@ -40,13 +40,14 @@ stated. A spec or idea `[concern]` and a `[nit]` may carry any score, since neit
 ## Finding shape
 
 Each finding is a comment body the reader can paste without editing:
-`N. [label · N] **\`path/to/file — line N\`** — one-line title`, then a 2-5 line fenced block
+`N. [label · 4] **\`path/to/file — line L\`** — one-line title`, then a 2-5 line fenced block
 anchoring the finding, then 2-3 sentences on what is wrong and why it breaks, then `Fix:` (that exact
-spelling; the consolidator records it as the `patch` disposition and loses any other).
+spelling; the consolidator records it as the `patch` disposition and loses any other). `N` is the list
+index and `L` the line; the score is a literal band, so neither is copied into the wrong slot.
 
 - Anchor to `path:line`. In a spec or idea review, anchor to the section and quote the sentence.
 - With a hunk index in the package, a `[blocking]` or `[attention]` finding also cites the hunk ids
-  that cause it, next to the anchor: `[attention] src/a.ts:42 (h7) — …`.
+  that cause it, next to the anchor: `[attention · 4] src/a.ts:42 (h7) — …`.
 - Quote the wording, line, or behavior verbatim; a paraphrase is an anchor nobody can verify.
 - One issue per finding. Split two problems even when they share a root cause, or one fix hides the
   other from every downstream count.

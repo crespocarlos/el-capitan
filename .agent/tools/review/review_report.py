@@ -31,7 +31,6 @@ from review_findings import (
 from review_personas import GENERATED_SECTIONS
 from review_persist_gates import check_personas_present, strict_gates
 from review_render import label_with_score
-from review_vocabulary import confidence_value
 from review_workspace import record_task_review
 import review_outcomes as outcomes
 
@@ -99,7 +98,10 @@ def append_deferred(owner: Path, rows: list[Finding]) -> None:
         for f in rows:
             where = f"{f.text('file')}:{f.text('line')}".strip(":")
             reason = f.text("reason") or "pre-existing or out of scope"
-            if f"{label_with_score(f)} {f.title} — `{where}`" in existing:
+            # Dedupe on the identity that survives a score change: the title and its anchor. The
+            # rendered label carries the score, so keying on it would re-append every entry written
+            # before the field existed and every finding whose score moved after it was deferred.
+            if f"{f.title} — `{where}`" in existing:
                 continue
             handle.write(f"- [{stamp}] {label_with_score(f)} {f.title} — `{where}` — {reason}\n")
 

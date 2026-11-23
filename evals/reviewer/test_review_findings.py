@@ -388,6 +388,12 @@ def test_labeled_finding_accepts_every_shape_personas_write(tmp: Path) -> None:
         "1. `src/a.ts:42` — [attention] missing guard",          # anchor before label
         "2. [nit] src/b.tsx:7 tweak",                            # numbered, no bold
         "3. [needs more info] src/c.ts:9 — stakes?",             # multi-word severity
+        # The scored label the contract mandates must classify, or `persist` refuses every
+        # artifact a persona writes under the current format.
+        "1. [attention · 4] **`a.ts — line 3`** — missing guard",
+        "2. [blocking · 5] src/a.ts:42 — the guard never runs",
+        "1. `src/a.ts:42` — [attention · 3] missing guard",
+        "- **[attention · 2]** src/a.ts:12 drops the timeout",
     ]
     for text in accepted:
         assert labeled.search(text), f"rejected a real finding: {text!r}"
@@ -503,6 +509,7 @@ def test_persona_outcome_accepts_every_documented_persona_format(tmp: Path) -> N
         "unanchored_label": "[nit] rename this\n",
         "fix_marker_only": "Fix/Response:\n",
         "explorer_header_only": "## Similar patterns\n",
+        "out_of_scale_score": "1. [attention · 6] **`a.ts — line 3`** — guard missing\n",
         "empty": "",
     }
     # An orchestrator digest is not the persona's response, so it gets its own outcome rather than

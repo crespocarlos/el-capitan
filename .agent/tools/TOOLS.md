@@ -172,16 +172,19 @@ module.
   it is a request the reviewer does not believe, and the doubt belongs in a question. A score may rise
   only by resolving the unknown through a read: the raised record carries `confidence_from` (the old
   value) and a `validation` sentence naming what settled it, and a raise without that sentence is
-  rejected. The score is the reviewer's belief, never a severity, and is never summed into a
-  review-level number.
+  rejected, as is a `confidence_from` equal to the score, which records nothing. The score is the
+  reviewer's belief, never a severity, and is never summed into a review-level number.
   `normalize` and `persist` apply those gates by default; `--lenient` is the escape and `--strict`
   is a no-op alias kept one cycle so a script written against the old default still runs.
 - `crew-review-findings.py outcome` appends one JSONL record per decision `crew review address`
   makes; `outcomes --review-dir <dir> --acted <id> …` reads them back and exits 1 naming any acted
   finding with no record, which is what fails a summary that skipped one. `outcome --confidence N
-  --confidence-from M` records the score a decision was made under when it raised one, and the pair
-  is required together so a raise cannot be logged without both halves; `crew-review-stats.py` joins
-  the decision's score rather than the score the finding arrived with. Two journal shapes exist
+  --confidence-from M --validation "<the read>"` records the score a decision was made under when it
+  raised one; the pair is required together and a rise is refused without the sentence naming the read
+  that settled it, while an unchanged pair is refused as not a raise, so the journal's authoritative
+  score carries the same halves a persisted finding does. `crew-review-stats.py` joins the decision's
+  score rather than the score the finding arrived with, and reads a record only for the review it
+  names, so one review's raise cannot band a sibling review's finding. Two journal shapes exist
   (`<review>/outcomes.jsonl` and `<task>/review/outcomes.jsonl`) because the path follows the
   directory the caller named, so both are read; a relative `review_dir` resolves against its own
   journal. Precision over a corpus this thin is meaningless without that denominator, which is why
@@ -189,8 +192,10 @@ module.
 - `crew-review-stats.py --tasks-dir <store>` measures a recorded corpus: findings by label, the
   required field each one is missing, the confidence distribution with the fix rate per band, and
   precision per persona as `fixed / (fixed + rejected)` with the decided count and the `unrecorded`
-  count beside it. A finding written before the score existed is reported as `unscored` and never
-  folded into a band, because a zero-filled distribution reads as a measurement nobody made.
+  count beside it. A finding with no usable band — written before the score existed, or carrying a
+  value outside 1-5 — is reported as `unscored` and never folded into a band, because a zero-filled
+  distribution reads as a measurement nobody made. The `unscored` row names both causes rather than
+  attributing a hand-edited value to history.
   `--json` is the machine form, `--limit` bounds the review list, `--max-chars` the whole output. A
   corpus with no outcome says so instead of printing `0.00`, and an unreadable `--tasks-dir` exits 2
   rather than reporting zero findings.

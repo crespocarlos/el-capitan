@@ -14,11 +14,10 @@ a corpus that holds 349.
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from review_vocabulary import canonical_personas, confidence_value
+from review_vocabulary import CONFIDENCE, canonical_personas, confidence_value
 
 JOURNAL = "outcomes.jsonl"
 
@@ -67,19 +66,28 @@ def decided(review_dir: Path) -> dict[str, str]:
     return {fingerprint: outcome for fingerprint, (outcome, _) in _joined(review_dir).items()}
 
 
-def scored(directory) -> dict:
+def scored(directory: Path) -> dict:
     """Fingerprint → the score a decision was made under, when the record carries one.
 
     A raise is only evidence while it stays attached to the read that settled it, so the outcome
     journal is where the final score is authoritative: `crew review-stats` joins the score the
     finding was acted on under, not the one it arrived with. Absent means the decision recorded no
     score, which stays `unscored` rather than inheriting a persona's original guess.
+
+    The task-level journal holds records from every review of that task, so a record is read only
+    when it names this review — the same filter `_joined` applies — or one review's raise would be
+    joined to a sibling review's finding that happens to share a fingerprint. A value outside the
+    1-5 scale is not a score either, and is dropped rather than banded as `unscored`, which would
+    hide the score the finding itself carries.
     """
+    target = directory.resolve()
     found: dict = {}
     for path in journals(directory):
         for record in read_journal(path):
+            if owner(path, record) != target:
+                continue
             value = record.get("confidence")
-            if isinstance(value, int) and not isinstance(value, bool):
+            if isinstance(value, int) and not isinstance(value, bool) and value in CONFIDENCE:
                 found[str(record["fingerprint"])] = value
     return found
 
@@ -111,23 +119,6 @@ def by_shape(review_dir: Path) -> dict[str, int]:
     return counts
 
 
-def persona_names(value: object) -> list[str]:
-    """The persona list a record or finding names, tolerant of the spellings the corpus holds.
-
-    Stored data is canonical in 97% of findings, so this absorbs the remainder — a comma-joined
-    string, a display-cased name, a `Reviewer ` prefix — instead of splitting precision into
-    one-row buckets. It never invents a name: an empty value yields an empty list.
-    """
-    raw = value if isinstance(value, list) else [value]
-    names: list[str] = []
-    for item in raw:
-        for part in str(item or "").split(","):
-            name = re.sub(r"\s+", "-", part.strip().lower()).removeprefix("reviewer-")
-            if name and name not in names:
-                names.append(name)
-    return names
-
-
 def summary(review_dir: Path) -> dict:
     """What one review recorded: counts per outcome and the fingerprints behind them."""
     outcomes = decided(review_dir)
@@ -155,10 +146,24 @@ def append(args) -> int:
     A raised score travels with the decision that raised it: `--confidence` is the score the finding
     was acted on under and `--confidence-from` the one it arrived with, so the join in
     `crew review-stats` reads evidence rather than the label the record happens to carry. One without
-    the other is refused, for the same reason a raise in `review_gates` needs both halves.
+    the other is refused, for the same reason a raise in `review_gates` needs both halves, and a rise
+    needs `--validation` for the same reason: `scored()` makes this journal authoritative, so a raise
+    logged here without the read that settled it would be the one assertion the score exists to keep
+    apart from evidence.
     """
     if (args.confidence is None) != (args.confidence_from is None):
         raise ValueError("--confidence and --confidence-from go together: a raise records both halves")
+    if args.confidence is not None and args.confidence == args.confidence_from:
+        raise ValueError(
+            f"--confidence and --confidence-from are both {args.confidence}; an unchanged score is "
+            "not a raise, so log it without both flags"
+        )
+    validation = (args.validation or "").strip()
+    if args.confidence is not None and args.confidence > args.confidence_from and not validation:
+        raise ValueError(
+            f"a raise from {args.confidence_from} to {args.confidence} needs --validation naming the "
+            "read that settled it; a raise with no recorded read is an assertion, not evidence"
+        )
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "review_dir": str(args.review_dir),
@@ -177,6 +182,8 @@ def append(args) -> int:
                 f"--confidence {args.confidence} is below --confidence-from {args.confidence_from}; "
                 "a raise only ever moves up"
             )
+        if validation:
+            record["validation"] = validation
     target = args.review_dir.parent / JOURNAL
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:

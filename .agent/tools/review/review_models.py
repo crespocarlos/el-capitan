@@ -75,7 +75,13 @@ class Finding:
         return out
 
     def merge(self, other: "Finding") -> None:
-        """Fold a duplicate in: union the personas each named and the hunks cited, losing neither."""
+        """Fold a duplicate in: union the personas each named and the hunks cited, losing neither.
+
+        The score is reconciled to the higher of the two rather than to whichever lens was dispatched
+        first: candidate order must not decide whether the run clears the floor gate, and the
+        strongest evidence any lens produced is the one a reader can act on. `confidence_from` is
+        dropped with it, because a raise no single read produced is not a recorded raise.
+        """
         if isinstance(other.persona, list):
             for persona in other.persona:
                 if not isinstance(self.persona, list):
@@ -86,6 +92,11 @@ class Finding:
         theirs = [] if other.hunks is ABSENT else other.hunks
         if isinstance(ours, list) and isinstance(theirs, list):
             self.hunks = list(dict.fromkeys(ours + theirs))
+        scores = [score for score in (self.confidence, other.confidence)
+                  if isinstance(score, int) and not isinstance(score, bool)]
+        if scores and max(scores) != self.confidence:
+            self.confidence = max(scores)
+            self.confidence_from = ABSENT
 
 
 def fingerprint(finding: Finding) -> str:

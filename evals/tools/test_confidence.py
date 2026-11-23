@@ -91,11 +91,8 @@ def test_normalize_rejects_a_missing_score_too(tmp: Path) -> None:
 
 def test_a_value_outside_one_to_five_is_rejected_naming_the_range(tmp: Path) -> None:
     """0, 6, "high", 4.5, True, and the string "4" are all outside the scale."""
-    for bad in (0, 6, "high", 4.5, True, "4", None, [4]):
-        payload = base(confidence=bad) if bad is not None else base(confidence=None)
-        if bad is None:
-            continue
-        result = normalize(tmp, [payload])
+    for bad in (0, 6, "high", 4.5, True, "4", [4]):
+        result = normalize(tmp, [base(confidence=bad)])
         assert result.returncode == 2, f"{bad!r} was accepted: {result.stdout}"
         assert "invalid confidence" in result.stderr, f"{bad!r}: {result.stderr}"
         assert "integer 1-5" in result.stderr, f"{bad!r}: {result.stderr}"
@@ -175,6 +172,10 @@ def test_a_raise_without_a_recorded_read_is_rejected(tmp: Path) -> None:
     backwards = base(confidence=2, confidence_from=4, label="needs more info")
     result = normalize(tmp, [backwards])
     assert result.returncode == 2 and "only ever moves up" in result.stderr, result.stderr
+    # And a pair naming one score records nothing, so it is refused instead of logged as a raise.
+    same = base(confidence=4, confidence_from=4)
+    result = normalize(tmp, [same])
+    assert result.returncode == 2 and "not a raise" in result.stderr, result.stderr
 
 
 def test_a_raises_original_score_survives_lenient(tmp: Path) -> None:
@@ -206,17 +207,85 @@ def test_a_routed_finding_keeps_its_original_score(tmp: Path) -> None:
 
 def test_the_decision_score_wins_the_band_join(tmp: Path) -> None:
     """A score raised at address time lands in the band it was acted under, not the one it arrived in."""
-    tasks = corpus(tmp)
-    directory = sorted((tasks / "task-1" / "review").iterdir())[0]
+    tasks = tmp / "corpus"
+    directory = tasks / "task-1" / "review" / "20261122120000"
+    directory.mkdir(parents=True)
+    (directory / "consolidation.json").write_text(json.dumps({"findings": [
+        {"title": "c", "label": "attention", "confidence": 4, "fingerprint": "c3"}]}))
     with (directory.parent / "outcomes.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"fingerprint": "c3", "outcome": "fixed", "review_dir": str(directory),
-                                 "confidence": 4, "confidence_from": 2}) + "\n")
+                                 "confidence": 5, "confidence_from": 4,
+                                 "validation": "read the caller; the guard is absent"}) + "\n")
     payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
-    # `c3` arrived at 4 in this fixture and was acted on at 4; the record's score is what is joined.
-    assert payload["confidence"]["4"]["fixed"] == 1, payload["confidence"]
+    # The finding arrived at 4 and was acted on at 5, so only a join that reads the journal puts it in 5.
+    assert payload["confidence"]["5"]["fixed"] == 1, payload["confidence"]
+    assert "4" not in payload["confidence"], payload["confidence"]
     # The outcome command refuses half a raise, so a record cannot claim one without the other.
-    partial = run_outcome(directory, "--confidence", "4")
+    partial = run_outcome(directory, "--confidence", "5")
     assert partial.returncode == 2 and "go together" in partial.stderr, partial.stderr
+
+
+def test_a_raise_logged_as_an_outcome_needs_the_read_that_settled_it(tmp: Path) -> None:
+    """`scored()` trusts this journal, so its raise carries the same two halves a persisted one does."""
+    directory = review_dir(tmp)
+    unevidenced = run_outcome(directory, "--confidence", "4", "--confidence-from", "2")
+    assert unevidenced.returncode == 2 and "--validation" in unevidenced.stderr, unevidenced.stderr
+    # An unchanged pair is not a raise, and the gates refuse it in a finding record too.
+    same = run_outcome(directory, "--confidence", "4", "--confidence-from", "4")
+    assert same.returncode == 2 and "not a raise" in same.stderr, same.stderr
+    evidenced = run_outcome(directory, "--confidence", "4", "--confidence-from", "2",
+                            "--validation", "read src/a.ts:30-50; the guard shadows the caller's")
+    assert evidenced.returncode == 0, evidenced.stderr
+    record = json.loads(evidenced.stdout)
+    assert record["confidence"] == 4 and record["confidence_from"] == 2, record
+    assert "guard shadows" in record["validation"], record
+
+
+def test_one_reviews_score_does_not_band_a_sibling_reviews_finding(tmp: Path) -> None:
+    """The task-level journal is shared, so a record is read only by the review it names."""
+    tasks = tmp / "corpus"
+    first = tasks / "task-1" / "review" / "20261122120000"
+    second = tasks / "task-1" / "review" / "20261123120000"
+    for directory in (first, second):
+        directory.mkdir(parents=True)
+        (directory / "consolidation.json").write_text(json.dumps({"findings": [
+            {"title": "guard", "label": "attention", "confidence": 2, "fingerprint": "shared"}]}))
+    (first.parent / "outcomes.jsonl").write_text(json.dumps(
+        {"fingerprint": "shared", "outcome": "fixed", "review_dir": str(first),
+         "confidence": 5, "confidence_from": 2, "validation": "read src/a.ts:1-9"}) + "\n")
+    payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
+    # The raised record belongs to the first review; the second review's finding keeps its own 2.
+    assert payload["confidence"]["5"]["findings"] == 1, payload["confidence"]
+    assert payload["confidence"]["2"]["findings"] == 1, payload["confidence"]
+
+
+def test_a_duplicate_keeps_the_highest_score_in_either_order(tmp: Path) -> None:
+    """Candidate order must not decide whether the run clears the floor gate."""
+    low = base(persona="adversarial", confidence=2)
+    high = base(persona="code-quality", confidence=5)
+    for order in ([low, high], [high, low]):
+        result = normalize(tmp, order)
+        assert result.returncode == 0, result.stderr
+        stored = json.loads(result.stdout)["findings"]
+        assert len(stored) == 1, stored
+        assert stored[0]["confidence"] == 5, stored
+        assert sorted(stored[0]["persona"]) == ["adversarial", "code-quality"], stored
+
+
+def test_a_deferred_finding_is_not_appended_twice_across_a_score_change(tmp: Path) -> None:
+    """Dedupe keys on the title and anchor, so history and a later raise both stay one line."""
+    directory = review_dir(tmp)
+    # An entry written before the score existed: the old shape must still dedupe a newly scored line.
+    (tmp / "task" / "DEFERRED.md").write_text(
+        "- [2026-11-01] [attention] Old bug — `a.ts:3` — pre-existing\n")
+    deferred = base(title="Old bug", disposition="defer", verified=None, evidence=None,
+                    validation=None, confidence=2)
+    raised = {**deferred, "confidence": 4, "confidence_from": 2,
+              "validation": "read a.ts:1-9; the guard is absent"}
+    assert persist(tmp, [raised], "## Review: changes\n").returncode == 0
+    lines = (tmp / "task" / "DEFERRED.md").read_text().splitlines()
+    assert len(lines) == 1, lines
+    assert "[attention · 4]" not in lines[0], "the legacy line is left as written, not rewritten"
 
 
 def run_outcome(review_dir: Path, *extra: str) -> subprocess.CompletedProcess:
@@ -235,21 +304,16 @@ def test_the_report_line_carries_the_score_beside_the_label(tmp: Path) -> None:
         if path not in sys.path:
             sys.path.insert(0, path)
     from review_models import ABSENT, Finding
-    from review_render import finding_line, report_lines, label_with_score
+    from review_render import label_with_score, score_suffix
 
     scored = Finding(title="Guard missing", label="attention", file="a.ts", line=3, confidence=4)
     assert label_with_score(scored) == "[attention · 4]"
-    assert finding_line(scored, 1) == (
-        "1. [attention · 4] **`a.ts — line 3`** — Guard missing"
-    ), finding_line(scored, 1)
+    assert score_suffix(scored) == " · 4"
     # A finding written before the score existed renders without the suffix rather than with a
     # placeholder, because a placeholder claims the reviewer was asked.
     legacy = Finding(title="Rename", label="nit", file="b.ts", line=7, confidence=ABSENT)
     assert label_with_score(legacy) == "[nit]"
-    assert report_lines([scored, legacy]) == [
-        "1. [attention · 4] **`a.ts — line 3`** — Guard missing",
-        "2. [nit] **`b.ts — line 7`** — Rename",
-    ]
+    assert score_suffix(legacy) == ""
 
 
 def test_the_deferred_line_and_the_coverage_table_carry_the_score(tmp: Path) -> None:
@@ -344,6 +408,10 @@ def test_a_stored_value_outside_the_scale_is_unscored_not_a_new_band(tmp: Path) 
     payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
     assert set(payload["confidence"]) == {"4", "unscored"}, payload["confidence"]
     assert payload["confidence"]["unscored"]["findings"] == 2, payload["confidence"]
+    # The row does not claim the cause it cannot know: an out-of-scale value is not pre-score history.
+    table = stats("--tasks-dir", str(tasks)).stdout
+    assert "written before the score existed" not in table, table
+    assert "value outside 1-5" in table, table
 
 
 def test_a_scored_finding_with_a_fixed_outcome_joins_to_its_band(tmp: Path) -> None:

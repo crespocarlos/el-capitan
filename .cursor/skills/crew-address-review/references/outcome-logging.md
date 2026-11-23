@@ -19,9 +19,12 @@ answer is only known at that moment — a later pass that reconstructs it either
 **Record a raised score with the decision that raised it.** Step 2 may raise a 1-2 finding's
 `confidence` when the read settles what it doubted, and the raise is only evidence while it stays
 attached to the read: pass the final score with the outcome (`--confidence <n> --confidence-from
-<old>`) so a later `review-stats` join reads the score the finding was acted on under, not the score
-it arrived with. A raise with no recorded read is refused at persist, so an increase that cannot name
-its evidence cannot be logged either. A `Needs Input` row keeps the score it arrived with.
+<old> --validation "<the read>"`) so a later `review-stats` join reads the score the finding was acted
+on under, not the score it arrived with. The raise is refused without that sentence, and an unchanged
+pair is refused outright, so a raise that cannot name its evidence cannot be logged. A `Needs Input`
+row keeps the score it arrived with. The `+2` ceiling is
+[consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.md)'s to state and no gate
+enforces it, so a raise above it passes every check.
 
 For each finding the user did not approve (a Needs Input row left unanswered counts as `deferred`):
 
