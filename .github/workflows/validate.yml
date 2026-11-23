@@ -57,6 +57,9 @@ jobs:
       - name: Resolver verdict contract (one gate, challenge, Ask floor)
         run: python3 evals/tools/test_resolver_confidence.py
 
+      - name: Resolver context and intent contract (guidance, Decide, overfitting)
+        run: python3 evals/tools/test_resolver_intent.py
+
       - name: Package assembly tests
         run: python3 evals/tools/test_assemble_packages.py
 

@@ -32,7 +32,7 @@ from review_vocabulary import ACTED_CONFIDENCE, CONFIDENCE  # noqa: E402
 # a check if one side is fixed, so a drift in `review_vocabulary.py` fails here instead of both
 # sides moving together and agreeing about the wrong bands.
 EXPECTED_BANDS = {5: "confirmed", 4: "strong", 3: "likely", 2: "uncertain", 1: "suspicion"}
-ACTIONS = ("Apply", "Adapt", "Reject", "Defer", "Already Addressed", "Ask")
+ACTIONS = ("Apply", "Adapt", "Reject", "Decide", "Defer", "Already Addressed", "Ask")
 VERDICT_CELL = re.compile(r"^(%s) · ([1-5])$" % "|".join(ACTIONS))
 ANCHOR = re.compile(r"[\w./-]+:\d+")
 
