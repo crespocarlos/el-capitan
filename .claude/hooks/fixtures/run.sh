@@ -413,12 +413,18 @@ fails 'NEEDS CLARIFICATION' python3 "$ls_tool" --mark-implementing "$tasks/gate1
 test "$(status_of gate1-blocked)" = APPROVED
 
 # --apply must report write failures in its exit code.
+# The permission change is the point of the case, so it is stated once and restored in the same
+# block: a `chmod` on a fixture directory is deliberate, not routine, and the allow list does not
+# carry `chmod` because approving it globally is broader than this one test needs.
 mkspec apply-ro $'# T\n\n## Status\nDRAFTING\n\n- [ ] a\n'
 touch -t 202610010000 "$tasks/apply-ro"/*
-chmod 555 "$tasks/apply-ro"
-if python3 "$ls_tool" --tasks-dir "$tasks" --reconcile --apply >/dev/null 2>&1; then exit 1; fi
-chmod 755 "$tasks/apply-ro"
-test "$(status_of apply-ro)" = DRAFTING
+if ! chmod 555 "$tasks/apply-ro" 2>/dev/null; then
+  echo "skip: cannot chmod the fixture directory; the write-failure case needs it" >&2
+else
+  if python3 "$ls_tool" --tasks-dir "$tasks" --reconcile --apply >/dev/null 2>&1; then exit 1; fi
+  chmod 755 "$tasks/apply-ro"
+  test "$(status_of apply-ro)" = DRAFTING
+fi
 
 # A review records the commit it approved; a review of a different tree must block close-out.
 mkspec reviewed $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' $'Verdict: pass\n\nReviewed at: 0123456789abcdef0123456789abcdef01234567\n'

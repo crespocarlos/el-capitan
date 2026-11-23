@@ -2,12 +2,15 @@
 
 Persistence is mandatory for every mode; `crew commit` and `crew review address` read its output.
 Let a command choose the directory, so a sandbox that denies the task path falls back instead of
-failing:
+failing. Run it on its own line first, then assign — a command that *starts* with `VAR=$(…)` hides
+its own prefix from a permission check, so it asks every time:
 
 ```bash
-REVIEW_ROOT=$(~/.agent/bin/crew-review-findings.py review-dir \
-  --task-dir "${TASK_DIR:-}" --mode <mode> --repo "$(basename "$PWD")" --prune)
+~/.agent/bin/crew-review-findings.py review-dir \
+  --task-dir "${TASK_DIR:-}" --mode <mode> --repo "$(basename "$PWD")" --prune
 ```
+
+Use the path it prints as `REVIEW_ROOT` for the rest of the review.
 
 It creates the directory, prints the path that works, and names the reason on stderr when it is not
 under `TASK_DIR`. A PR review passes `--mode pr`, which always uses the temp form. It also writes

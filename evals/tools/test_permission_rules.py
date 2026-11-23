@@ -82,10 +82,28 @@ def main() -> int:
     check("the review findings command is allowed outright, with the space form",
           any(c == "~/.agent/bin/crew-review-findings.py" for c in allow),
           [c for c in allow if "crew-review-findings" in c])
-    check("a leading shell assignment is allowed, so it cannot prompt",
-          any(c == "R=" or c.endswith("=*") for c in allow), [c for c in allow if "=*" in c])
+    check("a leading shell assignment is not needed, because no snippet uses one",
+          not any(c.endswith("=*") for c in allow), [c for c in allow if "=*" in c])
     check("hook fixtures are allowed without elevation",
           any("fixtures" in c for c in allow), allow)
+
+    # Rules Claude flags as skipping checks: a whole executable directory, a bare interpreter, a
+    # leading shell assignment, and chmod. Each auto-approves without inspecting the command.
+    flagged = {"Bash(~/.agent/bin/*)", "Bash(python3 *)", "Bash(node *)", "Bash(npx *)",
+               "Bash(chmod *)"}
+    present = sorted(flagged & set(permissions.get("allow", [])))
+    check("no allow rule skips the command check", not present, present)
+    assignments = [r for r in permissions.get("allow", [])
+                   if r.startswith(("Bash(R=", "Bash(V=", "Bash(T=", "Bash(P=", "Bash(OUT=",
+                                    "Bash(REVIEW_ROOT=")) and r.endswith("*")]
+    check("no leading-assignment rule hides the command", not assignments, assignments)
+    # Without such a rule, no documented snippet may start with `VAR=$(…)`: it would prompt every
+    # time, which is the friction the removed rule was introduced to fix and this replaces properly.
+    prompts = SETTINGS.parent.parent
+    offenders = [str(p.relative_to(prompts)) for p in prompts.glob(".cursor/**/*.md")
+                 if "VAR=$(~/.agent/bin" in p.read_text(errors="replace")
+                 or "REVIEW_ROOT=$(~/.agent/bin" in p.read_text(errors="replace")]
+    check("no prompt snippet leads with an assignment", not offenders, offenders)
 
     merge_cases()
     print("all permission checks passed" if not FAILED else f"permissions: {len(FAILED)} failed")
