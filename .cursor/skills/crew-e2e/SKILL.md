@@ -57,11 +57,12 @@ Never paste an unmasked value, even partially, even from a local file.
 
 ## Step 1: resolve the PR
 
-Accept `PR #123`, a GitHub URL, or nothing (current branch):
+Take `PR #123` (passed as `--pr 123`), a URL, or nothing (current branch):
 
 ```bash
-gh pr view ${1:+"$1"} --json number,headRefName,headRefOid,url,title,state,isDraft
-gh repo view --json nameWithOwner
+~/.agent/bin/crew-pr-actions.py view --json --field \
+  number,headRefName,headRefOid,url,title,state,isDraft
+~/.agent/bin/crew-pr-actions.py repo --field nameWithOwner
 ```
 
 Build nightshift's key as `<owner>__<repo>__<number>`, with `/` replaced by `__` in the repo part:
@@ -70,8 +71,8 @@ Build nightshift's key as `<owner>__<repo>__<number>`, with `/` replaced by `__`
 Refuse anything but `elastic/kibana` or `elastic/sandbox-service`. Nightshift reports the rejection
 itself; naming the limit here saves a round trip.
 
-If `gh pr view` succeeds but you cannot confirm nightshift tracks the PR (review-requested, a test-plan
-subject, or previously reviewed — see
+If that PR read succeeds but you cannot confirm nightshift tracks the PR (review-requested, a
+test-plan subject, or previously reviewed — see
 [setup and limits](references/setup-and-limits.md#known-limits)), say so now with the exact UI link to
 start it there first: `<nightshift base URL>/pr/<key>/e2e`. Do not wait for `start` to fail with `PR
 not found`; that is the most common Step-3 failure and the fix is always the same link.
@@ -120,7 +121,7 @@ baseline Step 4's teardown prints a diff against — record it even when you exp
 **Auto-generate `--instructions`** rather than leaving it blank. Build one or two sentences of focus
 from what is available, and let the user edit it rather than write from scratch:
 - the SPEC's acceptance criteria (`$TASK_DIR/SPEC.md`), when a task is active;
-- the PR description (`gh pr view --json body`);
+- the PR description (`~/.agent/bin/crew-pr-actions.py view --pr N --field body`);
 - a changed-file classification from Step 1's diff — server route/service, UI component, or
   prompt/agent file — each implying a different check worth asking the tester to run.
 

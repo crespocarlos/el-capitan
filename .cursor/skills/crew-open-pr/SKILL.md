@@ -15,8 +15,16 @@ description: "Push the current branch and open a PR with a generated description
 **Check for existing PR first:**
 
 ```bash
-EXISTING_PR=$(GH_PAGER=cat gh pr view --json url,number,state --jq '"#\(.number) (\(.state)): \(.url)"' 2>/dev/null)
+EXISTING_PR=""
+if PR_FACTS=$(~/.agent/bin/crew-pr-actions.py view --field number,state,url 2>&1); then
+  { read -r NUMBER; read -r STATE; read -r URL; } <<<"$PR_FACTS"
+  EXISTING_PR="#$NUMBER ($STATE): $URL"
+fi
 ```
+
+A nonzero exit here is the ordinary case — no PR exists for this branch yet — so it empties
+`EXISTING_PR` rather than stopping. Any other failure looks the same, which is why the PR-create step
+below still reports what `gh` says.
 
 If `EXISTING_PR` is non-empty, stop and report:
 
@@ -31,8 +39,8 @@ source ~/.agent/bin/task-env.sh
 ~/.agent/bin/crew-task-context.py --artifacts spec,review --max-chars 6000
 ```
 
-Detect fork workflow from the remotes this checkout has — **do not use `gh repo view`** (freezes in
-VS Code terminals):
+Detect fork workflow from the remotes this checkout has. Do not read the repository through `gh` at
+this point — it freezes in VS Code terminals, and `crew-repo-info.py` answers both remotes locally:
 
 ```bash
 ORIGIN_REPO=$(~/.agent/bin/crew-repo-info.py --field origin_repo)

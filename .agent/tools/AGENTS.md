@@ -106,7 +106,10 @@ Rules that the structural gate enforces:
   reach the caller. `lib/git_remote.py` holds the network half and `git.py` re-exports it. Prompts
   follow the same rule in their own terms: a prompt asks a command (`crew-repo-info.py`,
   `crew-worktree.py`, `crew-diff.sh`), never git, and raw git stays only where the user approved a
-  mutation. Local reads use git alone; the network reads (`default_branch`, `fetch_remote`,
+  mutation. GitHub reads work the same way: a prompt asks `crew-pr-actions.py` for a PR, its diff, a
+  repository, or an issue, and keeps raw `gh` only for a mutation or a search, because the hooks
+  decide on the command text the caller wrote. Local reads use git alone; the network reads
+  (`default_branch`, `fetch_remote`,
   `remote_tip`, `behind_count`) try `gh` first because it carries the authentication, fall back to
   git, and raise naming both. `evals/tools/test_python_shape.py` fails a git argv outside `lib/`.
 

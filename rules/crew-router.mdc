@@ -22,9 +22,10 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew test` | crew-test skill |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
-| `crew review address` | crew-address-review skill (inline) — not through crew-reviewer |
-| `crew review` [PR #X \| spec \| idea \| changes \| (self)] | crew-reviewer — `changes`: staged only; `idea`: session/proposal |
-| `crew review-stats` | `~/.agent/bin/crew-review-stats.py` inline |
+| `crew review address` | crew-address-review skill — not crew-reviewer |
+| `crew review` [PR #X \| spec \| idea \| changes \| (self)] | crew-reviewer — `changes`: staged; `idea`: proposal |
+| `crew review-stats` | `~/.agent/bin/crew-review-stats.py` |
+| `crew pr` view\|diff\|repo\|issue | `~/.agent/bin/crew-pr-actions.py`; writes stay `gh` |
 | `crew resolve PR` #X or URL | crew-pr-resolver |
 | `crew log` | crew-log |
 | `crew remember` text | crew-memory skill |
@@ -39,8 +40,8 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew diagnose` transcript | crew-diagnose skill |
 | `crew debug` symptom | crew-debug skill |
 | `crew handoff` [resume] | crew-handoff skill |
-| `crew ls` [--all] | `~/.agent/bin/crew-ls.py --md [--all]` inline |
-| `crew prune` | `~/.agent/bin/crew-prune.py` inline |
+| `crew ls` [--all] | `~/.agent/bin/crew-ls.py --md [--all]` |
+| `crew prune` | `~/.agent/bin/crew-prune.py` |
 | `crew inbox` | `~/.agent/bin/crew-inbox.py` inline; `--drain` clears it |
 
 **This table is authoritative.** Do not override it with judgment calls.

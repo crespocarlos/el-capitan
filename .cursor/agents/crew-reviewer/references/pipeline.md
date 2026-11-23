@@ -86,8 +86,9 @@ task's `REVIEW.md`.
    adversarial code-quality`; pass every dispatched persona as its own space-delimited argument (for
    example, add `architecture prompt-quality`). Comma-separated values such as
    `adversarial,code-quality` are invalid. `<HEAD SHA>` is `$(~/.agent/bin/crew-repo-info.py --field head)` for self, changes,
-   spec, and idea; for PR it is the head SHA from `gh pr view`, which the local checkout does not
-   contain and `--head` therefore records without resolving.
+   spec, and idea; for PR it is the head SHA from `~/.agent/bin/crew-pr-actions.py view --field
+   headRefOid`, which the local checkout does not contain and `--head` therefore records without
+   resolving.
    `--personas` is required on every call, and persona coverage is checked on every call: each
    named persona must have a real `.in.md` and `.out.md`, and the run fails when
    every persona produced nothing or when any artifact is empty, a placeholder, or a condensed

@@ -78,6 +78,9 @@ jobs:
       - name: PR action tool tests
         run: python3 evals/tools/test_pr_review_actions.py
 
+      - name: PR read tool tests
+        run: python3 evals/tools/test_pr_reads.py
+
       - name: Git library tests
         run: python3 evals/tools/test_git_lib.py
 

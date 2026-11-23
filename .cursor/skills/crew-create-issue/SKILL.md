@@ -115,7 +115,7 @@ Omit `--label` flags when no label applies.
 **Update** (fetch existing body first, then merge with session content):
 
 ```bash
-GH_PAGER=cat gh issue view N --repo OWNER/REPO --json title,body
+~/.agent/bin/crew-pr-actions.py issue --number N --repo OWNER/REPO --field title,body
 GH_PAGER=cat gh issue edit N --repo OWNER/REPO --body "$(cat <<'EOF'
 NEW_BODY
 EOF

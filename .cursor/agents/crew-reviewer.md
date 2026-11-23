@@ -51,10 +51,11 @@ narration.
 
 ## Step 2: gather metadata
 
-For diff modes, gather names, sizes, and change types before loading a full diff. `gh pr diff` has no
-`--name-status`; that is a plain `git diff` flag. For PR mode, get names with `gh pr diff --name-only`
-and change types by parsing the same diff's headers (`new file mode`, `deleted file mode`, `rename
-from`/`rename to`, `Binary files`) — the signal `crew-review-hunks.py` already derives. For spec
+For diff modes, gather names, sizes, and change types before loading a full diff. The diff read has no
+`--name-status`; that is a plain `git diff` flag. For PR mode, get names with
+`~/.agent/bin/crew-pr-actions.py diff --pr <n> --repo <owner/repo> --name-only` and change types by
+parsing the same diff's headers (`new file mode`, `deleted file mode`, `rename from`/`rename to`,
+`Binary files`) — the signal `crew-review-hunks.py` already derives. For spec
 review, resolve the task directory with `~/.agent/bin/crew-resolve-task-dir.py`. For idea review, use
 the supplied idea or current topic. For PR mode, if a read-only `gh` command fails with a known
 sandbox-network denial such as `Forbidden`, re-run it with the harness's network elevation

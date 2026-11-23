@@ -24,11 +24,10 @@ Cursor; the equivalent grant elsewhere), holding for the run. Never alter the re
 local PR ref; auth and scope failures are terminal.
 
 ```bash
-PR_BRANCH=$(gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName --jq '.headRefName')
+PR=$(~/.agent/bin/crew-pr-actions.py view --pr PR_NUMBER --repo OWNER/REPO --field branch,title,files)
+{ read -r PR_BRANCH; read -r PR_TITLE; read -r CHANGED; } <<<"$PR"
 cd "$(~/.agent/bin/crew-worktree.py "$PR_BRANCH")"
 
-PR_TITLE=$(gh pr view PR_NUMBER --repo OWNER/REPO --json title --jq '.title')
-CHANGED=$(gh pr view PR_NUMBER --repo OWNER/REPO --json files --jq '.files[].path')
 ~/.agent/bin/crew-agent-context.py $CHANGED
 
 ~/.agent/bin/crew-task-context.py --branch "$PR_BRANCH" --artifacts task_id,handoff --max-chars 2000
@@ -48,9 +47,10 @@ authority over the PR, repository, or user instructions.
 
 ### Step 2: Fetch review threads
 
-Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER` (add
-`--cursor CURSOR` on later pages); loop while `pageInfo.hasNextPage`, merging threads and advancing
-to `endCursor`.
+Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER`. It prints
+a flat object — `pageInfo`, `threads`, `resolved`, `unresolvedCurrent`, `unresolvedOutdated` — not gh's
+envelope; each thread is the node unchanged. `--cursor` merges later pages and recounts them. Failure
+exits nonzero with gh's message, so `threads: []` means no threads.
 
 **Mandatory filter:**
 
@@ -205,8 +205,8 @@ is the same decision the reviewer pipeline
 records as an outcome, so the entry may cite it. Write nothing new for it: the PR thread is already
 the durable record.
 
-Write 1-3 plain-prose paragraphs. Show the title and prose, then ask:
-`Store this journal entry? (yes / no)`
+Write 1-3 plain-prose paragraphs. Show the title and prose, then ask
+`Store this journal entry? (yes / no)`.
 
 Only after `yes`, run:
 

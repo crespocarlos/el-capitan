@@ -23,9 +23,13 @@ Single-shot, one pass: resolve, fetch, map, validate, render. No progress narrat
 ## Step 1: resolve the PR
 
 ```bash
-gh pr view ${1:+"$1"} --json number,url,title,body,author,baseRefName,headRefName,headRefOid,labels,isDraft
-gh repo view --json nameWithOwner
+~/.agent/bin/crew-pr-actions.py view --json \
+  --field number,url,title,body,author,baseRefName,headRefName,headRefOid,labels,isDraft
+~/.agent/bin/crew-pr-actions.py repo --field nameWithOwner
 ```
+
+Add `--pr N` to read another PR; without it both calls read the current branch's.
+`--json` prints the fetched record and `--field` names exactly what is fetched, in the order given.
 
 `crew explain` with no argument uses the current branch's PR. Record `owner/repo` and the immutable
 `headRefOid`; everything read afterwards is at that SHA.
@@ -35,7 +39,7 @@ gh repo view --json nameWithOwner
 ```bash
 WS="/tmp/crew-explain-$(basename "$(pwd)")-<number>"
 mkdir -p "$WS"
-gh pr diff <number> -R <owner/repo> > "$WS/pr.diff"
+~/.agent/bin/crew-pr-actions.py diff --pr <number> --repo <owner/repo> > "$WS/pr.diff"
 python3 ~/.agent/bin/crew-review-hunks.py "$WS/pr.diff" --out "$WS"
 ```
 
@@ -58,8 +62,9 @@ Research where it pays off, and prefer primary sources over guessing:
 - File contents at the head: `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"`, one quoted
   literal command per read. List the parent (`--jq '.[].name'`) instead of guessing a path from a
   symbol name.
-- Usages of a changed API, existing review comments, and linked issues: `gh search code`, `gh pr view
-  --comments`, `gh issue view`.
+- Usages of a changed API, existing review comments, and linked issues: `gh search code`,
+  `~/.agent/bin/crew-pr-actions.py view --pr <number> --field comments`, and
+  `~/.agent/bin/crew-pr-actions.py issue --number <n> --field title,body`.
 - Elastic/Kibana and ES|QL claims: verify against a docs MCP server when one is configured. State
   `unverified` when none is available.
 

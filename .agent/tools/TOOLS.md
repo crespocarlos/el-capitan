@@ -113,7 +113,7 @@ module.
 | `crew-repo-info.py` | `key: value` lines, or JSON with `--json` | — |
 | `crew-worktree.py` | the path, or JSON with `--json` | `--max-chars` |
 | `crew-resolve-task-dir.py` | the path, or JSON with `--json` | — |
-| `crew-pr-actions.py` | a plan or result as JSON | — |
+| `crew-pr-actions.py` | a plan or record as JSON; `--field` prints bare lines | — |
 | `crew-assemble-packages.py`, `crew-metric.py`, `crew-progress.py` | human text | — |
 
 - **Truncation is never silent.** `--max-chars` and `--limit` print one `[truncated: …]` marker naming
@@ -227,7 +227,24 @@ module.
   `--dry-run` names that behavior explicitly (the two are mutually exclusive). The plan's `command`
   field is the exact `gh` argv, so an operator can read or run it by hand. `fetch` takes `--dry-run`
   as well and defaults `--query` to the `pr-review-threads.graphql` asset, so the query text has one
-  source.
+  source. `fetch` prints a flat object — `pageInfo`, `threads`, and the counts `resolved`,
+  `unresolvedCurrent`, `unresolvedOutdated` — rather than gh's raw GraphQL envelope, because every
+  caller otherwise had to know `data.repository.pullRequest.reviewThreads` and a wrong guess read as
+  `Cannot iterate over null`. Each entry in `threads` is the GraphQL node unchanged. The counts cover
+  everything fetched, and `--cursor` merges later pages into the same set and recounts them. A failed
+  fetch exits nonzero with gh's message and prints no JSON, so `threads: []` always means the PR has
+  no review threads.
+- **The reads have a command; the writes stay literal.** `crew-pr-actions.py view`, `diff`, `repo`,
+  and `issue` answer the GitHub questions a prompt used to ask with `gh pr view`, `gh pr diff`,
+  `gh repo view`, and `gh issue view` plus a `--jq` per call. `--field a,b` prints one bare line per
+  name in the order asked and `--json` prints the record, so a field list is written once instead of
+  being re-derived and re-parsed at 20 call sites; `diff` passes the patch through unchanged. A field
+  gh did not return prints empty with exit 0, so a caller can test it, while a failed call exits
+  nonzero carrying gh's own stderr — the same rule `crew-repo-info.py` follows for git facts.
+  Mutations stay literal `gh` in the prompts: `gh pr create`, `gh pr comment`, `gh pr checkout`,
+  `gh issue create`, `gh search`. A wrapper would hide the exact argv from `guard/local-pr-ref.sh`
+  and `guard/destructive-git.sh`, which decide on the command text the caller wrote, so wrapping one
+  turns a denial into a silent allow.
 - `crew-review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
   `package.diff` (the diff persona packages embed, generated files' hunks collapsed to one note),
   numbering every hunk `h1`, `h2`, … in diff order, including one synthetic hunk for a file with no

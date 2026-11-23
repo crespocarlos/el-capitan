@@ -8,7 +8,7 @@ to check, and how the evidence reaches a persona.
 ```bash
 # self: ~/.agent/bin/crew-diff.sh > "$REVIEW_ROOT/diff.patch"
 # changes: git diff --cached > "$REVIEW_ROOT/diff.patch"
-# PR: gh pr diff <n> -R <owner/repo> > "$REVIEW_ROOT/diff.patch"
+# PR: ~/.agent/bin/crew-pr-actions.py diff --pr <n> --repo <owner/repo> > "$REVIEW_ROOT/diff.patch"
 python3 ~/.agent/bin/crew-review-hunks.py "$REVIEW_ROOT/diff.patch" --out "$REVIEW_ROOT"
 ```
 
@@ -20,7 +20,8 @@ each generated file's hunks collapsed to one note line. Packages embed `package.
 Dispatch `reviewer-layers` with `hunks.md`, extract its one fenced `json` block (without the
 backticks), and write that raw JSON to `$REVIEW_ROOT/layers.json`. No block, several blocks, or any
 text outside the block is invalid output. It reports no findings and is not a persona, so never add it
-to `--personas`. In PR mode the diff comes only from `gh pr diff`.
+to `--personas`. In PR mode the diff comes only from `crew-pr-actions.py diff`, which reads the PR
+head over the network and never the local checkout.
 
 Check the map before any persona runs: `crew-review-findings.py coverage --hunks
 "$REVIEW_ROOT/hunks.json" --layers "$REVIEW_ROOT/layers.json"`. On failure, re-dispatch

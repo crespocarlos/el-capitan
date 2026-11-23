@@ -912,6 +912,24 @@
       "smoke": "imported by crew-review-findings.py"
     },
     {
+      "name": "review_pr_reads.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-pr-resolver",
+      "help": "imported by crew-pr-actions.py",
+      "smoke": "imported by crew-pr-actions.py"
+    },
+    {
+      "name": "review_pr_plan.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-pr-resolver",
+      "help": "imported by crew-pr-actions.py",
+      "smoke": "imported by crew-pr-actions.py"
+    },
+    {
       "name": "review_layers.py",
       "dir": "review",
       "kind": "module",

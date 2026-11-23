@@ -68,7 +68,8 @@ The goal is a report where every finding has a traceable, defensible reason to e
 
 ### Verify against the repository
 
-In PR mode, "the repository" is the PR head read through `gh` (`gh pr diff`, `gh api
+In PR mode, "the repository" is the PR head read through `gh` (`~/.agent/bin/crew-pr-actions.py diff`,
+`gh api
 "repos/.../contents/<path>?ref=<headSHA>"` with the URL quoted), never the local working tree and never
 a checkout of the PR. The two targeted reads below mean up to two `gh api` reads at that head SHA. Do
 not validate a PR finding through the local checkout — no file reads, repository search, or other

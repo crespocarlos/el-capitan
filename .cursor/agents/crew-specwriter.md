@@ -28,8 +28,8 @@ improved draft → approval. Self-critique runs silently. Never narrate what you
 ### Step 1: Load context
 
 Determine the task source:
-- If given a GitHub issue URL or number: fetch it with `gh issue view <number> --repo <repo> --json
-  title,body,labels,comments`
+- If given a GitHub issue URL or number: read it with `~/.agent/bin/crew-pr-actions.py issue --number
+  N --repo O/R --field title,body,labels,comments`
 - If given a plain description: use it directly
 
 **Create a new task directory; never reuse one.** `crew-resolve-task-dir.py` answers with the newest
