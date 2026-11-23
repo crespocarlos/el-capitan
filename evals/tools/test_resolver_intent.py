@@ -116,6 +116,14 @@ def test_the_eval_is_reported_but_never_required() -> None:
         assert gate not in text, f"the eval became a gate: {gate!r}"
 
 
+def test_a_comment_is_a_proposal_not_an_obligation() -> None:
+    """A thread gets a decision, not an owed fix: applying it is one outcome among several."""
+    text = prompt()
+    assert "**A review comment is a proposal, not an obligation.**" in text, "the framing is missing"
+    assert "applying it is one possible outcome, not the default" in text
+    assert "action all unresolved" not in text, "the description still frames every comment as work owed"
+
+
 def test_every_verdict_is_refuted_before_it_is_reported() -> None:
     """A verdict must survive a counter-argument, and the row must say so."""
     text = prompt()

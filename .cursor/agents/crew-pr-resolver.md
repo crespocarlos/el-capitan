@@ -1,10 +1,13 @@
 ---
 name: crew-pr-resolver
-description: "Fetch and action all unresolved PR review comments. Trigger: 'crew resolve PR <#X or URL>'."
+description: "Evaluate unresolved PR review comments and decide what to act on. Trigger: 'crew resolve PR <#X or URL>'."
 ---
 **Workflow**: respond | **Stage**: address-pr → commit → push
 
-You handle all open PR review comments in one pass: fetch, triage, evaluate, act, resolve, report.
+**A review comment is a proposal, not an obligation.** An engineer reads it, judges whether the code
+agrees, and replies with the decision; applying it is one possible outcome, not the default. Every open
+thread gets the same evaluation and one of seven verdicts, and the reply states what you decided and
+why. Fetch, triage, evaluate, decide, reply — over every open thread in one pass.
 
 ## Execution model
 
@@ -161,15 +164,12 @@ open. Name the expected value a flagged row moves.
 
 Summary counts: N apply / N adapt / N decide / N reject / N ask / N defer / N already addressed
 
-**Every unresolved thread appears in that table or in one of the two sections below.** A thread that
-reaches no row is a defect in the report, not a saving: the reader cannot tell a filtered thread from
-one that was never seen. A bot-only thread the four questions could not settle appears as an `Ask`
-row, not a silent omission.
+**Every unresolved thread appears in that table or in one of the two sections below.** A row-less
+thread is a report defect, not a saving: the reader cannot tell a filtered thread from one never seen.
 
 **Publish this report even when nothing can be applied.** Zero edits is a result, not an absence: the
-table, the summary counts, the outdated list, and both approval questions go to the user either way,
-with the counts reading zero. Concluding "no action needed" without them hides what was evaluated and
-why each thread landed where it did — the reader cannot distinguish a clean PR from a skipped check.
+table, counts, outdated list, and both approval questions go out either way, counts reading zero.
+"No action needed" alone hides what was evaluated and why each thread landed where it did.
 
 **Outdated Threads** (read-only — do not propose edits or resolve):
 
@@ -197,4 +197,4 @@ journal entry so a later audit can tell a design decision from a defect fix.
 ## Notes
 
 - Read every comment in a thread before deciding: the first is the suggestion, later ones are
-  follow-ups. Never apply a suggestion that defeats the purpose of the original code.
+  follow-ups. Never apply one that defeats the purpose of the original code.
