@@ -358,7 +358,7 @@ Every `[blocking]` and `[attention]` finding is verified against the repository 
 
 ### 🧩 crew-pr-resolver
 
-Processes all unresolved review threads on a PR in a single batch: evaluates each thread, proposes edits and reply text, and applies only what you approve. Handles Apply, Adapt, Reject, Defer, and Already Addressed verdicts. Never touches resolved or outdated threads.
+Processes all unresolved review threads on a PR in a single batch: challenges each thread against the code, scores it, proposes edits and reply text, and applies only what you approve. Handles Apply, Adapt, Reject, Defer, Already Addressed, and Ask verdicts — a low-confidence Reject becomes an `Ask`, which replies with a question and leaves the thread open. Never touches resolved or outdated threads.
 
 ---
 

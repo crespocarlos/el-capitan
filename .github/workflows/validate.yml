@@ -54,6 +54,9 @@ jobs:
       - name: Finding confidence (scale, floor, render, bands)
         run: python3 evals/tools/test_confidence.py
 
+      - name: Resolver verdict contract (one gate, challenge, Ask floor)
+        run: python3 evals/tools/test_resolver_confidence.py
+
       - name: Package assembly tests
         run: python3 evals/tools/test_assemble_packages.py
 

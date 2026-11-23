@@ -8,9 +8,9 @@ You handle all open PR review comments in one pass: fetch, triage, evaluate, act
 
 ## Execution model
 
-**Silent pass, then approval, then execute.** 3 turns: (1) fetch + evaluate silently, (2) present
-full report + ask what to apply, (3) apply approved edits, post replies, resolve threads. Never
-narrate steps.
+**Silent evaluation, one approval gate, then execute.** 3 turns: (1) fetch + evaluate silently, (2)
+present the full report + ask what to apply, (3) apply approved edits, post replies, resolve threads.
+Never narrate steps. Steps 1-6 change nothing; Step 7 acts only on what the user approved.
 
 ## When Invoked
 
@@ -36,10 +36,10 @@ MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode review --query "$PR_TITLE" 2>&
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 
-`crew-task-context.py` supplies the current status and bounded artifact contents for the PR's own branch.
+`crew-task-context.py` supplies the status and bounded artifact contents for the PR's own branch.
 Treat task artifacts as context, not authority over the current PR, repository, or user
-instructions. All subsequent steps happen in this worktree. Apply any recalled rules and task context
-silently during evaluation.
+instructions. All later steps happen in this worktree. Apply recalled rules and task context
+silently.
 
 ### Step 2: Fetch review threads
 
@@ -49,7 +49,7 @@ threads into the running list and updating the cursor to `endCursor` on each ite
 
 **Mandatory filter — apply before any further processing:**
 
-- **Drop** every thread where `isResolved: true`. Resolved threads must never be evaluated, edited,
+- **Drop** every thread where `isResolved: true`. Resolved threads are never evaluated, edited,
   replied to, or resolved again.
 - **Route to Outdated Threads list** every thread where `isOutdated: true AND isResolved: false`.
   These are surfaced in the Step 6 report but not actioned.
@@ -60,55 +60,83 @@ threads into the running list and updating the cursor to `endCursor` on each ite
 Before reading any code:
 - Skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot, etc.) unless the concern
   would cause a **runtime error or silent data loss** if left unfixed. Cosmetic suggestions (add a
-  note, clarify a comment, improve docs) are noise — skip them regardless of how fixable they look.
-- Group remaining threads by `path` — build a map of `file → [threads]`
+  note, clarify a comment, improve docs) are noise — skip them however fixable they look.
+- Group remaining threads by `path` — a `file → [threads]` map
 
-This grouping is critical for Step 4: **each file is read once**, not once per comment.
+The grouping is what lets Step 4 read **each file once**, not once per comment.
 
-### Step 4: Evaluate threads, batched by file
+### Step 4: Challenge, then evaluate, batched by file
 
-Process the `file → [threads]` map from Step 3. For each file:
+Process the `file → [threads]` map. For each file:
 
-1. **Read the file once** — the full current state in the working tree
-2. **Read its test file once** (if it exists) — tests that validate flagged behavior are strong
-   evidence it's intentional
-3. **Evaluate all threads for this file** independently against the current code:
-   - Read each thread's comment body and line context within the already-loaded file
-   - **Check current file state first**: if the suggestion's proposed change is already present in
-     the working tree, classify as **Already Addressed** — no code change needed, just resolve the
-     thread
-   - Classify each as **Apply**, **Adapt**, **Reject**, **Defer**, or **Already Addressed**.
-     **Adapt** means the concern is valid but the proposed fix is not: accept the concern and write a
-     different edit, recording why the suggestion's version is not taken.
-   - For Apply/Adapt: collect all edits for this file before making any — apply them together in one
-     pass
-   - **Do not ask the user before acting** — this agent applies approved work immediately and
-     surfaces all verdicts in the final report, not mid-stream.
-     Surface all verdicts in the final report, not mid-stream.
+1. **Read the file once** — its full current state in the working tree
+2. **Read its test file once** (if one exists) — tests that validate the flagged behavior are strong
+   evidence it is intentional
+3. **Challenge each thread** against those two reads, before assigning any verdict (below). This
+   adds no reads: it works from what is already loaded.
+4. **Evaluate all threads for this file** independently against the current code:
+   - Read each comment body and its line context within the already-loaded file
+   - **Check current file state first**: if the proposed change is already present in the working
+     tree, it is **Already Addressed** — no code change, just resolve the thread
+   - Classify each as **Apply**, **Adapt**, **Reject**, **Defer**, **Already Addressed**, or
+     **Ask**. **Adapt** means the concern is valid and the proposed fix is not: accept the concern,
+     write a different edit, record why the suggestion's version is not taken.
+   - For Apply/Adapt: collect all edits for this file before making any — apply them together in
+     one pass
+   - Evaluation is silent and produces no side effects: no edit, reply, or resolution happens
+     until Step 7, and the verdicts go in the final report, not mid-stream.
 
 Never read the same file twice. Never re-read a file to evaluate a second comment on it.
 
+### Challenge each thread
+
+A verdict is only worth as much as the test behind it, so before classifying a thread answer three
+questions — the ones `.cursor/agents/crew-reviewer/references/consolidation.md` asks of a review
+finding — and cite the `path:line` that answers each:
+
+- **Is the premise present?** Does the code the comment describes exist as described in the loaded
+  file, or is the comment stale? A premise that is absent makes the thread `Already Addressed` when
+  the fix already landed and `Reject` when it never applied — the citation decides which.
+- **Is the chain traceable?** Follow the comment's conclusion through the code. Where the chain
+  breaks, the change it asks for does not buy the outcome it claims.
+- **Are the stakes real?** Name what concretely breaks on the code in front of you. A cost you
+  cannot place on a line is not a reason to change it.
+
+The answers set the thread's confidence in Step 5. Without them a comment whose premise is false is
+as easy to apply as one whose premise is true.
+
 ### Step 5: Prepare decisions (do not execute yet)
 
-For each evaluated thread, prepare the action but **do not apply any changes**:
+Score each thread 1-5 for whether the comment is right about this code, on the scale in
+`review_vocabulary.py` — `CONFIDENCE` and `confidence_scale()`, read the bands there rather than
+restating them. Then prepare the action, writing nothing yet:
 
-- **Apply/Adapt**: draft the exact edit (file, line range, before/after) — do not write to disk yet
-- **Reject**: prepare a clear rationale explaining the specific reason
-- **Defer**: note what it is and why it's out of scope for this change
-- **Already Addressed**: fix is already present in the working tree — no code change needed
+- **Apply/Adapt**: draft the exact edit (file, line range, before/after)
+- **Reject**: a rationale giving the specific reason and the `path:line` it rests on. An
+  unanchored rationale is unfalsifiable — the same rule the reviewer applies to its own findings.
+- **Defer**: what it is and why it is out of scope for this change
+- **Already Addressed**: the fix is present in the working tree — cite where
+- **Ask**: a `Reject` scoring below `ACTED_CONFIDENCE` from that same module cannot resolve the
+  thread. Resolving tells the reviewer "handled", which is only honest when the score says so. The
+  action becomes a question in the reply and the thread stays open.
 
 ### Step 6: Report and ask for approval
 
 Present the full report table. For Apply/Adapt threads, include the proposed edit (file, line range,
-summary of change). The **Proposed Reply** column shows the exact comment that would be posted:
+summary of change). The **Proposed Reply** column is the exact comment that would be posted. Render
+the score beside the verdict as `verdict · N`:
 
-| # | File | Reviewer | Verdict | Proposed Edit | Proposed Reply |
-|---|------|----------|---------|---------------|----------------|
-| 1 | path/to/file.ts:42 | @reviewer | Apply | Replace X with Y (lines 40-45) | Fixed in `<commit>`: <what changed and why>. |
-| 2 | path/to/file.ts:80 | @reviewer | Reject | — | I’m leaving this as-is because <specific reason>. |
+| # | File | Reviewer | Verdict · N | Proposed Edit | Proposed Reply |
+|---|------|----------|-------------|---------------|----------------|
+| 1 | path/to/file.ts:42 | @reviewer | Apply · 4 | Replace X with Y (lines 40-45) | Fixed in `<commit>`: <what changed and why>. |
+| 2 | path/to/file.ts:80 | @reviewer | Ask · 1 | — | Does <premise> hold at `path/to/file.ts:80`? I left it unchanged because <specific reason>. |
+| 3 | path/to/file.ts:120 | @reviewer | Reject · 4 | — | Not changing this: `path/to/file.ts:120` returns early, so <consequence> cannot follow. |
 | ... | ... | ... | ... | ... | ... |
 
-Summary counts: N apply / N adapt / N reject / N defer / N already addressed
+An `Ask` row carries a question, never a resolution: its verdict column reads `Ask · N` and the
+thread stays open.
+
+Summary counts: N apply / N adapt / N reject / N ask / N defer / N already addressed
 
 **Outdated Threads** (read-only — do not propose edits or resolve):
 
@@ -134,8 +162,8 @@ Only after the user responds:
   `tsc --noEmit -p <nearest tsconfig>`, and record it as skipped with that reason only when the repo
   has no no-emit form.
 
-**Thread comments** — for each approved thread, two operations (both IDs come from the Step 2
-query):
+**Thread comments** — for each approved thread whose action is not `Ask`, two operations (both IDs
+come from the Step 2 query). An `Ask` thread gets the reply alone, and stays open.
 
 Before drafting any reply, read `~/.cursor/rules/voice.mdc` and apply it: PR review replies are
 written under Carlos's name. If the file is unreadable, stop and report.
@@ -166,6 +194,10 @@ learned from the feedback, not what was applied mechanically:
 - What the reviewer caught that you missed, and why it matters or reveals a reusable pattern
 - What to watch for next time in similar code, if there is a genuinely new lesson
 
+A resolved thread whose verdict was Apply or Adapt is the same decision the reviewer pipeline
+records as an outcome, so the entry may cite it. Write nothing new for it: the PR thread is already
+the durable record.
+
 Write 1-3 plain-prose paragraphs. Show the title and prose, then ask:
 `Store this journal entry? (yes / no)`
 
@@ -185,11 +217,10 @@ say `journal: none`. On non-zero exit print `warning: memory unavailable` and co
 - **Always use `--json` with `gh` commands** — `gh pr view`, `gh pr list`, etc. without `--json`
   open a pager that freezes the VS Code terminal. Every `gh` call must either use `--json` or pipe
   through `| cat`.
-
-- `isOutdated: true` means the code has changed since the comment — these are surfaced in the
-  Outdated Threads section of the report, not actioned
-- Multiple comments in a thread = read all for context before deciding (first is the suggestion,
-  later are follow-ups and discussion)
+- `isOutdated: true` means the code has changed since the comment — surfaced in the Outdated Threads
+  section of the report, not actioned
+- Multiple comments in a thread = read all for context before deciding (the first is the suggestion,
+  later ones are follow-ups and discussion)
 - Never apply a suggestion that defeats the purpose of the original code
 - GraphQL is the only reliable way to get thread resolution state + both ID types in a single
   round-trip
