@@ -35,6 +35,12 @@ score: `[attention · 4]`. The `· <kind>` slot is separate and optional: includ
 clearly fits a `KINDS` value, omit it rather than inventing one. The label is never optional, and the
 score is never omitted for a finding that has one.
 
+The report body and the paste-ready comment are not the same text. The report is for the reader who
+ran the review and keeps the label, the score, and the snippet; the comment on the PR is written in
+your own review-comment voice (`voice.mdc`), and `persist` collects those into `comments.md` from each
+finding's `comment` field (see [evidence and comments](evidence-and-comments.md) under "Paste-ready
+comments").
+
 ````
 ## Review: <mode> — <summary>
 

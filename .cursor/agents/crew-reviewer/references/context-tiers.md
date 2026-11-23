@@ -122,6 +122,10 @@ pre-existing, which consolidation routes to `defer`. The map is orientation, nev
 still needs a verified `path:line` from the package. Do not treat layer boundaries as review
 boundaries — a finding that spans two layers cites hunks from both.
 
+**Explainer and hunk-note claims are not evidence either.** A persona treats a factual claim in
+`Explain:` (config keys, dependencies, unshown background) as unverified until its package grounds it.
+Same for `hunkNotes`.
+
 ### Spine files (size-gate strategy)
 
 A diff over roughly 30 changed files or 1,500 changed lines uses the spine strategy. The **spine** is
@@ -157,6 +161,10 @@ commands, in either harness. Read the patch with `~/.agent/bin/crew-pr-actions.p
 Repository guidance is the orchestrator's one local read; see the PR-mode paragraph in
 `references/dispatch.md` for its scope and its limits.
 
+**One base read per regression claim.** "This used to behave differently" is a claim about a tree you
+have not read, and asserting it from the head alone is a guess. The allowance, its label, and the
+fallback are in [evidence and comments](evidence-and-comments.md); it opens no local checkout.
+
 Two additions apply only to this mode:
 
 - **Contract in every package.** Include the compact `## PR contract` (description, linked tickets,
@@ -183,3 +191,17 @@ summary).
 
 Before dispatch, call `crew-mem.py context --mode review --paths <changed files>` once. Append its output
 under `## Repo memory` in every context package. On exit 2, append `warning: memory unavailable`.
+
+## Package build inputs
+
+`crew-assemble-packages.py` composes every package from files the review directory already holds, and
+two of them come from commands whose output nothing else redirects:
+
+```bash
+~/.agent/bin/crew-agent-context.py <every changed path> > "$REVIEW_ROOT/agent-context.json"
+~/.agent/bin/crew-mem.py context --mode review --paths <changed files> > "$REVIEW_ROOT/mem.md"
+```
+
+Write both in Step 5, before any package is assembled. A missing file is not an error to the tool: the
+package silently loses its guidance, or carries `warning: memory unavailable`. A non-zero exit can
+still write its file, so keep what was written and report the exit code.

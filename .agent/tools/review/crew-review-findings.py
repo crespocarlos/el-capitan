@@ -82,12 +82,14 @@ from review_personas import (  # noqa: E402,F401
 )
 from review_report import check_outcomes, outcome, persist  # noqa: E402,F401
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
+from review_commands import check_map, comments  # noqa: E402
 
 
 from review_workspace import claim, cleanup_stale, report, review_dir  # noqa: E402
 from review_cli import (  # noqa: E402,F401
     add_context_parsers,
     add_map_parsers,
+    add_map_reply_parser,
     add_mode_flags,
     add_normalize_parsers,
     add_review_dir_parser,
@@ -109,13 +111,15 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     add_normalize_parsers(commands)
     add_map_parsers(commands)
+    add_map_reply_parser(commands)
     add_context_parsers(commands)
     add_review_dir_parser(commands)
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
                 "validate-map": validate_map, "spec-context": spec_context,
-                "check-packages": check_packages, "review-dir": review_dir_command}
+                "check-packages": check_packages, "review-dir": review_dir_command,
+                "comments": comments, "check-map": check_map}
     try:
         return handlers[args.command](args)
     except (OSError, ValueError, json.JSONDecodeError) as error:

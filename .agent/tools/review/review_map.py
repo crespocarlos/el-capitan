@@ -7,6 +7,8 @@ missing or duplicated id is an error rather than a warning. The same check serve
 """
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
 from review_models import read_json_object
@@ -117,3 +119,25 @@ def check_coverage(hunks_path: Path, layers_path: Path) -> dict:
     if errors:
         raise ValueError("; ".join(errors))
     return {"hunks": len(known), "layers": len(layers)}
+
+
+def parse_map_block(reply: str) -> dict:
+    """The one fenced `json` block in a `reviewer-layers` reply, parsed; anything else raises.
+
+    Coverage is a hunk check, so a map with a stray comma inside its fence failed as
+    "not valid JSON" only after the whole review had been packaged, or not at all when the
+    orchestrator hand-repaired the block before writing it. Parsing here makes the failure
+    attributable to the one dispatch that produced it, at the step that receives the reply.
+    """
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", reply, re.DOTALL)
+    if len(blocks) != 1:
+        raise ValueError(
+            f"the layers reply holds {len(blocks)} fenced json blocks; reply with exactly one"
+        )
+    try:
+        payload = json.loads(blocks[0])
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the layers reply is not valid JSON: {error}") from None
+    if not isinstance(payload, dict) or not isinstance(payload.get("layers"), list):
+        raise ValueError("the layers reply must be a JSON object carrying a `layers` array")
+    return payload

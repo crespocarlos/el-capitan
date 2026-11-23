@@ -24,12 +24,15 @@ alternative, not a deviation, when all three hold:
    package and must be read in full before judging, and repeats only the delivery-independent
    instructions: reply text only, no artifact writes, the finding shape, and the mode.
 
-**When:** attempt inline first. By path only after that inline send truncates, fails to arrive, or is
-rejected for size — an observable event, and self-correcting where guessing at an output bound is not.
-A five-persona review measured at 640 KB (about 160k tokens of duplicate output) is the shape that
-triggers it. A package delivered by path is still the audit artifact: `<persona>.in.md` and
+**When:** attempt inline first. By path only when that inline send truncates, fails to arrive, or is
+rejected for size, or when the package exceeds **120,000 bytes** — above that the inline send is a
+call whose failure is predictable rather than a measurement worth paying for. A five-persona review
+measured at 640 KB (about 160k tokens of duplicate output) is the shape that hits both. Below the
+threshold, a failure is still the way to find out: guessing an output bound is the mistake this rule
+exists to prevent. A package delivered by path is still the audit artifact: `<persona>.in.md` and
 `<persona>.out.md` stay the pair `persist` requires, and the recorded package remains the one
-the persona read. Name the delivery in the report's `### Reviewers` section.
+the persona read. Name the delivery, and for a by-size delivery its byte count, in the report's
+`### Reviewers` section.
 
 **PR mode:** the package is the only repository evidence a persona may use. Every code excerpt must
 identify `path:line@headSHA7` and come from `gh api` at that head. A persona must not use the local

@@ -12,21 +12,48 @@ to check, and how the evidence reaches a persona.
 python3 ~/.agent/bin/crew-review-hunks.py "$REVIEW_ROOT/diff.patch" --out "$REVIEW_ROOT"
 ```
 
+Write the changed-path list in the same step, because nothing downstream can reconstruct it from the
+packages and the `--files` gates need it:
+
+```bash
+~/.agent/bin/crew-diff.sh --name-only > "$REVIEW_ROOT/paths.txt"   # self, changes
+~/.agent/bin/crew-pr-actions.py diff --pr <n> --repo <owner/repo> --name-only \
+  > "$REVIEW_ROOT/paths.txt"                                        # PR
+```
+
+`paths.txt` is that command's stdout, one path per line; no other step writes it.
+
 `hunks.json` holds the ids the coverage gate checks, `hunks.md` the index plus bodies for the mapping
 pass only, `hunks.index.md` the index alone for persona packages, and `package.diff` the diff with
 each generated file's hunks collapsed to one note line. Packages embed `package.diff`, never
 `diff.patch`.
 
-Dispatch `reviewer-layers` with `hunks.md`, extract its one fenced `json` block (without the
-backticks), and write that raw JSON to `$REVIEW_ROOT/layers.json`. No block, several blocks, or any
-text outside the block is invalid output. It reports no findings and is not a persona, so never add it
-to `--personas`. In PR mode the diff comes only from `crew-pr-actions.py diff`, which reads the PR
-head over the network and never the local checkout.
+Dispatch `reviewer-layers` with `hunks.md`, extract its one fenced `json` block, and write that raw
+JSON to `$REVIEW_ROOT/layers.json`. No block, several blocks, or any text outside the block is invalid
+output. Validate the block by parsing it before anything packages it:
+
+```bash
+~/.agent/bin/crew-review-findings.py check-map "$REVIEW_ROOT/layers.reply.md" \
+  --output "$REVIEW_ROOT/layers.json"
+```
+
+Save the reply verbatim as `layers.reply.md` first, then let the command parse and write the map. It
+fails on a stray comma inside the fence, which coverage would otherwise report only after every
+persona had run, and which a hand-repair before writing would hide entirely. On failure re-dispatch
+`reviewer-layers` once with the parser's error text. It reports no findings and is not a persona, so
+never add it to `--personas`. In PR mode the diff comes only from `crew-pr-actions.py diff`, which
+reads the PR head over the network and never the local checkout.
 
 Check the map before any persona runs: `crew-review-findings.py coverage --hunks
 "$REVIEW_ROOT/hunks.json" --layers "$REVIEW_ROOT/layers.json"`. On failure, re-dispatch
 `reviewer-layers` once with the error text; if it still fails, delete `layers.json`, continue without
 a map, and name the gap in the report.
+
+**A map assertion must be grounded in its own hunks.** `reviewer-layers` sees hunk bodies and no
+repository, so an explainer naming a config key, a dependency, or a file the diff does not touch is a
+guess that three personas then restate as a `[needs more info]`. When reading the map, drop any
+explainer or `hunkNotes` claim its hunks do not show, and when reviewing a map that reached a real
+run, verify such a claim against the diff before quoting it.
 
 If `crew-review-hunks.py` exits non-zero the diff is empty or malformed: report it and continue
 without a map. Personas then get their normal size-gated package with no `## Reading map` section.
@@ -50,7 +77,9 @@ Keys: `repo` (path), `mode` (a markdown block), `size_gate` (one line), `consume
 end, label], …]`), `prompt_files` (`[path, …]`), `guidance_keep` (`{persona: [level-2 heading prefix,
 …]}`, optional), and `mode_kind` (`"pr"` when the review reads a PR head, which refuses `consumers`
 and `prompt_files` because those would come from the local checkout). Exact shapes: the tool's
-docstring.
+docstring — read it at `.agent/tools/review/crew-assemble-packages.py` in the repository, or through
+`readlink -f ~/.agent/bin/crew-assemble-packages.py` when the repository is not the working tree.
+`~/.agent/bin` holds symlinks, so a search tool scoped there finds nothing.
 
 Two settings keep the size honest. The prompt tier elides the regions `package.diff` already quotes
 and keeps every unchanged line, so a rule that collides with surrounding text stays visible.

@@ -42,8 +42,11 @@ Guidelines:
 - **Order inside a layer:** put hunks in the order they should be read, which need not be file order.
 - **Hunk notes:** `hunkNotes` holds a 1–3 sentence note for hunks that deserve one ("the default
   changed from X to Y", "this is where the bug fix is"). Skip trivial hunks.
-- **Explainer:** 3–10 sentences or bullets, markdown. What the layer changes and why, how it
-  connects to the previous layers, and background the diff does not show.
+- **Explainer:** 3–10 sentences or bullets, markdown. What the layer changes and why, and how it
+  connects to the previous layers. Describe only what the hunks show: you are reading an index and
+  hunk bodies, not the repository, so a claim about a config key, a dependency, or a file the diff
+  does not touch is a guess a persona will repeat as fact. When background from outside the diff
+  would help, phrase it as a question in `reviewFocus` instead of an assertion here.
 - **Review focus:** 1–4 bullets of what deserves scrutiny here — edge cases, invariants, ordering,
   backwards compatibility, error paths. This is where a suspicion goes, phrased as a question the
   persona should answer. For a `prompts` layer, ask whether the output contract matches what the
@@ -73,4 +76,6 @@ the layer map, and nothing after it:
 
 `crew-reviewer` writes that block to `layers.json` unchanged, so inventing or omitting a hunk id there
 fails the coverage gate at persist time. Validate before replying: every id from the hunk index
-appears exactly once across all layers, no layer is empty, and no id is invented.
+appears exactly once across all layers, no layer is empty, and no id is invented. The block must
+parse as JSON on its own; the orchestrator checks that with `crew-review-findings.py check-map` and
+re-dispatches you once if it does not.

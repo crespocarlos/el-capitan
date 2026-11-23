@@ -4,6 +4,7 @@
 # Usage (source, not exec):
 #   source crew-diff.sh --stat          # sets BASE; prints --stat
 #   source crew-diff.sh --name-status   # sets BASE; prints --name-status
+#   source crew-diff.sh --name-only     # sets BASE; prints one changed path per line
 #   source crew-diff.sh --full          # sets BASE, CHANGED_FILES; prints full diff
 #   source crew-diff.sh --full -- f1 f2 # scoped to specific files
 #
@@ -90,13 +91,19 @@ EOF
     --name-status)
       git diff --name-status "$range" -- "${files[@]}"
       ;;
+    --name-only)
+      # The changed-path list a review writes to `paths.txt`. It is a separate mode because
+      # `--full` mixes the names and the patch on one stream, so extracting them meant a second
+      # git call the documented procedure never named.
+      git diff --name-only "$range" -- "${files[@]}"
+      ;;
     --full)
       CHANGED_FILES=$(git diff --name-only "$range" -- "${files[@]}")
       export CHANGED_FILES
       git diff "$range" -- "${files[@]}"
       ;;
     *)
-      echo "get-diff: unknown mode '$mode' (use --stat, --name-status, or --full)" >&2
+      echo "get-diff: unknown mode '$mode' (use --stat, --name-status, --name-only, or --full)" >&2
       return 1
       ;;
   esac

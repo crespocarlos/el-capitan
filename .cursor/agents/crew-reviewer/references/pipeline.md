@@ -20,19 +20,18 @@ mtime rather than the run you are in.
 
 `paths.txt` is written by the diff step below and does not exist before it. A script that needs the
 changed paths must run that step first; treat a missing `paths.txt` as "the review has not reached
-the diff", not as a broken directory. Persist each
+the diff", not as a broken directory. The exact command differs per mode and is named in
+[packaging](packaging.md) under "Layer map": `crew-diff.sh --name-only` for self and changes,
+`crew-pr-actions.py diff --name-only` for PR. Persist each
 dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`, where
 `<persona>` is one of `adversarial`, `architecture`, `code-quality`, `product-flow`,
 `prompt-quality`, `explorer`.
 
 **Command surface — read it, do not probe it.** A failed invocation plus a `--help` round trip costs
-two tool calls to learn an argument shape this section already states. Two entry points are easy to
-confuse: `crew-review-hunks.py` takes the diff as a **positional** argument (there is no `--diff` flag),
-and `crew-review-findings.py normalize` takes its input positionally (there is no `--input` flag), as
-does `spec-context` (the SPEC.md path, with `--persona`).
-`coverage` is the gate for a reviewer `layers.json`; `validate-map` belongs to `crew explain` and
-rejects a `layers.json` for lacking `--review`. Every remaining argument shape is specified in the
-numbered steps below, next to the invocation that uses it.
+two tool calls for an argument shape stated here. Positional, not flag: `crew-review-hunks.py` takes
+the diff, `normalize` its input, `spec-context` the SPEC.md path. `coverage` gates a reviewer
+`layers.json`; `validate-map` serves `crew explain`; `check-map` parses a `reviewer-layers` reply;
+`comments` writes the paste-ready bodies.
 
 **PR mode has no task.** A PR review produces no SPEC.md transition, `crew commit` never reads its
 output, and `crew-resolve-task-dir.py` answers with the newest non-DONE task for the current branch —
@@ -44,7 +43,10 @@ head, because PR mode fetches nothing.
 task's `REVIEW.md`.
 
 1. Write candidate findings to `$REVIEW_ROOT/candidates.json` as a JSON list (or `{"findings":
-   [...]}`) with `{persona, label, title, kind, file, line, disposition, reason, memory_ids, hunks}`.
+   [...]}`) with `{persona, label, title, kind, file, line, disposition, evidence, verified,
+   validation, confidence, excerpt, comment, reason, memory_ids, hunks}`. The authoritative set is
+   `known` in `review_models.py`; `excerpt` is required on a PR-head `blocking`/`attention` finding,
+   and `comment` on each emitted non-nit finding in PR mode.
    `persona` uses the names above (a list when several flagged it); `kind` is required and its values
    are `KINDS` in `crew-review-findings.py`; `disposition` is `patch`,
    `decide`, `defer`, `dropped`, or `merged`; `hunks` lists the ids from `hunks.json` whose change
@@ -52,8 +54,7 @@ task's `REVIEW.md`.
 2. Run `~/.agent/bin/crew-review-findings.py normalize "$REVIEW_ROOT/candidates.json" --output
    "$REVIEW_ROOT/consolidation.json"`, adding `--hunks "$REVIEW_ROOT/hunks.json"` when that file
    exists and `--files <path1> <path2> …` always. The evidence checks run by default, so there is no
-   flag to remember: `--lenient` is the only way to skip them, and this pipeline passes it. `--files`
-   is what moves the evidence-path gate to
+   flag to remember and no flag to pass. `--files` is what moves the evidence-path gate to
    this step: the same call rejects a finding whose `evidence` names an unchanged file, and
    without `--files` here that rejection arrives after every persona has run. Pass the same path set
    you will pass to `persist`. With `--hunks`, an emitted `blocking` or `attention` finding must cite
@@ -67,8 +68,10 @@ task's `REVIEW.md`.
    restated with their rationale in `consolidation.md` — read them there rather than copying the
    numbers, so a cap change cannot leave this file stale. In PR mode evidence must use
    the PR-head form `path:line@headSHA7`, and the evidence excerpt belongs in the relevant persona
-   `.in.md` or validator prompt. It canonicalizes persona names, assigns SHA-1 fingerprints over
-   `file|label|normalized title`, and merges exact duplicates. When `$REVIEW_ROOT/layers.json`
+   `.in.md` or validator prompt. A finding verified at a PR head also carries `excerpt`: the lines
+   actually read, stored on the record so it re-reads without the network
+   ([evidence and comments](evidence-and-comments.md)). It canonicalizes persona names, assigns SHA-1
+   fingerprints over `file|label|normalized title`, and merges exact duplicates. When `$REVIEW_ROOT/layers.json`
    exists, `persist` also runs the hunk coverage gate (step 3).
 3. For every failed, skipped, or truncated dispatch, write `<persona>.out.md` before persistence
    with `status: failed|skipped|truncated`, the failure or coverage gap, and `finding: none`. A
@@ -109,27 +112,25 @@ task's `REVIEW.md`.
    findings`, so the reader sees which layers drew scrutiny. Do not write that section yourself.
    With `hunks.json` present, `persist` repeats the hunk-id check from `normalize`.
    `persist` writes `REVIEW.md` (`REVIEW.<mode>.md` for spec and idea) next to the review
-   directories (task-level), and appends `defer` findings to `DEFERRED.md` in the same place.
+   directories (task-level), and appends `defer` findings to `DEFERRED.md` and `dropped` findings to
+   `DROPPED.md` in the same place, because a finding cut for the nit budget was otherwise invisible.
 
-Write scratch JSON, scripts, and assembled context packages with the harness's edit or write tool. On
-Cursor the permitted set is `/tmp` plus the task directory under `~/.agent/tasks/` and `~/.agent/`
-generally — measured, not assumed: the tool wrote `/tmp/crew-write-tool-probe.md` on the harness in
-use. `check-write-boundary.sh` allows `$HOME/.agent/`, `$HOME/.claude/`, `$HOME/.cursor/`, and
-`/tmp`; a write outside all four is denied by the hook.
+**PR mode also writes `comments.md`**, one paste-ready body per anchor from each finding's `comment`
+field; a missing body costs only the file, and nothing here calls `gh`. Body shape, the re-render
+command, and the excerpt and base-read rules: [evidence and comments](evidence-and-comments.md).
 
-If the tool rejects the path in the harness you are on, produce and consume the file in one command
-with a heredoc (`python3 - <<'PY' … PY`) instead of hunting for another location. A heredoc is also the
-right choice when a scratch file genuinely should not persist — a payload consumed by the same
-command, or content whose formatting the shell would mangle. What it is not is a default: routing every
-scratch file through a shell hides the write from the edit log.
+Write scratch JSON, scripts, and packages with the harness's edit or write tool. Cursor permits
+`/tmp`, `~/.agent/tasks/`, and `~/.agent/`; `check-write-boundary.sh` allows `$HOME/.agent/`,
+`$HOME/.claude/`, `$HOME/.cursor/`, and `/tmp`. When the tool rejects a path, produce and consume the
+file in one heredoc command; a heredoc is wrong as a default, because it hides the write from the
+edit log.
 
-Creating `$REVIEW_ROOT` under `~/.agent/tasks/` fails with `Operation not permitted` in a sandboxed
-shell (Cursor; Claude Code writes it directly). Run the `mkdir`, `normalize`, and `persist` commands
-with the harness's permission escalation from the start, not after the first failure, and skip that
-step on a harness that does not sandbox the shell.
+`$REVIEW_ROOT` under `~/.agent/tasks/` fails with `Operation not permitted` in a sandboxed shell
+(Cursor; Claude Code writes it directly). Run `mkdir`, `normalize`, and `persist` with the harness's
+permission escalation from the start, and skip that step on a harness that does not sandbox.
 
-On exit 2 or any persistence failure, print the error and state `review not persisted` in the
-output; do not skip silently. State it only when no `REVIEW.md` was written.
+On exit 2 or any persistence failure, print the error and state `review not persisted`; state it only
+when no `REVIEW.md` was written.
 
 ## Pipeline Integration (self-review mode only)
 

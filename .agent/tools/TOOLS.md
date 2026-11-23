@@ -176,6 +176,22 @@ module.
   reviewer's belief, never a severity, and is never summed into a review-level number.
   `normalize` and `persist` apply those gates by default; `--lenient` is the escape and `--strict`
   is a no-op alias kept one cycle so a script written against the old default still runs.
+  A fourth field, `excerpt`, is required on a `blocking` or `attention` finding whose evidence uses
+  the PR-head form `path:line@sha`: the 2-3 lines actually read, stored on the record. Without it the
+  record cannot be re-read once the session that held network access is gone; re-checking four such
+  findings cost five `gh api` reads and three file reads. A working-tree finding needs none.
+- `crew-review-findings.py comments --review-dir <dir> [--findings <f>] [--head <sha>]` writes
+  `comments.md`, one paste-ready body per anchored finding, from the `comment` field each record
+  carries. It exits 1 naming every finding still missing a body, so a partial file never reads as the
+  whole set. `persist --mode pr` writes the same file itself and reports its path, warning rather than
+  failing when a body is missing, because the report is valid without it. Nothing in either path
+  calls `gh`: posting is external state the user asks for separately. `persist` also records
+  `dropped` findings in `DROPPED.md` beside the deferred ones, because a finding cut for the nit
+  budget was otherwise invisible to the reviewer who raised it.
+- `crew-review-findings.py check-map <reply> [--output layers.json]` parses a `reviewer-layers` reply
+  before anything packages it: exactly one fenced `json` block, valid JSON, a `layers` array. A stray
+  comma inside the fence is otherwise reported by the coverage gate only after every persona has run,
+  or hidden entirely when the block is hand-repaired before writing.
 - `crew-review-findings.py outcome` appends one JSONL record per decision `crew review address`
   makes; `outcomes --review-dir <dir> --acted <id> …` reads them back and exits 1 naming any acted
   finding with no record, which is what fails a summary that skipped one. `outcome --confidence N

@@ -42,6 +42,29 @@ def test_normalize_canonicalizes_and_merges_duplicate_personas(tmp: Path) -> Non
     assert len(payload["duplicates"]) == 1
 
 
+def test_normalize_keeps_the_excerpt_and_comment_a_second_lens_supplied(tmp: Path) -> None:
+    """Two lenses flagging one defect must not lose the excerpt or comment either supplied."""
+    source = tmp / "candidates.json"
+    source.write_text(json.dumps([
+        {"title": "Missing null guard", "label": "blocking", "kind": "correctness", "file": "a.ts",
+         "line": 3, "persona": "adversarial", "disposition": "patch", "verified": True,
+         "confidence": 4, "evidence": "a.ts:3@abc1234",
+         "validation": "read the caller and confirmed the guard is absent"},
+        {"title": "  missing NULL   guard ", "label": "blocking", "kind": "correctness",
+         "file": "a.ts", "line": 3, "persona": "code-quality", "disposition": "patch",
+         "verified": True, "confidence": 3, "evidence": "a.ts:3@abc1234",
+         "excerpt": "const value = row.data;\nvalue.length;",
+         "validation": "read the same call site",
+         "comment": "Could this read hit a row with no data?"},
+    ]))
+    result = run("normalize", str(source))
+    assert result.returncode == 0, result.stderr
+    merged = json.loads(result.stdout)["findings"][0]
+    assert merged["excerpt"].startswith("const value"), merged
+    assert merged["comment"] == "Could this read hit a row with no data?", merged
+    assert merged["persona"] == ["adversarial", "code-quality"], merged
+
+
 def test_normalize_rejects_unknown_persona(tmp: Path) -> None:
     source = tmp / "bad.json"
     source.write_text(json.dumps([{"title": "x", "label": "nit", "persona": "nobody"}]))
@@ -146,6 +169,17 @@ def test_normalize_requires_verified_evidence_by_default(tmp: Path) -> None:
         assert run("normalize", str(source)).returncode == 2
     source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3@abc1234",
                                    "validation": "read it at the PR head"}]))
+    # A PR-head finding cannot be re-read from the checkout, so the record must carry the lines it
+    # verified: `path:line@sha` alone needs the network and a session that still has access.
+    head_gated = run("normalize", str(source))
+    assert head_gated.returncode == 2 and "records no excerpt" in head_gated.stderr, head_gated.stderr
+    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3@abc1234",
+                                   "validation": "read it at the PR head",
+                                   "excerpt": "const guard = false;"}]))
+    assert run("normalize", str(source)).returncode == 0
+    # A working-tree finding is re-readable from the checkout, so it needs no stored copy.
+    source.write_text(json.dumps([{**base, "verified": True, "evidence": "a.ts:3",
+                                   "validation": "read a.ts:1-9"}]))
     assert run("normalize", str(source)).returncode == 0
     many = [{**base, "title": f"t{i}", "label": "nit"} for i in range(8)]
     source.write_text(json.dumps(many))

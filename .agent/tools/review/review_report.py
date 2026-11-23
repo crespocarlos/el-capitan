@@ -14,7 +14,6 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.files import atomic_write
@@ -30,9 +29,10 @@ from review_findings import (
 )
 from review_personas import GENERATED_SECTIONS
 from review_persist_gates import check_personas_present, strict_gates
-from review_render import label_with_score
 from review_workspace import record_task_review
+import review_comments as comments
 import review_outcomes as outcomes
+import review_records as records
 
 
 def heading_lines(text: str) -> set[str]:
@@ -89,33 +89,14 @@ def reviewed_at(args: argparse.Namespace, report: str) -> str:
     return report.rstrip() + f"\n\nReviewed at: {head}\n"
 
 
-def append_deferred(owner: Path, rows: list[Finding]) -> None:
-    """Append each deferred finding to DEFERRED.md, skipping one already recorded."""
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    path = owner / "DEFERRED.md"
-    existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    with path.open("a", encoding="utf-8") as handle:
-        for f in rows:
-            where = f"{f.text('file')}:{f.text('line')}".strip(":")
-            reason = f.text("reason") or "pre-existing or out of scope"
-            # Dedupe on the identity that survives a score change: the title and its anchor. The
-            # rendered label carries the score, so keying on it would re-append every entry written
-            # before the field existed and every finding whose score moved after it was deferred.
-            if f"{f.title} — `{where}`" in existing:
-                continue
-            handle.write(f"- [{stamp}] {label_with_score(f)} {f.title} — `{where}` — {reason}\n")
+def append_deferred(owner: Path, rows: list[Finding]) -> dict[str, int]:
+    """Record the deferred and dropped findings beside the report; see `review_records`."""
+    return records.append(owner, rows)
 
 
-def persist(args: argparse.Namespace) -> int:
-    """Write the report, the coverage section, and the deferred findings, after every gate."""
-    owner = validate_review_dir(args)
-    findings = read_findings(args.findings) if args.findings else []
-    check_personas_present(args)
-    coverage_section = coverage_gap = ""
-    strict = strict_mode(args)
-    if strict:
-        coverage_section, coverage_gap = strict_gates(args, owner, findings)
-    report = args.report.read_text(encoding="utf-8")
+def assemble_report(args: argparse.Namespace, report: str, coverage_section: str,
+                    coverage_gap: str) -> str:
+    """The report body with its generated sections, before the commit is recorded on it."""
     # The two generated sections are derived from --findings and --files, so a report carrying its
     # own copy would render the table twice and a reader could not tell which is authoritative.
     # Match a real level-3 heading only: a finding may quote one verbatim.
@@ -133,7 +114,22 @@ def persist(args: argparse.Namespace) -> int:
         print(f"warning: {coverage_gap}", file=sys.stderr)
         report = report.rstrip() + f"\n\n### Coverage\n- {coverage_gap}\n"
     if args.files:
-        report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(f"- `{name}`\n" for name in args.files)
+        report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(
+            f"- `{name}`\n" for name in args.files)
+    return report
+
+
+def persist(args: argparse.Namespace) -> int:
+    """Write the report, the coverage section, and the deferred findings, after every gate."""
+    owner = validate_review_dir(args)
+    findings = read_findings(args.findings) if args.findings else []
+    check_personas_present(args)
+    coverage_section = coverage_gap = ""
+    strict = strict_mode(args)
+    if strict:
+        coverage_section, coverage_gap = strict_gates(args, owner, findings)
+    report = assemble_report(args, args.report.read_text(encoding="utf-8"),
+                             coverage_section, coverage_gap)
     report = reviewed_at(args, report)
     if strict:
         # Per-finding rules always; the path-scoped evidence gate only when a path set exists. A spec
@@ -142,15 +138,22 @@ def persist(args: argparse.Namespace) -> int:
         check_findings([f for f in findings if f.is_emitted()])
         if args.files:
             check_strict([f for f in findings if f.is_emitted()], args.files)
-    rows = [f for f in findings if f.disposition == "defer"]
+    rows = [f for f in findings if f.disposition in records.RECORDED_DISPOSITIONS]
     args.review_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(args.review_dir / "REVIEW.md", report)
     task_report = "REVIEW.md" if args.mode in CODE_MODES else f"REVIEW.{args.mode}.md"
     atomic_write(owner / task_report, report)
     record_task_review(str(owner), args.review_dir)
-    if rows:
-        append_deferred(owner, rows)
-    print(json.dumps({"review": str(owner / task_report), "deferred": len(rows)}))
+    counts = append_deferred(owner, rows) if rows else {}
+    written = [str(owner / task_report)]
+    drafted = comments.write_for_mode(args.review_dir, findings, args.mode, args.head)
+    if drafted:
+        written.append(str(drafted))
+    print(json.dumps({"review": written[0],
+                      "deferred": sum(1 for f in rows if f.disposition == "defer"),
+                      "dropped": sum(1 for f in rows if f.disposition == "dropped"),
+                      "appended": counts.get("DEFERRED.md", 0) + counts.get("DROPPED.md", 0),
+                      **({"comments": written[1]} if len(written) > 1 else {})}))
     return 0
 
 

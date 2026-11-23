@@ -130,6 +130,27 @@ def check_findings(findings: list[Finding]) -> None:
                     f"finding {f.title!r} is verified but records no validation sentence; "
                     "state what the verification read and concluded"
                 )
+            require_excerpt(f)
+
+
+def require_excerpt(finding: Finding) -> None:
+    """A finding verified at a PR head carries the lines it verified, so the record proves itself.
+
+    Scoped to the `path:line@sha` form, because that read cannot be repeated locally: re-checking four
+    such findings cost five `gh api` reads and three file reads. A working-tree finding needs none.
+    """
+    evidence = None if finding.evidence is ABSENT else finding.evidence
+    if not (isinstance(evidence, str) and "@" in evidence):
+        return
+    excerpt = None if finding.excerpt is ABSENT else finding.excerpt
+    if finding.label in {"blocking", "attention"} and not (
+        isinstance(excerpt, str) and excerpt.strip()
+    ):
+        raise ValueError(
+            f"{finding.label} finding {finding.title!r} is verified at {evidence} but records no "
+            "excerpt; paste the 2-3 verified lines under `excerpt`, or the record cannot be re-read "
+            "without the network"
+        )
 
 
 def is_path_prefix(name: str, location: str) -> bool:

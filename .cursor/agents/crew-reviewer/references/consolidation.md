@@ -165,6 +165,10 @@ Label order, also used for deduplication: `[blocking]` > `[attention]` > `[needs
 
 Both modes use one flat numbered list; severity is an inline label, never a section.
 
+**Nit budget tie-break.** With more nits than `MAX_NITS`, order by evidence strength and keep the top:
+a cost shown in the diff outranks one argued, and two personas outrank one lens's polish. Record what
+you cut as `dropped` with the reason, so its reviewer finds it in `DROPPED.md`.
+
 | Label | Meaning |
 | --- | --- |
 | `[blocking]` | Must fix before merge / must resolve before proceeding |

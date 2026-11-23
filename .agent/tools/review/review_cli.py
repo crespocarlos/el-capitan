@@ -93,7 +93,7 @@ def add_map_parsers(commands) -> None:
 
 
 def add_context_parsers(commands) -> None:
-    """`spec-context`, `check-packages`, and the two outcome subcommands."""
+    """`spec-context`, `check-packages`, `comments`, and the two outcome subcommands."""
     spec_parser = commands.add_parser(
         "spec-context", help="print the part of SPEC.md one persona's package carries")
     spec_parser.add_argument("--persona", required=True)
@@ -124,3 +124,22 @@ def add_context_parsers(commands) -> None:
     check_parser.add_argument("--review-dir", required=True, type=Path)
     check_parser.add_argument("--acted", nargs="*", default=[],
                               help="fingerprints this run applied or rejected; each needs one")
+    comments_parser = commands.add_parser(
+        "comments", help="write comments.md, one paste-ready body per anchored finding")
+    comments_parser.add_argument("--review-dir", required=True, type=Path)
+    comments_parser.add_argument("--findings", type=Path,
+                                 help="consolidation.json; defaults to the one in --review-dir")
+    comments_parser.add_argument("--head", default="",
+                                 help="the reviewed SHA, recorded in the draft")
+    comments_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                                 help="bound the printed summary")
+
+
+def add_map_reply_parser(commands) -> None:
+    """`check-map`: parse a reviewer-layers reply before it is written as `layers.json`."""
+    parser = commands.add_parser(
+        "check-map", help="parse a reviewer-layers reply and optionally write layers.json")
+    parser.add_argument("reply", type=Path, help="the file holding the reply text")
+    parser.add_argument("--output", type=Path, help="write the parsed map here")
+    parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
+                        help="bound the printed summary")

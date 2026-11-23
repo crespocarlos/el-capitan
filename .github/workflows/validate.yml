@@ -45,6 +45,9 @@ jobs:
       - name: Review evidence gates (strict default)
         run: python3 evals/tools/test_review_strict_default.py
 
+      - name: Review comments, dropped records, layer-reply parse
+        run: python3 evals/tools/test_review_comments.py
+
       - name: Review outcome records
         run: python3 evals/tools/test_review_outcome.py
 

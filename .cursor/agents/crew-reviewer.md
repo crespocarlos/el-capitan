@@ -92,9 +92,12 @@ user-visible flow.
 
 Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md). Call
 `~/.agent/bin/crew-agent-context.py`
-**once**, passing every changed or reviewed path as an argument — it takes `paths ...` and returns
-each distinct guidance file's content exactly once under `files`. One call per path re-reads the same
-`AGENTS.md` for every file in the same directory, which is how a handful of lines of guidance becomes
+**once**, passing every changed or reviewed path as an argument, and redirect its output to
+`$REVIEW_ROOT/agent-context.json` — `crew-assemble-packages.py` reads that file and silently loses
+the guidance section when it is absent. Do the same for memory: `crew-mem.py context --mode review
+--paths <changed files> > "$REVIEW_ROOT/mem.md"`. It takes `paths ...` and returns each distinct
+guidance file's content exactly once under `files`. One call per path re-reads the same `AGENTS.md`
+for every file in the same directory, which is how a handful of lines of guidance becomes
 tens of kilobytes of package. Include the returned guidance in the package, from repository root to
 nearest folder.
 
@@ -150,9 +153,11 @@ Follow [consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.m
 Follow [output formats](~/.cursor/agents/crew-reviewer/references/output-formats.md),
 [auto-apply](~/.cursor/agents/crew-reviewer/references/auto-apply.md), and [pipeline
 persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md). The reply is `report.md` rendered verbatim — never a
-rewrite from your own notes. End it with a `### Reviewers` section naming how each package was
-delivered (inline, or by path per the shared dispatch instructions), adding a lens with its gap only
-when that persona failed, was truncated, or returned partial coverage (blocked reads, unread files).
+rewrite from your own notes. In PR mode also report the `comments.md` path from `persist`, one paste-ready
+body per anchored finding, and say that nothing was posted. End with a `### Reviewers` section naming
+how each package was delivered (inline, or by path per the shared dispatch instructions, with the byte
+count when the size threshold decided it), adding a lens with its gap only when that persona failed,
+was truncated, or returned partial coverage (blocked reads, unread files).
 
 ## Step 9: extensibility
 

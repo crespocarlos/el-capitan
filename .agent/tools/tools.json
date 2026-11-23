@@ -750,6 +750,33 @@
       "smoke": "imported by crew-review-findings.py"
     },
     {
+      "name": "review_comments.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_records.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_commands.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
       "name": "review_parse.py",
       "dir": "review",
       "kind": "module",

@@ -49,6 +49,9 @@ index and `L` the line; the score is a literal band, so neither is copied into t
 - With a hunk index in the package, a `[blocking]` or `[attention]` finding also cites the hunk ids
   that cause it, next to the anchor: `[attention · 4] src/a.ts:42 (h7) — …`.
 - Quote the wording, line, or behavior verbatim; a paraphrase is an anchor nobody can verify.
+- When you verified a claim at a PR head (`path:line@sha`), the orchestrator records the lines you
+  read; it is not your field to fill. A claim you could only verify against a base revision is
+  reported as `[needs more info]` naming the base excerpt you need.
 - One issue per finding. Split two problems even when they share a root cause, or one fix hides the
   other from every downstream count.
 - Say whether the defect pre-exists: if its cause is in code or text the change does not touch, say
