@@ -73,7 +73,7 @@ def test_decide_appears_in_every_enumeration() -> None:
         found = " ".join(re.findall(pattern, text))
         assert found, f"{name}: the enumeration is not found by {pattern!r}"
         assert spelling in found, f"{name} omits Decide: {found[:120]!r}"
-    step_seven = text[text.index("### Step 7:"):text.index("### Step 8:")]
+    step_seven = text[text.index("### Step 7:"):text.index("## Notes")]
     assert "`Decide` thread" in step_seven, "a Decide thread must be scoped out of resolution"
 
 
@@ -114,6 +114,27 @@ def test_the_eval_is_reported_but_never_required() -> None:
     assert "which eval would measure it" in text, "the report still names what would measure it"
     for gate in ("unless an eval is named", "requires an eval", "without both", "must name an eval"):
         assert gate not in text, f"the eval became a gate: {gate!r}"
+
+
+def test_every_verdict_is_refuted_before_it_is_reported() -> None:
+    """A verdict must survive a counter-argument, and the row must say so."""
+    text = prompt()
+    assert "Refute every verdict once" in text, "the refutation pass is missing"
+    assert "refuted:" in text, "the report row records the refutation"
+    assert "no new reads" in text or "No new reads" in text, "refutation must not add reads"
+    reference = (Path(__file__).resolve().parents[2]
+                 / ".cursor/agents/crew-pr-resolver/references/refuting-a-verdict.md")
+    assert reference.is_file(), "the per-verdict counter-argument reference is missing"
+    body = reference.read_text(encoding="utf-8")
+    for verdict in ("Reject", "Apply", "Adapt", "Decide", "Already Addressed", "Defer", "Ask"):
+        assert verdict in body, f"the reference does not say how to refute a {verdict}"
+
+
+def test_the_report_is_published_even_with_nothing_to_apply() -> None:
+    """Zero edits is a result: the table and questions still go out."""
+    text = prompt()
+    assert "Publish this report even when nothing can be applied" in text
+    assert "Zero edits is a result, not an absence" in text
 
 
 def test_the_prompt_names_no_foreign_target() -> None:

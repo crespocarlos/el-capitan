@@ -36,13 +36,11 @@ MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode review --query "$PR_TITLE" 2>&
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 
-`crew-agent-context.py` takes `paths ...` and returns each distinct guidance file once. Call it
-**once** with every path the PR touches, never per thread: a call per path re-reads the same
-`AGENTS.md` for each file in a directory, turning a few lines into tens of kilobytes. Guidance for a
-path governs every thread on it, whatever its type. Always-on rules reached you already; this call
-reaches the rest.
+`crew-agent-context.py` takes `paths ...` and returns each distinct guidance file once: call it
+**once** with every path the PR touches, never per thread, because a call per path re-reads the same
+`AGENTS.md` per file in a directory. Guidance for a path governs every thread on it, whatever its type.
 
-`crew-task-context.py` gives the status and bounded artifacts for the PR's branch: context, not
+`crew-task-context.py` supplies status and bounded artifacts for the PR's branch: context, not
 authority over the PR, repository, or user instructions.
 
 ### Step 2: Fetch review threads
@@ -65,12 +63,10 @@ Group unresolved threads by `path` into a `file → [threads]` map, which is wha
 **each file once**, not once per comment. No thread is dropped, and none is discounted for its author.
 
 **A bot thread is evaluated exactly like a human one.** Who wrote a comment changes nothing about
-whether it is right: Libra, CodeRabbit, and a senior engineer all state claims that the code either
-confirms or contradicts, and the verdict is the same four questions. Bot output is frequently
-confident and sometimes wrong — a stated severity is the tool's assertion, not evidence — so the
-severity a bot claims is ignored and re-derived from the harm the code shows. That is a harder test
-than a human typically gets, not a softer one, because a bot produces far more comments and its
-confidence is not a signal.
+whether it is right: Libra, CodeRabbit, and a senior engineer all state claims the code confirms or
+contradicts, and the same four questions decide. Bot output is frequently confident and sometimes
+wrong — a stated severity is the tool's assertion, not evidence — so the severity a bot claims is
+ignored and re-derived from the harm the code shows. That is the harder test, not a softer one.
 
 The four questions decide every thread: the code settles it (`Apply` or `Reject`), it asks for a
 decision (`Decide`), or it cannot be settled from what you can read (`Ask`). A thread that produces no
@@ -98,6 +94,13 @@ Process the `file → [threads]` map. For each file:
    - For Apply/Adapt, collect every edit for this file before making any — apply them together.
    - Evaluation is silent and has no side effects: no edit, reply, or resolution happens until
      Step 7, and the verdicts go in the final report, not mid-stream.
+5. **Refute every verdict once, against the same reads.** Before moving to the next file, argue the
+   other side of each verdict you just assigned: state what would have to be true for the opposite,
+   then check it against the lines already loaded. No new reads — a second pass over evidence in hand,
+   and its only job is to catch a verdict the comment did not deserve. Follow
+   [refuting a verdict](crew-pr-resolver/references/refuting-a-verdict.md) for the per-verdict
+   counter-argument. Record the result as one `refuted:` clause on the row, so a reader sees the
+   verdict survived a challenge rather than being asserted.
 
 Never read the same file twice — not to evaluate a second comment on it.
 
