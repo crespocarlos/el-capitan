@@ -61,10 +61,20 @@ exits nonzero with gh's message, so `threads: []` means no threads.
 
 ### Step 3: Triage and group unresolved threads
 
-Before reading any code, skip bot-only threads with no human follow-up (CodeRabbit, copilot-bot)
-unless the concern would cause a **runtime error or silent data loss**; cosmetic suggestions are
-noise however fixable. Group the rest by `path` into a `file → [threads]` map, which is what lets
-Step 4 read **each file once**, not once per comment.
+Group unresolved threads by `path` into a `file → [threads]` map, which is what lets Step 4 read
+**each file once**, not once per comment. No thread is dropped, and none is discounted for its author.
+
+**A bot thread is evaluated exactly like a human one.** Who wrote a comment changes nothing about
+whether it is right: Libra, CodeRabbit, and a senior engineer all state claims that the code either
+confirms or contradicts, and the verdict is the same four questions. Bot output is frequently
+confident and sometimes wrong — a stated severity is the tool's assertion, not evidence — so the
+severity a bot claims is ignored and re-derived from the harm the code shows. That is a harder test
+than a human typically gets, not a softer one, because a bot produces far more comments and its
+confidence is not a signal.
+
+The four questions decide every thread: the code settles it (`Apply` or `Reject`), it asks for a
+decision (`Decide`), or it cannot be settled from what you can read (`Ask`). A thread that produces no
+edit still appears in the report with its verdict and the line that decided it.
 
 ### Step 4: Challenge, then evaluate, batched by file
 
@@ -148,6 +158,16 @@ open. Name the expected value a flagged row moves.
 
 Summary counts: N apply / N adapt / N decide / N reject / N ask / N defer / N already addressed
 
+**Every unresolved thread appears in that table or in one of the two sections below.** A thread that
+reaches no row is a defect in the report, not a saving: the reader cannot tell a filtered thread from
+one that was never seen. A bot-only thread the four questions could not settle appears as an `Ask`
+row, not a silent omission.
+
+**Publish this report even when nothing can be applied.** Zero edits is a result, not an absence: the
+table, the summary counts, the outdated list, and both approval questions go to the user either way,
+with the counts reading zero. Concluding "no action needed" without them hides what was evaluated and
+why each thread landed where it did — the reader cannot distinguish a clean PR from a skipped check.
+
 **Outdated Threads** (read-only — do not propose edits or resolve):
 
 | # | File | Reviewer | Note |
@@ -161,61 +181,13 @@ Then ask two questions:
 
 Surface threads needing input before any action separately.
 
-### Step 7: Execute approved actions
+### Step 7: Execute approved actions, then journal
 
-Only after the user responds:
-
-**Code changes** — for each approved edit, apply it, run lints on the edited files, and type-check the
-affected package. When `node_modules` is a symlink, follow `crew-builder`'s rule: `tsc --noEmit -p
-<nearest tsconfig>`, recorded skipped with that reason only when the repo has no no-emit form.
-
-**Thread comments** — for each approved thread, two operations with IDs from the Step 2 query. An
-`Ask` thread gets the reply alone and stays open; so does a `Decide` thread.
-
-Before drafting a reply, read `~/.cursor/rules/voice.mdc` and apply it: replies go out under
-Carlos's name. If the file is unreadable, stop and report. Put every code symbol, path, command,
-field, API, and identifier in inline backticks; leave prose unquoted. No verdict label: say what
-changed and why, or why it stays as-is.
-
-```bash
-~/.agent/bin/crew-pr-actions.py reply --repo OWNER/REPO --pr PR_NUMBER \
-  --thread-id THREAD_NODE_ID --comment-id DATABASE_ID \
-  --body "Fixed in <commit>: <what changed and why>." --execute
-```
-
-The reply uses the thread's first comment `databaseId`; the resolve below uses the thread's GraphQL
-node `id`:
-
-```bash
-~/.agent/bin/crew-pr-actions.py resolve --repo OWNER/REPO --pr PR_NUMBER \
-  --thread-id THREAD_NODE_ID --execute
-```
-
-Edits the user excluded are not applied; excluded threads stay open and unresolved.
-
-### Step 8: Journal (opt-in)
-
-Regardless of `TASK_DIR` (PRs not built through the pipeline have none), draft an observation only
-when it holds a non-derivable lesson from the threads or verdicts: what the reviewer caught that you
-missed, and why it is reusable. Never record what you applied mechanically.
-
-Say so when this run classified a thread `Decide`: a later audit cannot otherwise tell a design
-decision from a defect fix. A resolved thread whose verdict was Apply or Adapt
-is the same decision the reviewer pipeline
-records as an outcome, so the entry may cite it. Write nothing new for it: the PR thread is already
-the durable record.
-
-Write 1-3 plain-prose paragraphs. Show the title and prose, then ask
-`Store this journal entry? (yes / no)`.
-
-Only after `yes`, run:
-
-```bash
-~/.agent/bin/crew-mem.py journal add --title "PR review: <PR title>" --tags <tags> --repo <scope>
-```
-
-Pass the approved prose on stdin via a heredoc. On `no`, or nothing qualifying, write nothing and say
-`journal: none`. On non-zero exit print `warning: memory unavailable` and continue.
+Only after the user answers: follow [acting on threads](crew-pr-resolver/references/acting-on-threads.md)
+for the edit, lint, type-check, reply and resolve mechanics, and for the opt-in journal step. Two rules
+stay here because they govern what this run reports: an `Ask` thread gets the reply alone, so does a
+`Decide` thread, and neither is ever resolved; and a run that classified one as `Decide` says so in its
+journal entry so a later audit can tell a design decision from a defect fix.
 
 > Next: run `crew commit` to commit resolved changes.
 
