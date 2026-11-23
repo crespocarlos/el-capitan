@@ -20,23 +20,25 @@ survive; this file decides how a surviving one reads.
    fix or a code block. Every sentence adds information.
 6. In idea and spec reviews, `Fix:` is required on every `[blocking]` and `[concern]` finding, specific
    enough to apply mechanically.
-7. `kind`, `evidence`, and `validation` are required, not recommended: every finding states what sort
-   of defect it is, where it is, and — when `verified: true` — the one-sentence conclusion the check
-   reached. `normalize` and `persist` reject a finding with no `kind`, and a verified finding with no
-   `validation`, so a missing field costs a round trip. Mark a finding unverified rather than guessing
-   a validation line, and cite the location you actually read.
+7. `kind`, `confidence`, `evidence`, and `validation` are required, not recommended: every finding
+   states what sort of defect it is, how sure you are of it (the 1-5 scale in the shared contract),
+   where it is, and — when `verified: true` — the one-sentence conclusion the check reached.
+   `normalize` and `persist` reject a finding with no `kind` or no `confidence`, and a verified
+   finding with no `validation`, so a missing field costs a round trip. Mark a finding unverified
+   rather than guessing a validation line, and cite the location you actually read.
 
 ## Code review
 
 Each finding is a self-contained GitHub PR comment body, ready to paste inline without editing. One
-flat numbered list with an inline severity label — never severity headings. The `· <kind>` slot after
-the label is optional: include it when the finding clearly fits a `KINDS` value, omit it rather than
-inventing one; the label itself is never optional.
+flat numbered list with an inline severity label — never severity headings. The label carries the
+score: `[attention · 4]`. The `· <kind>` slot is separate and optional: include it when the finding
+clearly fits a `KINDS` value, omit it rather than inventing one. The label is never optional, and the
+score is never omitted for a finding that has one.
 
 ````
 ## Review: <mode> — <summary>
 
-1. [blocking] **`path/to/file.ts` — line N**
+1. [blocking · 4] **`path/to/file.ts` — line N**
 
 ```lang
 <2-5 lines anchoring the finding>
@@ -52,7 +54,7 @@ Fix:
 
 ---
 
-2. [attention] **`path/to/file.ts` — line N**
+2. [attention · 3] **`path/to/file.ts` — line N**
 
 ```lang
 <2-5 lines, recommended>
@@ -64,7 +66,7 @@ Fix: <text description, or code block when concrete>
 
 ---
 
-3. [needs more info] **`path/to/file.ts` — line N**
+3. [needs more info · 2] **`path/to/file.ts` — line N**
 
 ```lang
 <relevant lines>
@@ -74,7 +76,7 @@ Fix: <text description, or code block when concrete>
 
 ---
 
-4. [nit] **`path/to/file.ts` — line N** — <what to change, one line>
+4. [nit · 5] **`path/to/file.ts` — line N** — <what to change, one line>
 
 ```
 

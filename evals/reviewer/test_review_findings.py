@@ -67,11 +67,12 @@ def test_normalize_rejects_an_empty_persona_list(tmp: Path) -> None:
     """
     source = tmp / "empty.json"
     source.write_text(json.dumps([
-        {"title": "x", "label": "nit", "persona": [], "kind": "other", "disposition": "patch"}]))
+        {"title": "x", "label": "nit", "persona": [], "kind": "other", "confidence": 3,
+         "disposition": "patch"}]))
     result = run("normalize", str(source))
     assert result.returncode == 2 and "names no persona" in result.stderr, result.stderr
     source.write_text(json.dumps([
-        {"title": "x", "label": "nit", "kind": "other", "disposition": "patch"}]))
+        {"title": "x", "label": "nit", "kind": "other", "confidence": 3, "disposition": "patch"}]))
     assert run("normalize", str(source)).returncode == 0, "an absent key is still readable"
 
 
@@ -83,8 +84,9 @@ def test_persist_writes_both_reports_and_appends_deferred(tmp: Path) -> None:
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
         {"title": "Old flaky helper", "label": "attention", "file": "b.ts", "line": 4,
-         "disposition": "defer", "kind": "reliability"},
-        {"title": "Rename var", "label": "nit", "disposition": "patch", "kind": "other"},
+         "disposition": "defer", "kind": "reliability", "confidence": 4},
+        {"title": "Rename var", "label": "nit", "disposition": "patch", "kind": "other",
+         "confidence": 5},
     ]))
     # Persistence always names its personas and proves each one ran; a report with no
     # persona evidence is indistinguishable from a full review that skipped a lens.
@@ -123,7 +125,7 @@ def test_normalize_requires_verified_evidence_by_default(tmp: Path) -> None:
     """
     source = tmp / "c.json"
     base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
-            "kind": "correctness"}
+            "kind": "correctness", "confidence": 3}
     source.write_text(json.dumps([base]))
     assert run("normalize", str(source)).returncode == 2
     assert run("normalize", str(source), "--strict").returncode == 2
@@ -154,7 +156,7 @@ def test_normalize_requires_verified_evidence_by_default(tmp: Path) -> None:
 def test_normalize_caps_nits_separately_from_total(tmp: Path) -> None:
     source = tmp / "c.json"
     ok = {"verified": True, "evidence": "a.ts:3", "file": "a.ts", "disposition": "patch",
-          "validation": "read a.ts:1-9", "kind": "correctness"}
+          "validation": "read a.ts:1-9", "kind": "correctness", "confidence": 3}
 
     def write(items: list[dict]) -> subprocess.CompletedProcess:
         source.write_text(json.dumps(items))
@@ -199,7 +201,8 @@ def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
     report.write_text("## Verdict: PASS\n")
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
-        {"title": "An unanchored nit", "label": "nit", "disposition": "patch", "kind": "other"},
+        {"title": "An unanchored nit", "label": "nit", "disposition": "patch", "kind": "other",
+         "confidence": 5},
     ]))
     # `persist` prints no per-finding output and writes no findings file, so retention is proved at
     # `normalize`, which is the stage that hands `persist` its list.
@@ -215,7 +218,7 @@ def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
 
     def persist_with(extra: dict) -> subprocess.CompletedProcess:
         findings.write_text(json.dumps([{"title": "probe", "label": "nit", "disposition": "patch",
-                                         "kind": "other", **extra}]))
+                                         "kind": "other", "confidence": 5, **extra}]))
         return run("persist", "--review-dir", str(review_dir), "--report", str(report),
                    "--findings", str(findings), "--mode", "changes", "--files", "a.ts",
                    "--personas", "adversarial", "--strict")
@@ -232,7 +235,7 @@ def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
     # The severity rule still binds at this call site: an unverified attention finding fails here.
     findings.write_text(json.dumps([
         {"title": "An unverified attention finding", "label": "attention", "disposition": "patch",
-         "kind": "correctness"},
+         "kind": "correctness", "confidence": 4},
     ]))
     result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
                  "--findings", str(findings), "--mode", "changes", "--files", "a.ts",
@@ -662,7 +665,7 @@ def test_normalize_strict_requires_real_hunk_ids_on_emitted_findings(tmp: Path) 
     source = tmp / "c.json"
     base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
             "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9",
-            "kind": "correctness"}
+            "kind": "correctness", "confidence": 4}
     cases = [
         ({**base, "hunks": ["h2"]}, 0, ""),
         (base, 2, "cites no hunk"),
@@ -685,7 +688,7 @@ def test_normalize_strict_merges_duplicate_hunks_and_validates_each_candidate(tm
     source = tmp / "c.json"
     base = {"title": "t", "label": "attention", "file": "a.ts", "disposition": "patch",
             "verified": True, "evidence": "a.ts:3", "persona": ["adversarial"],
-            "validation": "read a.ts:1-9", "kind": "correctness"}
+            "validation": "read a.ts:1-9", "kind": "correctness", "confidence": 4}
     source.write_text(json.dumps([
         {**base, "hunks": ["h1"]},
         {**base, "persona": ["code-quality"], "hunks": ["h2", "h1"]},
@@ -719,9 +722,11 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
     findings.write_text(json.dumps([
         {"title": "Guard missing", "label": "attention", "disposition": "patch", "hunks": ["h1"],
          "verified": True, "evidence": "a.ts:3", "validation": "read a.ts:1-9",
-         "kind": "correctness"},
-        {"title": "Rename", "label": "nit", "disposition": "patch", "kind": "other"},
-        {"title": "Old bug", "label": "attention", "disposition": "defer", "kind": "reliability"},
+         "kind": "correctness", "confidence": 4},
+        {"title": "Rename", "label": "nit", "disposition": "patch", "kind": "other",
+         "confidence": 5},
+        {"title": "Old bug", "label": "attention", "disposition": "defer", "kind": "reliability",
+         "confidence": 4},
     ]))
     args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
             "--findings", str(findings), "--strict", "--personas", "adversarial")
@@ -729,14 +734,14 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
     written = (review_dir / "REVIEW.md").read_text()
     assert "### Coverage by layer" in written
-    assert "- Contract (h1): [attention] Guard missing" in written
+    assert "- Contract (h1): [attention · 4] Guard missing" in written
     assert "- L2 (h2): no findings" in written
-    assert "- outside the map: [nit] Rename" in written
+    assert "- outside the map: [nit · 5] Rename" in written
     assert "Old bug" not in written.split("### Coverage by layer", 1)[1]
     # The same gate rejects an emitted finding that cites a hunk outside the index.
     findings.write_text(json.dumps([
         {"title": "Ghost", "label": "attention", "disposition": "patch", "hunks": ["h7"],
-         "kind": "correctness"}]))
+         "kind": "correctness", "confidence": 4}]))
     blocked = run(*args)
     assert blocked.returncode == 2 and "unknown hunk" in blocked.stderr, blocked.stderr
 
@@ -981,7 +986,7 @@ def test_kind_is_required_at_normalize_validated_and_normalized(tmp: Path) -> No
     re-classifying a finding cannot create a second one.
     """
     source = tmp / "c.json"
-    base = {"title": "t", "label": "nit", "file": "a.ts", "disposition": "patch"}
+    base = {"title": "t", "label": "nit", "file": "a.ts", "disposition": "patch", "confidence": 5}
 
     def normalize(payload: list[dict], *flags: str) -> subprocess.CompletedProcess:
         source.write_text(json.dumps(payload))
@@ -1008,7 +1013,8 @@ def test_confidence_flags_and_merge_candidates_are_gone(tmp: Path) -> None:
     """The removed --confidence flags and merge_candidates output stay removed."""
     source = tmp / "c.json"
     base = {"label": "attention", "file": "a.yaml", "disposition": "patch", "kind": "other",
-            "verified": True, "evidence": "a.yaml:3", "validation": "read a.yaml:1-9"}
+            "verified": True, "evidence": "a.yaml:3", "validation": "read a.yaml:1-9",
+            "confidence": 4}
     source.write_text(json.dumps([
         {**base, "title": "resolver falls back to empty list instead of reported rules"},
         {**base, "title": "resolver falls back to empty list ignoring reported rules"},

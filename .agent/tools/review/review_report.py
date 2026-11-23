@@ -30,6 +30,8 @@ from review_findings import (
 )
 from review_personas import GENERATED_SECTIONS
 from review_persist_gates import check_personas_present, strict_gates
+from review_render import label_with_score
+from review_vocabulary import confidence_value
 from review_workspace import record_task_review
 import review_outcomes as outcomes
 
@@ -97,9 +99,9 @@ def append_deferred(owner: Path, rows: list[Finding]) -> None:
         for f in rows:
             where = f"{f.text('file')}:{f.text('line')}".strip(":")
             reason = f.text("reason") or "pre-existing or out of scope"
-            if f"[{f.label}] {f.title} — `{where}`" in existing:
+            if f"{label_with_score(f)} {f.title} — `{where}`" in existing:
                 continue
-            handle.write(f"- [{stamp}] [{f.label}] {f.title} — `{where}` — {reason}\n")
+            handle.write(f"- [{stamp}] {label_with_score(f)} {f.title} — `{where}` — {reason}\n")
 
 
 def persist(args: argparse.Namespace) -> int:
@@ -166,20 +168,5 @@ def check_outcomes(args: argparse.Namespace) -> int:
 
 
 def outcome(args: argparse.Namespace) -> int:
-    """Append one audit record for a finding's outcome to the review directory's journal."""
-    record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "review_dir": str(args.review_dir),
-        "fingerprint": args.fingerprint,
-        "persona": canonical_personas(args.persona),
-        "label": args.label,
-        "outcome": args.outcome,
-        "reason": args.reason,
-        "memory_ids": args.memory_id,
-    }
-    target = args.review_dir.parent / "outcomes.jsonl"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, sort_keys=True) + "\n")
-    print(json.dumps(record, sort_keys=True))
-    return 0
+    """Append one audit record for a finding's outcome, carrying the score it was decided under."""
+    return outcomes.append(args)

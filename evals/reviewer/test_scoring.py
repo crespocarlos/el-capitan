@@ -140,6 +140,24 @@ def check_every_lens_has_fixture_coverage() -> None:
     assert positive.get("reviewer-explorer", 0) >= 1, "reviewer-explorer has no fixture"
 
 
+def check_a_scored_label_still_scores() -> None:
+    """`[attention · 4]` is a labelled finding, not an unlabelled one.
+
+    The score is rendered in the label column, so a scorer that matched a bare `]` would credit no
+    banded finding and report a regression the prompt change did not cause.
+    """
+    output = "1. [blocking · 5] src/a.ts:5 null deref\n"
+    precision, recall, _, _ = MODULE.compute_precision_recall(
+        output, fixture(expected("blocking", "null deref")), "reviewer-adversarial"
+    )
+    assert (precision, recall) == (1.0, 1.0), (precision, recall)
+    # The wrong severity stays a miss, so the suffix did not widen what counts as correct.
+    wrong = "1. [attention · 5] src/a.ts:5 null deref\n"
+    assert MODULE.compute_precision_recall(
+        wrong, fixture(expected("blocking", "null deref")), "reviewer-adversarial"
+    )[:2] == (0.0, 0.0)
+
+
 CHECKS = [
     check_accepts_every_finding_marker,
     check_wrong_severity_earns_no_precision,
@@ -149,6 +167,7 @@ CHECKS = [
     check_scope_violations_count_only_for_code_quality,
     check_spec_fixtures_skip_precision,
     check_every_lens_has_fixture_coverage,
+    check_a_scored_label_still_scores,
 ]
 
 

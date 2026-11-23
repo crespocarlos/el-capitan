@@ -189,9 +189,9 @@ def score_finding_match(raw_output: str, expected: dict) -> bool:
     if severity is None:
         # Spec-type fixture: no label required, just check hint presence in full output
         return hint in raw_output.lower()
-    label = f"[{severity.lower()}]"
     for unit in finding_units(raw_output):
-        if label in unit.lower() and hint in unit.lower():
+        labels = {label.lower() for label in LABELS_IN_UNIT.findall(unit)}
+        if severity.lower() in labels and hint in unit.lower():
             return True
     return False
 
@@ -199,7 +199,9 @@ def score_finding_match(raw_output: str, expected: dict) -> bool:
 # A finding starts at a list marker or a bare label, which is how personas in this pipeline write
 # them. Scoring that only split on `N.` produced false negatives on every bulleted response.
 FINDING_START = re.compile(r"(?m)^(?=\s*(?:[-*+]\s+|\d+[.)]?\s+|\[(?:blocking|attention|concern|nit|needs more info)\]))", re.I)
-LABELS_IN_UNIT = re.compile(r"\[(blocking|attention|concern|needs more info|nit)\]", re.I)
+# The label may carry its confidence score beside it (`[attention · 4]`), so the optional suffix is
+# part of the label token: matching `]` directly would stop crediting every scored finding.
+LABELS_IN_UNIT = re.compile(r"\[(blocking|attention|concern|needs more info|nit)(?:\s*·\s*[1-5])?\]", re.I)
 
 
 def finding_units(raw_output: str) -> list[str]:
@@ -361,11 +363,12 @@ def run_fixture(
     )
 
     # unexpected_produced: findings that don't match any expected finding
-    label_count = len(re.findall(r'\[(blocking|attention|needs more info|nit|concern)\]', raw_output, re.IGNORECASE))
+    label_count = len(LABELS_IN_UNIT.findall(raw_output))
     unexpected_produced = max(0, label_count - len(matched))
     clean_scored = persona_name in fixture.get("clean_for", [])
     false_positives = (
-        len(re.findall(r'\[(blocking|attention)\]', raw_output, re.IGNORECASE)) if clean_scored else 0
+        len([label for label in LABELS_IN_UNIT.findall(raw_output)
+             if label.lower() in {"blocking", "attention"}]) if clean_scored else 0
     )
 
     return {

@@ -1,29 +1,24 @@
 #!/usr/bin/env python3
-"""The finding record: one review finding, its fingerprint, and the gates a single finding faces.
+"""The finding record: one review finding, its fingerprint, and the fields the gates read.
 
 Built once by `read_findings` at the JSON boundary, then passed inward, so no gate re-derives the
 shape from string keys. `to_json` writes back exactly the keys that arrived — an unknown key stays
 in `extra` rather than being silently dropped on the way through `normalize`.
-
-`check_findings` holds the per-finding rules and `check_strict` the ones that need a reviewed file
-set. They are separate because `persist` used to reach every per-finding rule only when `--files`
-carried a path, and a spec or idea review has no path list to pass: the result was a `verified:
-true` finding with no validation sentence persisting successfully in exactly the modes that pass no
-files, while both `TOOLS.md` and the consolidation protocol said the sentence was required.
 """
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass, field
-from pathlib import Path
 
+from lib.files import read_json_object  # noqa: F401 — re-exported: one reader for every caller
 from review_vocabulary import (
+    CONFIDENCE,
     DISPOSITIONS,
     EMITTED,
     KINDS,
     LABELS,
     canonical_personas,
+    confidence_value,
     normalized_title,
 )
 
@@ -41,6 +36,8 @@ class Finding:
     file: object = ABSENT
     line: object = ABSENT
     kind: object = ABSENT
+    confidence: object = ABSENT
+    confidence_from: object = ABSENT
     disposition: object = ABSENT
     persona: object = ABSENT
     hunks: object = ABSENT
@@ -65,6 +62,8 @@ class Finding:
         """The finding as JSON, with a key present only when the persona supplied it."""
         out: dict = {"title": self.title, "label": self.label}
         for key, value in (("file", self.file), ("line", self.line), ("kind", self.kind),
+                           ("confidence", self.confidence),
+                           ("confidence_from", self.confidence_from),
                            ("disposition", self.disposition), ("persona", self.persona),
                            ("hunks", self.hunks), ("verified", self.verified),
                            ("evidence", self.evidence), ("validation", self.validation),
@@ -76,12 +75,7 @@ class Finding:
         return out
 
     def merge(self, other: "Finding") -> None:
-        """Fold a duplicate into this finding: union the personas each named and the hunks cited.
-
-        A finding that only one of the two anchored still inherits the other's anchors, because the
-        merged record is what later steps read; leaving the first one's empty list would lose the
-        hunk the duplicate cited.
-        """
+        """Fold a duplicate in: union the personas each named and the hunks cited, losing neither."""
         if isinstance(other.persona, list):
             for persona in other.persona:
                 if not isinstance(self.persona, list):
@@ -106,6 +100,39 @@ def fingerprint(finding: Finding) -> str:
     return hashlib.sha1(material.encode()).hexdigest()
 
 
+def kind_value(finding: dict, index: int) -> object:
+    """The `kind` written, normalized. A typo is refused here; absence is left to `require_kind`."""
+    if "kind" not in finding:
+        return ABSENT
+    kind = str(finding["kind"]).strip().lower()
+    if kind not in KINDS:
+        raise ValueError(
+            f"finding {index} has invalid kind: {finding['kind']!r} "
+            f"(expected one of {', '.join(sorted(KINDS))})"
+        )
+    return kind
+
+
+def confidence_value_in(finding: dict, index: int) -> object:
+    """The score a caller wrote, with absence left to `require_confidence` for the same reason."""
+    if "confidence" not in finding:
+        return ABSENT
+    try:
+        return confidence_value(finding["confidence"])
+    except ValueError as error:
+        raise ValueError(f"finding {index} {error}") from None
+
+
+def confidence_from_in(finding: dict, index: int) -> object:
+    """The score this finding carried before a raise, which is how a raise is told from a guess."""
+    if "confidence_from" not in finding:
+        return ABSENT
+    try:
+        return confidence_value(finding["confidence_from"])
+    except ValueError as error:
+        raise ValueError(f"finding {index} {error} (confidence_from)") from None
+
+
 def to_finding(finding: dict, index: int) -> Finding:
     """Build the record from one JSON object, refusing a value the vocabulary does not allow."""
     if not isinstance(finding, dict) or not isinstance(finding.get("title"), str):
@@ -116,17 +143,9 @@ def to_finding(finding: dict, index: int) -> Finding:
     disposition = finding.get("disposition")
     if disposition is not None and disposition not in DISPOSITIONS:
         raise ValueError(f"finding {index} has invalid disposition: {disposition!r}")
-    # A value outside the vocabulary is a typo and is rejected here, so the set cannot drift one
-    # spelling at a time. Absence is a different failure and is refused by `require_kind` at persist,
-    # because `normalize` must still be able to read the reviews recorded before `kind` existed.
-    kind = ABSENT
-    if "kind" in finding:
-        kind = str(finding["kind"]).strip().lower()
-        if kind not in KINDS:
-            raise ValueError(
-                f"finding {index} has invalid kind: {finding['kind']!r} "
-                f"(expected one of {', '.join(sorted(KINDS))})"
-            )
+    kind = kind_value(finding, index)
+    confidence = confidence_value_in(finding, index)
+    confidence_from = confidence_from_in(finding, index)
     persona = ABSENT
     if "persona" in finding or "personas" in finding:
         persona = canonical_personas(finding.get("persona", finding.get("personas")))
@@ -138,10 +157,12 @@ def to_finding(finding: dict, index: int) -> Finding:
                 f"finding {index} names no persona; attribute it to the one that raised it "
                 "(or omit the key entirely for a record written before personas were recorded)"
             )
-    known = {"title", "label", "file", "line", "kind", "disposition", "persona", "personas",
-             "hunks", "verified", "evidence", "validation", "reason", "memory_ids", "fingerprint"}
+    known = {"title", "label", "file", "line", "kind", "confidence", "confidence_from",
+             "disposition", "persona", "personas", "hunks", "verified", "evidence", "validation",
+             "reason", "memory_ids", "fingerprint"}
     record = Finding(
-        title=finding["title"], label=label, kind=kind, persona=persona,
+        title=finding["title"], label=label, kind=kind, confidence=confidence,
+        confidence_from=confidence_from, persona=persona,
         file=finding.get("file", ABSENT), line=finding.get("line", ABSENT),
         disposition=finding.get("disposition", ABSENT), hunks=finding.get("hunks", ABSENT),
         verified=finding.get("verified", ABSENT), evidence=finding.get("evidence", ABSENT),
@@ -151,35 +172,5 @@ def to_finding(finding: dict, index: int) -> Finding:
     )
     record.fingerprint = fingerprint(record)
     return record
-
-
-def require_kind(finding: Finding) -> None:
-    """Reject a finding with no `kind`, naming every value the vocabulary allows.
-
-    Required rather than optional, and enforced at persist: measured over 84 reviews, 713 of 719
-    findings carried no `kind`, so the one defect axis independent of severity was never populated.
-    A recorded review is re-read through `--lenient`, which is where legacy data stays readable.
-    """
-    if finding.kind is ABSENT:
-        raise ValueError(
-            f"finding {finding.title!r} has no kind; state what sort of defect it is, one of: "
-            f"{', '.join(sorted(KINDS))}"
-        )
-
-
-def read_json_object(path: Path, key: str) -> dict:
-    """A JSON object that must carry a `key` list, or ValueError naming the file."""
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as error:
-        raise ValueError(f"cannot read {path}: {error}") from error
-    except json.JSONDecodeError as error:
-        raise ValueError(f"{path} is not valid JSON: {error}") from error
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} must be a JSON object")
-    value = payload.get(key)
-    if not isinstance(value, list):
-        raise ValueError(f"{path} has no {key!r} list")
-    return payload
 
 

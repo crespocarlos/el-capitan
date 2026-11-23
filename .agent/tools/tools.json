@@ -973,6 +973,15 @@
       "owner": "crew-reviewer",
       "help": "imported by crew-review-stats.py",
       "smoke": "imported by crew-review-stats.py"
+    },
+    {
+      "name": "review_render.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py",
+      "smoke": "imported by crew-review-findings.py"
     }
   ],
   "assets": [

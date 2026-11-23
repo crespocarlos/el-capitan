@@ -8,13 +8,19 @@ format [finding formats](finding-formats.md) defines. No severity sections.
 - A blocked self-review states `BLOCK` and ends with `Next: run \`crew review address\` to resolve the
   findings.`
 
-A finding line carries its kind beside its label when one was recorded:
+A finding line carries its score beside its label, and its kind after both when one was recorded:
 
 ```
-1. [attention] · security **`path/to/file.ts — line N`** — one-line title
+1. [attention · 4] **`path/to/file.ts — line N`** — one-line title
 ```
 
-The kind is optional: a finding with no clear kind omits the suffix rather than inventing a value.
+The score sits in the same bracket as the label, never in the prose, so a reader scanning ten findings
+sees it without opening the JSON. A report that omits the score for a finding that carries one is a
+rendering defect, not a formatting preference: the number is the reviewer's own doubt and it is the
+one signal a reader cannot reconstruct from the finding body.
+
+The kind is optional and separate — `[attention · 4] · security` — and a finding with no clear kind
+omits it rather than inventing a value.
 
 ## Render the report, do not re-author it
 

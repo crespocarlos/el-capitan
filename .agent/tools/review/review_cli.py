@@ -113,6 +113,10 @@ def add_context_parsers(commands) -> None:
     outcome_parser.add_argument("--outcome", required=True, choices=sorted(OUTCOMES))
     outcome_parser.add_argument("--reason", required=True)
     outcome_parser.add_argument("--memory-id", action="append", default=[])
+    outcome_parser.add_argument("--confidence", type=int, default=None,
+                                help="the score this decision was made under, after any raise")
+    outcome_parser.add_argument("--confidence-from", type=int, default=None,
+                                help="the score it arrived with, when this decision raised it")
     check_parser = commands.add_parser(
         "outcomes", help="report a review's recorded outcomes; --acted fails on a missing one")
     check_parser.add_argument("--review-dir", required=True, type=Path)

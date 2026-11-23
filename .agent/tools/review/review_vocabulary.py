@@ -16,6 +16,12 @@ import re
 
 LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
 KINDS = {"security", "correctness", "reliability", "documentation", "testing", "other"}
+# The reviewer's own belief that a finding is real, one point per band. Five points rather than a
+# percentage because a percentage implies a calibration nobody can supply, and per finding rather
+# than per review because only this form can be joined to whether the finding was fixed.
+CONFIDENCE = {5: "confirmed", 4: "strong", 3: "likely", 2: "uncertain", 1: "suspicion"}
+# A finding the review asks the author to act on has to be one the reviewer believes in.
+ACTED_CONFIDENCE = 3
 OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}
 PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prompt-quality", "explorer"}
 LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs still normalize
@@ -45,6 +51,24 @@ def mode_arg(value: str) -> str:
     for modifier in (" auto-loop", " auto", "-auto-loop", "-auto"):
         normalized = normalized.replace(modifier, "")
     return normalized
+
+
+def confidence_scale() -> str:
+    """The five bands as one clause, so every rejection and every document states them alike."""
+    return ", ".join(f"{score} {name}" for score, name in sorted(CONFIDENCE.items(), reverse=True))
+
+
+def confidence_value(raw: object) -> int:
+    """The score a caller wrote, or ValueError naming the 1-5 scale it violated.
+
+    Absence is not a value: `require_confidence` refuses it at persist, because `normalize` has to
+    keep reading the reviews recorded before the field existed.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw not in CONFIDENCE:
+        raise ValueError(
+            f"invalid confidence: {raw!r} (expected an integer 1-5: {confidence_scale()})"
+        )
+    return raw
 
 
 def normalized_title(title: str) -> str:

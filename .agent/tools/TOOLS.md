@@ -160,25 +160,40 @@ module.
   would otherwise leave the close-out gate with nothing readable. The gate reads the verdict and the
   `Reviewed at:` commit from that one file, so the two cannot disagree, and `--mark-done` prints
   which file it read (`done:` on stdout, `note:` on stderr) so a refusal is auditable.
-- `crew-review-findings.py` records two fields on a finding: `kind` (what sort of defect: its values
+- `crew-review-findings.py` records three fields on a finding: `kind` (what sort of defect: its values
   are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
-  `other`) and `validation` (one sentence on what a `verified: true` check read and concluded).
-  Both are required on a finding that reaches a gate: `kind` by `require_kind`, because measured over
-  84 recorded reviews 713 of 719 findings had none, and `validation` wherever `verified` is true.
+  `other`), `confidence` (the reviewer's own belief it is real, an integer 1-5: `5 confirmed`,
+  `4 strong`, `3 likely`, `2 uncertain`, `1 suspicion`), and `validation` (one sentence on what a
+  `verified: true` check read and concluded). All are required on a finding that reaches a gate:
+  `kind` by `require_kind` and `confidence` by `require_confidence`, because measured over 84 recorded
+  reviews 713 of 719 findings had no `kind` and every one predates the score; `validation` wherever
+  `verified` is true. A value outside 1-5 is rejected by the parser, which names the range. A
+  `blocking` or `attention` finding scored below 3 is rejected with a redirect to `needs more info`:
+  it is a request the reviewer does not believe, and the doubt belongs in a question. A score may rise
+  only by resolving the unknown through a read: the raised record carries `confidence_from` (the old
+  value) and a `validation` sentence naming what settled it, and a raise without that sentence is
+  rejected. The score is the reviewer's belief, never a severity, and is never summed into a
+  review-level number.
   `normalize` and `persist` apply those gates by default; `--lenient` is the escape and `--strict`
   is a no-op alias kept one cycle so a script written against the old default still runs.
 - `crew-review-findings.py outcome` appends one JSONL record per decision `crew review address`
   makes; `outcomes --review-dir <dir> --acted <id> …` reads them back and exits 1 naming any acted
-  finding with no record, which is what fails a summary that skipped one. Two journal shapes exist
+  finding with no record, which is what fails a summary that skipped one. `outcome --confidence N
+  --confidence-from M` records the score a decision was made under when it raised one, and the pair
+  is required together so a raise cannot be logged without both halves; `crew-review-stats.py` joins
+  the decision's score rather than the score the finding arrived with. Two journal shapes exist
   (`<review>/outcomes.jsonl` and `<task>/review/outcomes.jsonl`) because the path follows the
   directory the caller named, so both are read; a relative `review_dir` resolves against its own
   journal. Precision over a corpus this thin is meaningless without that denominator, which is why
   `crew-review-stats.py` prints it beside every ratio.
 - `crew-review-stats.py --tasks-dir <store>` measures a recorded corpus: findings by label, the
-  required field each one is missing, and precision per persona as `fixed / (fixed + rejected)` with
-  the decided count and the `unrecorded` count beside it. `--json` is the machine form, `--limit`
-  bounds the review list, `--max-chars` the whole output. A corpus with no outcome says so instead
-  of printing `0.00`, and an unreadable `--tasks-dir` exits 2 rather than reporting zero findings.
+  required field each one is missing, the confidence distribution with the fix rate per band, and
+  precision per persona as `fixed / (fixed + rejected)` with the decided count and the `unrecorded`
+  count beside it. A finding written before the score existed is reported as `unscored` and never
+  folded into a band, because a zero-filled distribution reads as a measurement nobody made.
+  `--json` is the machine form, `--limit` bounds the review list, `--max-chars` the whole output. A
+  corpus with no outcome says so instead of printing `0.00`, and an unreadable `--tasks-dir` exits 2
+  rather than reporting zero findings.
 - `crew-review-findings.py persist --files` records the reviewed paths and gates evidence against them;
   it deliberately does not compare that list with the diff. `persist` runs in three modes with no
   single base ref, so inferring one would be wrong more often than right. Tree identity is carried by

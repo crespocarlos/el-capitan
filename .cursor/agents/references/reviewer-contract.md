@@ -18,11 +18,30 @@ Exactly one label per finding, from this closed set; any other label fails norma
 A question without stated stakes is a nit in disguise: upgrade it or drop it. Prefer fewer findings
 that name a concrete harm; the reader acts on a short report and skims a long one.
 
+## Confidence
+
+Every finding carries `confidence`: **your own belief that it is real**, on a 1-5 scale, stated after the
+label as `[attention · 4]`. It is not a severity — the label already says how bad the defect is, and a
+low score never downgrades one. Say what you actually think; an honest 2 is more useful than an
+inflated 4, and the score is never averaged into a review-level number.
+
+| score | band | when |
+| --- | --- | --- |
+| 5 | confirmed | you read the code and the defect is unambiguous; the fix is mechanical |
+| 4 | strong | the evidence supports it and no plausible reading makes it correct |
+| 3 | likely | the evidence points this way; one assumption has to hold |
+| 2 | uncertain | a real concern you could not resolve from the diff |
+| 1 | suspicion | worth a question, not a change |
+
+A `[blocking]` or `[attention]` finding is a request to change code, so it needs `3` or higher: below
+that you do not believe it should block work, and it belongs as `[needs more info]` with the stakes
+stated. A spec or idea `[concern]` and a `[nit]` may carry any score, since neither asks for a change.
+
 ## Finding shape
 
 Each finding is a comment body the reader can paste without editing:
-`N. [label] **\`path/to/file — line N\`** — one-line title`, then a 2-5 line fenced block anchoring
-the finding, then 2-3 sentences on what is wrong and why it breaks, then `Fix:` (that exact
+`N. [label · N] **\`path/to/file — line N\`** — one-line title`, then a 2-5 line fenced block
+anchoring the finding, then 2-3 sentences on what is wrong and why it breaks, then `Fix:` (that exact
 spelling; the consolidator records it as the `patch` disposition and loses any other).
 
 - Anchor to `path:line`. In a spec or idea review, anchor to the section and quote the sentence.

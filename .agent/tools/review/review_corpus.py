@@ -16,12 +16,16 @@ import json
 from pathlib import Path
 
 from review_outcomes import decided, persona_names
+from review_vocabulary import CONFIDENCE
 
 FINDING_FILE = "consolidation.json"
 # The fields a finding needs before a reader can check it. `validation` is counted against the
 # findings that claim `verified`, because a sentence is only required where a check was claimed.
 REQUIRED_FIELDS = ("kind", "hunks", "evidence")
 DECIDED = ("fixed", "rejected")
+# A finding written before the score existed is `unscored`, never folded into a band: a zero-filled
+# distribution would read as a measured result when nothing was measured.
+UNSCORED = "unscored"
 
 
 def review_dirs(tasks_dir: Path) -> list[Path]:
@@ -53,7 +57,20 @@ def field_gaps(findings: list[dict]) -> dict[str, int]:
     verified = [finding for finding in findings if finding.get("verified") is True]
     gaps["validation"] = sum(1 for finding in verified if absent(finding, "validation"))
     gaps["verified"] = len(verified)
+    gaps["confidence"] = sum(1 for finding in findings if band(finding.get("confidence")) == UNSCORED)
     return gaps
+
+
+def band(value: object) -> str:
+    """The band a stored score falls in, or `unscored` — a value outside 1-5 is not a band."""
+    if isinstance(value, bool) or not isinstance(value, int) or value not in CONFIDENCE:
+        return UNSCORED
+    return str(value)
+
+
+def band_name(score: str) -> str:
+    """The word behind a score, so a report line does not print a bare number."""
+    return CONFIDENCE[int(score)] if score != UNSCORED else UNSCORED
 
 
 def bucket() -> dict:

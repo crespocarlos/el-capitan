@@ -16,6 +16,12 @@ Every finding this run decides on gets one line: applied, adapted, and rejected 
 leaves alone gets none. Recording is part of making the decision, not a report on it, because the
 answer is only known at that moment — a later pass that reconstructs it either guesses or skips, and
 704 of 719 measured findings ended up skipped that way.
+**Record a raised score with the decision that raised it.** Step 2 may raise a 1-2 finding's
+`confidence` when the read settles what it doubted, and the raise is only evidence while it stays
+attached to the read: pass the final score with the outcome (`--confidence <n> --confidence-from
+<old>`) so a later `review-stats` join reads the score the finding was acted on under, not the score
+it arrived with. A raise with no recorded read is refused at persist, so an increase that cannot name
+its evidence cannot be logged either. A `Needs Input` row keeps the score it arrived with.
 
 For each finding the user did not approve (a Needs Input row left unanswered counts as `deferred`):
 

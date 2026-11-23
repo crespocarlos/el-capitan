@@ -28,7 +28,8 @@ def write_candidate(tmp: Path, **overrides: object) -> Path:
     """One verified attention finding with an anchor; `overrides` drops or changes a field."""
     finding = {"title": "Guard missing", "label": "attention", "file": "a.ts", "line": 3,
                "disposition": "patch", "verified": True, "evidence": "a.ts:3",
-               "kind": "correctness", "validation": "read a.ts:1-9; the guard is absent"}
+               "kind": "correctness", "confidence": 4,
+               "validation": "read a.ts:1-9; the guard is absent"}
     for key, value in overrides.items():
         if value is None:
             finding.pop(key, None)

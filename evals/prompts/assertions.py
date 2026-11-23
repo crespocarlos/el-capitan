@@ -19,12 +19,17 @@ if str(_TOOLS) not in sys.path:
 from task_typed_tests import typed_tests_block_problem  # noqa: E402
 
 LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
+# The score suffix a label may carry: `attention · 4`. Stripped before a label is compared, so the
+# label vocabulary stays one set rather than one per rendering.
+LABEL_WITH_SCORE = re.compile(r"\s*·\s*[1-5]\s*$")
 SPEC_LABELS = {"blocking", "concern", "needs more info", "nit"}
 MEMORY_TYPES = {"user", "feedback", "project", "reference", "failure-shield", "procedure",
                 "observation"}
 COMMIT_TYPES = ("feat", "fix", "refactor", "test", "docs", "chore", "perf", "build", "ci",
                 "style", "revert")
 HEADING = re.compile(r"^(#{1,6}) ")
+# The label may carry its confidence score beside it (`[attention · 4]`), so the bracket is matched
+# as a whole and the score is stripped from the captured label.
 FINDING = re.compile(r"^\d+\.\s*\[([^\]]+)\]")
 VERDICT = re.compile(r"^(?:\*\*)?Verdict:?(?:\*\*)?\s+([A-Za-z]+)(.*)$")
 NIT_CAP = 4
@@ -102,7 +107,12 @@ def tasks_verify(artifact: str) -> list[str]:
 
 
 def finding_lines(artifact: str) -> list[tuple[str, str]]:
-    """Each finding as (label, its own block), split at the next numbered finding."""
+    """Each finding as (label, its own block), split at the next numbered finding.
+
+    A label carrying its confidence score (`[attention · 4]`) is normalized to the label: the score
+    is a separate field with its own checks, and requiring every assertion to know the syntax would
+    make the label vocabulary two vocabularies.
+    """
     blocks: list[tuple[str, str]] = []
     label, lines = "", []
     for line in artifact.splitlines():
@@ -110,7 +120,7 @@ def finding_lines(artifact: str) -> list[tuple[str, str]]:
         if match:
             if label:
                 blocks.append((label, "\n".join(lines)))
-            label, lines = match.group(1).strip().lower(), [line]
+            label, lines = LABEL_WITH_SCORE.sub("", match.group(1)).strip().lower(), [line]
         elif label:
             lines.append(line)
     if label:

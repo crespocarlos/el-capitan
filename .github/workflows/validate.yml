@@ -51,6 +51,9 @@ jobs:
       - name: Review corpus statistics
         run: python3 evals/tools/test_review_stats.py
 
+      - name: Finding confidence (scale, floor, render, bands)
+        run: python3 evals/tools/test_confidence.py
+
       - name: Package assembly tests
         run: python3 evals/tools/test_assemble_packages.py
 

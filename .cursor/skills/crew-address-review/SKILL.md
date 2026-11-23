@@ -19,8 +19,8 @@ description: "Work through findings from the most recent crew review inline. Tri
   edits. 3 turns.
 - **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): the artifact is a plan, not code.
   Findings are conceptual: evaluate inline → present acceptance table → synthesize the revision if
-  approved. The revision is an edit to the spec file when the artifact is one, and emitted text when it
-  is pasted. 3 turns.
+  approved. The revision edits the spec file when the artifact is one, and is emitted text when pasted.
+  3 turns.
 
 Never mix modes. If the review heading contains "Idea" or "Spec" (case-insensitive), use idea mode
 throughout.
@@ -66,14 +66,19 @@ the returned ids for `--memory-id` in Step 3b.
 **Code mode** — for each finding, before preparing any edit:
 
 1. **Read the relevant file** when a file/line is cited, to check the current state of the code.
-2. **Check whether it is already addressed**: if the fix is already present in the working tree,
-   classify as **Already Addressed** and make no edit.
+2. **Check whether it is already addressed**: if the fix is present in the working tree, classify
+   **Already Addressed** and make no edit.
 3. **Assess validity** — is the finding grounded, and does the reasoning follow from the code?
    - Contradicts the current file state → **Reject**, stating the specific reason.
    - Correct and actionable → **Apply**.
    - Valid but the right fix differs from the reviewer's → **Adapt**, drafting the better fix.
    - Valid but outside this change's scope → **Defer**.
-4. For `[needs more info]` findings, answer inline when the code determines the answer; otherwise
+4. **A finding scored 1-2 is a question until a read answers it.** Read the target: if that settles
+   the unknown the low score recorded, carry a raised score (at most +2) with the sentence you read in
+   `validation`, then evaluate it above. If not, the verdict is **Needs Input** naming the specific
+   unknown. Never edit a 1-2 you did not settle: that is the reviewer's doubt handed to the user as a
+   change. One read, no separate hunt.
+5. For `[needs more info]` findings, answer inline when the code determines the answer; otherwise
    surface it for user input.
 
 **Idea mode** — the artifact under review is what each finding is judged against, so read it first: for
@@ -98,8 +103,7 @@ Never apply any change during this step. Collect all verdicts first.
 The harness asks before this flow records anything: `.claude/settings.json` carries a
 `permissions.ask` rule for `Edit`/`Write` under the task directory and for
 `crew-review-findings.py`, so writing the outcome log or the review artifacts prompts for approval,
-and the prompt arrives with the table still on screen. There is no marker file and no state to clear:
-nothing can be left behind to block an unrelated edit later.
+with the table still on screen. There is no marker file and no state to clear.
 
 That prompt does not cover edits to the source files the findings cite — a permission rule cannot see
 which flow is running. Those are authorized by the answer to the question below, and only by it. If you
@@ -109,10 +113,13 @@ Code mode table:
 
 | #   | Label             | Finding | Verdict  | Proposed Fix                     |
 | --- | ----------------- | ------- | -------- | -------------------------------- |
-| 1   | [blocking]        | Title   | Apply    | Change X to Y in file.ts:42      |
-| 2   | [attention]       | Title   | Reject   | Already uses the correct pattern |
-| 3   | [needs more info] | Title   | Answered | Intent is X — no change needed   |
-| 4   | [nit]             | Title   | Apply    | Rename variable                  |
+| 1   | [blocking · 4]    | Title   | Apply    | Change X to Y in file.ts:42      |
+| 2   | [attention · 3]   | Title   | Reject   | Already uses the correct pattern |
+| 3   | [needs more info · 2] | Title | Answered | Intent is X — no change needed |
+| 4   | [nit · 5]         | Title   | Apply    | Rename variable                  |
+
+Each label carries its score, so the table shows what the reviewer doubted before the user approves
+anything. A `Needs Input` row keeps its original score.
 
 Summary counts: N apply / N adapt / N reject / N defer / N already addressed. Then ask:
 
@@ -121,12 +128,12 @@ Summary counts: N apply / N adapt / N reject / N defer / N already addressed. Th
 
 Idea mode table:
 
-| #   | Label      | Finding | Verdict      | What changes in the idea                        |
-| --- | ---------- | ------- | ------------ | ----------------------------------------------- |
-| 1   | [blocking] | Title   | Accept       | Reframe caching layer as opt-in, not mandatory  |
-| 2   | [concern]  | Title   | Reject       | Reviewer misread — proposal already handles it  |
-| 3   | [concern]  | Title   | Needs Input  | Scope unclear — does this cover async flows?    |
-| 4   | [nit]      | Title   | Nit          | Rename "pipeline" → "workflow" for clarity      |
+| #   | Label       | Finding | Verdict     | What changes in the idea                        |
+| --- | ----------- | ------- | ----------- | ----------------------------------------------- |
+| 1   | [blocking · 4] | Title | Accept      | Reframe caching layer as opt-in, not mandatory  |
+| 2   | [concern · 3]  | Title | Reject      | Reviewer misread — proposal already handles it  |
+| 3   | [concern · 2]  | Title | Needs Input | Scope unclear — does this cover async flows?    |
+| 4   | [nit · 5]      | Title | Nit         | Rename "pipeline" → "workflow" for clarity      |
 
 Summary counts: N accept / N reject / N needs-input / N nit. Then ask:
 
@@ -137,8 +144,7 @@ Summary counts: N accept / N reject / N needs-input / N nit. Then ask:
 
 Follow [outcome logging](references/outcome-logging.md) after the user responds and before any edit.
 The record is **not optional**: every finding this run applies, adapts, or rejects gets one appended
-outcome line, and a finding it leaves alone gets none. Recording where the decision is made is the
-only point the answer is known — asking later is what left 704 of 719 measured findings unrecorded.
+outcome line, and one it leaves alone gets none.
 
 ### Step 4: Execute approved fixes
 
@@ -150,19 +156,16 @@ already loaded. After each edit lands, log it with the Step 3b command and `--ou
 edit fails, log `skipped` with a reason starting `edit-failed:`, so failures are distinguishable from
 user decisions. Do not continue to the summary with a decision unrecorded.
 
-**When the edit changes what a step, mode, or skill is allowed to do, sweep the file it lives in.** A
-capability change falsifies every sentence describing the old limit, and a reader meets them before the
-corrected step. After the approved edits land, search that file for the *specific* constraint the edit
-replaced — the phrase stating the old limit plus its close paraphrases — and report each surviving
-sentence with its line. A fixed keyword list is too blunt: `only` and `never` appear on dozens of
-unrelated lines in any rule file, and a report of unrelated hits is one a reader skips. This is idea
-mode's sibling sweep applied to the instructions themselves.
+**When the edit changes what a step, mode, or skill is allowed to do, sweep the file it lives in.**
+A capability change falsifies every sentence describing the old limit, and a reader meets them before
+the corrected step. Search that file for the *specific* constraint the edit replaced — the phrase
+stating the old limit plus its close paraphrases — and report each survivor with its line. A fixed
+keyword list is too blunt: `only` and `never` sit on dozens of unrelated lines in any rule file.
 
 **Idea mode with a file target:** the same edit hygiene applies — read the file immediately before
 writing, and log the write with the Step 3b command and `--outcome fixed`. The write happens once, at
-step 8 of [idea synthesis](references/idea-synthesis.md), after verification and self-review; nothing
-is written before then. Synthesis, not implementation: it does not touch the code the spec describes,
-but it does write the spec.
+step 8 of [idea synthesis](references/idea-synthesis.md), after verification and self-review. Synthesis
+does not touch the code the spec describes, but it does write the spec.
 
 **Idea mode:** follow [idea synthesis](references/idea-synthesis.md) for the revision, verification,
 sibling check, decisions section, and self-review.

@@ -23,6 +23,7 @@ from review_map import (  # noqa: F401 — re-exported
     layer_hunk_errors,
 )
 from review_models import ABSENT, Finding, read_json_object
+from review_render import label_with_score
 
 SEVERITIES = {"high", "medium", "low", "nit"}
 
@@ -57,11 +58,12 @@ def layer_coverage(layers: list[dict], findings: list[Finding]) -> str:
     for layer in layers:
         assigned = set(layer["hunks"])
         hits = [f for f in emitted if assigned & set([] if f.hunks is ABSENT else f.hunks)]
-        result = "; ".join(f"[{f.label}] {f.title}" for f in hits) or "no findings"
+        result = "; ".join(f"{label_with_score(f)} {f.title}" for f in hits) or "no findings"
         lines.append(f"- {layer.get('title') or layer['id']} ({', '.join(layer['hunks'])}): {result}")
     unmapped = [f for f in emitted if not (f.hunks is not ABSENT and f.hunks)]
     if unmapped:
-        lines.append("- outside the map: " + "; ".join(f"[{f.label}] {f.title}" for f in unmapped))
+        lines.append("- outside the map: " + "; ".join(f"{label_with_score(f)} {f.title}"
+                                                      for f in unmapped))
     return "\n".join(lines) + "\n"
 
 

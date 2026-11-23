@@ -48,6 +48,15 @@ the verified harm: `[blocking]` names a concrete failure path, and speculative h
 chain downgrades. Mark a downgrade `(downgraded: harm is speculative — no direct failure path in this
 artifact)` and a drop `(dropped: too vague to act on)`.
 
+**Is the score earned?** The persona's `confidence` travels with the finding and is not yours to
+restate. The verification read below is the only thing that may raise it: when that read resolves the
+unknown the low score was recording, raise it by at most 2 and name in `validation` what you read that
+settled it — a score is never raised by reassurance, to keep a label, or to keep a finding in the
+list. A read that does not settle it settles nothing, so a `[blocking]` or `[attention]` at 1-2 whose
+unknown survives becomes `[needs more info]` at its original score with that unknown named, and you
+look no further: one pass, one read, either the score or the question. Never raise a `defer`
+candidate, since deferring is not reading it.
+
 **Does it contradict another finding in this run?** Two findings can each be grounded and still be
 mutually exclusive ("the guard is unreachable" versus "the guard fires before validation"), which
 per-finding traceability cannot see. Surface it as `(note: conflicts with [other finding] — kept the
@@ -103,7 +112,7 @@ Give each kept finding a disposition: **patch** (concrete `Fix:` inside the revi
 pre-existing or outside scope — not in the numbered list; append it to the deferred file per pipeline
 persistence and mention the count in one line after the list).
 
-Two things are recorded beyond the label and anchor, each under its own condition:
+Three things are recorded beyond the label and anchor, each under its own condition:
 
 - **`kind`** (required) — what sort of defect, independent of severity. Every finding that reaches a
   gate states one; a finding with none is rejected with the allowed values listed. Values are the
@@ -112,6 +121,11 @@ Two things are recorded beyond the label and anchor, each under its own conditio
   a wrong result on valid input; `reliability` fails
   under load, timing, or an environmental condition; `testing` is missing or weak coverage of behavior
   the change introduces; `documentation` misstates what the code does; `other` is none of these.
+- **`confidence`** (required) — the reviewer's own belief that the finding is real, 1-5, on the scale
+  in the shared contract (`5 confirmed` … `1 suspicion`), rendered beside the label as
+  `[attention · 4]`. It is not a severity: a `[blocking]` or `[attention]` needs 3 or higher, and a
+  `[concern]` or `[nit]` may carry any score. Record `confidence_from` whenever the score is raised,
+  which the raise rule above limits to what a read settled.
 - **`validation`** (when `verified` is true) — one sentence on what you read and concluded, e.g.
   "confirmed: `executeEsqlQuery` returns no rows when `_source` is absent, and this query keeps only
   `data_json`". `verified: true` alone asserts a second read happened; this records why it passed.

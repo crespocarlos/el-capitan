@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
+
+from review_vocabulary import canonical_personas, confidence_value
 
 JOURNAL = "outcomes.jsonl"
 
@@ -62,6 +65,23 @@ def decided(review_dir: Path) -> dict[str, str]:
     fix applied in a later pass is `fixed`, and the earlier line is history rather than truth.
     """
     return {fingerprint: outcome for fingerprint, (outcome, _) in _joined(review_dir).items()}
+
+
+def scored(directory) -> dict:
+    """Fingerprint → the score a decision was made under, when the record carries one.
+
+    A raise is only evidence while it stays attached to the read that settled it, so the outcome
+    journal is where the final score is authoritative: `crew review-stats` joins the score the
+    finding was acted on under, not the one it arrived with. Absent means the decision recorded no
+    score, which stays `unscored` rather than inheriting a persona's original guess.
+    """
+    found: dict = {}
+    for path in journals(directory):
+        for record in read_journal(path):
+            value = record.get("confidence")
+            if isinstance(value, int) and not isinstance(value, bool):
+                found[str(record["fingerprint"])] = value
+    return found
 
 
 def _joined(review_dir: Path) -> dict[str, tuple[str, str]]:
@@ -127,4 +147,40 @@ def missing(review_dir: Path, acted: list[str]) -> list[str]:
     """
     outcomes = decided(review_dir)
     return [fingerprint for fingerprint in acted if fingerprint not in outcomes]
+
+
+def append(args) -> int:
+    """Append one audit record for a decision, carrying the score it was made under.
+
+    A raised score travels with the decision that raised it: `--confidence` is the score the finding
+    was acted on under and `--confidence-from` the one it arrived with, so the join in
+    `crew review-stats` reads evidence rather than the label the record happens to carry. One without
+    the other is refused, for the same reason a raise in `review_gates` needs both halves.
+    """
+    if (args.confidence is None) != (args.confidence_from is None):
+        raise ValueError("--confidence and --confidence-from go together: a raise records both halves")
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "review_dir": str(args.review_dir),
+        "fingerprint": args.fingerprint,
+        "persona": canonical_personas(args.persona),
+        "label": args.label,
+        "outcome": args.outcome,
+        "reason": args.reason,
+        "memory_ids": args.memory_id,
+    }
+    if args.confidence is not None:
+        record["confidence"] = confidence_value(args.confidence)
+        record["confidence_from"] = confidence_value(args.confidence_from)
+        if args.confidence < args.confidence_from:
+            raise ValueError(
+                f"--confidence {args.confidence} is below --confidence-from {args.confidence_from}; "
+                "a raise only ever moves up"
+            )
+    target = args.review_dir.parent / JOURNAL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+    print(json.dumps(record, sort_keys=True))
+    return 0
 

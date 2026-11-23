@@ -11,14 +11,92 @@ both `TOOLS.md` and the consolidation protocol said the sentence was required.
 """
 from __future__ import annotations
 
-from review_models import ABSENT, Finding, require_kind
-from review_vocabulary import EVIDENCE_LOCATION, MAX_FINDINGS, MAX_NITS
+from review_models import ABSENT, Finding
+from review_vocabulary import (
+    ACTED_CONFIDENCE,
+    EVIDENCE_LOCATION,
+    KINDS,
+    MAX_FINDINGS,
+    MAX_NITS,
+    confidence_scale,
+)
+
+
+def require_kind(finding: Finding) -> None:
+    """Reject a finding with no `kind`, naming every value the vocabulary allows.
+
+    Required rather than optional, and enforced at persist: measured over 84 reviews, 713 of 719
+    findings carried no `kind`, so the one defect axis independent of severity was never populated.
+    A recorded review is re-read through `--lenient`, which is where legacy data stays readable.
+    """
+    if finding.kind is ABSENT:
+        raise ValueError(
+            f"finding {finding.title!r} has no kind; state what sort of defect it is, one of: "
+            f"{', '.join(sorted(KINDS))}"
+        )
+
+
+def require_confidence(finding: Finding) -> None:
+    """Reject a finding with no `confidence`, naming every band and its anchor.
+
+    Enforced at persist, like `require_kind`, and `--lenient` is how a review written before the
+    field existed stays readable. The score is the reviewer's own belief, not a severity: it is
+    never summed into a review-level number, because a value no outcome can be joined to cannot be
+    checked.
+    """
+    if finding.confidence is ABSENT:
+        raise ValueError(
+            f"finding {finding.title!r} has no confidence; state how sure you are, one of: "
+            f"{confidence_scale()}"
+        )
+
+
+def check_confidence_raise(finding: Finding) -> None:
+    """A raised score is a recorded change: it names what it came from and what settled it.
+
+    Consolidation and `crew review address` may raise a score only by resolving the unknown through
+    a read, so a raised record carries both halves — `confidence_from` for the old value and
+    `validation` for the read. Without them the increase is an assertion, which is exactly the shape
+    the score exists to tell apart from evidence. A drop is a different act and needs no record.
+    """
+    if finding.confidence_from is ABSENT:
+        return
+    if finding.confidence is not ABSENT and finding.confidence < finding.confidence_from:
+        raise ValueError(
+            f"finding {finding.title!r} records confidence_from {finding.confidence_from} above its "
+            f"score {finding.confidence}; a raise only ever moves up"
+        )
+    if isinstance(finding.validation, str) and finding.validation.strip():
+        return
+    raise ValueError(
+        f"finding {finding.title!r} raises its confidence from {finding.confidence_from} to "
+        f"{finding.confidence} but records no validation sentence; name the read that settled it"
+    )
+
+
+def check_confidence_floor(f: Finding) -> None:
+    """A finding the review asks the author to act on must be one the reviewer believes.
+
+    A `blocking` or `attention` finding scored 1 or 2 is a request the reviewer does not stand
+    behind, so it is refused by redirecting it to `[needs more info]` rather than by dropping it:
+    the doubt is the signal worth keeping, and a question carries it as well as a demand does.
+    """
+    if f.label in {"blocking", "attention"} and f.confidence is not ABSENT:
+        if f.confidence < ACTED_CONFIDENCE:
+            raise ValueError(
+                f"{f.label} finding {f.title!r} is scored {f.confidence}, below "
+                f"{ACTED_CONFIDENCE}: a request the reviewer does not believe belongs as "
+                "'needs more info', which states the stakes without asking for the change"
+            )
 
 
 def check_findings(findings: list[Finding]) -> None:
     """Per-finding rules that need no changed-file list."""
     for f in findings:
         require_kind(f)
+        require_confidence(f)
+        check_confidence_raise(f)
+        check_confidence_floor(f)
         evidence = None if f.evidence is ABSENT else f.evidence
         if f.label in {"blocking", "attention"} and not (
             f.verified is True

@@ -32,3 +32,19 @@ def atomic_write(path: Path, content: str) -> None:
 def read_json(path: Path) -> Any:
     """Parse a JSON file, leaving OSError and JSONDecodeError to the caller's own message."""
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def read_json_object(path: Path, key: str) -> dict:
+    """A JSON object that must carry a `key` list, or ValueError naming the file."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ValueError(f"cannot read {path}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path} is not valid JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must be a JSON object")
+    value = payload.get(key)
+    if not isinstance(value, list):
+        raise ValueError(f"{path} has no {key!r} list")
+    return payload
