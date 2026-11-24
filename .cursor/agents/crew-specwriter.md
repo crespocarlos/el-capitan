@@ -188,10 +188,11 @@ they see only the improved spec in the output.
 Claude Code dispatches the same prompt through its Agent tool by name.
 
 3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error, or
-   a turn-limit stop with no reply), proceed with the available findings — do not block on one
-   failure. **A reply without a `Verdict:` line is incomplete, not a clean pass:** resume it once
-   asking for the critique and the Verdict line alone, then name the lens and what it could not check
-   in the user-facing summary. Silence and "no findings" differ, and only the line tells them apart.
+   a turn-limit stop with no reply), proceed anyway. **A reply without a `Verdict:` line is
+   incomplete, not a clean pass:** resume it once for that line, then name the lens and what it could
+   not check; silence and "no findings" differ. A criterion about existing code whose behaviour you
+   cannot confirm by reading goes to one `reviewer-probe` run:
+   [probing an unsettled claim](~/.cursor/agents/references/probing.md).
 
 4. **Apply improvements** to the draft SPEC.md:
    - **Critical findings are blocking.** Address each one before presenting; when one needs a user

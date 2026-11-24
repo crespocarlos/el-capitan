@@ -230,9 +230,9 @@ def test_a_raise_logged_as_an_outcome_needs_the_read_that_settled_it(tmp: Path) 
     directory = review_dir(tmp)
     unevidenced = run_outcome(directory, "--confidence", "4", "--confidence-from", "2")
     assert unevidenced.returncode == 2 and "--validation" in unevidenced.stderr, unevidenced.stderr
-    # An unchanged pair is not a raise, and the gates refuse it in a finding record too.
+    # An unchanged pair is not a move, and the gates refuse it in a finding record too.
     same = run_outcome(directory, "--confidence", "4", "--confidence-from", "4")
-    assert same.returncode == 2 and "not a raise" in same.stderr, same.stderr
+    assert same.returncode == 2 and "not a move" in same.stderr, same.stderr
     evidenced = run_outcome(directory, "--confidence", "4", "--confidence-from", "2",
                             "--validation", "read src/a.ts:30-50; the guard shadows the caller's")
     assert evidenced.returncode == 0, evidenced.stderr

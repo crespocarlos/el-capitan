@@ -8,7 +8,7 @@ import json
 import pathlib
 import subprocess
 
-ROOT = pathlib.Path("/Users/ccrespo/Documents/dev/el-capitan")
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 HOOK = ROOT / ".claude/hooks/guard/destructive-git.sh"
 
 

@@ -45,26 +45,25 @@ reviewer says "X will cause Y", is X present and does it cause Y? Where the chai
 **Is it specific enough to act on, with proportionate stakes?** A finding must name a concrete target
 and say what breaks; otherwise sharpen it or drop it. Ignore the persona's label and assign one from
 the verified harm: `[blocking]` names a concrete failure path, and speculative harm or an unlikely
-chain downgrades. Mark a downgrade `(downgraded: harm is speculative — no direct failure path in this
-artifact)` and a drop `(dropped: too vague to act on)`.
+chain downgrades. Mark a downgrade `(downgraded: harm is speculative — no direct failure path)` and a
+drop `(dropped: too vague to act on)`.
 
 **Is the score earned?** The persona's `confidence` travels with the finding and is not yours to
-restate. The verification read below is the only thing that may raise it: when that read resolves the
-unknown the low score was recording, raise it by at most 2 and name in `validation` what you read that
-settled it — a score is never raised by reassurance, to keep a label, or to keep a finding in the
-list. No gate enforces the ceiling: a raise is refused only when it moves down or carries no
-`validation`, so the number is a discipline this pass keeps rather than a check that catches it. A
-read that does not settle it settles nothing, so a `[blocking]` or `[attention]` at 1-2 whose
-unknown survives becomes `[needs more info]` at its original score with that unknown named, and you
-look no further: one pass, one read, either the score or the question. Never raise a `defer`
-candidate, since deferring is not reading it.
-
+restate. A read or a probe may move it. The verification read raises it when it resolves the unknown
+the low score recorded, by at most 2, with `validation` naming what settled it — never by reassurance
+or to keep a finding in the list; nothing enforces that ceiling, so it is a discipline this pass
+keeps. A probe moves it either way: a confirming measurement may raise it (at most 2), a refuting one
+may lower it, and both need `validation` quoting the command and the observed output.
+A read that settles nothing settles nothing, so a `[blocking]` or `[attention]` at 1-2 whose unknown
+survives becomes `[needs more info]` at its original score with that unknown named, and a refuted
+`[blocking]` or `[attention]` cannot sit below the floor: it drops or relabels to `[needs more
+info]`. One pass, one read or one probe, then the score or the question. Never raise a `defer` item:
+deferring is not reading it.
 **Does it contradict another finding in this run?** Two findings can each be grounded and still be
 mutually exclusive ("the guard is unreachable" versus "the guard fires before validation"), which
 per-finding traceability cannot see. Surface it as `(note: conflicts with [other finding] — kept the
 stronger one)`. Deduplication handles one issue flagged twice; this handles two that cannot both hold.
-
-The goal is a report where every finding has a traceable, defensible reason to exist — not a relay.
+The goal is a report where every finding has a traceable reason to exist — not a relay.
 
 ### Verify against the repository
 
@@ -81,7 +80,7 @@ source with at most two targeted reads (the cited lines plus one caller, guard, 
 each finding on its own evidence, never by analogy. Absence claims ("there is no guard") always need
 this check, because personas see truncated slices. Claims about filesystem or persisted-data state
 ("symlink is a real directory", "existing specs use the old format") also need one command (`ls -la`,
-a count over the real data), because Ask-mode personas cannot run shell commands; that check does not
+a count over the real data), because personas cannot run shell commands; that check does not
 apply in PR mode unless the claim concerns the local reviewer environment. When a `[blocking]` claim
 needs more than two reads, dispatch one read-only `reviewer-explorer` with only that claim and its
 location, and keep its verdict. In PR mode its prompt must include the PR repository, head SHA, exact
@@ -127,9 +126,9 @@ Three things are recorded beyond the label and anchor, each under its own condit
 - **`confidence`** (required) — the reviewer's own belief that the finding is real, 1-5, on the scale
   in the shared contract (`5 confirmed` … `1 suspicion`), rendered beside the label as
   `[attention · 4]`. It is not a severity: a `[blocking]` or `[attention]` needs 3 or higher, and a
-  `[concern]` or `[nit]` may carry any score. A raise adds the record key `confidence_from` beside
-  `confidence`, never prose, which the raise rule above limits to what a read settled; a pair naming
-  one score is refused, because an unchanged score is not a raise.
+  `[concern]` or `[nit]` may carry any score. Any move carries `confidence_from` beside it plus the
+  `validation` above. Any probe records `probe: <outcome>` from `PROBE_OUTCOMES`; `probe: refuted`
+  alone lowers a score, and never beside one that rose.
 - **`validation`** (when `verified` is true) — one sentence on what you read and concluded, e.g.
   "confirmed: `executeEsqlQuery` returns no rows when `_source` is absent, and this query keeps only
   `data_json`". `verified: true` alone asserts a second read happened; this records why it passed.
@@ -165,9 +164,9 @@ Label order, also used for deduplication: `[blocking]` > `[attention]` > `[needs
 
 Both modes use one flat numbered list; severity is an inline label, never a section.
 
-**Nit budget tie-break.** With more nits than `MAX_NITS`, order by evidence strength and keep the top:
-a cost shown in the diff outranks one argued, and two personas outrank one lens's polish. Record what
-you cut as `dropped` with the reason, so its reviewer finds it in `DROPPED.md`.
+**Nit budget tie-break.** More nits than `MAX_NITS`: keep the strongest evidence — a cost shown in the
+diff outranks one argued, and two personas outrank one lens's polish. Record cuts as `dropped` with
+the reason, so their reviewers find them in `DROPPED.md`.
 
 | Label | Meaning |
 | --- | --- |

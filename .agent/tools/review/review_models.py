@@ -11,7 +11,9 @@ import hashlib
 from dataclasses import dataclass, field
 
 from lib.files import read_json_object  # noqa: F401 — re-exported: one reader for every caller
+from review_probe import probe_value
 from review_vocabulary import (
+    ABSENT,
     CONFIDENCE,
     DISPOSITIONS,
     EMITTED,
@@ -21,10 +23,6 @@ from review_vocabulary import (
     confidence_value,
     normalized_title,
 )
-
-# Absent is not the same as empty: `evidence` is optional, and a record must not grow a key the
-# persona never wrote, because `normalize` republishes the finding for later steps to parse.
-ABSENT = object()
 
 
 @dataclass
@@ -38,6 +36,7 @@ class Finding:
     kind: object = ABSENT
     confidence: object = ABSENT
     confidence_from: object = ABSENT
+    probe: object = ABSENT
     disposition: object = ABSENT
     persona: object = ABSENT
     hunks: object = ABSENT
@@ -66,7 +65,7 @@ class Finding:
         out: dict = {"title": self.title, "label": self.label}
         for key, value in (("file", self.file), ("line", self.line), ("kind", self.kind),
                            ("confidence", self.confidence),
-                           ("confidence_from", self.confidence_from),
+                           ("confidence_from", self.confidence_from), ("probe", self.probe),
                            ("disposition", self.disposition), ("persona", self.persona),
                            ("hunks", self.hunks), ("verified", self.verified),
                            ("evidence", self.evidence), ("validation", self.validation),
@@ -82,14 +81,11 @@ class Finding:
     def merge(self, other: "Finding") -> None:
         """Fold a duplicate in: union the personas each named and the hunks cited, losing neither.
 
-        The score is reconciled to the higher of the two rather than to whichever lens was dispatched
-        first: candidate order must not decide whether the run clears the floor gate, and the
-        strongest evidence any lens produced is the one a reader can act on. `confidence_from` is
-        dropped with it, because a raise no single read produced is not a recorded raise.
-
-        `excerpt`, `comment`, and `suggestion` keep the first value either lens supplied: whichever
-        arrives first may be the one that quotes the lines, words the comment, or supplies the
-        replacement code, and candidate order must not decide which reaches `comments.md`.
+        The score reconciles to the higher of the two, not to whichever lens ran first: candidate
+        order must not decide whether the run clears the floor gate. `confidence_from` and `probe`
+        drop with it, because a merge is not a read — a refutation one lens recorded cannot survive
+        beside a merged score that rose. `excerpt`, `comment`, and `suggestion` keep the first value
+        either lens supplied, since candidate order must not decide which reaches `comments.md`.
         """
         if isinstance(other.persona, list):
             for persona in other.persona:
@@ -105,7 +101,10 @@ class Finding:
                   if isinstance(score, int) and not isinstance(score, bool)]
         if scores and max(scores) != self.confidence:
             self.confidence = max(scores)
+            # A merge is not a read: no single read produced this score, and a probe claimed a
+            # measurement settled the finding one way the merged score may contradict.
             self.confidence_from = ABSENT
+            self.probe = ABSENT
         for name in ("excerpt", "comment", "suggestion"):
             if getattr(self, name) is ABSENT and getattr(other, name) is not ABSENT:
                 setattr(self, name, getattr(other, name))
@@ -169,6 +168,7 @@ def to_finding(finding: dict, index: int) -> Finding:
     kind = kind_value(finding, index)
     confidence = confidence_value_in(finding, index)
     confidence_from = confidence_from_in(finding, index)
+    probe = probe_value(finding, index)
     persona = ABSENT
     if "persona" in finding or "personas" in finding:
         persona = canonical_personas(finding.get("persona", finding.get("personas")))
@@ -180,12 +180,12 @@ def to_finding(finding: dict, index: int) -> Finding:
                 f"finding {index} names no persona; attribute it to the one that raised it "
                 "(or omit the key entirely for a record written before personas were recorded)"
             )
-    known = {"title", "label", "file", "line", "kind", "confidence", "confidence_from",
+    known = {"title", "label", "file", "line", "kind", "confidence", "confidence_from", "probe",
              "disposition", "persona", "personas", "hunks", "verified", "evidence", "validation",
              "excerpt", "comment", "suggestion", "reason", "memory_ids", "fingerprint"}
     record = Finding(
         title=finding["title"], label=label, kind=kind, confidence=confidence,
-        confidence_from=confidence_from, persona=persona,
+        confidence_from=confidence_from, probe=probe, persona=persona,
         file=finding.get("file", ABSENT), line=finding.get("line", ABSENT),
         disposition=finding.get("disposition", ABSENT), hunks=finding.get("hunks", ABSENT),
         verified=finding.get("verified", ABSENT), evidence=finding.get("evidence", ABSENT),
@@ -196,5 +196,3 @@ def to_finding(finding: dict, index: int) -> Finding:
     )
     record.fingerprint = fingerprint(record)
     return record
-
-

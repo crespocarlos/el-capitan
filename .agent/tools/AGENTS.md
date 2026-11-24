@@ -161,9 +161,11 @@ that failed to look.
   `tools` therefore speaks Claude Code ids, and each frontmatter says which harness reads which key.
   Do not set `model:`.
 - **`readonly: true` is enforced, not copied.** `crew-lint`'s `missing-readonly` rule fails any agent
-  under `.cursor/agents/` that omits it, except the two workers and the two inline-only orchestrators
-  named in `WRITE_CAPABLE_AGENTS` and `INLINE_ONLY_AGENTS` in `lint_prompts.py`. Add an exemption
-  there when an agent must write, so the reason is reviewable rather than implied by an omission.
+  under `.cursor/agents/` that omits it, except the workers named in `WRITE_CAPABLE_AGENTS` and the
+  inline-only orchestrators named in `INLINE_ONLY_AGENTS`, both in `lint_prompts.py`. There are three
+  workers: `crew-builder` and `crew-pr-resolver` write the change they were dispatched to make, and
+  `reviewer-probe` writes one throwaway artifact, runs it, and deletes it. Add an exemption there when
+  an agent must write, so the reason is reviewable rather than implied by an omission.
 - **Backgrounding is a call-site field.** Set `run_in_background: true` on the dispatch that needs it;
   do not put `is_background` in frontmatter, which would state the same fact twice with no check that
   the copies agree.

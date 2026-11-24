@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PROMPT = ROOT / ".cursor" / "agents" / "crew-pr-resolver.md"
 REFERENCE = ROOT / ".cursor" / "agents" / "crew-pr-resolver" / "references" / "probing-a-question.md"
+PROBE_REFERENCE = ROOT / ".cursor" / "agents" / "references" / "probing.md"
 MAINTENANCE = ROOT / ".agent" / "tools" / "maintenance"
 if str(MAINTENANCE) not in sys.path:
     sys.path.insert(0, str(MAINTENANCE))
@@ -31,6 +32,11 @@ def prompt() -> str:
 
 
 def reference() -> str:
+    """The shared probe lifecycle; the resolver's file keeps only what a thread changes."""
+    return PROBE_REFERENCE.read_text(encoding="utf-8")
+
+
+def resolver_reference() -> str:
     return REFERENCE.read_text(encoding="utf-8")
 
 
@@ -53,8 +59,12 @@ def test_an_unsettled_thread_is_probed_before_it_is_scored() -> None:
 def test_the_probe_reference_is_linked_and_exists() -> None:
     """Material a step needs only sometimes lives in references/, linked from the step."""
     assert REFERENCE.is_file(), f"{REFERENCE.name} is missing"
+    assert PROBE_REFERENCE.is_file(), f"{PROBE_REFERENCE.name} is missing"
     assert "](crew-pr-resolver/references/probing-a-question.md)" in prompt(), (
         "Step 4 does not link the probe reference"
+    )
+    assert "](../../references/probing.md)" in resolver_reference(), (
+        "the resolver's probe reference does not link the shared lifecycle"
     )
 
 
@@ -103,13 +113,21 @@ def test_the_reply_states_what_the_probe_does_not_cover() -> None:
 
 
 def test_the_probe_does_not_become_the_default_for_every_thread() -> None:
-    """A probe costs a runner; a thread the code settles must not pay for one."""
+    """A probe costs a runner; a thread the code settles must not pay for one.
+
+    The bounds are split by scope: the shared file names the one a reviewer can act on (a score below
+    the floor, or a call you are torn between), and the resolver's own reference adds the two terms
+    only a resolver has — `ACTED_CONFIDENCE` and `Ask`.
+    """
     body = reference()
     assert "Skip the probe only when it is infeasible" in body, (
         "the skip condition is unstated, so the probe reads as optional everywhere"
     )
-    for bound in ("below `ACTED_CONFIDENCE`", "would render `Ask`", "torn between"):
-        assert bound in body, f"the trigger omits one of its bounds: {bound!r}"
+    assert "below 3" in body, "the shared trigger omits the score floor it can state in plain words"
+    assert "torn between" in body, "the shared trigger omits the one bound every consumer shares"
+    resolver = resolver_reference()
+    for bound in ("`ACTED_CONFIDENCE`", "`Ask`"):
+        assert bound in resolver, f"the resolver's own reference omits its bound: {bound!r}"
 
 
 def test_the_prompt_stays_under_the_byte_ceiling() -> None:

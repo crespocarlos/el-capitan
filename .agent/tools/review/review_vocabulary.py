@@ -20,6 +20,13 @@ KINDS = {"security", "correctness", "reliability", "documentation", "testing", "
 # percentage because a percentage implies a calibration nobody can supply, and per finding rather
 # than per review because only this form can be joined to whether the finding was fixed.
 CONFIDENCE = {5: "confirmed", 4: "strong", 3: "likely", 2: "uncertain", 1: "suspicion"}
+# What a probe observed about the finding, in the reviewer's own record: the claim held, it did not
+# hold, or the run did not settle it. The middle value is the only one that may lower a score.
+PROBE_OUTCOMES = {"confirmed", "refuted", "inconclusive"}
+# Absent is not the same as empty: an optional field must not grow a key the persona never wrote,
+# because `normalize` republishes the finding for later steps to parse. Held here rather than in the
+# record so the vocabulary and the probe module can name it without importing each other.
+ABSENT = object()
 # A finding the review asks the author to act on has to be one the reviewer believes in.
 ACTED_CONFIDENCE = 3
 OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}

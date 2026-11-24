@@ -750,6 +750,15 @@
       "smoke": "imported by crew-review-findings.py"
     },
     {
+      "name": "review_probe.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_models.py and review_gates.py",
+      "smoke": "imported by review_models.py and review_gates.py"
+    },
+    {
       "name": "review_comments.py",
       "dir": "review",
       "kind": "module",

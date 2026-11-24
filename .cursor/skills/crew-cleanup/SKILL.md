@@ -110,6 +110,53 @@ for dir in "${CONFIRMED_DIRS[@]}"; do
 done
 ```
 
+### Step 6b: Prune a DONE task's scratch directories
+
+A task directory keeps two things nothing else ever removes: `probes/`, where throwaway probe
+scripts accumulate, and `review/<timestamp>/`, which holds persona packages and diffs. Both are
+scratch. A `DONE` task's spec, `REPORT.md`, `REVIEW.md`, `DEFERRED.md`, and `DROPPED.md` are the
+record and stay.
+
+List the candidates first — only directories whose spec reads `DONE`:
+
+```bash
+for dir in "$HOME"/.agent/tasks/*/; do
+  [ -f "$dir/SPEC.md" ] || continue
+  if ! status=$(~/.agent/bin/crew-ls.py --status-file "$dir/SPEC.md"); then
+    echo "error: cannot read status for $dir" >&2
+    exit 1
+  fi
+  [ "$status" = "DONE" ] || continue
+  for scratch in "$dir/probes" "$dir"/review/*/; do
+    [ -d "$scratch" ] && echo "$(du -sh "$scratch" | cut -f1)  $scratch"
+  done
+done
+```
+
+Show that list and ask: "Delete which scratch directories? (all / none / comma-separated numbers)".
+Never infer `all`. Remove each confirmed path with the same containment check Step 6 uses — resolve
+it, require it to sit under a task directory that has a `.task-id`, and re-read the status:
+
+```bash
+root=$(cd "$HOME/.agent/tasks" && pwd -P)
+for dir in "${CONFIRMED_SCRATCH[@]}"; do
+  real=$(cd "$dir" 2>/dev/null && pwd -P) || { echo "skipped (missing): $dir" >&2; continue; }
+  case "$real" in "$root"/*/probes|"$root"/*/review/*) ;; *)
+    echo "skipped (not task scratch): $dir" >&2; continue ;; esac
+  task=${real%/probes}; task=${task%/review/*}
+  [ -f "$task/.task-id" ] || { echo "skipped (no .task-id): $dir" >&2; continue; }
+  if ! status=$(~/.agent/bin/crew-ls.py --status-file "$task/SPEC.md"); then
+    echo "error: cannot read status for $task; stopping before any removal" >&2
+    exit 1
+  fi
+  [ "$status" = "DONE" ] || { echo "skipped (task is $status): $dir" >&2; continue; }
+  rm -rf "$real" && echo "Removed scratch: $real"
+done
+```
+
+Re-check the status inside the loop, not only when listing: the list may be minutes old, and a task
+that went back to `IMPLEMENTING` is one whose probes are live again.
+
 ### Step 7: Summary
 
 Show what was removed:

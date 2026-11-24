@@ -154,6 +154,12 @@ trail — the recorded package must be the one the persona read.
 
 Follow [consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.md).
 
+A finding a read cannot settle — below `ACTED_CONFIDENCE`, headed for `Ask`, or genuinely torn — goes
+to a probe rather than to a question: collect every unsettled finding in this review and dispatch one
+`reviewer-probe` run carrying all of them, then set each score from what it observed. PR mode never
+does this; its findings keep `[needs more info]` and name the blocked probe. Follow [probing an
+unsettled claim](~/.cursor/agents/references/probing.md).
+
 ## Step 8: output and persistence
 
 Follow [output formats](~/.cursor/agents/crew-reviewer/references/output-formats.md),

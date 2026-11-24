@@ -107,7 +107,9 @@ def add_maintenance_parsers(commands) -> None:
     ingest_parser.add_argument("--repo")
     ingest_parser.add_argument("--dry-run", action="store_true")
     inbox_parser = commands.add_parser("import-inbox")
-    inbox_parser.add_argument("--all", action="store_true")
+    inbox_parser.add_argument("--all", action="store_true",
+                              help="take every draft; a bare call refuses, because the inbox may "
+                                   "hold drafts from earlier sessions")
     inbox_parser.add_argument("files", nargs="*")
 
 

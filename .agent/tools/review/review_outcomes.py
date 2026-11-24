@@ -17,7 +17,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from review_vocabulary import CONFIDENCE, canonical_personas, confidence_value
+from review_probe import score_move
+from review_vocabulary import CONFIDENCE, canonical_personas
 
 JOURNAL = "outcomes.jsonl"
 
@@ -141,29 +142,7 @@ def missing(review_dir: Path, acted: list[str]) -> list[str]:
 
 
 def append(args) -> int:
-    """Append one audit record for a decision, carrying the score it was made under.
-
-    A raised score travels with the decision that raised it: `--confidence` is the score the finding
-    was acted on under and `--confidence-from` the one it arrived with, so the join in
-    `crew review-stats` reads evidence rather than the label the record happens to carry. One without
-    the other is refused, for the same reason a raise in `review_gates` needs both halves, and a rise
-    needs `--validation` for the same reason: `scored()` makes this journal authoritative, so a raise
-    logged here without the read that settled it would be the one assertion the score exists to keep
-    apart from evidence.
-    """
-    if (args.confidence is None) != (args.confidence_from is None):
-        raise ValueError("--confidence and --confidence-from go together: a raise records both halves")
-    if args.confidence is not None and args.confidence == args.confidence_from:
-        raise ValueError(
-            f"--confidence and --confidence-from are both {args.confidence}; an unchanged score is "
-            "not a raise, so log it without both flags"
-        )
-    validation = (args.validation or "").strip()
-    if args.confidence is not None and args.confidence > args.confidence_from and not validation:
-        raise ValueError(
-            f"a raise from {args.confidence_from} to {args.confidence} needs --validation naming the "
-            "read that settled it; a raise with no recorded read is an assertion, not evidence"
-        )
+    """Append one audit record for a decision, carrying the score it was made under."""
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "review_dir": str(args.review_dir),
@@ -174,20 +153,10 @@ def append(args) -> int:
         "reason": args.reason,
         "memory_ids": args.memory_id,
     }
-    if args.confidence is not None:
-        record["confidence"] = confidence_value(args.confidence)
-        record["confidence_from"] = confidence_value(args.confidence_from)
-        if args.confidence < args.confidence_from:
-            raise ValueError(
-                f"--confidence {args.confidence} is below --confidence-from {args.confidence_from}; "
-                "a raise only ever moves up"
-            )
-        if validation:
-            record["validation"] = validation
+    record.update(score_move(args))
     target = args.review_dir.parent / JOURNAL
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
     print(json.dumps(record, sort_keys=True))
     return 0
-

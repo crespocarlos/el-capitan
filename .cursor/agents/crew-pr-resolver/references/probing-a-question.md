@@ -2,65 +2,39 @@
 
 Step 4 detail for `crew-pr-resolver`. Loaded whenever a thread is unsettled.
 
-## Why probe
+The probe lifecycle — why it beats a guess, its three triggers, the four shapes of uncertainty, the
+five steps, deletion, scoring, and reporting — is held once in
+[probing an unsettled claim](../../references/probing.md). Read it there; this file keeps only what a
+thread changes.
 
-A thread you cannot settle is not a thread you should hand to the author. It is a suspicion: the comment
-points at something real and you cannot see whether it is. Guessing in either direction is the failure —
-applying a wrong fix costs a review round trip, and resolving a doubtful thread tells the reviewer
-"handled" about work nobody stood behind.
+## What a thread changes
 
-A probe is how a suspicion becomes evidence. Run the code the thread is about, look at what it actually
-produces, and let the measurement set the score. The question is a heuristic; the probe is the check.
+The claim under test is a review comment, and what a probe has to measure is whether the comment is
+right about **this** code. So the artifact exercises the entry point the comment names, in the package
+that owns the behavior, and the observed value decides between `Apply` and `Reject` — not whether the
+author should have written it differently. A probe answers the fault question, never the decision
+question: an intent the author chose stays `Decide` however the code behaves.
 
-The trigger is the one in Step 4 of the agent file — a verdict below `ACTED_CONFIDENCE`, one that
-would render `Ask`, or one you are torn between. What the uncertainty is about decides the probe,
-not whether you run one:
+This mode's two extra trigger bounds, beside the shared score-of-3 rule: a verdict below
+`ACTED_CONFIDENCE` and one that would render `Ask`. Both are resolver terms — the first is the floor a
+thread must clear to be applied or rejected, the second is the verdict for a thread the reads leave
+open — and neither means anything to a reviewer, which is why they live here and not in the shared
+file. A thread that would render `Ask` gets a probe before it becomes a question.
 
-- **what the code does at runtime** — a rendered expression, a value after a skipped step, a query's
-  rows, a branch taken. Write a throwaway test that exercises the entry point the thread names.
-- **what a fixture or test actually asserts** — run that one test file and read the failure or pass.
-- **what a helper or schema accepts** — call it from a throwaway test with the input the thread
-  describes, and observe the result or the error.
-- **what a caller does with the value** — a repro through the public entry point, not an inspection of
-  the implementation.
+## The clean-tree rule is stricter here
 
-Skip the probe only when it is infeasible, not when it is inconvenient: a missing dependency tree, a
-harness needing a live cluster, a package that cannot build. Say which, keep the thread `Ask`, and name
-what would have to change to settle it.
+The resolver runs in a worktree it owns, so the shared compare tightens into this: after deleting the
+probe, `git status --porcelain` must be clean — empty output — because this worktree started that way
+and a leftover file is the run's own defect. That check, not a path-scoped diff, is what makes the
+tree clean before the report. A reviewer's tree already holds the edits under review, so there the
+compare is against the reading taken before the probe; both rest on the same command and only the
+expected reading differs.
 
-## The probe
+## Reporting a thread
 
-The smallest throwaway artifact that answers the one question — in the package that owns the behavior,
-through the interface the thread names, not a copy of its internals.
+The reply quotes the expression or call, the observed output, and the command, then gives the verdict:
 
-1. Write it beside the package's existing tests, named so it cannot be mistaken for a real one.
-2. Reproduce the thread's conditions exactly: the skipped step, the absent field, the empty result, the
-   unusual input. One question per probe; a probe answering three settles none of them clearly.
-3. Run it with the package's own command under whatever elevation the harness needs. A sandbox refusal
-   is a probe failure, not a result.
-4. Record the command, the expression or call, and the observed output verbatim.
-5. **Delete it, whatever happened.** Deletion is not the last step of the happy path: a run that could
-   not run the probe, was interrupted, or stopped after three attempts deletes it too. Then confirm
-   `git status --porcelain` is clean before the report — that check, not a path-scoped diff, is what
-   catches a leftover file and any snapshot or cache directory a test run wrote.
-
-The probe is the only write evaluation makes, and it is gone before the report in every outcome. No
-tracked file changes, and no untracked one either.
-
-## Scoring on the measurement
-
-The observed value is the evidence, so it sets the score: a measurement that confirms the comment
-outranks a reading of the code that merely suggests it, and one that refutes it settles the thread as
-`Reject`. A thread left at 1-2 after a probe means the probe did not answer the question the verdict
-turns on — narrow it, or say plainly that it cannot be settled here.
-
-## Reporting it
-
-The reply quotes the expression or call, the observed output, and the command, then draws the
-conclusion the thread asked for. State the limit in the same breath: a probe covers the case it built,
-not the whole workflow, the stored record, or the call path around it.
-
-- **Probe confirms the problem** → verdict `Apply`, the measurement supporting the edit. A probe worth
+- **Probe confirms the comment** → verdict `Apply`, the measurement supporting the edit. A probe worth
   keeping is proposed as a test inside that edit, through the approval gate — never left behind.
 - **Probe refutes it** → verdict `Reject`, scored on the measurement, the reply citing the observed
   value instead of reasoning about what the code would do.

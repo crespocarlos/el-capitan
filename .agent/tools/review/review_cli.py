@@ -12,6 +12,7 @@ from pathlib import Path
 
 from lib.output import DEFAULT_MAX_CHARS
 from review_findings import CODE_MODES, LABELS, OUTCOMES, mode_arg
+from review_vocabulary import PROBE_OUTCOMES
 
 
 def add_mode_flags(parser: argparse.ArgumentParser) -> None:
@@ -118,7 +119,10 @@ def add_context_parsers(commands) -> None:
     outcome_parser.add_argument("--confidence-from", type=int, default=None,
                                 help="the score it arrived with, when this decision raised it")
     outcome_parser.add_argument("--validation", default=None,
-                                help="the read that settled a raise; required when the score rises")
+                                help="the read or probe that settled a score move; required for one")
+    outcome_parser.add_argument("--probe", default=None, choices=sorted(PROBE_OUTCOMES),
+                                help="the probe outcome that lowered the score; refuted is the only "
+                                     "value that permits a downward move")
     check_parser = commands.add_parser(
         "outcomes", help="report a review's recorded outcomes; --acted fails on a missing one")
     check_parser.add_argument("--review-dir", required=True, type=Path)

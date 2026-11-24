@@ -12,6 +12,7 @@ both `TOOLS.md` and the consolidation protocol said the sentence was required.
 from __future__ import annotations
 
 from review_models import ABSENT, Finding
+from review_probe import check_confidence_floor, check_confidence_raise, check_probe_move
 from review_vocabulary import (
     ACTED_CONFIDENCE,
     EVIDENCE_LOCATION,
@@ -51,57 +52,13 @@ def require_confidence(finding: Finding) -> None:
         )
 
 
-def check_confidence_raise(finding: Finding) -> None:
-    """A raised score is a recorded change: it names what it came from and what settled it.
-
-    Consolidation and `crew review address` may raise a score only by resolving the unknown through
-    a read, so a raised record carries both halves — `confidence_from` for the old value and
-    `validation` for the read. Without them the increase is an assertion, which is exactly the shape
-    the score exists to tell apart from evidence. A pair naming one score is not a raise at all and
-    carries no information, so it is refused rather than recorded.
-    """
-    if finding.confidence_from is ABSENT:
-        return
-    if finding.confidence is not ABSENT and finding.confidence < finding.confidence_from:
-        raise ValueError(
-            f"finding {finding.title!r} records confidence_from {finding.confidence_from} above its "
-            f"score {finding.confidence}; a raise only ever moves up"
-        )
-    if finding.confidence is not ABSENT and finding.confidence == finding.confidence_from:
-        raise ValueError(
-            f"finding {finding.title!r} records confidence_from {finding.confidence_from} equal to "
-            "its score; an unchanged score is not a raise, so omit confidence_from"
-        )
-    if isinstance(finding.validation, str) and finding.validation.strip():
-        return
-    raise ValueError(
-        f"finding {finding.title!r} raises its confidence from {finding.confidence_from} to "
-        f"{finding.confidence} but records no validation sentence; name the read that settled it"
-    )
-
-
-def check_confidence_floor(f: Finding) -> None:
-    """A finding the review asks the author to act on must be one the reviewer believes.
-
-    A `blocking` or `attention` finding scored 1 or 2 is a request the reviewer does not stand
-    behind, so it is refused by redirecting it to `[needs more info]` rather than by dropping it:
-    the doubt is the signal worth keeping, and a question carries it as well as a demand does.
-    """
-    if f.label in {"blocking", "attention"} and f.confidence is not ABSENT:
-        if f.confidence < ACTED_CONFIDENCE:
-            raise ValueError(
-                f"{f.label} finding {f.title!r} is scored {f.confidence}, below "
-                f"{ACTED_CONFIDENCE}: a request the reviewer does not believe belongs as "
-                "'needs more info', which states the stakes without asking for the change"
-            )
-
-
 def check_findings(findings: list[Finding]) -> None:
     """Per-finding rules that need no changed-file list."""
     for f in findings:
         require_kind(f)
         require_confidence(f)
         check_confidence_raise(f)
+        check_probe_move(f)
         check_confidence_floor(f)
         evidence = None if f.evidence is ABSENT else f.evidence
         if f.label in {"blocking", "attention"} and not (

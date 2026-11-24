@@ -124,7 +124,13 @@ def apply_inbox(writes: list[tuple[Path, str]], removals: list[Path]) -> int:
 
 
 def import_inbox(args: argparse.Namespace) -> int:
-    """Import the whole inbox or the named drafts, reporting each verdict."""
+    """Import the whole inbox or the named drafts, reporting each verdict.
+
+    A bare call takes every draft, which is only safe when the inbox holds nothing from an earlier
+    session. Naming the drafts is the explicit form and always allowed; a bulk import needs `--all`,
+    and says how many it is about to take so a draft someone wrote weeks ago is never promoted by a
+    command whose author only knew about their own.
+    """
     ensure_store()
     inbox = memory_root() / ".inbox"
     wanted = set(args.files or [])
@@ -134,6 +140,15 @@ def import_inbox(args: argparse.Namespace) -> int:
     if not sources:
         print("no changes")
         return 0
+    if not wanted and not args.all:
+        print(f"error: a bare import would take all {len(sources)} draft(s) from {inbox}; name the "
+              "files you approved, or pass --all to take the whole inbox deliberately",
+              file=sys.stderr)
+        for path in sources:
+            print(f"  {path.name}", file=sys.stderr)
+        return 2
+    if args.all:
+        print(f"importing all {len(sources)} draft(s) from {inbox}", file=sys.stderr)
     with store_lock():
         conn = refresh(write_indexes=False)
         writes, removals, errors, duplicates, ids = gather_inbox(conn, sources)

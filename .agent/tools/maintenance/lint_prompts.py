@@ -19,8 +19,10 @@ from lint_files import line_no, rel
 
 # The source of truth for skills that may activate without an explicit `crew` command.
 MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test", "spec-writing"}
-# Agents that write by definition, so `readonly` cannot apply to them.
-WRITE_CAPABLE_AGENTS = {"crew-builder", "crew-pr-resolver"}
+# Agents that write by definition, so `readonly` cannot apply to them. `reviewer-probe` is here
+# because a probe is a throwaway artifact and the rule that keeps it honest is deletion, not
+# `readonly`: a read-only worker could not run the artifact that is the whole point.
+WRITE_CAPABLE_AGENTS = {"crew-builder", "crew-pr-resolver", "reviewer-probe"}
 # Orchestrators the router refuses to dispatch, so `readonly` — a subagent-only field — never applies.
 INLINE_ONLY_AGENTS = {"crew-reviewer", "crew-specwriter"}
 MANIFEST = ".agent/tools/tools.json"

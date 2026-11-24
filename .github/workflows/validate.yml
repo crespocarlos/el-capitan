@@ -135,6 +135,9 @@ jobs:
       - name: Agent readonly declaration
         run: python3 evals/tools/test_agent_readonly.py
 
+      - name: Review probe contract (one dispatch, score either way, tree restored)
+        run: python3 evals/tools/test_review_probe.py
+
       - name: Specwriter critic contract (budget, verdict line)
         run: python3 evals/tools/test_specwriter_critics.py
 

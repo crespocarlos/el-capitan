@@ -11,7 +11,10 @@ no package, or never dispatched at all.
    tool, the other honours a declared subset — so a named tool may not exist on the other side.
    Reviewers are analysis-only; leaving out `readonly: true` fails `crew-lint` with `missing-readonly`,
    and setting it false requires adding the name to `WRITE_CAPABLE_AGENTS` in `lint_prompts.py`, where
-   the exemption and its reason are reviewable.
+   the exemption and its reason are reviewable. That set is not limited to the agents that edit the
+   tree: `reviewer-probe` is in it because it writes one throwaway artifact, runs it, and deletes it,
+   and a read-only worker could not run the probe at all — deletion, not `readonly`, is what keeps
+   that write honest.
 2. **Selection** — add the name to `PERSONAS` and a path pattern to `SELECT_RULES` in
    `crew-review-findings.py`. `select` is what dispatch reads, so `crew-reviewer` Step 4's prose
    alone dispatches nothing. `select` never returns `explorer`, so that persona stays manually

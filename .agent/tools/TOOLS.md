@@ -41,7 +41,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
 | `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_review.py`, `task_normalize.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py` | `transitions.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts |
-| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_vocabulary.py`, `review_models.py`, `review_gates.py`, `review_layers.py`, `review_map.py`, `review_personas.py`, `review_classify.py`, `review_coverage.py`, `review_report.py`, `review_persist_gates.py`, `review_parse.py`, `review_limits.py`, `assemble_config.py`, `assemble_common.py`, `assemble_map.py`, `assemble_files.py`, `assemble_personas.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_vocabulary.py`, `review_models.py`, `review_probe.py`, `review_gates.py`, `review_layers.py`, `review_map.py`, `review_personas.py`, `review_classify.py`, `review_coverage.py`, `review_report.py`, `review_persist_gates.py`, `review_parse.py`, `review_limits.py`, `assemble_config.py`, `assemble_common.py`, `assemble_map.py`, `assemble_files.py`, `assemble_personas.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py` | `memory_store.py`, `memory_paths.py`, `memory_scalars.py`, `memory_frontmatter.py`, `memory_index.py`, `memory_commit.py`, `memory_add.py`, `memory_units.py`, `memory_cite.py`, `memory_search.py`, `memory_context.py`, `memory_journal.py`, `memory_journal_add.py`, `memory_recall.py`, `memory_inbox.py`, `memory_ingest.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
@@ -62,9 +62,9 @@ dispatches, and holds no command logic. Modules import each other by their names
 dependency order (`memory_paths` → `memory_scalars` → `memory_frontmatter` → `memory_index` →
 `memory_commit` → `memory_add`/`memory_units`/`memory_cite` → `memory_search`/`memory_context`/
 `memory_journal` → `memory_inbox`/`memory_ingest`/`memory_maintenance`, with `memory_store` the
-façade that re-exports all of it; `review_vocabulary` → `review_models` → `review_gates` →
-`review_findings` → `review_classify`/`review_coverage`/`review_map` → `review_layers`/
-`review_personas` → `review_persist_gates` → `review_report`; `task_state` →
+façade that re-exports all of it; `review_vocabulary` → `review_probe` → `review_models` →
+`review_gates` → `review_findings` → `review_classify`/`review_coverage`/`review_map` →
+`review_layers`/`review_personas` → `review_persist_gates` → `review_report`; `task_state` →
 `task_resolve`/`task_typed_tests` → `task_gates`/`task_report`/`task_artifacts`; `evals_query` →
 `evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_naming`/`lint_budget` →
 `lint_catalog`/`lint_prompts`/`lint_references` → `lint_progress`), so a module never imports back
@@ -172,7 +172,12 @@ module.
   it is a request the reviewer does not believe, and the doubt belongs in a question. A score may rise
   only by resolving the unknown through a read: the raised record carries `confidence_from` (the old
   value) and a `validation` sentence naming what settled it, and a raise without that sentence is
-  rejected, as is a `confidence_from` equal to the score, which records nothing. The score is the
+  rejected, as is a `confidence_from` equal to the score, which records nothing. A score may fall on
+  one record only: `probe: refuted` (a value outside `PROBE_OUTCOMES`, `confirmed`, `refuted`, or
+  `inconclusive`, is refused at parse with the set named) with the same `confidence_from` pair and a
+  `validation` sentence quoting the command and the observed output. A downward move without a
+  refuting probe is refused, and a refuted `blocking` or `attention` is still held to the floor, so it
+  drops or relabels to `needs more info` rather than persisting as a request scored 2. The score is the
   reviewer's belief, never a severity, and is never summed into a review-level number.
   `normalize` and `persist` apply those gates by default; `--lenient` is the escape and `--strict`
   is a no-op alias kept one cycle so a script written against the old default still runs.
@@ -198,7 +203,9 @@ module.
   --confidence-from M --validation "<the read>"` records the score a decision was made under when it
   raised one; the pair is required together and a rise is refused without the sentence naming the read
   that settled it, while an unchanged pair is refused as not a raise, so the journal's authoritative
-  score carries the same halves a persisted finding does. `crew-review-stats.py` joins the decision's
+  score carries the same halves a persisted finding does. A lower score needs `--probe refuted` too,
+  for the same reason `review_probe` does, and the record then carries the outcome.
+  `crew-review-stats.py` joins the decision's
   score rather than the score the finding arrived with, and reads a record only for the review it
   names, so one review's raise cannot band a sibling review's finding. Two journal shapes exist
   (`<review>/outcomes.jsonl` and `<task>/review/outcomes.jsonl`) because the path follows the

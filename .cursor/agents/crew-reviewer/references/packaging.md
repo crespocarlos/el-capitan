@@ -99,9 +99,13 @@ After `crew-assemble-packages.py "$REVIEW_ROOT"` succeeds, **append the PR-head 
 `<persona>.in.md` before `check-packages`**, under a heading that says where they came from:
 
 ```bash
+mkdir -p "$REVIEW_ROOT/head"
 gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>" --jq .content \
   | base64 --decode > "$REVIEW_ROOT/head/<slug>.txt"
 ```
+
+Create the directory first, once, before the first fetch: the redirect does not create it, and a
+missing directory turns one setup omission into a failed network read per excerpt.
 
 Read at the head SHA the run resolved once, never at the local checkout, and label every excerpt
 `path:line@headSHA7` as the PR-mode evidence rule requires. What to fetch is the same material the
