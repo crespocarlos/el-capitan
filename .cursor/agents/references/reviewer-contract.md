@@ -54,6 +54,12 @@ index and `L` the line; the score is a literal band, so neither is copied into t
   reported as `[needs more info]` naming the base excerpt you need.
 - One issue per finding. Split two problems even when they share a root cause, or one fix hides the
   other from every downstream count.
+- **A concrete fix is a `suggestion` value, not a fenced block in the body.** Put the exact
+  replacement for the anchored line range in `suggestion`; `comments.md` fences it as a GitHub
+  suggestion so the author commits it in one click. A hand-written fence in `comment` renders a
+  second block and lands outside the anchored range, which is why the code lives in its own field. A
+  finding whose fix is a decision asks the question instead — a suggestion cannot carry "your call
+  which way".
 - Say whether the defect pre-exists: if its cause is in code or text the change does not touch, say
   so; a finding whose claimed cause is not in the diff is pre-existing by definition. Consolidation
   routes pre-existing problems to a deferred list instead of blocking on them.

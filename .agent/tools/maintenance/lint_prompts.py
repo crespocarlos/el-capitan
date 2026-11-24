@@ -19,6 +19,10 @@ from lint_files import line_no, rel
 
 # The source of truth for skills that may activate without an explicit `crew` command.
 MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-test", "spec-writing"}
+# Agents that write by definition, so `readonly` cannot apply to them.
+WRITE_CAPABLE_AGENTS = {"crew-builder", "crew-pr-resolver"}
+# Orchestrators the router refuses to dispatch, so `readonly` — a subagent-only field — never applies.
+INLINE_ONLY_AGENTS = {"crew-reviewer", "crew-specwriter"}
 MANIFEST = ".agent/tools/tools.json"
 MCP_REFERENCE = re.compile(r"mcp__([a-z0-9-]+)__([a-z0-9_]+)")
 TOOLS_LINE = re.compile(r"^tools:\s*(.+)$", re.MULTILINE)
@@ -83,6 +87,38 @@ def lint_skill_setup(root: Path) -> Findings:
             findings.append((name, 1, "missing-disable-model-invocation",
                              "set disable-model-invocation: true or add the skill to "
                              "MODEL_INVOCABLE_SKILLS"))
+    return findings
+
+
+def lint_agent_readonly(root: Path) -> Findings:
+    """A read-only agent must declare `readonly: true`; a writing agent must not.
+
+    Cursor inherits every parent tool into a subagent and honours no `tools:` line, so `readonly` is
+    the only thing stopping a persona from editing the tree mid-review — and the only thing silently
+    stopping a worker from writing. Both directions are checked: the flag copied out of a persona into
+    `crew-builder` fails the run at dispatch otherwise. The two exemption sets keep the decision a
+    reviewed edit rather than an omission nobody notices.
+    """
+    findings: Findings = []
+    agent_dir = root / ".cursor/agents"
+    if not agent_dir.is_dir():
+        return findings
+    for path in sorted(agent_dir.glob("*.md")):
+        frontmatter_text, error_kind, error = parse_frontmatter(path.read_text(errors="replace"))
+        if error:
+            findings.append((rel(root, path), 1, f"{error_kind}-agent-frontmatter", error))
+            continue
+        declared = re.search(r"^readonly:\s*(true|false)\s*$", frontmatter_text, re.MULTILINE)
+        if path.stem in WRITE_CAPABLE_AGENTS:
+            if declared and declared.group(1) == "true":
+                findings.append((rel(root, path), 1, "unexpected-readonly",
+                                 f"{path.stem} writes, so readonly: true would block every edit"))
+        elif path.stem in INLINE_ONLY_AGENTS:
+            continue
+        elif not declared or declared.group(1) != "true":
+            findings.append((rel(root, path), 1, "missing-readonly",
+                             "set readonly: true, or add the agent to WRITE_CAPABLE_AGENTS / "
+                             "INLINE_ONLY_AGENTS in lint_prompts.py with a reason"))
     return findings
 
 

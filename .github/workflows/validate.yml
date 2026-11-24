@@ -132,6 +132,9 @@ jobs:
       - name: Command surface (catalog kinds, install links)
         run: python3 evals/tools/test_command_names.py
 
+      - name: Agent readonly declaration
+        run: python3 evals/tools/test_agent_readonly.py
+
       - name: Python syntax
         run: python3 -m compileall -q .agent/tools evals .claude
 

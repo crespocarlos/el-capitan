@@ -7,6 +7,10 @@ format [finding formats](finding-formats.md) defines. No severity sections.
   commit\` to continue.`
 - A blocked self-review states `BLOCK` and ends with `Next: run \`crew review address\` to resolve the
   findings.`
+- **A PR review never ends with `crew review address`.** Its findings are about someone else's branch,
+  so there is nothing here to address: the review's output is `comments.md`, and the next step is to
+  paste it. State `Next: paste the bodies from \`<path>/comments.md\` onto PR #<n>; nothing was posted.`
+  A PR review that recommends `crew review address` sends the next session at a branch it does not own.
 
 A finding line carries its score beside its label, and its kind after both when one was recorded:
 

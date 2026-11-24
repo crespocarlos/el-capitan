@@ -156,9 +156,17 @@ that failed to look.
 
 - **Frontmatter keys are harness-specific.** Cursor reads `name`, `description`, `readonly`, and
   `is_background`; it ignores `tools` and `maxTurns` and inherits every parent tool, so `readonly: true`
-  is its only tool restriction. Claude Code reads `tools` and `maxTurns` and ignores `readonly`.
+  is its only tool restriction. Claude Code reads `tools` and `maxTurns` and ignores `readonly`, so
+  `maxTurns` binds under Claude Code only and every turn budget here is prose-enforced in Cursor.
   `tools` therefore speaks Claude Code ids, and each frontmatter says which harness reads which key.
   Do not set `model:`.
+- **`readonly: true` is enforced, not copied.** `crew-lint`'s `missing-readonly` rule fails any agent
+  under `.cursor/agents/` that omits it, except the two workers and the two inline-only orchestrators
+  named in `WRITE_CAPABLE_AGENTS` and `INLINE_ONLY_AGENTS` in `lint_prompts.py`. Add an exemption
+  there when an agent must write, so the reason is reviewable rather than implied by an omission.
+- **Backgrounding is a call-site field.** Set `run_in_background: true` on the dispatch that needs it;
+  do not put `is_background` in frontmatter, which would state the same fact twice with no check that
+  the copies agree.
 - **Tool ids resolve against the catalog.** `crew-lint` checks every id against `mcp_servers` and
   `native_tools` in `tools.json`; register a new one there, never only in prose.
 - **Skill files** follow the workflow header, execution model, numbered steps shape;

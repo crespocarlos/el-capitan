@@ -38,7 +38,12 @@ from lint_progress import (  # noqa: E402
     lint_local_state_tracked,
     lint_progress_transitions,
 )
-from lint_prompts import lint_rule_setup, lint_skill_setup, lint_tool_surface  # noqa: E402
+from lint_prompts import (  # noqa: E402
+    lint_agent_readonly,
+    lint_rule_setup,
+    lint_skill_setup,
+    lint_tool_surface,
+)
 from lint_references import lint_documents, lint_repo_paths  # noqa: E402
 
 Finding = tuple[str, int, str, str]
@@ -75,6 +80,7 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_tool_catalog(root))
     findings.extend(lint_rule_setup(root))
     findings.extend(lint_skill_setup(root))
+    findings.extend(lint_agent_readonly(root))
     all_files = files(root)
     installed_names = installed_tool_names(root)
     findings.extend(lint_tool_surface(root, all_files))

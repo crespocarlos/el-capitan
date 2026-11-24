@@ -18,8 +18,10 @@ from lib.files import atomic_write
 from review_models import ABSENT, Finding, read_json_object, to_finding
 from review_render import label_with_score
 
-# A comment is a request the author is expected to act on or answer, so these labels need one.
-COMMENTED_LABELS = frozenset({"blocking", "attention", "needs more info"})
+# A PR comment is how a finding reaches the author, so every emitted label needs one — a nit
+# included. Excluding nits produced a PR review with three findings, no `comments.md`, and no
+# warning: the file is what the user pastes, and the nits were the whole review.
+COMMENTED_LABELS = frozenset({"blocking", "attention", "needs more info", "nit"})
 FENCE = "```"
 
 
@@ -35,6 +37,26 @@ def anchor(finding: Finding) -> str:
 def comment_body(finding: Finding) -> str:
     """The body written for this finding, or "" when the orchestrator wrote none."""
     return "" if finding.comment is ABSENT else str(finding.comment or "").strip()
+
+
+def suggestion_block(finding: Finding) -> str:
+    """The replacement code as a GitHub ```` ```suggestion ```` block, or "" when there is none.
+
+    The fence carries no info string: GitHub turns a bare ```` ```suggestion ```` block into a
+    one-click commit of the anchored range, so any other token silently demotes it to a plain code
+    block. A writer that supplied its own fence — the common mistake, since the prose asks for one —
+    is unwrapped here rather than rendered inside a second fence.
+    """
+    body = "" if finding.suggestion is ABSENT else str(finding.suggestion or "")
+    body = body.strip("\n")
+    if body.lstrip().startswith(FENCE) and body.rstrip().endswith(FENCE):
+        inner = body.lstrip()[len(FENCE):]
+        body = inner[:inner.rindex(FENCE)]
+        body = body.split("\n", 1)[1] if "\n" in body else ""
+        body = body.strip("\n")
+    if not body.strip():
+        return ""
+    return f"{FENCE}suggestion\n{body}\n{FENCE}"
 
 
 def missing_comments(findings: list[Finding], mode: str) -> list[str]:
@@ -60,7 +82,8 @@ def render(findings: list[Finding], head: str = "") -> str:
         "# Review comments",
         "",
         "One body per anchor, in the order of `report.md`. Paste each under its own line; nothing "
-        "here was posted.",
+        "here was posted. A body ending in a GitHub suggestion block is a one-click commit of the "
+        "anchored range.",
         "",
     ]
     if head:
@@ -77,6 +100,11 @@ def render(findings: list[Finding], head: str = "") -> str:
             comment_body(finding),
             "",
         ]
+        replacement = suggestion_block(finding)
+        if replacement:
+            # The block goes inside the body, last: a suggestion is the actionable half of the
+            # comment, and GitHub reads it from the comment text rather than from this file.
+            lines += [replacement, ""]
         excerpt = finding.text("excerpt").strip()
         if excerpt:
             lines += ["Verified lines:", "", FENCE, excerpt, FENCE, ""]
@@ -86,18 +114,26 @@ def render(findings: list[Finding], head: str = "") -> str:
 
 def write_for_mode(review_dir: Path, findings: list[Finding], mode: str,
                    head: str = "") -> Path | None:
-    """Write `comments.md` for a PR review; None when there is nothing to draft or a body is missing.
+    """Write `comments.md` for a PR review; None when a PR review exists but worded nothing.
 
-    A missing body warns instead of failing: the report is already valid, and losing a whole review
-    over wording that is quick to add would cost more than the warning. Nothing is written when
-    every finding lacks a body, so a partial file never reads as the complete set.
+    Three cases, and the file matters in two of them. A clean review — no emitted finding at all —
+    still gets the file, saying so, because Step 8 reports its path and a report linking a file that
+    was never written is the defect this distinction closes. Emitted findings with bodies get the
+    file. Emitted findings with no bodies get a warning and no file: a file saying "no comments were
+    drafted" would misreport findings that exist but were never worded.
     """
+    if mode != "pr":
+        return None
     pending = missing_comments(findings, mode)
     if pending:
         print(f"warning: no comment drafted for {len(pending)} finding(s): "
               f"{'; '.join(pending)}", file=sys.stderr)
-        return None
-    if mode != "pr" or not any(f.is_emitted() and comment_body(f) for f in findings):
+    if not any(f.is_emitted() for f in findings):
+        return write(review_dir, findings, head)
+    if not any(f.is_emitted() and comment_body(f) for f in findings):
+        print("warning: no paste-ready comment exists for this PR review; add a `comment` body to "
+              "each finding, then re-run `crew-review-findings.py comments --review-dir "
+              f"{review_dir}`", file=sys.stderr)
         return None
     return write(review_dir, findings, head)
 

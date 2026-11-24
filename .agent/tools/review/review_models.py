@@ -46,6 +46,7 @@ class Finding:
     validation: object = ABSENT
     excerpt: object = ABSENT
     comment: object = ABSENT
+    suggestion: object = ABSENT
     reason: object = ABSENT
     memory_ids: object = ABSENT
     fingerprint: str = ""
@@ -70,6 +71,7 @@ class Finding:
                            ("hunks", self.hunks), ("verified", self.verified),
                            ("evidence", self.evidence), ("validation", self.validation),
                            ("excerpt", self.excerpt), ("comment", self.comment),
+                           ("suggestion", self.suggestion),
                            ("reason", self.reason), ("memory_ids", self.memory_ids)):
             if value is not ABSENT:
                 out[key] = value
@@ -85,10 +87,9 @@ class Finding:
         strongest evidence any lens produced is the one a reader can act on. `confidence_from` is
         dropped with it, because a raise no single read produced is not a recorded raise.
 
-        `excerpt` and `comment` keep the first value either lens supplied. Two personas flagging one
-        defect both describe it, so whichever arrives first may be the one that quotes the lines or
-        writes the comment body; dropping the other would fail `require_excerpt` on a finding one lens
-        did verify, and candidate order would decide the comment that reached `comments.md`.
+        `excerpt`, `comment`, and `suggestion` keep the first value either lens supplied: whichever
+        arrives first may be the one that quotes the lines, words the comment, or supplies the
+        replacement code, and candidate order must not decide which reaches `comments.md`.
         """
         if isinstance(other.persona, list):
             for persona in other.persona:
@@ -105,7 +106,7 @@ class Finding:
         if scores and max(scores) != self.confidence:
             self.confidence = max(scores)
             self.confidence_from = ABSENT
-        for name in ("excerpt", "comment"):
+        for name in ("excerpt", "comment", "suggestion"):
             if getattr(self, name) is ABSENT and getattr(other, name) is not ABSENT:
                 setattr(self, name, getattr(other, name))
 
@@ -181,7 +182,7 @@ def to_finding(finding: dict, index: int) -> Finding:
             )
     known = {"title", "label", "file", "line", "kind", "confidence", "confidence_from",
              "disposition", "persona", "personas", "hunks", "verified", "evidence", "validation",
-             "excerpt", "comment", "reason", "memory_ids", "fingerprint"}
+             "excerpt", "comment", "suggestion", "reason", "memory_ids", "fingerprint"}
     record = Finding(
         title=finding["title"], label=label, kind=kind, confidence=confidence,
         confidence_from=confidence_from, persona=persona,
@@ -189,7 +190,7 @@ def to_finding(finding: dict, index: int) -> Finding:
         disposition=finding.get("disposition", ABSENT), hunks=finding.get("hunks", ABSENT),
         verified=finding.get("verified", ABSENT), evidence=finding.get("evidence", ABSENT),
         validation=finding.get("validation", ABSENT), excerpt=finding.get("excerpt", ABSENT),
-        comment=finding.get("comment", ABSENT),
+        comment=finding.get("comment", ABSENT), suggestion=finding.get("suggestion", ABSENT),
         reason=finding.get("reason", ABSENT), memory_ids=finding.get("memory_ids", ABSENT),
         extra={key: value for key, value in finding.items() if key not in known},
     )

@@ -8,6 +8,7 @@ textual change. That is what keeps a crew review and any other consumer citing t
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -214,6 +215,8 @@ def test_python_parser_matches_nightshift_when_available(tmp: Path) -> None:
     root = Path("~/Documents/dev/nightshift-pr-helper").expanduser()
     if not (root / "lib" / "diff.ts").is_file() or not (root / "node_modules" / "tsx").is_dir():
         raise Skip("no nightshift checkout")
+    if shutil.which("node") is None:
+        raise Skip("no node on PATH")
     source = tmp / "parity.diff"
     source.write_text(MIXED)
     theirs = tmp / "theirs"

@@ -14,12 +14,16 @@ import sys
 from pathlib import Path
 
 from lib.output import bounded_json
-from review_comments import findings_from, missing_comments, write
+from review_comments import comment_body, findings_from, missing_comments, write
 from review_map import parse_map_block
 
 
 def comments(args: argparse.Namespace) -> int:
-    """Write `comments.md` and report what it holds; exit 1 when a body is still missing."""
+    """Write `comments.md` and report what it holds; exit 1 when a body is still missing.
+
+    A clean review is not a failure: it writes a file saying so and exits 0, because the report links
+    this path and a missing file would read as a broken run.
+    """
     review_dir = args.review_dir.resolve()
     findings = findings_from(args.findings or review_dir / "consolidation.json")
     pending = missing_comments(findings, "pr")
@@ -28,7 +32,7 @@ def comments(args: argparse.Namespace) -> int:
             print(f"review-findings: no comment drafted for {title!r}", file=sys.stderr)
         return 1
     path = write(review_dir, findings, args.head)
-    drafted = [f for f in findings if f.is_emitted()]
+    drafted = [f for f in findings if f.is_emitted() and comment_body(f)]
     print(bounded_json({"comments": str(path), "drafted": len(drafted)}, args.max_chars,
                        what="comments summary"))
     return 0

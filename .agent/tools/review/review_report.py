@@ -149,11 +149,15 @@ def persist(args: argparse.Namespace) -> int:
     drafted = comments.write_for_mode(args.review_dir, findings, args.mode, args.head)
     if drafted:
         written.append(str(drafted))
+    # A PR review's `comments.md` is its deliverable. Reporting it as absent in the JSON — rather than
+    # only on stderr — is what stops Step 8 from describing a review whose findings never reach the PR.
+    missing_comments = args.mode == "pr" and not drafted
     print(json.dumps({"review": written[0],
                       "deferred": sum(1 for f in rows if f.disposition == "defer"),
                       "dropped": sum(1 for f in rows if f.disposition == "dropped"),
                       "appended": counts.get("DEFERRED.md", 0) + counts.get("DROPPED.md", 0),
-                      **({"comments": written[1]} if len(written) > 1 else {})}))
+                      **({"comments": written[1]} if len(written) > 1 else {}),
+                      **({"comments_missing": True} if missing_comments else {})}))
     return 0
 
 

@@ -27,21 +27,41 @@ that could not be read.
 
 ## Paste-ready comments
 
-A PR review's findings are read by someone else, so the report is not the only output. Each emitted
-`blocking`, `attention`, and `needs more info` finding carries a `comment` field: the body as it will
-appear on the PR, in `~/.cursor/rules/voice.mdc`'s review-comment voice. First person, usually one or
-two sentences, phrased as a question or suggestion rather than an order, `nit:` for something small,
-and a ```` ```suggestion ```` block when the fix is a concrete edit. Anchor the comment to the same
-`path:line` the finding carries.
+A PR review's findings are read by someone else, so the report is not the only output. **Every emitted
+finding carries a `comment` field** — `blocking`, `attention`, `needs more info`, and `nit` alike: the
+body as it will appear on the PR, in `~/.cursor/rules/voice.mdc`'s review-comment voice. First person,
+usually one or two sentences, phrased as a question or suggestion rather than an order, `nit:` for
+something small. Anchor the comment to the same `path:line` the finding carries.
+
+**A concrete fix is a `suggestion` field, not prose.** When the finding names the replacement, write
+the replacement lines into `suggestion` — exactly the lines that belong in the anchored range, no
+fence and no prose around them — and leave the fence out of `comment`. GitHub turns a bare
+```` ```suggestion ```` block into a one-click commit of the anchored range, so the renderer builds
+that block from `suggestion` and places it last in the body: a language tag, a stray word in the
+fence, or prose inside it demotes the block to an ordinary code block and the author retypes the
+change by hand. Keeping the code in its own field is what makes the fence impossible to get wrong.
+When the fix is a decision rather than an edit — which way a test's expected value should move,
+whether a design is right — there is no `suggestion`, and the comment asks the question instead.
+
+A body that hand-writes its own suggestion fence renders two blocks, because the renderer adds one for
+every `suggestion` it finds. Write the code once, in `suggestion`.
+
+A nit is included because it is still a finding the author should see. Excluding nits once produced a
+PR review whose every finding was a nit: `comments.md` was never written, the warning said nothing,
+and the user got a report with nothing to paste — the file is the deliverable, and the nits were the
+whole review.
 
 **Write the body yourself, as the step that writes `candidates.json`.** No persona supplies `comment`
 — `reviewer-contract.md` defines one body per finding, and the reviewer is forbidden to invent
 findings — so this is the orchestrator's text, composed from the finding it already holds. Omitting it
 costs the comment, never the review.
 
-`persist --mode pr` writes one section per anchor to `comments.md` and reports the path. A finding with
-no `comment` is named on stderr and costs only the file, never the report: the review is valid without
-it, and losing a whole review over wording would cost more than the warning. To re-render after adding
+`persist --mode pr` writes one section per anchor to `comments.md` and reports the path. Every finding
+with no `comment` is named on stderr, and a review with no drafted body at all also says so, reports
+`comments_missing: true`, and names the re-render command: the report stays valid, but the review is
+incomplete without the file and the run must not read as finished. **A clean review — zero emitted
+findings — still writes the file**, saying no comments were drafted, because Step 8 reports its path
+and a report linking a file that was never written is its own defect. To re-render after adding
 bodies:
 
 ```bash

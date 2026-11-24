@@ -137,6 +137,12 @@ for a missing `SPEC.md` or `hunks.json`, and a skipped check is not a pass. `per
 the check for a directory holding a `package.diff`, so skipping it fails the review after its cost is
 spent.
 
+**In PR mode, append the PR-head excerpts before that check.** `mode_kind: "pr"` refuses the consumer
+and prompt extras, so the assembled package is a diff with no surrounding code; the excerpts that
+replace them are fetched by hand and appended, and [packaging](~/.cursor/agents/crew-reviewer/references/packaging.md)
+under "The PR-head excerpt pass" owns that step. A PR package checked without them passes every rule
+and still cannot ground a claim about function scope, a consumer, or an absence.
+
 **Persist both artifacts at dispatch time, not at persist time.** The package sent to each persona is
 the `.in.md` just checked. Deliver it inline, or by path under **Package delivery** in the shared
 dispatch instructions where all three conditions hold. Write the raw reply to

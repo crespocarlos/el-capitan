@@ -81,11 +81,29 @@ def test_a_missing_comment_body_fails_the_comments_command(tmp: Path) -> None:
     assert not (directory / "comments.md").exists()
 
 
-def test_a_nit_needs_no_comment_body(tmp: Path) -> None:
-    """A nit is polish the author may ignore, so it does not have to be worded for the PR."""
+def test_a_nit_needs_a_comment_body_too(tmp: Path) -> None:
+    """A nit is still a finding the author should see, so it is worded like any other.
+
+    This test used to assert the opposite, and that assertion is what shipped a PR review with three
+    nit findings, no `comments.md`, and no warning: `comments.md` is the deliverable, and the nits
+    were the whole review.
+    """
     directory = review_dir(tmp, [finding(label="nit", comment=None)])
     result = run("comments", "--review-dir", str(directory))
+    assert result.returncode == 1, result.stdout
+    assert "no comment drafted for 'Status is published twice'" in result.stderr, result.stderr
+    assert not (directory / "comments.md").exists()
+
+
+def test_a_nit_with_a_body_reaches_the_paste_ready_file(tmp: Path) -> None:
+    """The positive control for the case above: one nit is enough to produce the file."""
+    directory = review_dir(tmp, [finding(label="nit", comment="nit: could this reuse the helper?")])
+    result = run("comments", "--review-dir", str(directory), "--head", "0ec93baa")
     assert result.returncode == 0, result.stderr
+    text = (directory / "comments.md").read_text()
+    assert "nit: could this reuse the helper?" in text
+    assert "## 1. a.ts:12" in text
+    assert json.loads(result.stdout)["drafted"] == 1
 
 
 def test_persist_drafts_comments_for_a_pr_review(tmp: Path) -> None:
@@ -102,8 +120,8 @@ def test_persist_drafts_comments_for_a_pr_review(tmp: Path) -> None:
     assert json.loads(result.stdout)["comments"].endswith("comments.md")
 
 
-def test_persist_warns_rather_than_failing_on_an_undrafted_comment(tmp: Path) -> None:
-    """The report is already valid, so a missing body is named on stderr and nothing else is lost."""
+def test_persist_says_so_when_no_comment_was_drafted(tmp: Path) -> None:
+    """A body-less PR review must not read as finished: the file is the deliverable."""
     directory = review_dir(tmp, [finding(comment=None)])
     report = tmp / "report.md"
     report.write_text("## Review: PR — one finding\n")
@@ -113,8 +131,125 @@ def test_persist_warns_rather_than_failing_on_an_undrafted_comment(tmp: Path) ->
                  "--personas", "adversarial", "code-quality")
     assert result.returncode == 0, result.stderr
     assert "no comment drafted for 1 finding(s)" in result.stderr, result.stderr
+    assert "no paste-ready comment exists" in result.stderr, result.stderr
+    assert "comments --review-dir" in result.stderr, "the warning does not say how to finish"
     assert (directory / "REVIEW.md").is_file()
     assert not (directory / "comments.md").exists()
+
+
+def test_a_concrete_fix_renders_a_github_suggestion_block(tmp: Path) -> None:
+    """GitHub commits the lines in a bare ```suggestion fence, so the renderer owns the fence."""
+    directory = review_dir(tmp, [
+        finding(comment="This reads past the end when the list is empty.",
+                suggestion="const first = rows[0] ?? null;"),
+    ])
+    result = run("comments", "--review-dir", str(directory))
+    assert result.returncode == 0, result.stderr
+    text = (directory / "comments.md").read_text()
+    assert "```suggestion\nconst first = rows[0] ?? null;\n```" in text, text
+    # The fence carries no info string; ```` ```ts suggestion ```` or ```` ``` suggestion ```` is not
+    # a suggestion block to GitHub, and the author has to retype the change.
+    assert "```suggestion" in text and "```ts" not in text, text
+
+
+def test_the_suggestion_block_follows_the_prose(tmp: Path) -> None:
+    """The body explains, then the block is the last thing: GitHub reads the fence from the body."""
+    directory = review_dir(tmp, [finding(comment="Safer as ?? null.",
+                                         suggestion="const first = rows[0] ?? null;")])
+    run("comments", "--review-dir", str(directory))
+    text = (directory / "comments.md").read_text()
+    assert text.index("Safer as ?? null.") < text.index("```suggestion"), text
+
+
+def test_a_finding_without_a_suggestion_renders_no_fence(tmp: Path) -> None:
+    """A decision has no replacement to commit, so no empty fence is emitted for it."""
+    directory = review_dir(tmp, [finding(comment="Your call which way the expected value moves.")])
+    run("comments", "--review-dir", str(directory))
+    text = (directory / "comments.md").read_text()
+    assert "```suggestion" not in text, text
+
+
+def test_blank_suggestion_lines_are_not_a_block(tmp: Path) -> None:
+    """Whitespace is not a replacement; an empty fence would offer a one-click deletion."""
+    directory = review_dir(tmp, [finding(comment="Something is wrong here.", suggestion="  \n\t\n")])
+    run("comments", "--review-dir", str(directory))
+    text = (directory / "comments.md").read_text()
+    assert "```suggestion" not in text, text
+
+
+def test_a_carried_suggestion_survives_a_merge(tmp: Path) -> None:
+    """Two lenses flagging one defect: the one that supplied the code keeps it through the merge."""
+    body = {
+        "findings": [
+            finding(comment="First lens.", suggestion="const first = rows[0] ?? null;"),
+            finding(comment="Second lens."),
+        ]
+    }
+    directory = review_dir(tmp, [])
+    (directory / "consolidation.json").write_text(json.dumps(body))
+    result = run("normalize", str(directory / "consolidation.json"),
+                 "--output", str(directory / "merged.json"), "--lenient")
+    assert result.returncode == 0, result.stderr
+    merged = json.loads((directory / "merged.json").read_text())
+    kept = [f for f in merged["findings"] if f.get("suggestion")]
+    assert kept and kept[0]["suggestion"] == "const first = rows[0] ?? null;", merged
+
+
+def test_a_suggestion_is_only_code(tmp: Path) -> None:
+    """The field carries the replacement lines, so a fence or prose in it renders a broken block."""
+    directory = review_dir(tmp, [
+        finding(comment="Safer as ?? null.", suggestion="const first = rows[0] ?? null;"),
+        finding(title="Second", file="b.ts", comment="Same shape here.",
+                suggestion="```ts\nconst x = 1;\n```"),
+    ])
+    result = run("comments", "--review-dir", str(directory))
+    assert result.returncode == 0, result.stderr
+    text = (directory / "comments.md").read_text()
+    assert "```ts" not in text, "a language tag inside `suggestion` would demote the block"
+    assert text.count("```suggestion") == 2, text
+
+
+def test_a_clean_review_writes_a_file_saying_so(tmp: Path) -> None:
+    """No findings is a result: the report links this path, so the file must exist."""
+    directory = review_dir(tmp, [])
+    result = run("comments", "--review-dir", str(directory))
+    assert result.returncode == 0, result.stderr
+    assert (directory / "comments.md").is_file()
+    text = (directory / "comments.md").read_text()
+    assert "No comments were drafted for this review." in text, text
+    assert json.loads(result.stdout)["drafted"] == 0
+
+
+def test_a_clean_pr_review_still_writes_the_file(tmp: Path) -> None:
+    """No findings is a result. Step 8 reports this path, so a clean review must produce the file."""
+    directory = review_dir(tmp, [])
+    report = tmp / "report.md"
+    report.write_text("## Review: PR #1 — nothing to fix\n")
+    result = run("persist", "--review-dir", str(directory), "--report", str(report),
+                 "--findings", str(directory / "consolidation.json"), "--mode", "pr",
+                 "--head", "0123456789abcdef0123456789abcdef01234567",
+                 "--personas", "adversarial", "code-quality")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert "comments" in payload, payload
+    text = (directory / "comments.md").read_text()
+    assert "No comments were drafted for this review." in text, text
+    assert "no paste-ready comment exists" not in result.stderr, result.stderr
+
+
+def test_findings_without_bodies_do_not_claim_a_clean_review(tmp: Path) -> None:
+    """The opposite case: findings exist and are unworded, so "none drafted" would be a lie."""
+    directory = review_dir(tmp, [finding(comment=None)])
+    report = tmp / "report.md"
+    report.write_text("## Review: PR #1 — one finding\n")
+    result = run("persist", "--review-dir", str(directory), "--report", str(report),
+                 "--findings", str(directory / "consolidation.json"), "--mode", "pr",
+                 "--head", "0123456789abcdef0123456789abcdef01234567",
+                 "--personas", "adversarial", "code-quality")
+    assert result.returncode == 0, result.stderr
+    assert "comments_missing" in json.loads(result.stdout), result.stdout
+    assert not (directory / "comments.md").exists()
+    assert "no paste-ready comment exists" in result.stderr, result.stderr
 
 
 def test_dropped_findings_are_recorded_not_lost(tmp: Path) -> None:

@@ -87,6 +87,34 @@ and keeps every unchanged line, so a rule that collides with surrounding text st
 Quality, `File layout` and `Symlink rules` to Architecture — because every lens otherwise pays for the
 whole file. A prefix matching no section fails the run and lists the available ones.
 
+## The PR-head excerpt pass
+
+`mode_kind: "pr"` refuses `consumers` and `prompt_files`, and it is right to: both come from the local
+git index, which PR mode forbids. But something has to replace them, or a PR persona receives a diff
+with three context lines and no way to ground a claim about a function's scope, a consumer, or an
+absence. Nothing did, and the refusal's own message — "fetch those excerpts at the PR head" — named a
+step no file specified.
+
+After `crew-assemble-packages.py "$REVIEW_ROOT"` succeeds, **append the PR-head excerpts to each
+`<persona>.in.md` before `check-packages`**, under a heading that says where they came from:
+
+```bash
+gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>" --jq .content \
+  | base64 --decode > "$REVIEW_ROOT/head/<slug>.txt"
+```
+
+Read at the head SHA the run resolved once, never at the local checkout, and label every excerpt
+`path:line@headSHA7` as the PR-mode evidence rule requires. What to fetch is the same material the
+refused extras would have supplied, scoped to the files the diff touches: Tier 1's surrounding lines
+and signatures, Tier 2's enclosing function, Tier 3's consumers, and any file a finding's claim turns
+on. Fetching is per claim, not per file set — a diff-only review of a 54-hunk PR does not need every
+file opened, and a review whose findings are all nits needs almost none.
+
+Write the appended block with the edit or write tool, then run `check-packages`. An excerpt pass that
+fails leaves the package exactly as assembled, which is weaker evidence but not a broken package: say
+so in `### Reviewers` as a gap, since a persona that returns `[needs more info]` naming an unfetched
+path is reporting this pass, not a defect in the PR.
+
 ## Why the tool, not the hand
 
 The tool writes the shared contract, mode block, hunk reference, guidance, memory, spec, reading map,
