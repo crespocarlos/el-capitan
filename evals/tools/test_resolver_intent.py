@@ -33,12 +33,13 @@ CODE_FACT_QUESTIONS = ("Is the premise present?", "Is the chain traceable?", "Ar
 # Each enumeration of the action set, addressed by a phrase that only that enumeration carries. The
 # summary line is prose and lowercase like its neighbours; the three that render a verdict are
 # capitalized because the verdict vocabulary is.
+REPORTING = ROOT / ".cursor" / "agents" / "crew-pr-resolver" / "references" / "reporting-a-run.md"
 ENUMERATIONS = {
-    "Step 4 classify": (r"Classify each as (?:\*\*[^*]+\*\*,?\s*)+", "Decide"),
-    "Step 5 prepare": (r"- \*\*(?:Apply/Adapt|Decide)\*\*:[^\n]*(?:\n  [^\n]*)*", "Decide"),
+    "Step 4 classify": (r"Classify each as (?:\*\*[^*]+\*\*,?\s*)+", "Decide", PROMPT),
+    "Step 5 prepare": (r"- \*\*(?:Apply/Adapt|Decide)\*\*:[^\n]*(?:\n  [^\n]*)*", "Decide", PROMPT),
     "Step 6 table": (r"\| \d+ \| path/to/file\.ts:\d+ \| @reviewer \| (\w+(?: \w+)?) · \d \|",
-                     "Decide"),
-    "summary counts": (r"Summary counts: ([^\n]*)", "decide"),
+                     "Decide", PROMPT),
+    "summary counts": (r"N apply / ([^\n`]*)", "decide", REPORTING),
 }
 
 
@@ -69,11 +70,12 @@ def test_guidance_is_loaded_once_with_every_path() -> None:
 def test_decide_appears_in_every_enumeration() -> None:
     """A seventh action only works if all four renderings of the action set carry it."""
     text = prompt()
-    for name, (pattern, spelling) in ENUMERATIONS.items():
-        found = " ".join(re.findall(pattern, text))
-        assert found, f"{name}: the enumeration is not found by {pattern!r}"
+    for name, (pattern, spelling, path) in ENUMERATIONS.items():
+        body = text if path == PROMPT else path.read_text(encoding="utf-8")
+        found = " ".join(re.findall(pattern, body))
+        assert found, f"{name}: the enumeration is not found by {pattern!r} in {path.name}"
         assert spelling in found, f"{name} omits Decide: {found[:120]!r}"
-    step_seven = text[text.index("### Step 7:"):text.index("## Notes")]
+    step_seven = text[text.index("### Step 7:"):]
     assert "`Decide` thread" in step_seven, "a Decide thread must be scoped out of resolution"
 
 

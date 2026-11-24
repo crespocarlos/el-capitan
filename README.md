@@ -114,7 +114,8 @@ flowchart TB
     subgraph respond["respond"]
         direction LR
         resolver["🧩 pr-resolver"] --> rcommit["commit"]
-        rcommit --> pushed(["pushed"])
+        rcommit --> rpush(["pushed"])
+        rpush --> rreply["reply + resolve"]
     end
 
     memory[("🧠 memory")]
@@ -171,8 +172,8 @@ Fetches all unresolved review threads on an open PR, evaluates each one, propose
 crew resolve PR #456
 ```
 
-Stages: **address-pr → commit → push**  
-Terminal: all threads resolved and pushed
+Stages: **address-pr → commit → push → reply**  
+Terminal: every approved thread replied to, and pushed
 
 ---
 

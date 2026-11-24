@@ -63,6 +63,15 @@ jobs:
       - name: Resolver context and intent contract (guidance, Decide, overfitting)
         run: python3 evals/tools/test_resolver_intent.py
 
+      - name: Resolver edit-verify contract (scope, tests, skipped-check reasons)
+        run: python3 evals/tools/test_resolver_verify.py
+
+      - name: Resolver probe contract (unsettled threads are measured)
+        run: python3 evals/tools/test_resolver_probe.py
+
+      - name: Respond stage order (address-pr → commit → push → reply)
+        run: python3 evals/tools/test_respond_handoff.py
+
       - name: Package assembly tests
         run: python3 evals/tools/test_assemble_packages.py
 

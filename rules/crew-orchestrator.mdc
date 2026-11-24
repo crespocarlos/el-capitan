@@ -13,12 +13,12 @@ Owns the pipeline state machine, session-start awareness, and autopilot. Routing
 - **build** — `crew spec <issue>` → spec → implement → review → commit → open-pr; terminal state is
   a draft PR. `crew-specwriter` infers the template (standard or bug) from the request; there is no
   separate bug command.
-- **respond** — `crew resolve PR <PR>` → address-pr → commit → push; terminal state is every thread
-  resolved and pushed. Reviewer approval is external.
+- **respond** — `crew resolve PR <PR>` → address-pr → commit → push → reply; terminal state is every
+  approved thread replied and pushed. Reviewer approval is external.
 
 > **Lightweight path (no spec needed):** for changes touching ≤3 files with no new export or API
-> surface — `crew quick` → `crew review changes` → `crew commit`. Skips spec, worktree, and task
-> state. Use full `build` beyond that threshold.
+> surface — `crew quick` → `crew review changes` → `crew commit`. Skips spec, worktree, task state;
+> use full `build` beyond that threshold.
 
 ## State machine
 

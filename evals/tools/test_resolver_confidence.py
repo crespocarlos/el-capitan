@@ -177,14 +177,16 @@ def test_a_reject_without_an_anchor_is_rejected() -> None:
 
 def test_the_outcome_link_is_noted_and_writes_nothing_new() -> None:
     """A resolved Apply/Adapt thread is the same decision the reviewer pipeline records."""
-    step_eight = prompt()[prompt().index("### Step 8:"):]
-    assert "whose verdict was Apply or Adapt" in step_eight, "the link names the verdicts it covers"
-    assert "is the same decision the reviewer pipeline\nrecords as an outcome" in step_eight, (
+    reference = (ROOT / ".cursor/agents/crew-pr-resolver/references/acting-on-threads.md")
+    journal = reference.read_text(encoding="utf-8")
+    journal = journal[journal.index("## Journal"):]
+    assert "whose verdict was Apply or Adapt" in journal, "the link names the verdicts it covers"
+    assert "is the same decision the reviewer pipeline" in journal, (
         "the link must state the equivalence, not merely mention outcomes"
     )
-    assert "may cite it" in step_eight, "the entry may cite the recorded outcome"
-    assert "Write nothing new" in step_eight, "nothing extra is written for it"
-    assert "durable record" in step_eight, "the thread is the record"
+    assert "may cite it" in journal, "the entry may cite the recorded outcome"
+    assert "write nothing new" in journal.lower(), "nothing extra is written for it"
+    assert "durable record" in journal, "the thread is the record"
 
 
 def test_the_prompt_stays_under_the_byte_ceiling() -> None:

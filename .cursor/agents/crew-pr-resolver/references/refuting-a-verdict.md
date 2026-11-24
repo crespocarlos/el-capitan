@@ -25,7 +25,9 @@ guess.
 - **Already Addressed** must cite the line that already contains the fix. "I remember seeing this" is
   not a citation.
 - **Defer** and **Ask** need the reason they are not settled here, not merely that they are hard. An
-  `Ask` states the exact unknown; a `Defer` states what scope the comment falls outside.
+  `Ask` states the exact unknown; a `Defer` states what scope the comment falls outside. An `Ask` a
+  probe could settle is not an `Ask` yet — measure it first
+  ([probing a question](probing-a-question.md)), and ask only about what the probe could not reach.
 
 ## Recording it
 

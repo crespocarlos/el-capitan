@@ -77,8 +77,8 @@ deploy`.
 - Explicit routing only — the `crew` prefix is required.
 - `crew implement` always follows crew-builder's protocol: through the subagent or by following the
   protocol directly, never ad-hoc.
-- `crew review` is a pre-PR gate, not a mid-iteration tool. For a targeted fix, ask an inline question
-  or run one adversarial check instead.
+- `crew review` is pre-commit in `build`, advisory after the push in `respond`. Mid-iteration, ask
+  an inline question or run one adversarial check.
 - Every skill step that hands off names the next step and says "proceed immediately".
 - Pipeline state, task resolution, and gate logic live in `crew-orchestrator.mdc`; the router only
   dispatches.
