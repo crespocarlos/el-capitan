@@ -181,5 +181,6 @@ Current fixtures:
 | r17 | Clean control — README typo fix; product flow and architecture must abstain | `clean_for`: product-flow, architecture | — |
 | r18 | Clean control — test-only rename; prompt quality and architecture stay out of lane | `clean_for`: prompt-quality, architecture | — |
 | r19 | Prior-art lookup — an equivalent helper already exists | `reviewer-explorer` | any |
+| r20 | Spec whose approach is wrong — one value in two systems, reconciled on the read path | `specwriter-adversarial` | any |
 
 `baseline.json` predates the Fresh Eyes merge and the clean fixtures; re-run and re-baseline before comparing.

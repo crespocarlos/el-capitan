@@ -103,7 +103,9 @@ def test_persist_writes_both_reports_and_appends_deferred(tmp: Path) -> None:
     task = tmp / "task"
     review_dir = task / "review" / "2026-10-30T12-00"
     report = tmp / "report.md"
-    report.write_text("## Verdict: PASS\n")
+    # The report lists its one emitted finding; the deferred one is appended from JSON and is not
+    # part of the numbered list a reader acts on. The gate compares the two in order.
+    report.write_text("## Verdict: PASS\n\n1. [nit · 5] — Rename var\n")
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
         {"title": "Old flaky helper", "label": "attention", "file": "b.ts", "line": 4,
@@ -116,7 +118,7 @@ def test_persist_writes_both_reports_and_appends_deferred(tmp: Path) -> None:
     for persona in ("adversarial", "code-quality"):
         (review_dir / f"{persona}.in.md").parent.mkdir(parents=True, exist_ok=True)
         (review_dir / f"{persona}.in.md").write_text("in")
-        (review_dir / f"{persona}.out.md").write_text("### Verdict: no findings\n")
+        (review_dir / f"{persona}.out.md").write_text("### Findings: none\n")
     for _ in range(2):
         result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
                      "--findings", str(findings), "--files", "b.ts",
@@ -230,9 +232,9 @@ def test_persist_strict_allows_a_nit_with_no_evidence(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
-    report.write_text("## Verdict: PASS\n")
+    report.write_text("## Verdict: PASS\n\n1. [nit · 5] — An unanchored nit\n")
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
         {"title": "An unanchored nit", "label": "nit", "disposition": "patch", "kind": "other",
@@ -287,7 +289,7 @@ def test_persist_rejects_a_report_carrying_a_generated_section(tmp: Path) -> Non
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
 
     def persist() -> subprocess.CompletedProcess:
@@ -332,7 +334,7 @@ def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     (review_dir / "adversarial.in.md").write_text("in")
     # A real persona artifact carries a verdict or a status line; a bare word with
     # neither is indistinguishable from a crashed run and must not pass the gate.
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     assert run(*args).returncode == 0
     comma_args = (
         "persist", "--review-dir", str(review_dir), "--report", str(report),
@@ -368,7 +370,7 @@ def test_persist_strict_rejects_placeholder_persona_output(tmp: Path) -> None:
     report = tmp / "report.md"
     report.write_text("x\n")
     for persona, body in {
-        "adversarial": "### Verdict: no findings\n",
+        "adversarial": "### Findings: none\n",
         "code-quality": "# code-quality raw response captured\nstatus: dispatched\n",
     }.items():
         (review_dir / f"{persona}.in.md").write_text("in")
@@ -382,7 +384,7 @@ def test_persist_strict_rejects_placeholder_persona_output(tmp: Path) -> None:
     assert run("persist", "--review-dir", str(review_dir), "--report", str(report),
                "--strict", "--personas", "adversarial").returncode == 2
     for persona in ("adversarial", "code-quality"):
-        (review_dir / f"{persona}.out.md").write_text("### Verdict: no findings\n")
+        (review_dir / f"{persona}.out.md").write_text("### Findings: none\n")
     assert run("persist", "--review-dir", str(review_dir), "--report", str(report),
                "--strict", "--personas", "adversarial", "code-quality").returncode == 0
 
@@ -450,7 +452,7 @@ def test_persist_pr_mode_accepts_head_absent_from_local_repo(tmp: Path) -> None:
     review_dir = task / "review" / "ts"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
     report.write_text("## Review: PR\n")
     absent = "0123456789abcdef0123456789abcdef01234567"
@@ -512,8 +514,8 @@ def test_persona_outcome_accepts_every_documented_persona_format(tmp: Path) -> N
         "concept": "**Ownership** — two documents claim one rule\n\nFix/Response: drop one.\n",
         # reviewer-explorer: fixed section set, no findings list
         "explorer": "## Similar patterns\n- `src/b.ts` (lines 10-18) — same retry loop\n",
-        # every persona: explicit no-findings verdict
-        "verdict": "### Verdict: no findings\n",
+        # every persona: the emptiness sentinel, which no longer borrows the word `Verdict:`
+        "sentinel": "### Findings: none\n",
         # bullet-style findings: 5 recorded reviews used `- [label]` and were refused as placeholders
         "bulleted": "- [blocking] src/a.ts:47 leaves the retry loop unbounded\n",
         "bulleted_bold": "- **[attention]** src/a.ts:12 drops the timeout\n",
@@ -606,7 +608,7 @@ def test_persist_spec_mode_keeps_code_review(tmp: Path) -> None:
     review_dir = task / "review" / "20261102"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     (task / "REVIEW.md").write_text("## Verdict: PASS\n")
     report = tmp / "report.md"
     report.write_text("## Review: Spec\n")
@@ -614,7 +616,14 @@ def test_persist_spec_mode_keeps_code_review(tmp: Path) -> None:
                  "--personas", "adversarial")
     assert result.returncode == 0, result.stderr
     assert (task / "REVIEW.md").read_text() == "## Verdict: PASS\n"
-    assert (task / "REVIEW.spec.md").read_text() == "## Review: Spec\n"
+    # A spec review persists beside the code review rather than over it, and the body it writes keeps
+    # its own heading. No `--findings` was supplied, so the footer carries the next step and no derived
+    # verdict: `persist` compared nothing, and a `PASS` here would sit under a body that never said so.
+    spec_text = (task / "REVIEW.spec.md").read_text()
+    assert spec_text.startswith("## Review: Spec\n"), spec_text
+    assert spec_text.rstrip().endswith(
+        "> Next: approve the revised SPEC.md (Gate 1), then run `crew implement`."), spec_text
+    assert "Verdict: PASS" not in spec_text, spec_text
 
 
 def test_coverage_accepts_a_fully_mapped_diff(tmp: Path) -> None:
@@ -669,7 +678,7 @@ def test_persist_strict_runs_coverage_only_when_layers_exist(tmp: Path) -> None:
     report = tmp / "report.md"
     report.write_text("## Verdict: PASS\n")
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
             "--strict", "--personas", "adversarial")
     # No hunk index and no layer map: nothing to cover, so the gate stays out of the way.
@@ -750,7 +759,7 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     (review_dir / "hunks.json").write_text(
         json.dumps({"files": [], "hunks": [{"id": "h1"}, {"id": "h2"}]}))
     (review_dir / "layers.json").write_text(json.dumps({"layers": [
@@ -758,7 +767,8 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
         {"id": "L2", "explainer": "why", "reviewFocus": "- verify", "hunks": ["h2"]},
     ]}))
     report = tmp / "report.md"
-    report.write_text("## Review: changes\n")
+    report.write_text("## Review: changes\n\n1. [attention · 4] **`a.ts:3`** — Guard missing\n"
+                      "2. [nit · 5] — Rename\n")
     findings = tmp / "findings.json"
     findings.write_text(json.dumps([
         {"title": "Guard missing", "label": "attention", "disposition": "patch", "hunks": ["h1"],
@@ -931,7 +941,7 @@ def test_check_packages_rejects_generated_hunks_and_persist_strict_agrees(tmp: P
         "hunks": [{"id": "h1", "file": "yarn.lock"}]}))
     result = run("check-packages", "--review-dir", str(review_dir), "--personas", "adversarial")
     assert result.returncode == 1 and "generated file yarn.lock" in result.stderr
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
     report.write_text("## Verdict: PASS\n")
     persist = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--strict",
@@ -1000,20 +1010,20 @@ def classify(text: str) -> str:
         return load_module().persona_outcome(artifact)
 
 
-def test_findings_outrank_a_trailing_no_findings_verdict(tmp: Path) -> None:
-    """A persona emitted anchored findings and then `### Verdict: no findings`.
+def test_findings_outrank_a_trailing_sentinel(tmp: Path) -> None:
+    """A persona emitted anchored findings and then `### Findings: none`.
 
-    Content wins: the verdict line means "nothing to report", never "discard what is above", so the
+    Content wins: the sentinel means "nothing to report", never "discard what is above", so the
     artifact stays a completed run and the contradiction is noted rather than resolved by throwing
     evidence away.
     """
     both = ("1. [blocking] **`x-pack/a.ts — line 12`** (h3) — the guard is inverted\n\n"
             "```ts\nif (!ready) return;\n```\n\nIt rejects the ready path.\n\n"
-            "Fix: flip the condition.\n\n### Verdict: no findings\n")
+            "Fix: flip the condition.\n\n### Findings: none\n")
     assert classify(both) == "ok"
-    # The other direction still holds, so the rule did not become permissive: a bare verdict is a
+    # The other direction still holds, so the rule did not become permissive: a bare sentinel is a
     # complete empty review, and a placeholder is still unknown.
-    assert classify("### Verdict: no findings\n") == "ok"
+    assert classify("### Findings: none\n") == "ok"
     assert classify("status: dispatched\n\nraw response captured\n") == "unknown"
 
 
@@ -1067,7 +1077,7 @@ def test_confidence_flags_and_merge_candidates_are_gone(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "20260101000000"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("package")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
     args = ["persist", "--review-dir", str(review_dir), "--report", str(report),
             "--mode", "changes", "--personas", "adversarial"]

@@ -157,7 +157,8 @@ Render the score beside the verdict as `verdict · N`:
 | 4 | path/to/file.ts:160 | @reviewer | Decide · 4 | — | This moves a test's expected value. Your call which way. |
 
 An `Ask` row carries a question, never a resolution; a `Decide` row carries no edit. Both stay open.
-Name the expected value a flagged row moves.
+Name the expected value a flagged row moves. A reply holding a `|` goes in a fenced block beneath the
+table, not in a cell.
 
 **Every unresolved thread appears in that table or the outdated section.** A row-less thread is a
 report defect: the reader cannot tell it from one never seen.
@@ -187,5 +188,4 @@ happens before the commit is pushed; with none, replies go out directly. Every r
 `~/.cursor/rules/voice.mdc`, no exceptions; and an `Ask` thread gets the reply alone and stays open, as
 does a `Decide` thread, and neither is ever resolved.
 
-> Next: run `crew review` to check the pushed fixes (operator, main session — this agent cannot
-> dispatch the inline-only reviewer). Complete when every approved thread carries its reply.
+> Next: run `crew review` to check the pushed fixes; this agent cannot dispatch the inline-only reviewer.

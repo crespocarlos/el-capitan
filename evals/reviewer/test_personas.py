@@ -72,7 +72,7 @@ def check_the_contract_owns_the_abstention_line() -> None:
     """The orchestrator matches this text exactly; one copy means one wording."""
     text = flat(CONTRACT.read_text())
     assert "Nothing in my lane for this artifact." in text
-    assert "### Verdict: no findings" in text
+    assert "### Findings: none" in text
 
 
 def check_the_contract_owns_the_two_finding_rules() -> None:
@@ -97,7 +97,7 @@ def check_personas_do_not_restate_the_shared_contract() -> None:
     """
     restatements = {
         "the abstention sentence": "Nothing in my lane for this artifact.",
-        "the verdict line": "### Verdict: no findings",
+        "the emptiness sentinel": "### Findings: none",
         "the one-issue rule": "One issue per finding.",
         "the pre-existing rule": "pre-exists this change",
         "the nit-in-disguise rule": "nit in disguise",

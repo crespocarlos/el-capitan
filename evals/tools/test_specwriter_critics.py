@@ -58,9 +58,32 @@ def test_every_critic_ends_with_a_verdict_line() -> None:
     """Without it, a silent stop and a clean pass are the same reply."""
     for name in CRITICS:
         body = text(name)
-        assert "Verdict: no findings" in body, f"{name} never defines the clean-pass line"
+        assert "Verdict: 0 finding" in body, f"{name} never defines the clean-pass line"
         assert re.search(r"Verdict: N finding", body), f"{name} never defines the findings line"
         assert "always" in body.lower(), f"{name} does not make the line mandatory"
+
+
+def test_someone_owns_the_premise() -> None:
+    """A wrong approach is a spec defect, and both critics excluding it leaves it nobody's lane.
+
+    Adversarial once excluded "implementation approach" while its own intro asked whether the
+    approach was correct, and the scope critic excludes business requirements — so a spec that
+    stored one value in two systems and reconciled it on read passed both critics unchallenged.
+    """
+    adversarial = text("specwriter-adversarial")
+    assert "### The premise" in adversarial, "the adversarial critic has no premise focus area"
+    for marker in ("reconcil", "read path", "contradict"):
+        assert marker in adversarial.lower(), f"the premise lane never names {marker!r}"
+    assert "You do NOT critique:** PR scope" in adversarial, (
+        "the critic must still cede PR scope and task granularity to the scope critic"
+    )
+    assert "implementation approach" not in adversarial, (
+        "the critic excludes the approach it is now asked to judge"
+    )
+    dispatch = SPECWRITER.read_text(encoding="utf-8")
+    assert "whether the approach is correct" in dispatch, (
+        "the orchestrator still describes the critic as criteria-and-edge-cases only"
+    )
 
 
 def test_the_specwriter_treats_a_missing_verdict_as_incomplete() -> None:

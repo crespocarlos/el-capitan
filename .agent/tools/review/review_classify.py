@@ -8,8 +8,10 @@ which is why every accepted shape here is one a persona actually writes.
 
 A finding is credited by evidence, not by layout: a `path:line` anchor in the same block, an
 `Anchor:` line, a quoted sentence from the artifact under review, or a bare line number with a
-body. The verdict line is a signal for an empty review, never a cancellation of findings above it:
-six anchored findings followed by `### Verdict: no findings` was observed in a real PR review.
+body. The `### Findings: none` sentinel is a signal for an empty review, never a cancellation of
+findings above it: six anchored findings followed by that line was observed in a real PR review.
+It does not reuse the word `Verdict:` because three stages use that word for an outcome scale, and a
+sentinel sharing it read as a verdict the review never reached.
 """
 from __future__ import annotations
 
@@ -27,27 +29,30 @@ EXPLORER_SECTIONS = (
     "## Canonical approach",
     "## Cross-file consistency",
 )
-VERDICT_NO_FINDINGS = re.compile(r"^### Verdict:\s*no findings\s*$", re.M | re.I)
+# The emptiness sentinel: a persona that examined the artifact and found nothing writes this line.
+# It does not say `Verdict:`, because that word belongs to an outcome scale a reader and a gate parse.
+NO_FINDINGS = re.compile(r"^### Findings:\s*none\s*$", re.M | re.I)
+# Public, because the report gate compares a persisted report's list against the finding JSON with
+# the same vocabularies. A second copy of either pattern is how the two drift apart.
+SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)(?:\s*·\s*[1-5])?"
+ANCHOR = r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)"
 # A severity label plus a location anchor, in either order: label first, inside leading bold, after a
 # bullet, or after the anchor. Rejecting one aborts the review, and the anchor must still be a real
 # `path:line`. The label may carry its confidence score (`[attention · 4]`), which the contract makes
 # mandatory, so the suffix is part of the token: a bare `]` would refuse every finding now written.
-_SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)(?:\s*·\s*[1-5])?"
-_ANCHOR = r"(?:`?[^`\n\s]+`?\s*:\s*\d+|—\s*line\s*\d+)"
-# Optional list bullet, number, or bare ordinal: personas use `-`, `*`, `1.`, `1)`, and `2 ` alike.
-_BULLET = r"(?:[-*+]\s+)?(?:\d+[.)]?\s*)?"
+_BULLET = r"(?:[-*+]\s+)?(?:\d+[.)]?\s*)?"  # list bullet, number, or bare ordinal; all five are used
 LABELED_FINDING = re.compile(
     # label first: `1. [blocking] … path.ts:42`, `- **[attention]** … path.ts:42`
-    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[" + _SEVERITY + r"\][^\n]*?" + _ANCHOR
+    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[" + SEVERITY + r"\][^\n]*?" + ANCHOR
     # anchor first: `` 1. `path.ts:42` — [blocking] … ``
-    + r"|^[ \t]*" + _BULLET + r"(?:\*\*)?`?[^`\n\s\[\]]+`?\s*:\s*\d+[^\n]*?\[" + _SEVERITY + r"\]",
+    + r"|^[ \t]*" + _BULLET + r"(?:\*\*)?`?[^`\n\s\[\]]+`?\s*:\s*\d+[^\n]*?\[" + SEVERITY + r"\]",
     re.M | re.I,
 )
 # Findings whose anchor sits on an `Anchor: path:line` line rather than the label's own line.
 LABEL_LINE = re.compile(
-    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[(" + _SEVERITY + r")\]([^\n]*)", re.M | re.I
+    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[(" + SEVERITY + r")\]([^\n]*)", re.M | re.I
 )
-ANCHOR_ANYWHERE = re.compile(_ANCHOR, re.I)
+ANCHOR_ANYWHERE = re.compile(ANCHOR, re.I)
 FIX_RESPONSE_FINDING = re.compile(
     # Three documented spellings of the fix field: `Fix:`, `Fix/Response:`, and `Suggested fix:`.
     # Rejecting any one of them refused real reviews as placeholders.
@@ -76,7 +81,7 @@ QUOTED_EVIDENCE = re.compile(r"[\"“][^\"”\n]{20,}[\"”]")
 # A spec review cites the one artifact under review, so a finding may anchor to a bare line number or
 # range. The number is still required, and described content must follow it, or `[nit] 611` would pass.
 SPEC_FINDING = re.compile(
-    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[" + _SEVERITY + r"\][\s*:—–-]*"
+    r"^[ \t]*" + _BULLET + r"(?:\*\*)?\s*\[" + SEVERITY + r"\][\s*:—–-]*"
     r"\(?\s*\d[\d,\s–-]*\)?[\d,\s–\-:()]*\**\s*[A-Za-z\"“][^\n]{40,}",
     re.M | re.I,
 )
@@ -85,9 +90,9 @@ SPEC_FINDING = re.compile(
 def has_findings(text: str) -> bool:
     """True when the artifact carries at least one credited finding.
 
-    Separate from `has_review_content` because the two answer different questions. A verdict line
-    says "nothing to report"; a finding says the opposite. Content wins: the verdict line is a
-    signal for an empty review, never a cancellation of findings above it.
+    Separate from `has_review_content` because the two answer different questions. The sentinel line
+    says "nothing to report"; a finding says the opposite. Content wins: the sentinel is a signal for
+    an empty review, never a cancellation of findings above it.
     """
     if LABELED_FINDING.search(text) or FIX_RESPONSE_FINDING.search(text):
         return True
@@ -106,26 +111,45 @@ def has_findings(text: str) -> bool:
 
 
 def has_review_content(text: str) -> bool:
-    """True when the artifact carries a verdict, a finding, or explorer sections.
+    """True when the artifact carries the sentinel, a finding, or explorer sections.
 
     A finding is credited by evidence, not by layout. Four real spec reviews and five bullet-style
     code reviews were refused as placeholders because the accepted shape was narrower than the
     format the persona documents.
     """
-    if VERDICT_NO_FINDINGS.search(text):
+    if NO_FINDINGS.search(text):
         return True
     return has_findings(text)
+
+
+def without_fences(text: str) -> str:
+    """The text with every fenced block blanked, line breaks kept so line numbers still resolve.
+
+    The contract requires each finding to quote the lines it anchors verbatim, and the templates a
+    persona may quote are themselves finding-shaped, so a reader looking for the report's own list or
+    verdict has to skip what a finding quotes. Blanking the fence and its contents rather than
+    deleting them keeps every line below it on the line it occupied before.
+    """
+    kept: list[str] = []
+    in_fence = False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith(("```", "~~~")):
+            in_fence = not in_fence
+            kept.append("\n")
+            continue
+        kept.append("\n" if in_fence else line)
+    return "".join(kept)
 
 
 def persona_outcome(path) -> str:
     """Classify a persona artifact: ok, failed, skipped, truncated, summarized, missing, unknown.
 
     Only the leading block is read, so a persona quoting `status: failed` from the finding it
-    reviews cannot flip a good run. The documented success signal is a verdict line or a complete
+    reviews cannot flip a good run. The documented success signal is the sentinel line or a complete
     labeled finding; an empty artifact is `unknown`, not `ok`, because the failure this guards
     against is a persona that died silently. Only `failed|skipped|truncated` are read from a
     `status:` line: any other word (`dispatched`, `done`, `complete`) is not a success claim, so it
-    falls through to the content check and a placeholder without a verdict stays `unknown`.
+    falls through to the content check and a placeholder without a sentinel stays `unknown`.
 
     `summarized` is an orchestrator's condensed digest written in place of the persona's response.
     It is a separate outcome from `unknown` because the artifact does contain findings, but nothing

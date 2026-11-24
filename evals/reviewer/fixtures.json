@@ -245,6 +245,19 @@
           "match_hint": "retry"
         }
       ]
+    },
+    {
+      "id": "r20",
+      "input_type": "spec",
+      "description": "Spec whose approach is wrong — severity lives in two systems and is reconciled on the read path, with the requirement pulling both ways.",
+      "content": "# Keep significant event severity in sync with its investigation\n\n## Summary\nDetection sets a severity on the significant event, and the investigation the agent runs picks its own. Users see two numbers for one incident. Each read of a significant event reconciles its stored severity against the investigation's, writing the investigation's value back when the two differ, so the list view and the detail view always agree. When the investigation is unavailable we keep the stored severity and show the last known value.\n\nOut of scope: changing how detection scores severity.\n\n## Acceptance criteria\n- [ ] WHEN a significant event is read and its investigation reports a different severity THEN the event's stored severity is updated to the investigation's — verify: `yarn test:jest public/…/severity_sync`\n- [ ] WHEN the investigation is unavailable THEN the stored severity is returned unchanged — verify: `yarn test:jest public/…/severity_sync`\n\n## Tests\n### Unit\n- **Command**: `yarn test:jest public/…/severity_sync`\n\n## Tasks\n- [ ] 1) Add the reconcile step to the event read path\n  - Read the investigation severity in the event serializer and write the event back when it differs.\n  - Verify: `yarn test:jest public/…/severity_sync`\n- [ ] 2) Fall back to the stored severity when the investigation lookup fails\n  - Verify: `yarn test:jest public/…/severity_sync`\n",
+      "expected_findings": [
+        {
+          "persona": "specwriter-adversarial",
+          "severity": null,
+          "match_hint": "two places"
+        }
+      ]
     }
   ]
 }

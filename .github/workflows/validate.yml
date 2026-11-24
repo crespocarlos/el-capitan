@@ -57,6 +57,15 @@ jobs:
       - name: Finding confidence (scale, floor, render, bands)
         run: python3 evals/tools/test_confidence.py
 
+      - name: Review report gate (list, verdict, footer)
+        run: python3 evals/tools/test_review_report_gate.py
+
+      - name: Handoff trailer grammar (lint_handoff)
+        run: python3 evals/tools/test_crew_lint_handoff.py
+
+      - name: Next-step table (one answer per stage, router-resolvable)
+        run: python3 evals/tools/test_crew_next.py
+
       - name: Resolver verdict contract (one gate, challenge, Ask floor)
         run: python3 evals/tools/test_resolver_confidence.py
 

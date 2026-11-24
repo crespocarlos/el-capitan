@@ -174,6 +174,9 @@ that failed to look.
 - **Skill files** follow the workflow header, execution model, numbered steps shape;
   `crew-commit/SKILL.md` is the canonical example. Material a step needs only sometimes goes in
   `references/` and is linked, not inlined. An agent or skill file stays under 12,000 bytes.
+- **A handoff trailer is one line.** A file that hands work on ends with `> Next: ` naming the
+  `crew <verb>` to run next — once, as the last non-empty line, resolvable in `crew-router.mdc`.
+  `crew-lint` enforces the shape; several outcomes are quoted per branch instead.
 
 ## Editing
 

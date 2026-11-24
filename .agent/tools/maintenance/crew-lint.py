@@ -31,6 +31,7 @@ from lint_budget import (  # noqa: E402
 )
 from lint_catalog import lint_tool_catalog  # noqa: E402
 from lint_files import files  # noqa: E402
+from lint_handoff import lint_handoff  # noqa: E402
 from lint_naming import installed_tool_names  # noqa: E402
 from lint_progress import (  # noqa: E402
     lint_edit_discipline,
@@ -90,6 +91,7 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_repo_paths(root, all_files + docs))
     rules = rule_names(root)
     findings.extend(lint_documents(root, all_files, installed_names, rules, router_path(root)))
+    findings.extend(lint_handoff(root, router_path(root)))
     findings.extend(lint_hook_registration(root))
     findings.extend(lint_local_state_tracked(root))
     if budget:

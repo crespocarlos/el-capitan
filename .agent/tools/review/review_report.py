@@ -29,6 +29,8 @@ from review_findings import (
 )
 from review_personas import GENERATED_SECTIONS
 from review_persist_gates import check_personas_present, strict_gates
+from review_render import footer
+from review_report_gate import check_report
 from review_workspace import record_task_review
 import review_comments as comments
 import review_outcomes as outcomes
@@ -68,16 +70,17 @@ def validate_review_dir(args: argparse.Namespace) -> Path:
     return owner
 
 
-def reviewed_at(args: argparse.Namespace, report: str) -> str:
-    """Append the reviewed commit and return the report, after checking the SHA is real.
+def reviewed_head(args: argparse.Namespace) -> str:
+    """The reviewed commit after checking the SHA is real, or "" when none was passed.
 
     `crew commit` moves HEAD past the reviewed tree, so the gate downstream accepts an ancestor;
     recording the SHA still makes a review of a *different* tree detectable. PR mode is the
     exception: the reviewed tree is the GitHub head and the local checkout never fetches it, so a
-    local existence check would reject every PR review.
+    local existence check would reject every PR review. Only the validated value comes back: the
+    footer is the one place a report states it, so a second append site cannot disagree.
     """
     if not args.head:
-        return report
+        return ""
     head = args.head.strip()
     if not re.fullmatch(r"[0-9a-f]{7,40}", head):
         raise ValueError(f"--head must be a commit SHA, got {head!r}")
@@ -86,7 +89,7 @@ def reviewed_at(args: argparse.Namespace, report: str) -> str:
             rev_parse(None, f"{head}^{{commit}}")
         except GitError:
             raise ValueError(f"--head {head} is not a commit in this repository") from None
-    return report.rstrip() + f"\n\nReviewed at: {head}\n"
+    return head
 
 
 def append_deferred(owner: Path, rows: list[Finding]) -> dict[str, int]:
@@ -95,8 +98,17 @@ def append_deferred(owner: Path, rows: list[Finding]) -> dict[str, int]:
 
 
 def assemble_report(args: argparse.Namespace, report: str, coverage_section: str,
-                    coverage_gap: str) -> str:
-    """The report body with its generated sections, before the commit is recorded on it."""
+                    coverage_gap: str, findings: list[Finding], head: str) -> str:
+    """The report body with its generated sections and the decision footer, appended in order.
+
+    `Reviewed at:` is skipped when `--head` was empty, but a local review still gets its next step.
+    Hanging the footer off the commit instead would leave exactly those reviews with no next step a
+    reader could find.
+
+    The derived `Verdict:` line is written only when findings were supplied. With no `--findings`
+    there is no comparison, and a verdict derived from an empty list would be `PASS` on a report whose
+    own body may say `BLOCK` — a second, unchecked claim stamped on the one path the gate cannot see.
+    """
     # The two generated sections are derived from --findings and --files, so a report carrying its
     # own copy would render the table twice and a reader could not tell which is authoritative.
     # Match a real level-3 heading only: a finding may quote one verbatim.
@@ -116,7 +128,10 @@ def assemble_report(args: argparse.Namespace, report: str, coverage_section: str
     if args.files:
         report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(
             f"- `{name}`\n" for name in args.files)
-    return report
+    step = footer(findings, head, args.mode, args.next,
+                  derived=bool(args.findings))
+    return report.rstrip() + "\n\n" + step + "\n"
+
 
 
 def persist(args: argparse.Namespace) -> int:
@@ -124,13 +139,13 @@ def persist(args: argparse.Namespace) -> int:
     owner = validate_review_dir(args)
     findings = read_findings(args.findings) if args.findings else []
     check_personas_present(args)
+    head = reviewed_head(args)
+    body = args.report.read_text(encoding="utf-8")
     coverage_section = coverage_gap = ""
     strict = strict_mode(args)
     if strict:
         coverage_section, coverage_gap = strict_gates(args, owner, findings)
-    report = assemble_report(args, args.report.read_text(encoding="utf-8"),
-                             coverage_section, coverage_gap)
-    report = reviewed_at(args, report)
+    report = assemble_report(args, body, coverage_section, coverage_gap, findings, head)
     if strict:
         # Per-finding rules always; the path-scoped evidence gate only when a path set exists. A spec
         # or idea review passes no paths, and gating the whole check on `--files` silently skipped
@@ -138,6 +153,10 @@ def persist(args: argparse.Namespace) -> int:
         check_findings([f for f in findings if f.is_emitted()])
         if args.files:
             check_strict([f for f in findings if f.is_emitted()], args.files)
+    if args.findings:
+        # The body, not the assembled report: the footer states the derived verdict, so comparing it
+        # would let any contradiction in the model's own list pass its own gate.
+        check_report(body, findings, args.mode)
     rows = [f for f in findings if f.disposition in records.RECORDED_DISPOSITIONS]
     args.review_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(args.review_dir / "REVIEW.md", report)

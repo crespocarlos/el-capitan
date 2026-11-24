@@ -153,6 +153,50 @@ def task_without_spec_is_not_recorded(base: Path) -> None:
           sorted(p.name for p in directory.iterdir()))
 
 
+def test_a_quoted_reviewed_at_above_the_footer_is_not_the_commit(base: Path) -> None:
+    """A finding may quote `Reviewed at:`; only the footer is a claim about the reviewed tree.
+
+    The defect this pins: `reviewed_at` read the whole file, so a review that quoted the line — the
+    contract requires quoting, not paraphrasing — satisfied the gate that proves a review covers HEAD
+    without ever stating which tree it read.
+    """
+    task = make_task(base / "quote")
+    directory = make_temp_review(base / "quote", (
+        "# Review\n\n"
+        "1. [attention · 4] **`a.ts:3`** — the footer is stamped too early\n"
+        "   The line reads `Reviewed at: deadbee` before the findings are written.\n\n"
+        "Verdict: WARN\n> Next: run `crew review address` to resolve blocking findings, or "
+        "`crew commit` when the verdict is PASS or WARN.\nReviewed at: 0123456789abcdef\n"
+    ))
+    record(task, directory)
+    review_module = read_module(TASK_TOOLS, "task_review.py")
+    resolved = review_module.review_file(task)
+    check("a quoted Reviewed at: above the footer is ignored",
+          review_module.reviewed_at(resolved) == "0123456789abcdef", resolved)
+
+
+def test_an_addendum_below_the_footer_keeps_the_commit(base: Path) -> None:
+    """A fixed tail window failed open: four appended lines pushed `Reviewed at:` out of it.
+
+    `crew review address` rewrites `REVIEW.md`, so content below the footer is a normal shape; the
+    check that proves a review covers HEAD must not go quiet because a note was appended.
+    """
+    task = make_task(base / "addendum")
+    entries = "".join(f"- note {index} added after the fact\n" for index in range(1, 7))
+    directory = make_temp_review(base / "addendum", (
+        "# Review\n\n"
+        "1. [attention · 4] **`a.ts:3`** — nothing\n\n"
+        "Verdict: WARN\n> Next: run `crew review address` to continue\n"
+        "Reviewed at: 0123456789abcdef\n\n"
+        f"## Addendum\n\n{entries}"
+    ))
+    record(task, directory)
+    review_module = read_module(TASK_TOOLS, "task_review.py")
+    resolved = review_module.review_file(task)
+    check("an addendum below the footer keeps the commit",
+          review_module.reviewed_at(resolved) == "0123456789abcdef", resolved)
+
+
 def main() -> int:
     base = Path(tempfile.mkdtemp(prefix="crew-lifecycle-"))
     try:
@@ -163,6 +207,7 @@ def main() -> int:
         stale_record_refuses(base)
         reviewed_at_prefers_the_same_file(base)
         task_without_spec_is_not_recorded(base)
+        test_a_quoted_reviewed_at_above_the_footer_is_not_the_commit(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
     print("all lifecycle checks passed" if not FAILED else f"lifecycle: {len(FAILED)} failed")

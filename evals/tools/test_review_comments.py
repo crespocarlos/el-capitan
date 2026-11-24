@@ -47,7 +47,7 @@ def review_dir(tmp: Path, findings: list[dict]) -> Path:
     directory.mkdir(parents=True)
     for persona in ("adversarial", "code-quality"):
         (directory / f"{persona}.in.md").write_text("in")
-        (directory / f"{persona}.out.md").write_text("### Verdict: no findings\n")
+        (directory / f"{persona}.out.md").write_text("### Findings: none\n")
     (directory / "consolidation.json").write_text(json.dumps({"findings": findings}))
     return directory
 
@@ -110,7 +110,9 @@ def test_persist_drafts_comments_for_a_pr_review(tmp: Path) -> None:
     """A PR review writes comments.md beside its report, and a self-review does not."""
     directory = review_dir(tmp, [finding(comment="Does this publish twice?")])
     report = tmp / "report.md"
-    report.write_text("## Review: PR — one finding\n")
+    report.write_text("## Review: PR — one finding\n\n"
+                      "1. [attention · 4] **`a.ts:12`** — Status is published twice\n\n"
+                      "Verdict: WARN — one real duplication.\n")
     result = run("persist", "--review-dir", str(directory), "--report", str(report),
                  "--findings", str(directory / "consolidation.json"), "--mode", "pr",
                  "--head", "0123456789abcdef0123456789abcdef01234567",
@@ -124,7 +126,9 @@ def test_persist_says_so_when_no_comment_was_drafted(tmp: Path) -> None:
     """A body-less PR review must not read as finished: the file is the deliverable."""
     directory = review_dir(tmp, [finding(comment=None)])
     report = tmp / "report.md"
-    report.write_text("## Review: PR — one finding\n")
+    report.write_text("## Review: PR — one finding\n\n"
+                      "1. [attention · 4] **`a.ts:12`** — Status is published twice\n\n"
+                      "Verdict: WARN — one real duplication.\n")
     result = run("persist", "--review-dir", str(directory), "--report", str(report),
                  "--findings", str(directory / "consolidation.json"), "--mode", "pr",
                  "--head", "0123456789abcdef0123456789abcdef01234567",
@@ -241,7 +245,9 @@ def test_findings_without_bodies_do_not_claim_a_clean_review(tmp: Path) -> None:
     """The opposite case: findings exist and are unworded, so "none drafted" would be a lie."""
     directory = review_dir(tmp, [finding(comment=None)])
     report = tmp / "report.md"
-    report.write_text("## Review: PR #1 — one finding\n")
+    report.write_text("## Review: PR #1 — one finding\n\n"
+                      "1. [attention · 4] **`a.ts:12`** — Status is published twice\n\n"
+                      "Verdict: WARN — one real duplication.\n")
     result = run("persist", "--review-dir", str(directory), "--report", str(report),
                  "--findings", str(directory / "consolidation.json"), "--mode", "pr",
                  "--head", "0123456789abcdef0123456789abcdef01234567",

@@ -1,0 +1,81 @@
+{
+  "_comment": "The next command each completed stage hands to. Read by `crew-next.py` and by `review_render.footer`, so a stage's successor is data rather than a sentence in fourteen files. Keys are `<workflow>.<stage>.<outcome>`; `crew-next.py` also accepts a bare `<stage>.<outcome>` for a stage that belongs to one workflow. `outcome` is `any` when the stage has one successor whatever the verdict. A value is `{command, why}`: `command` is what the reader runs next, or `null` when the stage hands off to a person (`human`) or to a decision (`decide`). Fields `human` and `decide` carry the sentence a report prints instead of a command. Nothing here calls a tool: it is the table `crew-router.mdc` routes and `crew-orchestrator.mdc` sequences.",
+  "rules": {
+    "build.spec.drafted": {
+      "command": "crew implement",
+      "why": "the spec is written and awaits approval"
+    },
+    "build.spec.approved": {
+      "command": "crew implement",
+      "why": "Gate 1 passed; implementation may start"
+    },
+    "build.implement.all_passed": {
+      "command": "crew review",
+      "why": "every task passed, so the change is reviewed before it is committed"
+    },
+    "build.implement.failed": {
+      "decide": "retry the failed tasks, skip them, or stop here",
+      "why": "a failed task is the user's call, never an automatic retry"
+    },
+    "build.test.pass": {
+      "command": "crew review",
+      "why": "tests are green, so the change is reviewed before it is committed"
+    },
+    "build.test.warn": {
+      "command": "crew review",
+      "why": "no test command was found; the acceptance criteria are verified by hand in the review"
+    },
+    "build.test.fail": {
+      "command": "crew test",
+      "why": "fix the failure, then re-run the same command"
+    },
+    "build.review.block": {
+      "command": "crew review address",
+      "why": "a blocking finding is resolved before the change is committed"
+    },
+    "build.review.pass": {
+      "command": "crew commit",
+      "why": "nothing blocks, so the change is committed"
+    },
+    "build.review.warn": {
+      "command": "crew commit",
+      "why": "attention findings do not block, so the change is committed"
+    },
+    "build.review.pr": {
+      "human": "paste the bodies from `comments.md` onto the PR; nothing was posted",
+      "why": "a PR review's findings are about someone else's branch, so a person posts them"
+    },
+    "build.review.spec": {
+      "human": "approve the revised SPEC.md (Gate 1), then run `crew implement`.",
+      "why": "a spec review revises the plan, and only the user can approve it"
+    },
+    "build.review.idea": {
+      "command": "crew spec",
+      "why": "an idea review strengthens the proposal, which the next step turns into a spec"
+    },
+    "build.commit.committed": {
+      "command": "crew open pr",
+      "why": "the commit exists and the branch is pushed as a draft PR"
+    },
+    "build.open-pr.opened": {
+      "command": "crew resolve PR",
+      "why": "the draft PR is open and review comments arrive there"
+    },
+    "respond.address-pr.applied": {
+      "command": "crew commit",
+      "why": "the approved edits are committed before any thread is answered"
+    },
+    "respond.push.pushed": {
+      "command": "crew review",
+      "why": "the pushed fixes are reviewed; the resolver cannot dispatch the inline-only reviewer"
+    },
+    "lightweight.implement.ready": {
+      "command": "crew commit",
+      "why": "the change is made and reviewed"
+    },
+    "lightweight.implement.blocked": {
+      "command": "crew review address",
+      "why": "the review blocked the change before it could be committed"
+    }
+  }
+}

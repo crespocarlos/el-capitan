@@ -55,7 +55,7 @@ def review_dir(tmp: Path) -> Path:
     directory = tmp / "task" / "review" / "ts"
     directory.mkdir(parents=True)
     (directory / "adversarial.in.md").write_text("in")
-    (directory / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (directory / "adversarial.out.md").write_text("### Findings: none\n")
     return directory
 
 
@@ -194,13 +194,14 @@ def test_a_routed_finding_keeps_its_original_score(tmp: Path) -> None:
     routed = {"title": "Retry loop may double-fire", "label": "needs more info", "file": "a.ts",
               "line": 9, "kind": "reliability", "confidence": 2, "disposition": "decide",
               "reason": "whether the guard fires before the retry is unread"}
-    result = persist(tmp, [routed], "## Review: changes\n\n1. [needs more info · 2] **`a.ts — line 9`**"
-                                  " — Retry loop may double-fire\n")
+    listed = ("## Review: changes\n\n1. [needs more info · 2] **`a.ts — line 9`**"
+              " — Retry loop may double-fire\n\nVerdict: PASS\n")
+    result = persist(tmp, [routed], listed)
     assert result.returncode == 0, result.stderr
     written = (tmp / "task" / "review" / "ts" / "REVIEW.md").read_text()
     assert "[needs more info · 2]" in written, written
     # And the routed finding is not a raise, so it needs no `confidence_from`.
-    assert persist(tmp, [routed], "## Review: changes\n").returncode == 0
+    assert persist(tmp, [routed], listed).returncode == 0
     stored = json.loads(normalize(tmp, [routed]).stdout)["findings"][0]
     assert stored["confidence"] == 2 and "confidence_from" not in stored, stored
 
@@ -325,7 +326,8 @@ def test_the_deferred_line_and_the_coverage_table_carry_the_score(tmp: Path) -> 
     payload = [base(hunks=["h1"], confidence=5),
                base(title="Old bug", label="attention", disposition="defer", confidence=3,
                     verified=None, evidence=None, validation=None, file=None, line=None)]
-    result = persist(tmp, payload, "## Review: changes\n")
+    listed = ("## Review: changes\n\n1. [attention · 5] **`a.ts:3`** — Guard missing\n")
+    result = persist(tmp, payload, listed)
     assert result.returncode == 0, result.stderr
     written = (directory / "REVIEW.md").read_text()
     assert "[attention · 5] Guard missing" in written, written

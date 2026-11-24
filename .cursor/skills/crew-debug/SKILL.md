@@ -75,9 +75,9 @@ verification:
 Suggest `crew remember:` only when the cause is durable and not derivable from the code (an
 environment quirk, a misleading error, a non-obvious invariant).
 
-> Next: run `crew review changes` before committing.
-
 ## Plain-language gates
 
 Ask before any step that changes external state while reproducing: writing to shared services,
 deleting data, or restarting shared infrastructure.
+
+> Next: run `crew review changes` before committing.

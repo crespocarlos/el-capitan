@@ -45,8 +45,21 @@ def review_file(task: Path) -> Path | None:
 
 
 def reviewed_at(review: Path | None) -> str:
-    """The last `Reviewed at:` commit in a review, or "" when it carries none."""
+    """The `Reviewed at:` commit in a review's footer, or "" when it carries none.
+
+    Only the footer is read: the lines from the last `> Next:` onward, or the last five non-empty
+    lines when the file has no trailer. A finding may quote the line verbatim — the contract requires
+    quoting — and a quote anywhere above the footer is not a claim about which tree was reviewed.
+    Reading the whole file let such a quote satisfy the gate that proves a review covers HEAD.
+
+    A fixed line count failed open instead: anything appended below the footer pushed the commit out
+    of the window, and `task_gates` then treats a missing commit as warning-grade. Starting at the
+    trailer keeps an addendum from silently disabling the check.
+    """
     if review is None:
         return ""
-    matches = REVIEWED_AT.findall(review.read_text(encoding="utf-8"))
+    lines = [line for line in review.read_text(encoding="utf-8").splitlines() if line.strip()]
+    start = next((index for index in range(len(lines) - 1, -1, -1)
+                  if lines[index].startswith("> Next:")), max(len(lines) - 5, 0))
+    matches = REVIEWED_AT.findall("\n".join(lines[start:]))
     return matches[-1] if matches else ""

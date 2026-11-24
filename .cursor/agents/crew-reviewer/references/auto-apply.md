@@ -24,8 +24,8 @@ action?
      Auto-applied: N fixes (N blocking, N attention, N nit) across M file(s)
      Sibling fixes: N additional instances fixed
      ```
-  6. Then output `crew log` line and: > Next: run `crew commit` to continue, or run `crew review
-     --auto` for another pass.
+  6. Then output the `crew log` line, then the quoted handoff: ``> Next: run `crew commit` to
+     continue, or run `crew review --auto` for another pass.``
 
 **Loop extension (`--auto --loop` only):** after the summary above, instead of stopping:
 
@@ -69,8 +69,8 @@ action?
      Auto-applied: N fixes (N blocking, N attention, N nit) across M file(s)
      Sibling fixes: N additional instances fixed
      ```
-  6. Then output `crew log` line and: > Next: run `crew commit` to continue, or run `crew review
-     changes --auto` for another pass.
+  6. Then output the `crew log` line, then the quoted handoff: ``> Next: run `crew commit` to
+     continue, or run `crew review changes --auto` for another pass.``
 
 **Loop extension (`changes --auto --loop` only):** after the summary above, instead of stopping:
 
@@ -116,8 +116,8 @@ After outputting the consolidated report, check:
      Auto-applied: N fixes (N blocking, N attention, N nit)
      Self-review: clean  ← or: N fixed inline
      ```
-  9. Then output the convergence check, `crew log` line, and: > Next: run `crew spec` to turn this
-     into a spec, or run `crew review idea --auto` for another pass.
+  9. Then output the convergence check, the `crew log` line, and the quoted handoff: ``> Next: run
+     `crew spec` to turn this into a spec, or run `crew review idea --auto` for another pass.``
 
 **Loop extension (`idea --auto --loop` only):** after step 9 above, instead of stopping:
 

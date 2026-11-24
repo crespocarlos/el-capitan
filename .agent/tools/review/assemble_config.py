@@ -24,7 +24,7 @@ of `[attention]` in a spec or idea review.
 
 **Return shape:** reply text only. Do not write files and do not summarize into a separate block. A
 flat numbered list of findings, each beginning with its severity label and carrying a `path:line`
-anchor. If you have no findings, end your reply with the exact line `### Verdict: no findings`.
+anchor. If you have no findings, end your reply with the exact line `### Findings: none`.
 """
 # The extras that read the local git index, which a PR review forbids.
 INDEX_READING_KEYS = ("consumers", "prompt_files")

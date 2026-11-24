@@ -127,8 +127,6 @@ format above.
 
 Show the PR URL and a one-line summary.
 
-> Next: build workflow complete. Watch for review comments — run `crew resolve PR` if they arrive.
-
 ## Session Capture
 
 After creating the PR, resolve `TASK_DIR`:
@@ -190,4 +188,7 @@ Use plain language, without compressed summaries, before:
 - Any fork workflow where the target repo differs from origin — call out the fork explicitly to
   avoid misfiling the PR
 
-Continue after the PR URL is returned.
+Continue after the PR URL is returned. The build workflow is complete at that point; review comments
+arrive on the PR.
+
+> Next: run `crew resolve PR` when review comments arrive.

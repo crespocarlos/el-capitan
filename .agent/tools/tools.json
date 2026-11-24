@@ -155,6 +155,16 @@
       "output": "human"
     },
     {
+      "name": "crew-next.py",
+      "dir": "task",
+      "kind": "command",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--stages",
+      "output": "human"
+    },
+    {
       "name": "crew-progress.py",
       "dir": "task",
       "kind": "command",
@@ -344,15 +354,24 @@
       "help": "imported by crew-lint.py",
       "smoke": "imported by crew-lint.py"
     },
-    {
-      "name": "lint_files.py",
-      "dir": "maintenance",
-      "kind": "module",
-      "category": "maintenance",
-      "owner": "repository",
-      "help": "imported by crew-lint.py",
-      "smoke": "imported by crew-lint.py"
-    },
+ {
+  "name": "lint_files.py",
+  "dir": "maintenance",
+  "kind": "module",
+  "category": "maintenance",
+  "owner": "repository",
+  "help": "imported by crew-lint.py",
+  "smoke": "imported by crew-lint.py"
+ },
+ {
+  "name": "lint_handoff.py",
+  "dir": "maintenance",
+  "kind": "module",
+  "category": "maintenance",
+  "owner": "repository",
+  "help": "imported by crew-lint.py: the `> Next:` handoff trailer grammar",
+  "smoke": "imported by crew-lint.py"
+ },
     {
       "name": "lint_naming.py",
       "dir": "maintenance",
@@ -406,6 +425,15 @@
       "owner": "repository",
       "help": "imported by command entry points (bounding and truncation markers)",
       "smoke": "imported by command entry points (bounding and truncation markers)"
+    },
+    {
+      "name": "next_steps.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-next.py and review_render.py (the next-step table)",
+      "smoke": "imported by crew-next.py and review_render.py (the next-step table)"
     },
     {
       "name": "git.py",
@@ -983,15 +1011,24 @@
       "help": "imported by crew-review-findings.py",
       "smoke": "imported by crew-review-findings.py"
     },
-    {
-      "name": "review_report.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
-    },
+ {
+  "name": "review_report.py",
+  "dir": "review",
+  "kind": "module",
+  "category": "review",
+  "owner": "crew-reviewer",
+  "help": "imported by crew-review-findings.py",
+  "smoke": "imported by crew-review-findings.py"
+ },
+ {
+  "name": "review_report_gate.py",
+  "dir": "review",
+  "kind": "module",
+  "category": "review",
+  "owner": "crew-reviewer",
+  "help": "imported by review_report.py: checks the report's list and verdict against `persist`'s findings",
+  "smoke": "imported by review_report.py"
+ },
     {
       "name": "review_cli.py",
       "dir": "review",
@@ -1048,6 +1085,13 @@
     },
     {
       "name": "transitions.json",
+      "dir": "task",
+      "kind": "asset",
+      "category": "task",
+      "owner": "crew-orchestrator"
+    },
+    {
+      "name": "next-steps.json",
       "dir": "task",
       "kind": "asset",
       "category": "task",

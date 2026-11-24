@@ -112,6 +112,25 @@ def check_spec_fixtures_skip_precision() -> None:
     assert precision is None and recall == 1.0, (precision, recall)
 
 
+def check_a_spec_hint_is_absent_from_its_own_content() -> None:
+    """A spec fixture's hint must be a diagnosis the reply introduces, not a word the spec supplies.
+
+    Spec fixtures score on hint presence alone (`run.py:186-191`), with no label and no finding
+    boundary. A hint drawn from the spec's own vocabulary — or from the sentences the persona is told
+    to quote — credits a reply that only echoed the input, so recall rises while nothing was found.
+    """
+    for entry in MODULE.load_fixtures():
+        if entry.get("input_type", "diff") != "spec":
+            continue
+        content = entry["content"].lower()
+        for finding in entry.get("expected_findings", []):
+            hint = finding["match_hint"].lower()
+            assert hint not in content, (
+                f"{entry['id']}: hint {hint!r} already appears in the fixture's own content, so a "
+                f"reply that quotes the spec scores recall without producing a finding"
+            )
+
+
 def check_every_lens_has_fixture_coverage() -> None:
     """Each reviewer persona needs at least one fixture that scores it, and a clean control.
 
@@ -186,6 +205,7 @@ CHECKS = [
     check_clean_fixture_scores_no_false_positive,
     check_scope_violations_count_only_for_code_quality,
     check_spec_fixtures_skip_precision,
+    check_a_spec_hint_is_absent_from_its_own_content,
     check_every_lens_has_fixture_coverage,
     check_a_scored_label_still_scores,
     check_scored_bare_labels_stay_separate_findings,

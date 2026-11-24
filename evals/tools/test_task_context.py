@@ -12,7 +12,10 @@ TOOL = ROOT / ".agent" / "tools" / "task" / "crew-task-context.py"
 
 SPEC = "# Spec: demo\n\n## Status\nAPPROVED\n" + ("body line\n" * 40)
 PROGRESS = "".join(f"[2026-11-{day:02d} 10:00] TRANSITION: step {day}\n" for day in range(1, 29))
-REVIEW = "# Review\n\n" + ("finding text here\n" * 60) + "\n### Files reviewed\n- `a.py`\n\nReviewed at: abcdef1\n"
+REVIEW = ("# Review\n\n" + ("finding text here\n" * 60)
+          + "\n### Files reviewed\n- `a.py`\n\nVerdict: WARN\n"
+            "> Next: run `crew review address` to resolve blocking findings, or `crew commit` when "
+            "the verdict is PASS or WARN.\nReviewed at: abcdef1\n")
 
 
 def run(*arguments, task_dir=None, unset_cache=False):
@@ -82,6 +85,11 @@ def main():
         check("review is truncated", review["truncated"] is True)
         check("review keeps its tail", "Reviewed at: abcdef1" in review["content"], review["content"])
         check("review records the edge", review["truncated_edge"] == "tail")
+        # The footer is the identity block persist appends, so the edge must keep all three lines.
+        # A flip to `head` would return the heading and the first findings instead, and this fails.
+        for footer_line in ("Verdict: WARN", "> Next: run `crew review address`", "Reviewed at: abcdef1"):
+            check(f"tail keeps the footer's {footer_line!r}", footer_line in review["content"],
+                  review["content"][-400:])
         spec = payload["artifacts"]["spec"]
         check("spec keeps its head", spec["content"].startswith("# Spec: demo"))
         progress = payload["artifacts"]["progress"]

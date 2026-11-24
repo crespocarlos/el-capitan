@@ -101,14 +101,13 @@ Never apply any change during this step. Collect all verdicts first.
 
 **Both modes** — present the table, then ask. Never edit before the answer.
 
-The harness asks before this flow records anything: `.claude/settings.json` carries a
+The harness asks before this flow records anything: `.claude/settings.json` holds a
 `permissions.ask` rule for `Edit`/`Write` under the task directory and for
-`crew-review-findings.py`, so writing the outcome log or the review artifacts prompts for approval,
-with the table still on screen. There is no marker file and no state to clear.
+`crew-review-findings.py`, so recording the outcome log prompts for approval with the table on
+screen. No marker file, no state to clear.
 
-That prompt does not cover the source files the findings cite — a permission rule cannot see which
-flow is running. Only the answer below authorizes those edits; if you are about to edit without the
-table on screen, stop.
+That prompt does not cover the sources the findings cite; only the answer below authorizes those
+edits. If you are about to edit without the table on screen, stop.
 
 Code mode table:
 
@@ -121,6 +120,8 @@ Code mode table:
 
 Each label carries its score, so the table shows what the reviewer doubted before the user approves
 anything. A `Needs Input` row keeps its original score.
+
+A fix containing a `|` goes in a fenced block beneath the table, labelled with its `#`, not in a cell.
 
 Summary counts: N apply / N adapt / N reject / N defer / N already addressed. Then ask:
 

@@ -15,7 +15,7 @@ format [finding formats](finding-formats.md) defines. No severity sections.
 A finding line carries its score beside its label, and its kind after both when one was recorded:
 
 ```
-1. [attention · 4] **`path/to/file.ts — line N`** — one-line title
+1. [attention · 4] **`path/to/file.ts:42`** — one-line title
 ```
 
 The score sits in the same bracket as the label, never in the prose, so a reader scanning ten findings
@@ -40,7 +40,8 @@ step even when `report.md` on disk is correct. Before sending, check that the re
 ## Do not write the generated sections
 
 `persist` appends `### Coverage by layer` and `### Files reviewed` itself, from the layer map and
-`--files`. Write the report body — heading, findings, verdict, next step — but not those two sections:
-a report carrying either as a real heading is rejected rather than merged, so it cannot appear twice
-with the reader unable to tell which copy is authoritative. Quoting a heading inside a finding, or
+`--files`, and it writes the decision footer. Write the report body — heading and findings — but not
+those two sections, the verdict, or the next step: a report carrying either section as a real heading
+is rejected rather than merged, and a verdict or next step in the body is a second copy `persist`
+cannot compare and a reader cannot tell from the derived one. Quoting a heading inside a finding, or
 using a deeper `####` heading, is not a duplicate.

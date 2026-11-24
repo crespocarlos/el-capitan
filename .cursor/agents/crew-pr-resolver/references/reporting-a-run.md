@@ -12,6 +12,14 @@ nothing. List it in the same table shape so the reader sees it was evaluated:
 |---|------|----------|------|
 | 1 | path/to/file.ts:42 | @reviewer | Outdated — verify the concern still applies. |
 
+## Replies a table cell cannot hold
+
+A Markdown table cell ends at `|`, so a proposed reply containing one — a quoted expression, a type
+union, a copied line of an Elasticsearch query DSL — is split across two columns and the reader sees
+a truncated thread. When a reply carries a `|`, put it in a fenced block beneath the table, labelled
+with its `#`, and let the cell read `see below`. The same applies to any reply that needs a second
+line: a cell cannot hold one either.
+
 ## Summary line
 
 One line under the table, counts only, in this order:

@@ -118,6 +118,6 @@ Excerpts: 5–10 lines max. No full file contents. The summary feeds directly in
 keep it tight. The cross-file consistency section is the highest-signal output for catching silent
 integration bugs.
 
-End every response with `### Verdict: no findings` when you found no cross-file or pattern
+End every response with `### Findings: none` when you found no cross-file or pattern
 inconsistency; that line is how the orchestrator distinguishes a complete exploration from a
 truncated one.

@@ -146,8 +146,6 @@ elif [ -n "$TASK_DIR" ]; then
 fi
 ```
 
-> Next: run `crew open pr` to push and open a PR, or push directly if a PR is already open.
-
 ## Plain-language gates
 
 Use plain language before:
@@ -158,3 +156,7 @@ Use plain language before:
 - Any `git commit --amend` operation — state clearly it rewrites the last commit
 
 Continue after the user approves the message.
+
+If a PR is already open for this branch, push the commit directly instead of opening a new one.
+
+> Next: run `crew open pr` to push and open a PR.

@@ -160,8 +160,7 @@ they see only the improved spec in the output.
    Cursor and Claude Code):
    - `specwriter-scope` — PR boundaries, task granularity, split lines, builder compatibility, path
      clarity, verify lines, AC verifiability
-   - `specwriter-adversarial` — acceptance criteria (structural constraints included), missing edge
-     cases
+   - `specwriter-adversarial` — whether the approach is correct, then the criteria
 
 2. **Dispatch** both critics in parallel, each as a registered subagent dispatched by name, passing
    only the draft spec as context (never the persona prompt):
@@ -237,10 +236,10 @@ refuses to start. Report the recorded status, then stop.
 > Before approving, optionally run `crew review spec` for architectural and product review of this
 > plan (dispatches Architecture, Adversarial, Product Flow, and conditionally Prompt Quality
 > reviewers).
->
-> Next: run `crew implement` to continue.
 
 ## Output
 
 Save to `$TASK_DIR/SPEC.md`. Report back with a summary and any open questions. **Stop here** — do
 not proceed to implementation.
+
+> Next: run `crew implement` to continue.

@@ -37,7 +37,8 @@ compatibility, per-task verifiability (are acceptance checks runnable?), WORK_DI
 file-path anchoring, design constraint enforceability, self-containment, and test section presence.
 
 **You do NOT critique:** Business requirements, missing acceptance criteria, edge case coverage, or
-whether the feature is a good idea. Other critics handle those.
+whether the feature is a good idea. The adversarial critic owns the approach and the criteria; whether
+the requirement itself is right is a user decision neither critic makes.
 
 ## Focus areas
 
@@ -157,8 +158,9 @@ severity levels (spec-level findings count against this cap).** Surface only blo
 scope creep, broken task ordering, or a builder stall — drop minor concerns. Never append one-liners
 for cut findings.
 
-**End with one outcome line, always.** `Verdict: N finding(s)` after the findings, or
-`Verdict: no findings` alone. The specwriter reads your reply as the whole critique and cannot tell a
-budget stop from a clean pass, so the line is what distinguishes them: a run that ends without it is
-treated as incomplete, not as approval. When you report under the turn budget, the line reads
-`Verdict: N finding(s), M path(s) unverified` and the names follow it.
+**End with one outcome line, always.** `Verdict: N finding(s)` after the findings. A clean pass states
+the same shape with a zero count, `Verdict: 0 finding(s)`, so one vocabulary covers both the count and
+the empty case and no second sentinel is needed. The specwriter reads your reply as the whole critique
+and cannot tell a budget stop from a clean pass, so the line is what distinguishes them: a run that
+ends without it is treated as incomplete, not as approval. When you report under the turn budget, the
+line reads `Verdict: N finding(s), M path(s) unverified` and the names follow it.

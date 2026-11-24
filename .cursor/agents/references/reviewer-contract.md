@@ -40,7 +40,7 @@ stated. A spec or idea `[concern]` and a `[nit]` may carry any score, since neit
 ## Finding shape
 
 Each finding is a comment body the reader can paste without editing:
-`N. [label · 4] **\`path/to/file — line L\`** — one-line title`, then a 2-5 line fenced block
+`N. [label · 4] **\`path/to/file.ts:42\`** — one-line title`, then a 2-5 line fenced block
 anchoring the finding, then 2-3 sentences on what is wrong and why it breaks, then `Fix:` (that exact
 spelling; the consolidator records it as the `patch` disposition and loses any other). `N` is the list
 index and `L` the line; the score is a literal band, so neither is copied into the wrong slot.
@@ -68,16 +68,26 @@ index and `L` the line; the score is a literal band, so neither is copied into t
 
 A complete review with nothing in your lane ends with exactly these two lines, then one sentence
 naming what the artifact lacks:
-
 ```
 Nothing in my lane for this artifact.
-### Verdict: no findings
+### Findings: none
 ```
 
-A review that examined the artifact and found no defect ends with `### Verdict: no findings` alone.
-The verdict line is required: a response with neither a finding nor that line is read as truncated
-and relaunched. Zero findings is a valid outcome; never pad, and never report a finding you could
-not ground.
+A review that examined the artifact and found no defect ends with `### Findings: none` alone. That
+line is required: a response with neither a finding nor that line is read as truncated and
+relaunched. Zero findings is a valid outcome; never pad, and never report a finding you could not
+ground. The sentinel does not use the word `Verdict:`, because three stages use that word for an
+outcome scale and a persona's emptiness declaration must not read as one of them.
+
+## The leading `status:` line
+
+A `status:` line at the very start of your artifact is a completion declaration about your own run,
+and it is reserved for that. Only `failed`, `skipped`, and `truncated` are read from it; anything
+else falls through to the content check, so `ok`, `done`, or `complete` is not a success claim and
+cannot stand in for a finding or the sentinel. Writing `condensed` or `summarized` on that line marks
+the artifact as an orchestrator digest rather than your response: it is refused, because nothing in
+it is attributable to you or re-verifiable later, and the run is reported as a summary instead of as
+your work. State your lens's conclusion in the body; leave the leading line for a failure.
 
 ## Evidence rules
 

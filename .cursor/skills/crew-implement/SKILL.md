@@ -175,8 +175,11 @@ merging the part reports' task results, decisions, and quality gates.
 
 ### Step 7: Handle results
 
-Read `$TASK_DIR/REPORT.md`. If the worker returned a message, use that. If neither exists, tell the
-user:
+Read the worker's report first: the file is the contract and everything below is read from it. The
+worker's reply is only a pointer — `report: <path>` and the **Tasks:** line — so treat it as a
+confirmation that the file was written and as the place to look when it was not. The path it names is
+`REPORT.md` for a single run and `REPORT.part-<first>-<last>.md` for a batch, so read the file the
+pointer names rather than assuming the first. If neither the file nor a pointer exists, tell the user:
 
 > "The worker finished but didn't produce a report. Check `$TASK_DIR/` for SPEC.md task status, or
 > re-run `crew implement` to resume."
@@ -185,7 +188,10 @@ When the Implementation Report is available:
 
 **All tasks passed:**
 
-1. ```bash ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
+1. Run the completion metric:
+
+   ```bash
+   ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
    ```
 2. **Draft the post-run memory writes** per [completion handoff](references/completion-handoff.md):
    the optional journal entry first (ask `Store this journal entry? (yes / no)`), then zero to three
@@ -194,7 +200,8 @@ When the Implementation Report is available:
 3. **Tell the user — this output is mandatory, do not skip it:**
    > "All tasks done. Status stays `IMPLEMENTING` until the PR is opened."
    > "Working directory: `<WORK_DIR>` — run tests from there."
-   > Next: `crew review`, then `crew commit`, then `crew open pr`.
+
+   The handoff itself is the trailer at the end of this file; do not repeat it here.
 
 **Some tasks failed:**
 
@@ -222,3 +229,5 @@ Use plain language, without compressed summaries, at each gate checkpoint:
 - When a task's verify command fails three times — report the failure in full detail without compression (three-failure stop rule)
 
 Continue once the user provides direction.
+
+> Next: run `crew review` to verify the change, then `crew commit`, then `crew open pr`.

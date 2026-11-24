@@ -40,7 +40,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_review.py`, `task_normalize.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py` | `transitions.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-next.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_review.py`, `task_normalize.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_vocabulary.py`, `review_models.py`, `review_probe.py`, `review_gates.py`, `review_layers.py`, `review_map.py`, `review_personas.py`, `review_classify.py`, `review_coverage.py`, `review_report.py`, `review_persist_gates.py`, `review_parse.py`, `review_limits.py`, `assemble_config.py`, `assemble_common.py`, `assemble_map.py`, `assemble_files.py`, `assemble_personas.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
@@ -457,6 +457,23 @@ harness that produces that failure.
 5. Add a deterministic smoke command if the CLI is safe to invoke.
 6. Run `python3 .agent/tools/maintenance/crew-lint.py`, the listed smoke command, and
    `python3 evals/tools/test_command_names.py`.
+
+## Handoff trailers
+
+A reply that hands work on ends with one line, `> Next: ` followed by the `crew <verb>` command to
+run next — the last non-empty line of the file, named once, and resolvable in `crew-router.mdc`.
+`crew-lint` enforces it (`lint_handoff.py`), so a stage with several outcomes quotes one trailer per
+outcome in backticks instead of emitting an unquoted one.
+
+The text of the persisted report's `> Next:` line is not chosen when the file is written: it comes
+from `task/next-steps.json` through `lib/next_steps.py`. Ask the table with `crew-next.py
+<stage>.<outcome>` — `review.block`, `implement.all_passed`, `test.fail` — which prints
+``run `crew <verb>` to continue``, a person's action for a PR review, or `decide: …` when the next
+move belongs to the user. A skill's own trailer is written prose, not generated: editing the table
+changes the report and `crew-next.py`, never a skill file. What `crew-lint` holds a trailer to is its
+shape and its router row, not agreement with the table.
+`evals/tools/test_crew_next.py` holds every command in the table to a `crew-router.mdc` row, so a
+stage cannot hand off to something the router does not route.
 
 ## Compatibility policy
 

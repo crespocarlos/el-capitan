@@ -11,7 +11,9 @@ import stat
 from pathlib import Path
 
 # Third field is the truncation edge for an over-budget artifact: `tail` keeps the newest content
-# for append-only logs and for reports whose identity fields are appended last.
+# for append-only logs and for reports whose identity fields are appended last. `REVIEW.md` is the one
+# report whose identity block is appended by `persist` *after* the findings, so tail keeps the
+# decision — verdict, next step, and reviewed commit — rather than the heading it opens with.
 ARTIFACTS = (
     (".task-id", "task_id", "head"),
     ("SPEC.md", "spec", "head"),

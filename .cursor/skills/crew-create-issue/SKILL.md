@@ -141,8 +141,14 @@ active work.
 Filed/Updated: https://github.com/OWNER/REPO/issues/N
 ```
 
-- **Create mode** → `Next: crew spec OWNER/REPO#N`
-- **Update mode** → suggest next step based on context (implement, review, or done)
+**Create mode** emits the quoted handoff in that output block, so the next session's first command is
+the one the issue was filed for:
+
+```
+> Next: run `crew spec OWNER/REPO#N` to turn this into a spec.
+```
+
+**Update mode** suggests the next step based on context (implement, review, or done) in prose.
 
 ## Invariants
 

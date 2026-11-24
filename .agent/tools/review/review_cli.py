@@ -62,6 +62,8 @@ def add_normalize_parsers(commands) -> None:
     persist_parser.add_argument("--personas", nargs="*", default=[])
     persist_parser.add_argument("--head", default="",
                                 help="reviewed commit SHA recorded as `Reviewed at:`")
+    persist_parser.add_argument("--next", default="",
+                                help="handoff text after `> Next:`; defaults to the mode's own step")
     select_parser = commands.add_parser("select")
     select_parser.add_argument("--mode", required=True, type=mode_arg,
                                choices=sorted(CODE_MODES | {"spec", "idea"}))

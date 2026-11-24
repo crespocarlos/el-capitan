@@ -41,10 +41,15 @@ your own review-comment voice (`voice.mdc`), and `persist` collects those into `
 finding's `comment` field (see [evidence and comments](evidence-and-comments.md) under "Paste-ready
 comments").
 
+The anchor sits inside the code span, `**\`path/to/file.ts:42\`**`, and nowhere else: the token in
+that span is the one `EVIDENCE_LOCATION` matches and the one a reader can paste into a search. The
+older form that put the line number outside the span is retired, because the token a gate looks for
+was hidden from the reader who wanted to search it.
+
 ````
 ## Review: <mode> — <summary>
 
-1. [blocking · 4] **`path/to/file.ts` — line N**
+1. [blocking · 4] **`path/to/file.ts:42`**
 
 ```lang
 <2-5 lines anchoring the finding>
@@ -60,7 +65,7 @@ Fix:
 
 ---
 
-2. [attention · 3] **`path/to/file.ts` — line N**
+2. [attention · 3] **`path/to/file.ts:88`**
 
 ```lang
 <2-5 lines, recommended>
@@ -72,7 +77,7 @@ Fix: <text description, or code block when concrete>
 
 ---
 
-3. [needs more info · 2] **`path/to/file.ts` — line N**
+3. [needs more info · 2] **`path/to/file.ts:140`**
 
 ```lang
 <relevant lines>
@@ -82,7 +87,7 @@ Fix: <text description, or code block when concrete>
 
 ---
 
-4. [nit · 5] **`path/to/file.ts` — line N** — <what to change, one line>
+4. [nit · 5] **`path/to/file.ts:201`** — <what to change, one line>
 
 ```
 

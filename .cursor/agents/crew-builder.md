@@ -110,7 +110,7 @@ Then write `REPORT.md`.
 
 ## Report
 
-Write to **`$TASK_DIR/REPORT.md`** and return it:
+Write to **`$TASK_DIR/REPORT.md`** in this shape:
 
 ```
 ## Implementation Report
@@ -157,6 +157,20 @@ Write to **`$TASK_DIR/REPORT.md`** and return it:
 ### Structural observations (if any)
 <If any task implementation revealed an obvious structural fit problem — a function with 4+ parameters, a file owning 3+ responsibilities, or 30+ lines added to an already-large function — note it here in 1–2 sentences. Do not restructure beyond what the spec authorizes; flag it so the spec author can decide. Omit this section entirely if nothing noteworthy was found.>
 ```
+
+The file is the contract. **The reply is a pointer to it, never a copy:**
+
+```
+report: <TASK_DIR>/<the report file you wrote>
+**Tasks:** N/M passed
+```
+
+For a single run that file is `REPORT.md`; a `TASK_RANGE` batch writes `REPORT.part-<first>-<last>.md`
+and must point at that, because the orchestrator reads the reply as confirmation the file exists.
+
+Add `(failed: <task numbers>)` to the second line when any failed. Nothing else goes in the reply —
+no report body, no section headings, no summary of what passed — because a restated report is a second
+copy that can disagree with the file, and the orchestrator reads the file.
 
 **Artifacts:** Oversized command transcripts (Completion Protocol) go under `$TASK_DIR/artifacts/`.
 

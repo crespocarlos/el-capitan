@@ -152,8 +152,8 @@ Determine verdict first:
 
 - **PASS** — zero findings, or only `[nit]` / `[needs more info]`
 - **WARN** — `[attention]` or `[concern]` findings only, no `[blocking]`
-- **BLOCK** — any `[blocking]` finding present. `Verdict: revisit` from reviewers always maps to
-  BLOCK.
+- **BLOCK** — any `[blocking]` finding present. The footer states it in every mode, plan reviews
+  included.
 
 For **self-review and changes review only** (skip for PR review and spec review): run pipeline
 logging.

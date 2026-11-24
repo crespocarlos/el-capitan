@@ -77,9 +77,11 @@ def test_persist_without_a_flag_applies_the_gates(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
-    report.write_text("## Verdict: PASS\n")
+    # The list and the verdict both mirror the one emitted finding, so the lenient run below fails
+    # only if a gate it should skip is still running.
+    report.write_text("## Verdict: WARN\n\n1. [attention · 4] **`a.ts:3`** — Guard missing\n")
     findings = write_candidate(tmp, validation=None)
     args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
             "--findings", str(findings), "--mode", "changes", "--files", "a.ts",
@@ -97,7 +99,7 @@ def test_gates_reach_a_review_that_passes_no_file_list(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
     report.write_text("## Review: Spec\n")
     findings = write_candidate(tmp, validation=None)
@@ -117,9 +119,9 @@ def test_kind_is_required_at_persist_and_names_every_value(tmp: Path) -> None:
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)
     (review_dir / "adversarial.in.md").write_text("in")
-    (review_dir / "adversarial.out.md").write_text("### Verdict: no findings\n")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
-    report.write_text("## Verdict: PASS\n")
+    report.write_text("## Verdict: WARN\n\n1. [attention · 4] **`a.ts:3`** — Guard missing\n")
     findings = write_candidate(tmp, kind=None)
     args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
             "--findings", str(findings), "--mode", "changes", "--personas", "adversarial")

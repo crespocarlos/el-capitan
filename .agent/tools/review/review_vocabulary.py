@@ -47,6 +47,22 @@ SELECT_RULES = {
 }
 
 
+def verdict(findings: list) -> str:
+    """`BLOCK`, `WARN`, or `PASS` for a persisted report, decided from the emitted findings.
+
+    Emitted means `Finding.is_emitted()`: a deferred blocking finding is not one the review asks the
+    author to fix now, so it must not block the run. Prose in `pipeline.md` stated this mapping for
+    a reader to apply by hand; here it is one expression every reader agrees on.
+    """
+    emitted = [finding for finding in findings if finding.is_emitted()]
+    labels = {str(finding.label).lower() for finding in emitted}
+    if "blocking" in labels:
+        return "BLOCK"
+    if labels & {"attention", "concern"}:
+        return "WARN"
+    return "PASS"
+
+
 def mode_arg(value: str) -> str:
     """Normalize a mode before the choices check, so `--mode PR` is accepted.
 

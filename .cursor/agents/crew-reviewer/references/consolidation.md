@@ -6,7 +6,7 @@ kept (see "Verify against the repository"). Never re-review the artifact for new
 
 **Completion check:** before evaluating a persona response, treat it as incomplete only when the
 harness reports truncation, it ends mid-sentence/list/code fence, it points at an earlier turn instead
-of carrying the list, or it contains neither a complete `### Verdict: no findings` line, a complete
+of carrying the list, or it contains neither a complete `### Findings: none` line, a complete
 documented finding, nor an explorer section with an item. A short response alone is valid.
 
 Recovering an incomplete response is a dispatch rule, not a consolidation one: a pointer reply is
@@ -14,8 +14,8 @@ resumed once, anything else relaunched once with a narrower package, per **A rep
 earlier turn** in the shared dispatch instructions. This file owns only the outcome: if recovery also
 fails, persist a failure artifact for that persona and name the gap under `### Reviewers`.
 
-A response carrying both anchored findings and a trailing `### Verdict: no findings` is complete:
-content wins, and a verdict line never cancels findings above it. Note the contradiction under
+A response carrying both anchored findings and a trailing `### Findings: none` is complete:
+content wins, and a sentinel line never cancels findings above it. Note the contradiction under
 `### Reviewers` rather than silently dropping either half.
 
 ### Challenge each finding before keeping it

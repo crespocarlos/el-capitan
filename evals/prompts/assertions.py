@@ -271,6 +271,29 @@ def tasks_line(artifact: str) -> list[str]:
         ["missing `**Tasks:** N/M passed` line"]
 
 
+def report_pointer(artifact: str) -> list[str]:
+    """The builder's reply points at REPORT.md instead of restating it.
+
+    The file is the contract, so a reply that carries the report body is a second copy that can
+    disagree with it. Three things are checked: the first line is the pointer, the tasks line is
+    present, and no report section heading came back with it.
+    """
+    lines = [line for line in artifact.splitlines() if line.strip()]
+    if not lines:
+        return ["the reply is empty; it must point at REPORT.md"]
+    problems: list[str] = []
+    if not re.match(r"^report: \S+REPORT(?:\.part-\d+-\d+)?\.md$", lines[0].strip()):
+        problems.append(f"first line is not `report: <path>/REPORT.md`: {lines[0].strip()[:70]!r}")
+    if len(lines) < 2 or not re.search(r"\*\*Tasks:\*\* \d+/\d+ passed", lines[1]):
+        problems.append("the second line is not `**Tasks:** N/M passed`")
+    restated = [heading for heading in ("## Implementation Report", "### Tasks", "### Decisions",
+                                        "### Quality gates", "### Files Changed")
+                if any(line.strip() == heading for line in lines)]
+    if restated:
+        problems.append(f"the reply pastes the report body back: {', '.join(restated)}")
+    return problems
+
+
 def layer_lines(artifact: str) -> list[str]:
     """Each typed layer that ran is reported with its verdict and command."""
     return [] if re.search(r"^\[(Unit|Integration|E2E|Validation)\] (PASS|FAIL) — .+$", artifact, re.M) \
@@ -301,6 +324,7 @@ CHECKS = {
     "body_sections": body_sections,
     "router_rows": router_rows,
     "tasks_line": tasks_line,
+    "report_pointer": report_pointer,
     "layer_lines": layer_lines,
     "next_line": next_line,
 }
