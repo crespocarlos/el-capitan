@@ -158,14 +158,13 @@ they see only the improved spec in the output.
 
 1. **Critic subagents** are registered at `.cursor/agents/specwriter-*.md` (auto-discovered by both
    Cursor and Claude Code):
-   - `specwriter-scope` — evaluates PR boundaries, task granularity, split-line identification,
-     builder compatibility, path clarity, verify lines, and AC verifiability
-   - `specwriter-adversarial` — stress-tests acceptance criteria (including structural constraints
-     embedded as AC bullets), surfaces missing edge cases
+   - `specwriter-scope` — PR boundaries, task granularity, split lines, builder compatibility, path
+     clarity, verify lines, AC verifiability
+   - `specwriter-adversarial` — acceptance criteria (structural constraints included), missing edge
+     cases
 
 2. **Dispatch** both critics in parallel, each as a registered subagent dispatched by name, passing
    only the draft spec as context (never the persona prompt):
-
 **Cursor (Task tool):**
    ```
    Task tool call per critic:
@@ -188,21 +187,20 @@ they see only the improved spec in the output.
 
 Claude Code dispatches the same prompt through its Agent tool by name.
 
-3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error),
-   proceed with the available findings — do not block on a single failure.
+3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error, or
+   a turn-limit stop with no reply), proceed with the available findings — do not block on one
+   failure. **A reply without a `Verdict:` line is incomplete, not a clean pass:** resume it once
+   asking for the critique and the Verdict line alone, then name the lens and what it could not check
+   in the user-facing summary. Silence and "no findings" differ, and only the line tells them apart.
 
 4. **Apply improvements** to the draft SPEC.md:
-   - **Critical findings are blocking.** Every Critical finding must be addressed before the spec is
-     presented. If a Critical finding requires a user decision that cannot be inferred, surface it
-     as a question — do not present a spec with known Critical issues unresolved.
-   - **Important findings should be addressed** unless doing so contradicts a Critical finding or
-     requires user input not yet available. If skipping an Important finding, note the reason in the
-     spec or in your questions.
-   - **Consider findings** are noted but not necessarily acted on.
-   - After applying fixes, verify each Critical finding is addressed. **Do not present a spec with
-     open Critical findings.**
-   - If critics disagree on scope vs verifiability, the scope critic's judgment on task boundaries
-     takes precedence.
+   - **Critical findings are blocking.** Address each one before presenting; when one needs a user
+     decision you cannot infer, ask. Never present a spec with an open Critical finding.
+   - **Important findings** should be addressed unless doing so contradicts a Critical finding or
+     needs input you do not have; when you skip one, say why in the spec or the questions.
+   - **Consider findings** are noted, not necessarily acted on.
+   - When critics disagree on scope versus verifiability, the scope critic's judgment on task
+     boundaries wins.
 
 5. Proceed to Step 5 with the improved spec.
 

@@ -423,6 +423,15 @@ The two harnesses differ in ways that produce false conclusions if you generaliz
   worktree; Claude Code writes wherever the OS allows. `check-write-boundary.sh` allows
   `$HOME/.agent`, `$HOME/.claude`, `$HOME/.cursor`, and `/tmp` in both, so the tool is the stricter
   gate in Cursor.
+- **Shell aliases leak into command substitution.** This workstation aliases `ls` to
+  `eza --icons --group-directories-first`, which renders a symlink as `path -> target`. `eza` is an
+  alias, not a builtin, so `$(ls a b | head -1)` captures the whole arrow string and the next command
+  opens a filename that does not exist (`wc: … -> …: No such file or directory`). Agent directories
+  are symlinks into the repo, so this fires on the most ordinary read here. Use `command ls` whenever
+  the output becomes a filename, or skip `ls` entirely: `printf '%s\n'` a known path, or read the file.
+  Counting (`ls … | wc -l`) is safe, because a glob that expands to many paths still prints one per
+  line; only filename capture breaks. A bare `ls` also lists every symlink target twice when two
+  directories point at the same tree, so its output is not a file list even when it looks like one.
 
 When a guide says "elevate the command" or "the write was blocked", the advice is scoped to the
 harness that produces that failure.

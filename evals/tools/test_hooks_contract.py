@@ -128,13 +128,19 @@ def repository(path: Path, staged_name: str | None = None, staged: str = "x\n") 
 
 
 def fixture() -> tuple[Path, dict[str, Path]]:
-    """A throwaway home with two task directories and the repositories the rules read."""
+    """A throwaway home with two task directories and the repositories the rules read.
+
+    Each task holds a SPEC.md, because the guard protects an existing spec: a directory with none
+    cannot lose one and is allowed by design. A fixture without the file would assert a denial the
+    hook is right not to make.
+    """
     home = Path(tempfile.mkdtemp(prefix="hook-contract-"))
     tasks = home / ".agent" / "tasks"
     for name, slug in (("AAA-other", "align-agent-tool-frontmatter"),
                        ("AAA-own", "align-frontmatter")):
         (tasks / name).mkdir(parents=True)
         (tasks / name / ".task-id").write_text(json.dumps({"slug": slug}), encoding="utf-8")
+        (tasks / name / "SPEC.md").write_text(f"# Spec: {slug}\n", encoding="utf-8")
     repos = {
         "clean": repository(home / "clean"),
         "secret": repository(home / "secret", "leak.txt", SECRET_LINE),

@@ -8,8 +8,11 @@
 # happened once; this is the structural fix.
 #
 # Narrow on purpose: only a write to a `SPEC.md` directly inside `~/.agent/tasks/<uuid>/` is checked,
-# and only when that directory already has a `.task-id` naming a different slug. Creating a spec in a
-# fresh directory has no `.task-id` yet, so it passes, and so does editing a spec in its own directory.
+# only when that directory already has a `.task-id` naming a different slug, and only when a SPEC.md
+# is already there to destroy. The last condition is what keeps the rule honest: the specwriter
+# protocol writes `.task-id` in Step 1 and the SPEC.md in Step 3, so a first write always reaches this
+# hook with metadata present. Denying on the slug alone refused the ordinary case — a fresh directory
+# whose title differed by one word from the slug its creator derived — while no file existed to lose.
 set -euo pipefail
 HOOK_NAME=check-task-spec-owner
 # shellcheck source=lib/hook.sh
@@ -28,6 +31,10 @@ case "$task_dir" in "$tasks_root"/*) ;; *) hook_allow ;; esac
 
 metadata="$task_dir/.task-id"
 [ -f "$metadata" ] || hook_allow
+# Nothing to protect: a directory with no SPEC.md cannot lose one, and this is where every new task
+# starts. Refusing here turned the ordinary first write into a denial whenever the spec's title and the
+# slug its creator derived disagreed by a word.
+[ -f "$task_dir/SPEC.md" ] || hook_allow
 owner=$(jq -r '.slug // empty' "$metadata" 2>/dev/null) || hook_allow
 [ -n "$owner" ] || hook_allow
 

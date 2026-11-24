@@ -218,11 +218,21 @@ spec_guard() {
 }
 mkdir -p "$home/.agent/tasks/AAA-other"
 jq -n '{slug:"align-agent-tool-frontmatter"}' > "$home/.agent/tasks/AAA-other/.task-id"
+# The guard protects an existing spec, so the fixtures that assert a denial must have one to protect.
+printf '# Spec: Align agent tool frontmatter\n' > "$home/.agent/tasks/AAA-other/SPEC.md"
 test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Reviewer finding kind axis and confidence')" = deny
 # A rewrite of the task's own spec passes, and so does an unrelated path.
 test "$(spec_guard "$home/.agent/tasks/AAA-other/SPEC.md" '# Spec: Align agent tool frontmatter with the harness')" = allow
 mkdir -p "$home/.agent/tasks/BBB-new"
 test "$(spec_guard "$home/.agent/tasks/BBB-new/SPEC.md" '# Spec: Reviewer finding kind axis')" = allow
+# A fresh directory is where every task starts: the protocol writes `.task-id` in Step 1 and the spec
+# in Step 3, so metadata is present on the first write and no SPEC.md exists to lose. Denying on the
+# slug alone refused the ordinary case — a title one word off the slug its creator derived — and the
+# message it printed ("overwrites a finished task's spec") described a file that was not there.
+mkdir -p "$home/.agent/tasks/CCC-fresh"
+jq -n '{slug:"cut-duplicated-is-it-normal-work-in-discovery-and-"}' > "$home/.agent/tasks/CCC-fresh/.task-id"
+test "$(spec_guard "$home/.agent/tasks/CCC-fresh/SPEC.md" '# Spec: Cut duplicated is it normal work in discovery and reporting')" = allow
+test "$(spec_guard "$home/.agent/tasks/CCC-fresh/SPEC.md" '# Spec: Something else entirely')" = allow
 test "$(spec_guard "$home/somewhere/SPEC.md" '# Spec: anything at all')" = allow
 test "$(spec_guard "$home/.agent/tasks/AAA-other/REPORT.md" '# Spec: Reviewer finding kind axis')" = allow
 # The comparison is on the whole slug, in the one direction the pipeline builds it: an edited title may

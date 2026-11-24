@@ -135,6 +135,9 @@ jobs:
       - name: Agent readonly declaration
         run: python3 evals/tools/test_agent_readonly.py
 
+      - name: Specwriter critic contract (budget, verdict line)
+        run: python3 evals/tools/test_specwriter_critics.py
+
       - name: Python syntax
         run: python3 -m compileall -q .agent/tools evals .claude
 
