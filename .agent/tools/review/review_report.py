@@ -21,7 +21,6 @@ from lib.git import GitError, rev_parse
 from review_findings import (
     CODE_MODES,
     Finding,
-    canonical_personas,
     check_findings,
     check_strict,
     read_findings,
@@ -153,6 +152,8 @@ def persist(args: argparse.Namespace) -> int:
     atomic_write(owner / task_report, report)
     record_task_review(str(owner), args.review_dir)
     counts = append_deferred(owner, rows) if rows else {}
+    records.record_cost(None if args.mode == "pr" else owner, args.review_dir,
+                        (args.review_dir / "layers.json").is_file())
     written = [str(owner / task_report)]
     drafted = comments.write_for_mode(args.review_dir, findings, args.mode, args.head)
     if drafted:

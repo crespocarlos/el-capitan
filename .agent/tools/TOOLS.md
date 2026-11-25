@@ -279,8 +279,12 @@ module.
   `parseDiff`; that parity is what lets a crew review and a nightshift review of one PR cite the
   same `h1`.
 - `crew-assemble-packages.py <review-dir> [--config <file>]` composes one `<persona>.in.md` package per
-  reviewer from files the run already wrote — contract, mode, hunk reference, guidance, memory, spec,
-  reading map, `package.diff`, and the consumer and prompt extras. Per-run judgement (mode text,
+  reviewer from files the run already wrote, in one order: the shared head (contract, mode, hunk
+  reference, memory), then `package.diff` in full, then the per-persona tail (size gate, spec, reading
+  map, guidance narrowed for that lens, prior-round block, consumer and prompt extras). The head and
+  the whole diff are byte-identical across the run's packages, so a harness that caches a prompt
+  prefix pays for them once instead of once per persona; the layout and its test are pinned in
+  `.cursor/agents/crew-reviewer/references/context-tiers.md`. Per-run judgement (mode text,
   consumer excerpts, prompt files, size-gate line) comes from `assemble.json` in the review directory,
   so the shared parts cannot drift between personas. Consumer excerpts and prompt files are read from
   the git index, not the working tree, and `mode_kind: "pr"` refuses both because a PR review may not

@@ -1,0 +1,19 @@
+{
+  "layers": [
+    {
+      "kind": "core",
+      "title": "the build reads the diff once",
+      "explainer": "- the package is built from a single read of package.diff",
+      "reviewFocus": "- is the read reused by every section that needs it",
+      "hunks": ["h1"],
+      "hunkNotes": {"h1": "the local that holds the diff"}
+    },
+    {
+      "kind": "prompts",
+      "title": "the rule file wording",
+      "explainer": "- one rule is reworded and one is added",
+      "reviewFocus": "- do the two statements collide",
+      "hunks": ["h2"]
+    }
+  ]
+}

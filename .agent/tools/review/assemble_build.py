@@ -2,27 +2,35 @@
 """Building the packages, and writing them.
 
 A package is deterministic text built from files the run already produced, in one fixed order:
-shared header, size gate, spec, reading map, diff, then the extras a lens needs. Every package is
-built before any is written, because a refusal on persona four must not leave personas one to
-three written beside four stale ones from an earlier run — a package set nobody can tell apart from
-a complete one.
+the shared header, the whole diff, then the per-persona material (size gate, spec, reading map,
+guidance, prior-round block, consumers, prompt tier). Every package is built before any is written,
+because a refusal on persona four must not leave personas one to three written beside four stale
+ones from an earlier run — a package set nobody can tell apart from a complete one.
+
+The order is the cost model. Every persona receives the identical header and the identical diff, so
+putting both first makes the longest prefix common to all five packages as long as the content they
+share; anything per-persona before the diff splits the packages early and the shared bytes are paid
+for once per persona. Nothing is filtered to buy that: each package carries every hunk of
+`package.diff`, which is the property the order must not disturb.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from assemble_common import common
+from assemble_common import common, guidance_block
 from assemble_config import read_json
 from assemble_files import excerpt, full_file
 from assemble_map import CONSUMER_LENSES, reading_map
 from assemble_personas import PERSONAS
+from assemble_prior import section as prior_section
+
+DIFF_HEADING = "\n---\n\n# Diff (package.diff — every non-generated hunk)\n\n```diff\n"
 
 
-def build(persona: str, review_dir: Path, config: dict, shared: str,
-          hunks_json: dict | None) -> tuple[str, dict]:
-    """One persona's package, plus a report of what was narrowed and what elided."""
-    report: dict = {"whole": []}
-    parts = [shared]
+def tail(persona: str, review_dir: Path, config: dict) -> tuple[list[str], dict]:
+    """The per-persona material that follows the diff: everything a lens reads alone."""
+    parts: list[str] = []
+    report: dict = {"whole": [], "guidance": {}}
     if config.get("size_gate"):
         parts += ["\n---\n\n# Size gate\n\n", config["size_gate"].rstrip() + "\n"]
     spec_path = review_dir / f"spec.{persona}.md"
@@ -32,11 +40,22 @@ def build(persona: str, review_dir: Path, config: dict, shared: str,
     if layers_path.is_file():
         layers = read_json(layers_path, "the layer map").get("layers") or []
         parts += ["\n---\n\n", reading_map(persona, layers), "\n"]
-    parts += [
-        "\n---\n\n# Diff (package.diff — every non-generated hunk)\n\n```diff\n",
-        (review_dir / "package.diff").read_text(encoding="utf-8"),
-        "\n```\n",
-    ]
+    guidance, guidance_report = guidance_block(review_dir, persona, config)
+    if guidance:
+        parts += ["\n---\n\n# Repository guidance\n\n", guidance]
+    report["guidance"] = guidance_report
+    prior = config.get("prior_review_dir")
+    if prior:
+        block = prior_section(Path(prior))
+        if block:
+            parts += ["\n---\n\n", block]
+    return parts, report
+
+
+def extras(persona: str, config: dict, diff: str,
+           hunks_json: dict | None, report: dict) -> list[str]:
+    """The consumer excerpts and prompt tier, which read the repository rather than the run."""
+    parts: list[str] = []
     repo = Path(config.get("repo") or ".").resolve()
     consumers = config.get("consumers") or []
     if persona in CONSUMER_LENSES and consumers:
@@ -52,29 +71,50 @@ def build(persona: str, review_dir: Path, config: dict, shared: str,
             "rather than with itself. Line numbers prefix every kept line, so an anchor resolves "
             "against the file; an elided range is marked with the lines it stands for.\n\n",
         ]
-        diff = (review_dir / "package.diff").read_text(encoding="utf-8")
         for path in prompt_files:
             block, elided = full_file(repo, path, diff, hunks_json)
             parts.append(block)
             if not elided:
                 report["whole"].append(path)
+    return parts
+
+
+def build(persona: str, review_dir: Path, config: dict, shared: str,
+          hunks_json: dict | None) -> tuple[str, dict]:
+    """One persona's package, plus a report of what was narrowed and what elided.
+
+    The diff is read once and passed on: the prompt tier needs the same bytes to decide which lines
+    the package already quotes, and a second read is a second chance to read a different file.
+    """
+    diff = (review_dir / "package.diff").read_text(encoding="utf-8")
+    parts = [shared, DIFF_HEADING, diff, "\n```\n"]
+    tail_parts, report = tail(persona, review_dir, config)
+    parts += tail_parts
+    parts += extras(persona, config, diff, hunks_json, report)
     return "".join(parts), report
 
 
 def assemble_all(review_dir: Path, config: dict, hunks_json: dict | None) -> list[tuple]:
-    """Every package, built before any is written."""
+    """Every package, built before any is written.
+
+    The head is built once and passed in. It is documented as identical for every persona, and a
+    value computed inside the loop would only be identical because the files it reads happened not
+    to change between iterations — the prefix this change exists to create deserves the stronger
+    guarantee.
+    """
+    head = common(review_dir, config)
     assembled = []
     for persona in PERSONAS:
-        shared, guidance_report = common(review_dir, config, persona)
-        content, report = build(persona, review_dir, config, shared, hunks_json)
-        assembled.append((persona, content, report, guidance_report))
+        content, report = build(persona, review_dir, config, head, hunks_json)
+        assembled.append((persona, content, report))
     return assembled
 
 
 def write_packages(review_dir: Path, assembled: list[tuple]) -> None:
     """Write each package and print its size plus whatever the run narrowed or sent whole."""
-    for persona, content, report, guidance_report in assembled:
+    for persona, content, report in assembled:
         (review_dir / f"{persona}.in.md").write_text(content, encoding="utf-8")
+        guidance_report = report["guidance"]
         narrowed = sum(len(v) for v in guidance_report["dropped"].values())
         notes = []
         if narrowed:

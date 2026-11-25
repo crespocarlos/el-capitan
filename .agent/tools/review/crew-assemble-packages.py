@@ -6,19 +6,24 @@ Usage: assemble-packages.py <review-dir> [--config <file>]
 A package is deterministic text built from files the run already produced:
 
     shared header   the shared reviewer contract, the mode block, the hunk reference with its
-                    citation rule, repository guidance, and repo memory
-    spec            the per-persona spec (`spec.<persona>.md`, written by `review-findings.py
-                    spec-context`)
-    reading map     derived from `layers.json`, with the persona's primary layers named
+                    citation rule, and repo memory
     diff            `package.diff` (generated files already collapsed by `review-hunks.py`)
-    extras          consumer excerpts for the code lenses, complete prompt files for Prompt Quality
+    per persona     the size gate, the per-persona spec (`spec.<persona>.md`, written by
+                    `review-findings.py spec-context`), the reading map derived from
+                    `layers.json`, repository guidance narrowed to the sections that lens uses,
+                    the prior-round block, consumer excerpts for the code lenses, and complete
+                    prompt files for Prompt Quality
 
-Every persona's package contains the same contract, mode block, hunk reference and memory, built by
-this tool in one fixed order. Hand-assembling five of them is how an earlier run gave one reviewer a
-different header and another a prebuilt `_common.md` instead of the contract: the packages still
-passed `check-packages`, because that gate checks the rules whose absence is detectable, not whether
-two reviewers read the same evidence. Guidance is the one shared section narrowed per lens, so its
-content differs by design and every dropped heading is printed.
+Every persona's package contains the same contract, mode block, hunk reference, memory and diff,
+built by this tool in one fixed order. Hand-assembling five of them is how an earlier run gave one
+reviewer a different header and another a prebuilt `_common.md` instead of the contract: the
+packages still passed `check-packages`, because that gate checks the rules whose absence is
+detectable, not whether two reviewers read the same evidence.
+
+The shared material and the whole diff come first because they are byte-identical across the five
+packages, so a harness that caches a prompt prefix pays for them once per run instead of once per
+persona; the material that differs by lens follows the diff. Guidance is the one per-run section
+narrowed per lens, so it sits with the per-persona material and every dropped heading is printed.
 
 Per-run judgement stays in a config file, not in code: the review directory may carry
 `assemble.json` with

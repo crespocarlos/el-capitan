@@ -1,0 +1,5 @@
+{
+  "files": {
+    "docs/AGENTS.md": "# Repo guidance\n\npreamble kept before the first heading\n\n## Testing\n\nrun the hermetic suite\n\n## File layout\n\none module per concern\n"
+  }
+}

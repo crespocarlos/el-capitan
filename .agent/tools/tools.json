@@ -1062,8 +1062,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by assemble_common.py: the earlier-round findings block in a package",
-      "smoke": "imported by assemble_common.py"
+      "help": "imported by assemble_build.py: the earlier-round findings block in a package",
+      "smoke": "imported by assemble_build.py"
     },
     {
       "name": "review_cli.py",

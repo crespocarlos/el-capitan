@@ -9,19 +9,14 @@ package.
 **Every package states its output contract, including the hunk requirement.** The shared reviewer
 contract already carries the hunk-citation rule, but a package assembles the rule's *inputs*: without
 the `## Hunk reference` section below, a persona has no ids to cite. Restate the sentence verbatim
-anyway, because a package is what the persona reads and the ids it cites must be the ids in front of
-it. Without either half, personas do not cite hunk ids — only 7 of 511 recorded candidates carried
-one — and strict persistence then fails on every `[blocking]`/`[attention]` finding for a reason the
-persona was never told about. Use the one format the rest of the pipeline reads (`crew-review-findings.py`
-parses the ids from the record, and the layer
-coverage section matches them), stated verbatim:
+directly under that heading, because a package is what the persona reads and the ids it cites must be
+the ids in front of it. Without either half, personas do not cite hunk ids — only 7 of 511 recorded
+candidates carried one — and strict persistence then fails on every `[blocking]`/`[attention]`
+finding for a reason the persona was never told about:
 
 > Every `[blocking]` and `[attention]` finding cites the hunk ids whose change causes it, next to the
 > `file:line` anchor: `[attention] src/a.ts:42 (h7) — …`, or `(h3, h7)`. A finding no hunk causes is
 > pre-existing; say so instead of citing a hunk that does not cause it.
-
-That sentence sits directly under the `## Hunk reference` heading the orchestrator appends, so the
-ids the persona cites are the ids in front of it.
 
 Also state the review mode in the same preamble (self, changes, PR, spec, or idea) together with the
 label vocabulary for that mode: `[concern]` replaces `[attention]` in a spec or idea review. A
@@ -79,8 +74,8 @@ limit Tier 3 to spine files + consumers.
 ## Reading map
 
 When `$REVIEW_ROOT/layers.json` exists, append a `## Reading map` section to **every** persona
-package, after the mode-specific content and before `## Repo memory`. It tells the persona what order
-to read the diff in, which is the one thing a size-tier package cannot express:
+package, in the position the section order gives it — after `## Spec` and before guidance. It tells
+the persona what order to read the diff in, which is the one thing a size-tier package cannot express:
 
 ```markdown
 ## Reading map
@@ -116,10 +111,9 @@ when no layer matches.
 belongs to a file marked `generated`, add a sub-bullet saying so, as in `h4` above. A persona must
 not report a hunk with omitted lines as clean.
 
-Every `[blocking]` and `[attention]` finding cites the hunk ids whose change causes it, next to the
-`file:line` anchor (`[attention] src/a.ts:42 (h7) — …`, or `(h3, h7)`). A finding no hunk causes is
-pre-existing, which consolidation routes to `defer`. The map is orientation, never evidence: a claim
-still needs a verified `path:line` from the package. Do not treat layer boundaries as review
+The map is orientation, never evidence: a claim still needs a verified `path:line` from the package,
+and every `[blocking]` or `[attention]` finding cites the hunk ids that cause it next to the anchor
+(`src/a.ts:42 (h7)`) — the full rule is under "Step 5" above. Do not treat layer boundaries as review
 boundaries — a finding that spans two layers cites hunks from both.
 
 **Explainer and hunk-note claims are not evidence either.** A persona treats a factual claim in
@@ -187,21 +181,25 @@ No context tiers — all reviewers receive the full SPEC.md text.
 No context tiers — all reviewers receive the full artifact text (pasted text or session conversation
 summary).
 
+## Package section order
+
+`crew-assemble-packages.py` emits one order: shared head (contract, mode, `## Hunk reference`,
+`# Repo memory`), then `# Diff` with `package.diff` in full, then the per-persona tail (`# Size gate`,
+`## Spec`, `## Reading map`, `# Repository guidance`, prior-round block, consumers, `# Prompt tier`).
+Sections that do not apply are omitted; the rest keep this order. The head and the diff are identical
+across a run's packages, so a prefix cache pays for them once (`test_assemble_order.py` pins it).
+
 ## Repo memory
 
 Before dispatch, call `crew-mem.py context --mode review --paths <changed files>` once. Append its output
-under `## Repo memory` in every context package. On exit 2, append `warning: memory unavailable`.
+under `# Repo memory` in every context package, in the shared head. On exit 2, append
+`warning: memory unavailable`.
 
 ## Package build inputs
 
-`crew-assemble-packages.py` composes every package from files the review directory already holds, and
-two of them come from commands whose output nothing else redirects:
-
-```bash
-~/.agent/bin/crew-agent-context.py <every changed path> > "$REVIEW_ROOT/agent-context.json"
-~/.agent/bin/crew-mem.py context --mode review --paths <changed files> > "$REVIEW_ROOT/mem.md"
-```
-
-Write both in Step 5, before any package is assembled. A missing file is not an error to the tool: the
-package silently loses its guidance, or carries `warning: memory unavailable`. A non-zero exit can
-still write its file, so keep what was written and report the exit code.
+`crew-assemble-packages.py` composes every package from files the review directory already holds; the
+two it cannot produce itself, `agent-context.json` and `mem.md`, are written in Step 5 of
+[crew-reviewer](../crew-reviewer.md), which owns those commands. A missing file is not an error to
+the tool: the package silently loses its guidance, or carries `warning: memory unavailable`. A
+non-zero exit from either command can still have written its file, so keep what was written and
+report the exit code.

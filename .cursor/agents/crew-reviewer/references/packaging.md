@@ -143,8 +143,12 @@ path is reporting this pass, not a defect in the PR.
 
 ## Why the tool, not the hand
 
-The tool writes the shared contract, mode block, hunk reference, guidance, memory, spec, reading map,
-`package.diff`, and the consumer and prompt extras in one fixed order. A subagent loads only its own
+The tool writes the shared contract, mode block, hunk reference and memory first, then
+`package.diff` in full, then the per-persona material — size gate, spec, reading map, guidance,
+prior-round block, consumers, and prompt extras — in one fixed order, listed in
+[context tiers](context-tiers.md#package-section-order). The shared head and the diff come first
+because every persona receives them byte for byte: a harness that caches a prompt prefix then pays
+for them once per run instead of once per persona. A subagent loads only its own
 persona file, so a rule living in a reference file reaches it only if the package carries it.
 Composing by hand is how one run delivered a reviewer a prebuilt header instead of the contract, and
 `check-packages` passed anyway, because it checks the rules whose absence is detectable rather than

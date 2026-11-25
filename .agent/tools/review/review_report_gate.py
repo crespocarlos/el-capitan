@@ -45,20 +45,30 @@ def anchor_pair(text: str) -> tuple[str, int] | None:
 
     `path:line`, `` `path:line` ``, and the legacy `path — line N` all reduce to the same pair, so the
     migration that rewrites the documents cannot turn an archived report into a mismatch.
+
+    The line is read from after the *last* colon, never as the first digit run in the fragment: a path
+    may carry digits of its own — `report-2026-11-25.md:9` is line 9 of a dated file, not line 2026 —
+    and taking the first run made every finding against a dated filename unpersistable.
     """
     for match in re.finditer(ANCHOR, text, re.IGNORECASE):
         fragment = match.group(0)
-        number = re.search(r"\d+", fragment)
-        if number is None:
-            continue
         if ":" in fragment:
-            path = fragment.split(":")[0].strip("`* ")
+            path, _, tail = fragment.rpartition(":")
+            digits = re.match(r"\s*(\d+)\s*$", tail)
+            if digits is None:
+                continue
+            path = path.strip("`* ")
+            number = int(digits.group(1))
         else:
             # The legacy form names the line only, so the path is the token just before it.
+            digits = re.search(r"\d+", fragment)
+            if digits is None:
+                continue
             before = text[:match.start()].rstrip().split(" ")
             path = before[-1].strip("`* ") if before and before[-1] else ""
+            number = int(digits.group(0))
         if path:
-            return (path, int(number.group(0)))
+            return (path, number)
     return None
 
 

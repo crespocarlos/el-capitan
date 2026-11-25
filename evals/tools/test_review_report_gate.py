@@ -139,6 +139,20 @@ def test_a_legacy_line_anchor_compares_equal(tmp: Path) -> None:
     assert result.returncode == 0, failure(result)
 
 
+def test_a_dated_filename_anchor_reads_its_line_not_the_year(tmp: Path) -> None:
+    """A path may carry digits of its own: line 9 of a dated file is not line 2026.
+
+    Taking the first digit run in the fragment made every finding against a dated filename
+    unpersistable, which surfaced while reviewing a change that added one.
+    """
+    dated = attention(file="evals/reports/ordering-quality-2026-11-25.md", line=9)
+    report = ("## Review: changes\n\n1. [attention · 4] "
+              "**`evals/reports/ordering-quality-2026-11-25.md:9`** — Stale headline\n\n"
+              "Verdict: WARN\n")
+    result = persist(tmp, report, [dated], "dated")
+    assert result.returncode == 0, failure(result)
+
+
 def test_a_list_with_no_findings_passes(tmp: Path) -> None:
     """An empty review is a result, and an empty list is the honest rendering of one."""
     result = persist(tmp, "## Review: changes\n\nVerdict: PASS\n", [])

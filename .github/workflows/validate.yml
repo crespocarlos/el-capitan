@@ -90,6 +90,12 @@ jobs:
       - name: Package assembly tests
         run: python3 evals/tools/test_assemble_packages.py
 
+      - name: Package order and shared prefix (assemble_order)
+        run: python3 evals/tools/test_assemble_order.py
+
+      - name: Review cost metric (review_cost_metric)
+        run: python3 evals/tools/test_review_cost_metric.py
+
       - name: Nightshift e2e client tests
         run: python3 evals/tools/test_nightshift_e2e.py
 

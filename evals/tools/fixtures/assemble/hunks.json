@@ -1,0 +1,10 @@
+{
+  "files": [
+    {"path": ".agent/tools/review/assemble_build.py", "hunkIds": ["h1"]},
+    {"path": "prompts/rule.md", "hunkIds": ["h2"]}
+  ],
+  "hunks": [
+    {"id": "h1", "file": ".agent/tools/review/assemble_build.py"},
+    {"id": "h2", "file": "prompts/rule.md"}
+  ]
+}
