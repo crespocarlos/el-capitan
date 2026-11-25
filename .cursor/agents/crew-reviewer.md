@@ -169,7 +169,9 @@ rewrite from your own notes. In PR mode also report the `comments.md` path from 
 body per anchored finding, and say that nothing was posted. End with a `### Reviewers` section naming
 how each package was delivered (inline, or by path per the shared dispatch instructions, with the byte
 count when the size threshold decided it), adding a lens with its gap only when that persona failed,
-was truncated, or returned partial coverage (blocked reads, unread files).
+was truncated, or returned partial coverage (blocked reads, unread files). Where the run's assessment
+tally and its verdict disagree — lenses asking for changes under `Verdict: PASS` — name that in
+`### Reviewers` for the reader who acts on it.
 
 ## Step 9: extensibility
 

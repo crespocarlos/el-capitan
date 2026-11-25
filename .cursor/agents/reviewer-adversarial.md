@@ -114,9 +114,11 @@ contract.
 
 <output_format>
 
-A numbered list, each finding starting with its `[label]`, in the shape the output contract defines.
-For a `[needs more info]` finding the last part is the question and its stakes rather than a fix.
-Your lens decides what the title and evidence say, not the shape.
+Open with the `Assessment:` line the output contract defines — your judgement on the change as a
+whole, from this lens: does it address the problem it exists for, or only the case someone happened
+to hit? Then a numbered list, each finding starting with its `[label]`, in the shape the contract
+defines. For a `[needs more info]` finding the last part is the question and its stakes rather than
+a fix.
 
 </output_format>
 

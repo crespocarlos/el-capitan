@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 
-from review_vocabulary import PERSONA_STATUSES
+from review_vocabulary import ASSESSMENT_WORDS, PERSONA_STATUSES
 
 # Reviewer personas do not all number their findings: three document an unnumbered
 # `**path — line N**` — title body closed by `Fix/Response:`, and explorer returns `##` sections.
@@ -32,6 +32,14 @@ EXPLORER_SECTIONS = (
 # The emptiness sentinel: a persona that examined the artifact and found nothing writes this line.
 # It does not say `Verdict:`, because that word belongs to an outcome scale a reader and a gate parse.
 NO_FINDINGS = re.compile(r"^### Findings:\s*none\s*$", re.M | re.I)
+# The judgement on the change as a whole, which a persona opens with when its package asks for it.
+# The words come from the vocabulary, longest first, so an added word cannot be shadowed by a prefix.
+ASSESSMENT = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?Assessment:(?:\*\*)?[ \t]*"
+    r"(?P<word>" + "|".join(sorted(ASSESSMENT_WORDS, key=len, reverse=True)) + r")\b"
+    r"(?P<clause>[^\n]*)",
+    re.M | re.I,
+)
 # Public, because the report gate compares a persisted report's list against the finding JSON with
 # the same vocabularies. A second copy of either pattern is how the two drift apart.
 SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)(?:\s*·\s*[1-5])?"
@@ -120,6 +128,22 @@ def has_review_content(text: str) -> bool:
     if NO_FINDINGS.search(text):
         return True
     return has_findings(text)
+
+
+def assessment_of(text: str) -> tuple[str, str] | None:
+    """The persona's `(word, clause)` judgement on the change, or None when it wrote none.
+
+    Fenced blocks are blanked first. The contract shows the line inside one, and every finding quotes
+    its evidence verbatim, so a persona that echoes the template before writing its own judgement
+    would otherwise be read as `approve` with a placeholder long enough to satisfy the gate.
+
+    The clause comes back without its separator: a bare word is recorded but the gate refuses it,
+    because "approve" with no reason is the unactionable opinion the line exists to replace.
+    """
+    match = ASSESSMENT.search(without_fences(text))
+    if match is None:
+        return None
+    return match.group("word").lower(), match.group("clause").strip(" \t—:-–")
 
 
 def without_fences(text: str) -> str:

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Persona coverage and the package rules: which lenses ran, and what a package must contain.
 
-Two questions, both about reviewers rather than about findings. Coverage asks whether each persona
-that was dispatched actually produced output, because a review where nobody ran proves nothing
-about the change. The package rules ask whether a written `<persona>.in.md` is worth dispatching:
-it must not carry the spec's builder sections (Product Flow's to check, pure cost for every other
-lens) and must not embed hunks of a generated file. A check whose input is absent is skipped, and
-the report says so rather than claiming a clean pass.
+Coverage asks whether each persona that was dispatched actually produced output, because a review
+where nobody ran proves nothing about the change. The package rules ask whether a written
+`<persona>.in.md` is worth dispatching: it must not carry the spec's builder sections (Product Flow's
+to check, pure cost for every other lens) and must not embed hunks of a generated file. A check whose
+input is absent is skipped, and the report says so rather than claiming a clean pass.
+
+The other gate over a persona's reply — did it state a judgement on the change — is the assessment
+gate in `review_persist_gates`, which owns the sections `persist` generates as well.
 """
 from __future__ import annotations
 
@@ -19,8 +21,6 @@ from review_vocabulary import CODE_MODES, canonical_personas
 
 HUNKS_FILE = "hunks.json"
 LAYERS_FILE = "layers.json"
-# The two sections `persist` appends. A report must not carry either, or it renders twice.
-GENERATED_SECTIONS = ("### Coverage by layer", "### Files reviewed")
 
 # Implementation steps in a spec. Product Flow checks them against the diff; every other lens
 # judges the change against the summary and acceptance criteria, so these sections are pure cost

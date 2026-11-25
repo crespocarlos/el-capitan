@@ -130,14 +130,13 @@ contract. Prefer fewer findings you are confident in.
 
 ## Output format
 
-A numbered list, each finding starting with its `[label]`, in the shape the output contract defines.
-Placements specific to this lens:
+Open with the `Assessment:` line the output contract defines: is the prompt system right for the
+job, not just correct? Then a numbered list, each finding starting with its `[label]`, in the
+contract's shape. Placements specific to this lens:
 
 - **Inside a diff:** anchor to the changed file and line, as the contract describes.
-- **Standalone prompt text:** anchor to the concept or section name and quote the prompt verbatim.
-- **Two documents colliding:** anchor to the first, name the second in the explanation, quote both. For
-  a finding about something absent (a missing reason, boundary, or purpose), quote the rule that lacks
-  it.
+- **Standalone prompt text:** anchor to the concept or section and quote the prompt verbatim.
+- **Two documents colliding:** anchor to the first, name the second in the explanation, quote both.
 
 **Fabrication rule:** every finding carries an exact verbatim quote from the artifact — not
 paraphrased, not reconstructed from memory. If you cannot locate the exact sentence, do not raise the

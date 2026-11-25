@@ -46,19 +46,30 @@ def attention(**overrides: object) -> dict:
     return record
 
 
-def review_dir(tmp: Path, name: str = "ts") -> Path:
-    """A review directory that already satisfies the persona gate."""
+ASSESSMENT_PACKAGE = "## Assessment of the change\n\nthe contract section\n"
+ASSESSMENT_LINE = "Assessment: request-changes — bounds the symptom, not the loop the spec measured\n"
+
+
+def review_dir(tmp: Path, name: str = "ts", package: str = "in",
+               out: str = "### Findings: none\n") -> Path:
+    """A review directory that already satisfies the persona gate.
+
+    `package` is what the persona was sent, so a test that exercises the assessment gate writes the
+    contract section into it: the gate keys on the package, not on the persona, so that a directory
+    written before the rule existed still persists.
+    """
     directory = tmp / "task" / "review" / name
     directory.mkdir(parents=True)
-    (directory / "adversarial.in.md").write_text("in")
-    (directory / "adversarial.out.md").write_text("### Findings: none\n")
+    (directory / "adversarial.in.md").write_text(package)
+    (directory / "adversarial.out.md").write_text(out)
     return directory
 
 
 def persist(tmp: Path, report_text: str, payload: list[dict] | None, name: str = "ts",
-            *extra: str) -> subprocess.CompletedProcess:
+            *extra: str, package: str = "in", out: str = "### Findings: none\n",
+            ) -> subprocess.CompletedProcess:
     """Persist one report; `payload=None` omits `--findings`, which is the un-gated run."""
-    directory = review_dir(tmp, name)
+    directory = review_dir(tmp, name, package, out)
     (tmp / f"report-{name}.md").write_text(report_text)
     arguments = ["persist", "--review-dir", str(directory),
                  "--report", str(tmp / f"report-{name}.md"), "--files", "a.ts",
@@ -310,6 +321,112 @@ def test_a_run_without_findings_is_never_rejected(tmp: Path) -> None:
     result = persist(tmp, report, None, "spec", "--mode", "spec")
     assert result.returncode == 0, failure(result)
     assert (tmp / "task" / "REVIEW.spec.md").is_file()
+
+
+def test_a_missing_assessment_fails_when_the_package_asks_for_one(tmp: Path) -> None:
+    """The persona judged the lines and not the change; the review is incomplete."""
+    report = "## Review: changes\n\n### Files reviewed\n"
+    result = persist(tmp, report, [], "noassess", package=ASSESSMENT_PACKAGE)
+    assert result.returncode == 2, failure(result)
+    assert "wrote no `Assessment:` line" in result.stderr, result.stderr
+
+
+def test_a_bare_assessment_word_fails(tmp: Path) -> None:
+    """An opinion with nothing behind it is what the line exists to replace."""
+    result = persist(tmp, "## Review: changes\n", [], "bare",
+                     package=ASSESSMENT_PACKAGE, out="Assessment: approve\n\n### Findings: none\n")
+    assert result.returncode == 2, failure(result)
+    assert "0-character clause" in result.stderr and "at least 20" in result.stderr, result.stderr
+
+
+def test_an_assessment_clause_at_the_floor_passes(tmp: Path) -> None:
+    """The floor is `< 20`, so a clause of exactly 20 characters is accepted; `<` vs `<=` is pinned."""
+    clause = "a" * 20
+    result = persist(tmp, "## Review: changes\n", [], "floor",
+                     package=ASSESSMENT_PACKAGE,
+                     out=f"Assessment: approve — {clause}\n\n### Findings: none\n")
+    assert result.returncode == 0, failure(result)
+
+
+def test_a_quoted_assessment_template_is_not_the_personas_verdict(tmp: Path) -> None:
+    """The contract shows the line in a fence; echoing it must not satisfy the gate as `approve`."""
+    quoted = ("```\nAssessment: approve | request-changes | comment — "
+              "<one clause of evidence for it>\n```\n\n### Findings: none\n")
+    result = persist(tmp, "## Review: changes\n", [], "quoted",
+                     package=ASSESSMENT_PACKAGE, out=quoted)
+    assert result.returncode == 2, failure(result)
+    assert "wrote no `Assessment:` line" in result.stderr, result.stderr
+
+
+def test_the_report_carries_the_lenses_assessment(tmp: Path) -> None:
+    """The reader must see the judgement without opening five persona files."""
+    result = persist(tmp, "## Review: changes\n", [], "rated",
+                     package=ASSESSMENT_PACKAGE,
+                     out=f"{ASSESSMENT_LINE}\n### Findings: none\n")
+    assert result.returncode == 0, failure(result)
+    persisted = (tmp / "task" / "REVIEW.md").read_text()
+    assert "### Assessment of the change" in persisted, persisted
+    assert "**request-changes** — adversarial" in persisted, persisted
+
+
+def test_each_lens_line_carries_its_own_reason(tmp: Path) -> None:
+    """The tally says who agreed; these lines say why, so a reader need not open four persona files."""
+    directory = tmp / "task" / "review" / "reasons"
+    directory.mkdir(parents=True)
+    words = {"adversarial": ("request-changes", "holdWaiting leaves detections unstamped"),
+             "architecture": ("approve", "the split into one gate is the right layer")}
+    for persona, (word, clause) in words.items():
+        (directory / f"{persona}.in.md").write_text(ASSESSMENT_PACKAGE)
+        (directory / f"{persona}.out.md").write_text(
+            f"Assessment: {word} — {clause}\n### Findings: none\n")
+    report = tmp / "report-reasons.md"
+    report.write_text("## Review: changes\n")
+    result = run("persist", "--review-dir", str(directory), "--report", str(report),
+                 "--files", "a.ts", "--personas", "adversarial", "architecture")
+    assert result.returncode == 0, failure(result)
+    persisted = (tmp / "task" / "REVIEW.md").read_text()
+    assert "#### Each lens, and why" in persisted, persisted
+    assert "- **adversarial** — request-changes: holdWaiting leaves detections unstamped" in persisted
+    assert "- **architecture** — approve: the split into one gate is the right layer" in persisted
+
+
+def test_an_overlong_clause_is_cut_with_its_remainder_reported(tmp: Path) -> None:
+    """A reason that ends mid-sentence must say so, or it reads as the whole of what the lens wrote."""
+    long_clause = " ".join(["word"] * 300)
+    result = persist(tmp, "## Review: changes\n", [], "long",
+                     package=ASSESSMENT_PACKAGE,
+                     out=f"Assessment: approve — {long_clause}\n### Findings: none\n")
+    assert result.returncode == 0, failure(result)
+    persisted = (tmp / "task" / "REVIEW.md").read_text()
+    assert "… (+" in persisted and "see `adversarial.out.md`" in persisted, persisted
+
+
+def test_a_package_that_predates_the_rule_is_not_gated(tmp: Path) -> None:
+    """Archived reviews must persist: the rule applies where the package asked, not retroactively."""
+    result = persist(tmp, "## Review: changes\n", [], "legacy")
+    assert result.returncode == 0, failure(result)
+    persisted = (tmp / "task" / "REVIEW.md").read_text()
+    assert "- not asked (package predates the rule) — adversarial" in persisted, persisted
+
+
+def test_a_persona_that_declared_a_failure_is_not_asked_for_a_judgement(tmp: Path) -> None:
+    """`pipeline.md` keeps a failed persona in `--personas`; demanding a verdict breaks that recovery."""
+    directory = tmp / "task" / "review" / "failed"
+    directory.mkdir(parents=True)
+    (directory / "adversarial.in.md").write_text(ASSESSMENT_PACKAGE)
+    (directory / "adversarial.out.md").write_text(
+        "Assessment: approve — the gate is wired where the package asks\n\n### Findings: none\n")
+    (directory / "code-quality.in.md").write_text(ASSESSMENT_PACKAGE)
+    (directory / "code-quality.out.md").write_text(
+        "status: truncated\nreason: harness cut the reply\nfinding: none\n")
+    report = tmp / "report-failed.md"
+    report.write_text("## Review: changes\n")
+    result = run("persist", "--review-dir", str(directory), "--report", str(report),
+                 "--files", "a.ts", "--personas", "adversarial", "code-quality")
+    assert result.returncode == 0, failure(result)
+    persisted = (tmp / "task" / "REVIEW.md").read_text()
+    assert "**approve** — adversarial" in persisted, persisted
+    assert "code-quality (truncated)" in persisted, persisted
 
 
 def main() -> int:

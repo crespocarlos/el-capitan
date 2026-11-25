@@ -119,8 +119,10 @@ contract.
 
 ## Output format
 
-A numbered list, each finding starting with its `[label]`, in the shape the output contract defines.
-Your lens decides what the title and evidence say, not the shape.
+Open with the `Assessment:` line the output contract defines — your judgement on the change as a
+whole from this lens: is the code a sound way to reach the stated goal, or would a reviewer need it
+reshaped even after every finding is fixed? Then a numbered list, each finding starting with its
+`[label]`, in the shape the output contract defines.
 
 ## Coverage mapping
 

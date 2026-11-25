@@ -37,6 +37,40 @@ A `[blocking]` or `[attention]` finding is a request to change code, so it needs
 that you do not believe it should block work, and it belongs as `[needs more info]` with the stakes
 stated. A spec or idea `[concern]` and a `[nit]` may carry any score, since neither asks for a change.
 
+## Assessment of the change
+
+Before your findings, state what you think of the change as a whole — not of its lines. A reviewer
+who only lists defects is doing half the job: a clean change that does not solve the problem it was
+written for is still not worth merging, and that is the judgement this section carries. Say it even
+when your findings are few, and say it when you have none.
+
+Write exactly one line, first in your reply:
+
+```
+Assessment: approve | request-changes | comment — <one clause of evidence for it>
+```
+
+- **`approve`** — as built, this addresses the problem the change exists for; your findings are the
+  remaining work, not a reason to redo it.
+- **`request-changes`** — it does not, or not yet: the approach is wrong for the problem, it fixes a
+  symptom rather than the cause, it lands at the wrong layer or scope, or the problem statement
+  itself is wrong. Use it even when every line is correct — a clean implementation of the wrong
+  change is the case this exists for.
+- **`comment`** — you cannot tell from what you can see, or there is nothing in this lens's lane to
+  judge: the problem statement is not in your package, the evidence is genuinely inconclusive, or the
+  change has no surface your lens covers. Name which.
+
+The clause is the substance; the word alone is not. Say what you saw that decided it — what would
+have made this the wrong change, or the specific thing you could not judge — and give it at least a
+short sentence of reason (the gate refuses anything under 20 characters, so `Assessment: approve —
+correct.` is rejected). "The trend split is correct but it bounds the symptom, not the 84% re-routing
+loop the spec measured" is the shape to aim for, not the answer: a lens that saw the change work
+should say so and name what settled it.
+
+This is not the review's verdict. `persist` derives that from your findings (`PASS`/`WARN`/`BLOCK`),
+so the two can disagree, and that disagreement is the useful signal: `request-changes` with no
+`[blocking]` finding means the code is fine and the change is not.
+
 ## Finding shape
 
 Each finding is a comment body the reader can paste without editing:
@@ -66,9 +100,11 @@ index and `L` the line; the score is a literal band, so neither is copied into t
 
 ## When you have nothing
 
-A complete review with nothing in your lane ends with exactly these two lines, then one sentence
-naming what the artifact lacks:
+A complete review with nothing in your lane still opens with its `Assessment:` line — the judgement
+is about the change, not about whether you had findings — and then ends with exactly these two lines,
+then one sentence naming what the artifact lacks:
 ```
+Assessment: comment — nothing in this lens's lane; <what the artifact lacks>
 Nothing in my lane for this artifact.
 ### Findings: none
 ```

@@ -1030,6 +1030,15 @@
   "smoke": "imported by review_report.py"
  },
     {
+      "name": "review_report_sections.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_report.py: the generated section headings, their guard, and the assessment tally",
+      "smoke": "imported by review_report.py"
+    },
+    {
       "name": "review_cli.py",
       "dir": "review",
       "kind": "module",

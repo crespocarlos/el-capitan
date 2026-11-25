@@ -27,32 +27,14 @@ from review_findings import (
     read_findings,
     strict_mode,
 )
-from review_personas import GENERATED_SECTIONS
-from review_persist_gates import check_personas_present, strict_gates
+from review_persist_gates import check_assessments, check_personas_present, strict_gates
 from review_render import footer
 from review_report_gate import check_report
+from review_report_sections import GENERATED_SECTIONS, assessment_section, heading_lines
 from review_workspace import record_task_review
 import review_comments as comments
 import review_outcomes as outcomes
 import review_records as records
-
-
-def heading_lines(text: str) -> set[str]:
-    """The level-3 heading lines of a report, ignoring fenced blocks.
-
-    A finding may quote a heading verbatim (the contract requires quoting, not paraphrasing), and a
-    sub-heading such as `#### Files reviewed` is a different section. Only an exact level-3 heading
-    outside a fence means the caller wrote the generated section themselves.
-    """
-    headings: set[str] = set()
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if not in_fence and line.startswith("### "):
-            headings.add(line.rstrip())
-    return headings
 
 
 def validate_review_dir(args: argparse.Namespace) -> Path:
@@ -98,26 +80,31 @@ def append_deferred(owner: Path, rows: list[Finding]) -> dict[str, int]:
 
 
 def assemble_report(args: argparse.Namespace, report: str, coverage_section: str,
-                    coverage_gap: str, findings: list[Finding], head: str) -> str:
+                    coverage_gap: str, findings: list[Finding], head: str,
+                    assessments_section: str = "") -> str:
     """The report body with its generated sections and the decision footer, appended in order.
 
-    `Reviewed at:` is skipped when `--head` was empty, but a local review still gets its next step.
-    Hanging the footer off the commit instead would leave exactly those reviews with no next step a
-    reader could find.
+    Every generated section arrives as a parameter, computed by `persist`, so this function's
+    signature names its inputs and reads as "the body plus everything derived from it". `Reviewed
+    at:` is skipped when `--head` was empty, but a local review still gets its next step. Hanging the
+    footer off the commit instead would leave exactly those reviews with no next step a reader could
+    find.
 
     The derived `Verdict:` line is written only when findings were supplied. With no `--findings`
     there is no comparison, and a verdict derived from an empty list would be `PASS` on a report whose
     own body may say `BLOCK` — a second, unchecked claim stamped on the one path the gate cannot see.
     """
-    # The two generated sections are derived from --findings and --files, so a report carrying its
-    # own copy would render the table twice and a reader could not tell which is authoritative.
-    # Match a real level-3 heading only: a finding may quote one verbatim.
+    # The generated sections are derived from --findings, --files, and the persona replies, so a
+    # report carrying its own copy would render the table twice and a reader could not tell which is
+    # authoritative. Match a real level-3 heading only: a finding may quote one verbatim.
     generated = [heading for heading in GENERATED_SECTIONS if heading in heading_lines(report)]
     if generated:
         raise ValueError(
             f"{args.report} already contains {', '.join(generated)}, which persist appends; "
             "delete it from the report and let persist write it"
         )
+    if assessments_section:
+        report = report.rstrip() + "\n\n" + assessments_section
     if coverage_section:
         report = report.rstrip() + "\n\n" + coverage_section
     if coverage_gap:
@@ -139,13 +126,15 @@ def persist(args: argparse.Namespace) -> int:
     owner = validate_review_dir(args)
     findings = read_findings(args.findings) if args.findings else []
     check_personas_present(args)
+    assessments_section = assessment_section(check_assessments(args.review_dir, args.personas))
     head = reviewed_head(args)
     body = args.report.read_text(encoding="utf-8")
     coverage_section = coverage_gap = ""
     strict = strict_mode(args)
     if strict:
         coverage_section, coverage_gap = strict_gates(args, owner, findings)
-    report = assemble_report(args, body, coverage_section, coverage_gap, findings, head)
+    report = assemble_report(args, body, coverage_section, coverage_gap, findings, head,
+                             assessments_section)
     if strict:
         # Per-finding rules always; the path-scoped evidence gate only when a path set exists. A spec
         # or idea review passes no paths, and gating the whole check on `--files` silently skipped

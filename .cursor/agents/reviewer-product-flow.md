@@ -104,19 +104,19 @@ contract.
 
 ## Output format
 
-A numbered list, each finding starting with its `[label]`, in the shape the contract defines. Your
-lens decides what the title and evidence say, not the shape.
-
-In a spec or idea review, open with the criteria walk, one line per criterion, before the numbered
-findings:
+Open with the `Assessment:` line the output contract defines — your judgement on the change as a
+whole from this lens: does what shipped address the problem the spec names, for the cases the data
+shows? Then, in a spec, idea, or PR review, the criteria walk — one line per criterion, before the
+numbered findings:
 
 ```
 Criteria: <n> satisfied, <n> partially satisfied, <n> contradicted, <n> unverified
 ```
 
-That walk is the one permitted preamble: it is required in spec and PR review, where acceptance
-criteria are in context, because the reader needs coverage before detail. In a code review with no
-acceptance criteria to walk, start at finding 1.
+Conformance is not the same question as the assessment: a change can satisfy every criterion and
+still miss the problem, and that is what the assessment line is for. The criteria walk is the one
+permitted preamble besides it, because the reader needs coverage before detail. In a code review with
+no acceptance criteria to walk, the assessment is followed directly by finding 1.
 
 ## Coverage mapping
 

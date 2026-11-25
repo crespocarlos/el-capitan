@@ -27,6 +27,11 @@ PROBE_OUTCOMES = {"confirmed", "refuted", "inconclusive"}
 # because `normalize` republishes the finding for later steps to parse. Held here rather than in the
 # record so the vocabulary and the probe module can name it without importing each other.
 ABSENT = object()
+# The words a persona may open its reply with, and the order the report renders them in (worst
+# first). One tuple each, because the regex, the report, and the evals all read this vocabulary and
+# three independent copies is how a word added in one place disappears from the others.
+ASSESSMENT_WORDS = ("approve", "request-changes", "comment")
+ASSESSMENT_ORDER = ("request-changes", "comment", "approve")
 # A finding the review asks the author to act on has to be one the reviewer believes in.
 ACTED_CONFIDENCE = 3
 OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}

@@ -320,9 +320,57 @@ def check_search_order_is_index_first_and_harness_neutral() -> None:
     )
 
 
+def check_the_contract_requires_an_assessment_of_the_change() -> None:
+    """A reviewer judges the change, not only its lines, and the contract is the one place that says so.
+
+    Findings answer "is this correct". They do not answer "is this the right change", and a persona
+    with no slot for the second question lists defects in a change that should not land at all.
+    """
+    contract = flat(CONTRACT.read_text())
+    assert "Assessment:" in contract, "the contract defines no assessment of the change as a whole"
+    for word in ("approve", "request-changes", "comment"):
+        assert word in contract, f"the assessment vocabulary is missing `{word}`"
+    assert "not the review's verdict" in contract, (
+        "the contract must separate the persona's assessment from the verdict persist derives"
+    )
+    assert "20 characters" in contract, (
+        "the gate refuses a clause under 20 characters and the prompt never states the floor"
+    )
+    assert "nothing in this lens's lane" in contract, (
+        "an abstaining lens has no legal word, so its documented outcome fails the gate"
+    )
+    assert "Assessment: comment" in contract, (
+        "the abstention example must show the assessment line, or the two sections disagree"
+    )
+    for name in PERSONAS:
+        text = flat(persona(name))
+        assert "Assessment:" in text, f"{name} does not ask for the assessment line"
+
+
+def check_the_assessment_gate_is_wired() -> None:
+    """The gate has to actually run, and only where the package asked for an assessment."""
+    gates = flat((AGENTS.parents[1] / ".agent" / "tools" / "review" / "review_persist_gates.py")
+                 .read_text())
+    assert "ASSESSMENT_REQUEST" in gates and "check_assessments" in gates, (
+        "review_persist_gates.py holds no assessment gate"
+    )
+    assert "unavailable" in gates, (
+        "the gate must exempt a persona that declared a failure, or its documented recovery fails"
+    )
+    report = flat((AGENTS.parents[1] / ".agent" / "tools" / "review" / "review_report.py")
+                  .read_text())
+    assert "check_assessments(" in report, "persist never calls the assessment gate"
+    vocabulary = flat((AGENTS.parents[1] / ".agent" / "tools" / "review"
+                       / "review_vocabulary.py").read_text())
+    for word in ("approve", "request-changes", "comment"):
+        assert word in vocabulary, f"the assessment vocabulary is missing `{word}`"
+
+
 CHECKS = [
     check_the_contract_defines_every_label,
     check_the_contract_scopes_concern_to_plan_reviews,
+    check_the_contract_requires_an_assessment_of_the_change,
+    check_the_assessment_gate_is_wired,
     check_the_contract_owns_the_abstention_line,
     check_the_contract_owns_the_two_finding_rules,
     check_the_contract_fixes_one_spelling_of_the_fix_field,

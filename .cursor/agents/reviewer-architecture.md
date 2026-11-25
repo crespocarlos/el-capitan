@@ -127,10 +127,11 @@ contract.
 
 <output_format>
 
-A numbered list, each finding starting with its `[label]`, in the shape the output contract defines.
-For a finding about a contract break, name the consumer that breaks in the title or the body — a
-blast-radius claim without a named consumer is not actionable. Your lens decides what the title and
-evidence say, not the shape.
+Open with the `Assessment:` line the output contract defines — your judgement on the change as a
+whole from this lens: does this land at the right layer and scope, or solve a narrower case than the
+problem? Then a numbered list, each finding starting with its `[label]`, in the shape the output
+contract defines. For a finding about a contract break, name the consumer that breaks in the title or
+the body — a blast-radius claim without a named consumer is not actionable.
 
 </output_format>
 

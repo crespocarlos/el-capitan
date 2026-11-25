@@ -30,7 +30,6 @@ from review_classify import (  # noqa: F401 — re-exported
     persona_outcome,
 )
 from review_coverage import (  # noqa: F401 — re-exported
-    GENERATED_SECTIONS,
     HUNKS_FILE,
     LAYERS_FILE,
     check_persona_coverage,
