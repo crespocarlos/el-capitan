@@ -23,10 +23,32 @@ packages and the `--files` gates need it:
 
 `paths.txt` is that command's stdout, one path per line; no other step writes it.
 
+**Record what this round read, and name the earlier one.** Two rounds of uncommitted work can share a
+`HEAD`, so `Reviewed at:` cannot tell them apart; the manifest is the per-file content id that can.
+Run it in the same step, after `paths.txt`, in diff modes only — a PR review has no task-level round
+to compare against:
+
+```bash
+~/.agent/bin/crew-review-findings.py prior-review --review-dir "$REVIEW_ROOT" \
+  --repo "$(~/.agent/bin/crew-repo-info.py --field root)" --paths $(cat "$REVIEW_ROOT/paths.txt")
+```
+
+It prints `{"prior": "<dir>"|null, "unchanged": [...], "files": N}` and writes
+`$REVIEW_ROOT/manifest.json`. Carry `prior` into `assemble.json` as `prior_review_dir`, so every
+package gains the earlier round's findings under `## Already reported in an earlier round`. That block
+is what stops a reworded re-raise: two measured rounds shared zero finding fingerprints and still
+raised the same subject twice.
+
+`prior: null` on a first review is a success, not a gap — say nothing about it. An `unchanged` list
+larger than half the changed files is what makes `--since-last-review` worth offering; carry it in the
+report's `### Reviewers` line so the reader knows the collapse ran and what it omitted.
+
 `hunks.json` holds the ids the coverage gate checks, `hunks.md` the index plus bodies for the mapping
 pass only, `hunks.index.md` the index alone for persona packages, and `package.diff` the diff with
 each generated file's hunks collapsed to one note line. Packages embed `package.diff`, never
-`diff.patch`.
+`diff.patch`. With `--since-last-review --reviewed <prior>/manifest.json`, `crew-review-hunks.py`
+also collapses every file whose bytes the earlier round already read, naming its ids in the note;
+that flag is opt-in because a hunk unchanged since the last round can still be newly wrong.
 
 Dispatch `reviewer-layers` with `hunks.md`, extract its one fenced `json` block, and write that raw
 JSON to `$REVIEW_ROOT/layers.json`. No block, several blocks, or any text outside the block is invalid

@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from assemble_config import DEFAULT_MODE, contract_path, narrow_guidance
+from assemble_prior import section as prior_section
 
 HUNK_SENTENCE = (
     "Every `[blocking]` and `[attention]` finding cites the hunk ids whose change causes it, next to "
@@ -47,4 +48,9 @@ def common(review_dir: Path, config: dict, persona: str) -> tuple[str, dict]:
     memory_path = review_dir / "mem.md"
     memory = memory_path.read_text(encoding="utf-8") if memory_path.is_file() else ""
     parts.append(memory.strip() or "warning: memory unavailable\n")
+    prior = config.get("prior_review_dir")
+    if prior:
+        block = prior_section(Path(prior))
+        if block:
+            parts.append("\n---\n\n" + block)
     return "".join(parts), report

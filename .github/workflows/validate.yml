@@ -60,6 +60,12 @@ jobs:
       - name: Review report gate (list, verdict, footer)
         run: python3 evals/tools/test_review_report_gate.py
 
+      - name: Prior-round review (content ids, earlier-round block, collapse)
+        run: python3 evals/tools/test_review_prior.py
+
+      - name: Prior-round package block (titles, decisions, re-raise rule)
+        run: python3 evals/tools/test_assemble_prior.py
+
       - name: Handoff trailer grammar (lint_handoff)
         run: python3 evals/tools/test_crew_lint_handoff.py
 

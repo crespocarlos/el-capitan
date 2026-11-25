@@ -1039,6 +1039,33 @@
       "smoke": "imported by review_report.py"
     },
     {
+      "name": "review_manifest.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_prior.py and crew-review-hunks.py: per-file content ids for incremental review",
+      "smoke": "imported by review_prior.py"
+    },
+    {
+      "name": "review_prior.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py: the `prior-review` subcommand",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "assemble_prior.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by assemble_common.py: the earlier-round findings block in a package",
+      "smoke": "imported by assemble_common.py"
+    },
+    {
       "name": "review_cli.py",
       "dir": "review",
       "kind": "module",

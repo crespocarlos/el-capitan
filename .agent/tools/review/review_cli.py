@@ -95,12 +95,25 @@ def add_map_parsers(commands) -> None:
                                  help="bound the printed JSON")
 
 
+def add_prior_parser(commands) -> None:
+    """`prior-review`: name the earlier round, and record this run's content manifest."""
+    prior_parser = commands.add_parser(
+        "prior-review",
+        help="name the earlier run in this task's review directory, for the prior-round block")
+    prior_parser.add_argument("--review-dir", required=True, type=Path)
+    prior_parser.add_argument("--paths", nargs="*", default=[],
+                              help="the changed paths this run reviewed, for the manifest")
+    prior_parser.add_argument("--repo", type=Path, default=Path("."),
+                              help="repository root the paths are relative to")
+
+
 def add_context_parsers(commands) -> None:
-    """`spec-context`, `check-packages`, `comments`, and the two outcome subcommands."""
+    """`spec-context`, `check-packages`, `comments`, `prior-review`, and the outcome subcommands."""
     spec_parser = commands.add_parser(
         "spec-context", help="print the part of SPEC.md one persona's package carries")
     spec_parser.add_argument("--persona", required=True)
     spec_parser.add_argument("spec", type=Path)
+    add_prior_parser(commands)
     packages_parser = commands.add_parser(
         "check-packages", help="check written <persona>.in.md packages before dispatch")
     packages_parser.add_argument("--review-dir", required=True, type=Path)

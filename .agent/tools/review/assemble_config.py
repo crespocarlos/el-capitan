@@ -26,8 +26,10 @@ of `[attention]` in a spec or idea review.
 flat numbered list of findings, each beginning with its severity label and carrying a `path:line`
 anchor. If you have no findings, end your reply with the exact line `### Findings: none`.
 """
-# The extras that read the local git index, which a PR review forbids.
-INDEX_READING_KEYS = ("consumers", "prompt_files")
+# The extras that read the local checkout, which a PR review forbids. `prior_review_dir` names a
+# local run directory, so a PR package carrying it would hand a persona an earlier review of a
+# different tree — and PR reviews have no task-level round to compare against anyway.
+INDEX_READING_KEYS = ("consumers", "prompt_files", "prior_review_dir")
 
 
 def read_json(path: Path, what: str) -> dict:

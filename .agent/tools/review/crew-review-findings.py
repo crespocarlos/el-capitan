@@ -81,6 +81,7 @@ from review_personas import (  # noqa: E402,F401
     spec_sections,
 )
 from review_report import check_outcomes, outcome, persist  # noqa: E402,F401
+from review_prior import prior_review  # noqa: E402,F401
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 from review_commands import check_map, comments  # noqa: E402
 
@@ -119,6 +120,7 @@ def main() -> int:
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
                 "validate-map": validate_map, "spec-context": spec_context,
                 "check-packages": check_packages, "review-dir": review_dir_command,
+                "prior-review": prior_review,
                 "comments": comments, "check-map": check_map}
     try:
         return handlers[args.command](args)

@@ -24,6 +24,7 @@ for _path in (_TOOLS_ROOT, _REVIEW_DIR):
 
 from lib.output import DEFAULT_MAX_CHARS, bounded_json  # noqa: E402
 from review_parse import HUNK_HEADER, parse  # noqa: E402,F401
+import review_manifest as manifest  # noqa: E402
 
 GENERATED_TASTE = 60
 
@@ -113,6 +114,25 @@ def package_diff(diff: str, parsed: dict) -> str:
     return "\n".join(out)
 
 
+def reviewed_package(text: str, parsed: dict, args: argparse.Namespace) -> tuple[str, list[str]]:
+    """`package.diff`, collapsed for files an earlier round already read; plus those paths.
+
+    Opt-in and file-granular by design: a hunk unchanged since the last round can still be newly
+    wrong because a change elsewhere invalidated it, so the caller decides whether the saved reading
+    is worth the lost cross-file context. With no earlier manifest nothing is collapsed and the
+    answer is the ordinary package.
+    """
+    package = package_diff(text, parsed)
+    previous = manifest.read(args.reviewed) if args.since_last_review and args.reviewed else None
+    if previous is None:
+        return package, []
+    root = Path.cwd()
+    current = manifest.manifest(root, [entry["path"] for entry in parsed["files"]])
+    reviewed = sorted(manifest.unchanged_since(root, current, previous))
+    stamp = args.reviewed.parent.name
+    return manifest.collapse_reviewed(package, parsed, set(reviewed), stamp), reviewed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Split a unified diff into numbered hunks for the reviewer layer map.")
@@ -121,6 +141,11 @@ def main() -> int:
                         help="directory for hunks.json, hunks.md, hunks.index.md, and package.diff")
     parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
                         help="bound the printed JSON summary")
+    parser.add_argument("--since-last-review", action="store_true",
+                        help="collapse files whose bytes an earlier round already read "
+                             "(requires --reviewed)")
+    parser.add_argument("--reviewed", type=Path, default=None,
+                        help="the previous run directory's manifest.json, from `prior-review`")
     args = parser.parse_args()
 
     if str(args.diff) == "-":
@@ -148,11 +173,13 @@ def main() -> int:
     (args.out / "hunks.json").write_text(json.dumps(parsed, indent=2) + "\n", encoding="utf-8")
     (args.out / "hunks.md").write_text(markdown(parsed), encoding="utf-8")
     (args.out / "hunks.index.md").write_text(index_markdown(parsed) + "\n", encoding="utf-8")
-    (args.out / "package.diff").write_text(package_diff(text, parsed), encoding="utf-8")
+    package, reviewed = reviewed_package(text, parsed, args)
+    (args.out / "package.diff").write_text(package, encoding="utf-8")
     omitted = [entry["path"] for entry in parsed["files"] if entry["byName"]]
     heuristic = [entry["path"] for entry in parsed["files"] if entry["generated"] and not entry["byName"]]
     summary = {"hunks": len(parsed["hunks"]), "files": len(parsed["files"]),
-               "omitted": omitted, "keptDespiteContentFlag": heuristic, "out": str(args.out)}
+               "omitted": omitted, "keptDespiteContentFlag": heuristic,
+               "alreadyReviewed": reviewed, "out": str(args.out)}
     print(bounded_json(summary, args.max_chars, what="hunk summary"))
     return 0
 
