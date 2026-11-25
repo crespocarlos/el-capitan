@@ -2,7 +2,9 @@
 name: reviewer-prompt-quality
 description: "LLM prompt quality reviewer for sufficiency of context, rule scope and strength, instruction clarity, reference integrity, cross-document collisions, and portability across harnesses and models. Works on agent/skill/prompt file diffs and on sets of prompts loaded together. Dispatched by crew-reviewer — do not invoke directly."
 # `tools`/`maxTurns` are read by Claude Code only; Cursor inherits every tool and honours `readonly`.
-tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search, mcp__sourcerer__sourcerer_code_grep, mcp__sourcerer__sourcerer_files_tree, mcp__sourcerer__sourcerer_files_read_lines, mcp__sourcerer__sourcerer_files_cat, mcp__sourcerer__sourcerer_ki_search, mcp__sourcerer__sourcerer_repos_search, mcp__sourcerer__sourcerer_repos_list, mcp__sourcerer__sourcerer_refs_list, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
+# `tools` grants only ids that always resolve: a granted MCP id fails the whole dispatch on a project
+# without that server.
+tools: Read, Grep, Glob
 readonly: true
 maxTurns: 10
 ---

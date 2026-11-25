@@ -3,8 +3,10 @@ name: reviewer-adversarial
 description: "Paranoid reviewer for edge cases, regressions, and silent failures. Works on code diffs, plans, proposals, and session discussions. Dispatched by crew-reviewer — do not invoke directly."
 # Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
 # Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
-# is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
-tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search, mcp__sourcerer__sourcerer_code_grep, mcp__sourcerer__sourcerer_files_tree, mcp__sourcerer__sourcerer_files_read_lines, mcp__sourcerer__sourcerer_files_cat, mcp__sourcerer__sourcerer_ki_search, mcp__sourcerer__sourcerer_repos_search, mcp__sourcerer__sourcerer_repos_list, mcp__sourcerer__sourcerer_refs_list, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
+# is not a Claude Code field and is ignored there. `tools` grants only the ids that always resolve: a
+# granted MCP id fails the whole dispatch on a project without that server, which is how three personas
+# once returned `Failed` with no output.
+tools: Read, Grep, Glob
 readonly: true
 maxTurns: 12
 ---

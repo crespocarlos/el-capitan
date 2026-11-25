@@ -119,16 +119,33 @@ def main() -> int:
         check("malformed mcp_servers is reported", len(hits) == 1, result.stdout)
         check("malformed allowlist exits 1", result.returncode == 1, str(result.returncode))
 
-    # A docs server declared but no persona granted its tools is the gap this repo hit: the
-    # instruction keeps running while no persona can execute it. The lint cannot judge prose intent,
-    # so the repo asserts the grant directly.
+    # A docs server declared but no persona able to reach it is the gap this repo hit: the
+    # instruction keeps running while nobody can execute it. The lint cannot judge prose intent, so
+    # the repo asserts reachability. There are two populations, and they reach it differently:
+    #
+    # - the five reviewer lenses load `reviewer-contract.md`, which names the docs tools and tells
+    #   them to use the harness equivalent when the server is absent. They grant only ids that always
+    #   resolve, because a granted `mcp__` id fails the entire dispatch on a project that has not
+    #   configured that server — how three personas once returned `Failed` with no output.
+    # - the explorers and spec critics load no contract, so their reachability is the grant itself.
     text = (ROOT / ".cursor/agents/crew-reviewer.md").read_text()
     check("docs trigger still names a docs server capability", "docs\nMCP server" in text or
           "docs MCP server" in text, "crew-reviewer.md lost the docs instruction")
-    verifying = ["reviewer-adversarial", "reviewer-architecture", "reviewer-code-quality",
-                 "reviewer-product-flow", "reviewer-prompt-quality", "reviewer-explorer",
-                 "specwriter-adversarial", "specwriter-scope", "specwriter-explorer"]
-    for name in verifying:
+    contract = (ROOT / ".cursor/agents/references/reviewer-contract.md").read_text()
+    check("the contract names the docs fetch tool", "get_internal_document_by_url" in contract,
+          "reviewer-contract.md does not name the docs fetch tool")
+    contract_loading = ["reviewer-adversarial", "reviewer-architecture", "reviewer-code-quality",
+                        "reviewer-product-flow", "reviewer-prompt-quality"]
+    for name in contract_loading:
+        body = (ROOT / f".cursor/agents/{name}.md").read_text()
+        frontmatter = body.split("---")[1]
+        check(f"{name} loads the contract that names the docs tools",
+              "reviewer-contract.md" in body, frontmatter)
+        check(f"{name} grants no MCP id that can fail its dispatch",
+              "mcp__" not in frontmatter, frontmatter)
+    direct_grant = ["reviewer-explorer", "specwriter-adversarial", "specwriter-scope",
+                    "specwriter-explorer"]
+    for name in direct_grant:
         frontmatter = (ROOT / f".cursor/agents/{name}.md").read_text().split("---")[1]
         check(f"{name} holds a docs fetch tool", "get_internal_document_by_url" in frontmatter
               or "get_document_by_url" in frontmatter, frontmatter)

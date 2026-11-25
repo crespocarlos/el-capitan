@@ -250,11 +250,15 @@ def check_context_package_states_the_hunk_requirement() -> None:
 
 
 def check_every_declared_mcp_tool_is_named_in_the_contract() -> None:
-    """A tool granted in frontmatter but named in no prose is a tool the persona never learns to use.
+    """Every MCP tool the contract tells a persona to use must exist in the allowlist.
 
-    All ten MCP tools were granted and named in no persona file. Cursor ignores `tools:` and inherits
-    every parent tool, so for a Cursor subagent the frontmatter grants nothing and only prose tells
-    it what it holds.
+    The personas grant only `Read, Grep, Glob`. They used to grant the `sourcerer` and docs tool ids
+    too, and a reviewer whose project had not configured one of those servers failed to launch at
+    all — a grant that cannot resolve is a dispatch that never runs. Cursor ignores `tools:` and
+    inherits every parent tool, so a Cursor subagent has these tools regardless; for Claude Code the
+    contract names them as the preferred path and allows a harness equivalent, which is why the
+    grant is not restated here. What is still checked is that every id the allowlist publishes is
+    one the contract names, so a server added to the catalog without a line teaching its use fails.
     """
     servers = load_mcp_servers()
     contract = CONTRACT.read_text()
@@ -268,21 +272,26 @@ def check_every_declared_mcp_tool_is_named_in_the_contract() -> None:
 
 
 def check_granted_tools_match_what_the_prose_tells_them_to_use() -> None:
-    """The reverse direction: prose must not name a tool the persona is not granted.
+    """A persona grants the tools that always exist, and the contract names the rest as optional.
 
-    Claude Code reads `tools:` and enforces it. A contract that says "call `sourcerer_files_cat`" while
-    the persona's frontmatter omits it is an instruction to call a tool it does not have — a
-    contradiction between two loaded files.
+    Claude Code enforces `tools:` strictly, and it fails the whole dispatch when a granted id cannot
+    resolve — which is what happens on a project that has not configured the MCP server. The grant is
+    therefore `Read, Grep, Glob` only. The contract still names every MCP tool, and it says a persona
+    uses the harness equivalent when the server is absent, so no instruction points at a tool the
+    persona was never told how to reach.
     """
-    servers = load_mcp_servers()
-    all_tools = {tool for tools in servers.values() for tool in tools}
     for name in PERSONAS:
-        granted = set(re.findall(r"mcp__[\w-]+__(\w+)", granted_tools_line(name)))
-        absent = sorted(all_tools - granted)
-        assert not absent, f"{name} is told to use tools it does not grant: {', '.join(absent)}"
-        contract = CONTRACT.read_text()
-        named = {tool for tool in granted if tool in contract}
-        assert named, f"{name} grants no tool the contract explains"
+        granted = granted_tools_line(name)
+        assert not re.search(r"mcp__", granted), (
+            f"{name} grants an MCP tool id, which fails the dispatch on a project without that server"
+        )
+        for core in ("Read", "Grep", "Glob"):
+            assert re.search(rf"\b{core}\b", granted), f"{name} does not grant `{core}`"
+    contract = CONTRACT.read_text()
+    servers = load_mcp_servers()
+    for server, tools in servers.items():
+        for tool in tools:
+            assert tool in contract, f"the contract does not name `{tool}`"
 
 
 def check_personas_grant_the_same_toolset() -> None:

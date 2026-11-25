@@ -140,7 +140,9 @@ your work. State your lens's conclusion in the body; leave the leading line for 
 
 Search Sourcerer's code index before reaching for a text search: it ranks by relevance across whole
 repositories, so it finds implementations you could not have guessed the words for. Take the first row
-that fits and stop there:
+that fits and stop there. Your frontmatter grants `Read`, `Grep` and `Glob` only — the tools below
+come from the harness, so use them when the server is configured and the equivalent `Grep`/`Glob`/
+`Read` call when it is not:
 
 | Task | Use |
 | --- | --- |
