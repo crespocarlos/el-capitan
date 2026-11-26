@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -1087,6 +1088,303 @@ def test_confidence_flags_and_merge_candidates_are_gone(tmp: Path) -> None:
     assert not (review_dir / "REVIEW.md").exists(), "a rejected call writes nothing"
     assert run(*args).returncode == 0
     assert "Confidence:" not in (review_dir / "REVIEW.md").read_text()
+
+
+RAW_REPLY = "### Findings: none\n\nAssessment: approve — the change reads as intended and is covered.\n"
+
+
+def provenance_review(tmp: Path, personas: tuple[str, ...]) -> tuple[Path, Path]:
+    """A review directory with a package per persona and a clean report, ready for save-out."""
+    review_dir = tmp / "task" / "review" / "20261126000000"
+    review_dir.mkdir(parents=True)
+    for persona in personas:
+        (review_dir / f"{persona}.in.md").write_text("package")
+    report = tmp / "report.md"
+    report.write_text("## Review: changes\n")
+    return review_dir, report
+
+
+def save_out(review_dir: Path, persona: str, text: str, *flags: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(TOOL), "save-out", "--review-dir", str(review_dir),
+                           "--persona", persona, "--harness", "cursor", *flags],
+                          input=text.encode("utf-8"), capture_output=True)
+
+
+def persist_dir(review_dir: Path, report: Path, personas: tuple[str, ...], *extra: str):
+    findings = review_dir.parent.parent / "findings.json"
+    findings.write_text("[]") if not findings.exists() else None
+    return run("persist", "--review-dir", str(review_dir), "--report", str(report), "--mode", "changes",
+               "--findings", str(findings), "--personas", *personas, *extra)
+
+
+def test_save_out_stores_the_raw_reply_with_provenance(tmp: Path) -> None:
+    """The reply passes through byte for byte; the record carries who, when and a content hash."""
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
+    raw = RAW_REPLY.replace("\n", "\r\n")
+    saved = save_out(review_dir, "adversarial", raw, "--agent-id", "agent-1", "--model", "m-1")
+    assert saved.returncode == 0, saved.stderr
+    assert (review_dir / "adversarial.out.md").read_bytes() == raw.encode(), "raw bytes, not a rewrite"
+    record = json.loads((review_dir / "adversarial.provenance.json").read_text())
+    assert record["schema_version"] == 1 and record["harness"] == "cursor"
+    assert record["agent_id"] == "agent-1" and record["model"] == "m-1" and record["time"]
+    assert len(record["sha256"]) == 64
+    assert save_out(review_dir, "code-quality", RAW_REPLY).returncode == 0
+    nulls = json.loads((review_dir / "code-quality.provenance.json").read_text())
+    assert nulls["agent_id"] is None and nulls["model"] is None, "unknown ids are null, not guessed"
+    done = persist_dir(review_dir, report, ("adversarial", "code-quality"))
+    assert done.returncode == 0, done.stderr
+    assert "provenance: verified" in (review_dir / "REVIEW.md").read_text()
+
+
+def test_persist_rejects_a_digest_saved_through_save_out(tmp: Path) -> None:
+    """save-out keeps the bytes it was given; the digest rejection at persist is unchanged."""
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
+    digest = "[condensed] one finding about a null guard, details omitted\n"
+    assert save_out(review_dir, "adversarial", digest).returncode == 0
+    assert save_out(review_dir, "code-quality", RAW_REPLY).returncode == 0
+    result = persist_dir(review_dir, report, ("adversarial", "code-quality"))
+    assert result.returncode == 2 and "condensed digest" in result.stderr, result.stderr
+    assert not (review_dir / "REVIEW.md").exists()
+
+
+def test_persist_rejects_a_reply_edited_after_save_out(tmp: Path) -> None:
+    review_dir, report = provenance_review(tmp, ("adversarial",))
+    assert save_out(review_dir, "adversarial", RAW_REPLY).returncode == 0
+    (review_dir / "adversarial.out.md").write_text(RAW_REPLY + "- [blocking] added later\n")
+    result = persist_dir(review_dir, report, ("adversarial",))
+    assert result.returncode == 2 and "sha256" in result.stderr and "adversarial" in result.stderr
+    assert not (review_dir / "REVIEW.md").exists()
+
+
+def test_persist_passes_a_review_directory_without_provenance_as_legacy(tmp: Path) -> None:
+    """Tamper evidence applies to new reviews only: an absent record is legacy, not a failure."""
+    review_dir, report = provenance_review(tmp, ("adversarial",))
+    (review_dir / "adversarial.out.md").write_text(RAW_REPLY)
+    result = persist_dir(review_dir, report, ("adversarial",))
+    assert result.returncode == 0, result.stderr
+    text = (review_dir / "REVIEW.md").read_text()
+    assert "provenance: absent (legacy)" in text
+    assert not text.startswith("Degraded:"), "a legacy review is never reported as degraded"
+
+
+def test_a_resumed_persona_does_not_trip_the_shared_agent_id_check(tmp: Path) -> None:
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
+    assert save_out(review_dir, "adversarial", RAW_REPLY, "--agent-id", "agent-1").returncode == 0
+    # The same persona answers again after a resume, and a null id never counts as shared.
+    assert save_out(review_dir, "adversarial", RAW_REPLY, "--agent-id", "agent-1", "--resume").returncode == 0
+    assert save_out(review_dir, "code-quality", RAW_REPLY).returncode == 0
+    done = persist_dir(review_dir, report, ("adversarial", "code-quality"))
+    assert done.returncode == 0, done.stderr
+    assert not (review_dir / "REVIEW.md").read_text().startswith("Degraded:")
+    assert "degraded" not in json.loads(done.stdout)
+
+
+def test_distinct_agent_ids_are_not_degraded(tmp: Path) -> None:
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
+    save_out(review_dir, "adversarial", RAW_REPLY, "--agent-id", "agent-1")
+    save_out(review_dir, "code-quality", RAW_REPLY, "--agent-id", "agent-2")
+    done = persist_dir(review_dir, report, ("adversarial", "code-quality"))
+    assert done.returncode == 0, done.stderr
+    assert "Verdict: PASS" in (review_dir / "REVIEW.md").read_text()
+
+
+def degraded_findings(tmp: Path, label: str | None) -> None:
+    rows = [] if label is None else [{
+        "title": "Missing null guard", "label": label, "file": "a.ts", "line": 3, "kind": "correctness",
+        "disposition": "patch", "verified": True, "confidence": 4, "evidence": "a.ts:3@abc1234",
+        "validation": "read the call site and confirmed the guard is absent",
+        "excerpt": "const value = row.data;\nvalue.length;"}]
+    (tmp / "task" / "findings.json").write_text(json.dumps(rows))
+
+
+def test_a_shared_agent_id_is_a_degraded_review_capped_at_warn(tmp: Path) -> None:
+    """One agent playing two lenses is persisted, not refused: banner, report line, PASS becomes WARN."""
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
+    save_out(review_dir, "adversarial", RAW_REPLY, "--agent-id", "agent-1")
+    save_out(review_dir, "code-quality", RAW_REPLY, "--agent-id", "agent-1")
+    degraded_findings(tmp, None)
+    report.write_text("## Review: changes\nVerdict: PASS\n")
+    stale = persist_dir(review_dir, report, ("adversarial", "code-quality"))
+    assert stale.returncode == 2 and "capped at WARN" in stale.stderr, stale.stderr
+    report.write_text("## Review: changes\nVerdict: WARN\n")
+    done = persist_dir(review_dir, report, ("adversarial", "code-quality"))
+    assert done.returncode == 0, done.stderr
+    text = (review_dir / "REVIEW.md").read_text()
+    assert text.startswith("Degraded: 1 agent, 2 lenses"), text[:80]
+    assert "\nVerdict: WARN\n" in text and "Verdict: PASS" not in text
+    assert json.loads(done.stdout)["degraded"] == "Degraded: 1 agent, 2 lenses"
+
+
+def test_a_declared_degraded_run_is_capped_even_without_agent_ids(tmp: Path) -> None:
+    """A fork that plays every lens has no ids to compare, so the orchestrator declares it."""
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality", "architecture"))
+    for persona in ("adversarial", "code-quality", "architecture"):
+        assert save_out(review_dir, persona, RAW_REPLY, "--degraded").returncode == 0
+    degraded_findings(tmp, None)
+    report.write_text("## Review: changes\nVerdict: WARN\n")
+    done = persist_dir(review_dir, report, ("adversarial", "code-quality", "architecture"))
+    assert done.returncode == 0, done.stderr
+    assert (review_dir / "REVIEW.md").read_text().startswith("Degraded: 1 agent, 3 lenses")
+
+
+def test_a_degraded_review_keeps_block_as_block(tmp: Path) -> None:
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
+    for persona in ("adversarial", "code-quality"):
+        save_out(review_dir, persona, "- [blocking] Missing null guard\nAnchor: a.ts:3\n", "--degraded")
+    degraded_findings(tmp, "blocking")
+    report.write_text("## Review: changes\nVerdict: BLOCK\n\n1. [blocking · 4] — Missing null guard\n"
+                      "   Anchor: a.ts:3\n")
+    done = persist_dir(review_dir, report, ("adversarial", "code-quality"), "--files", "a.ts")
+    assert done.returncode == 0, done.stderr
+    text = (review_dir / "REVIEW.md").read_text()
+    assert text.startswith("Degraded: 1 agent, 2 lenses") and "\nVerdict: BLOCK\n" in text
+
+
+def candidate(title: str, line: int, label: str = "attention", persona: str = "adversarial", **extra) -> dict:
+    return {"title": title, "label": label, "kind": "correctness", "file": "a.ts", "line": line,
+            "persona": persona, "disposition": "patch", "verified": True, "confidence": 4,
+            "evidence": f"a.ts:{line}", "validation": "read the call site", **extra}
+
+
+def consolidate_raw(directory: Path, rows: list) -> tuple[Path, subprocess.CompletedProcess]:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "raw-candidates.json").write_text(json.dumps(rows))
+    (directory / "hunks.json").write_text(json.dumps({"files": [], "hunks": [
+        {"id": "h1", "file": "a.ts", "lines": [{"t": "+", "s": "x", "n": n} for n in range(1, 8)]},
+        {"id": "h2", "file": "a.ts", "lines": [{"t": "+", "s": "x", "n": n} for n in range(20, 30)]}]}))
+    return directory, run("consolidate", "--review-dir", str(directory))
+
+
+def test_consolidate_groups_overlap_only_and_never_rewrites_a_label(tmp: Path) -> None:
+    """Same file and overlapping lines group; a second defect ten lines away stays its own finding."""
+    rows = [candidate("Missing null guard", 3, "blocking", "adversarial", line_end=5),
+            candidate("Guard absent on empty row", 4, "attention", "code-quality"),
+            candidate("Off by one in the loop", 25, "attention", "architecture")]
+    review_dir, done = consolidate_raw(tmp / "review", rows)
+    assert done.returncode == 0, done.stderr
+    draft = json.loads((review_dir / "candidates.json").read_text())
+    assert draft["schema_version"] == 1 and len(draft["groups"]) == 1, draft["groups"]
+    first, second, third = draft["findings"]
+    assert (first["label"], second["label"], third["label"]) == ("blocking", "attention", "attention")
+    assert first["group_severity"] == "blocking" and second["disposition"] == "merged"
+    assert second["merged_into"] == first["group"] == "g1" and "group" not in third, "merged_into is the group id, not a title"
+    assert third["disposition"] == "patch" and (first["hunks"], third["hunks"]) == (["h1"], ["h2"])
+    apart, done = consolidate_raw(tmp / "apart", [candidate("One", 3), candidate("Two", 13)])
+    assert done.returncode == 0 and json.loads((apart / "candidates.json").read_text())["groups"] == [], \
+        "two distinct defects 10 lines apart stay two findings"
+    normalized = run("normalize", str(review_dir / "candidates.json"), "--hunks", str(review_dir / "hunks.json"),
+                     "--output", str(review_dir / "consolidation.json"))
+    assert normalized.returncode == 0, normalized.stderr
+
+
+def test_consolidation_renders_a_report_persist_accepts(tmp: Path) -> None:
+    rows = [candidate("Missing null guard", 3, "blocking", "adversarial"),
+            candidate("Guard absent on empty row", 3, "attention", "adversarial")]
+    review_dir, done = consolidate_raw(tmp / "review", rows)
+    assert done.returncode == 0, done.stderr
+    consolidation = review_dir / "consolidation.json"
+    assert run("normalize", str(review_dir / "candidates.json"), "--output", str(consolidation)).returncode == 0
+    rendered = run("consolidate", "--review-dir", str(review_dir), "--render", "--mode", "changes")
+    assert rendered.returncode == 0, rendered.stderr
+    text = (review_dir / "report.md").read_text()
+    assert "merged 1 duplicates" in text and "originals:" in text and "Guard absent on empty row" in text, text
+    assert text.count("\n1. [blocking") == 1 and "\n2. " not in text, text
+    out_dir = tmp / "task" / "review" / "20261126000000"
+    out_dir.mkdir(parents=True)
+    (out_dir / "adversarial.in.md").write_text("package")
+    assert save_out(out_dir, "adversarial", "- [blocking] Missing null guard\nAnchor: a.ts:3\n").returncode == 0
+    persisted = run("persist", "--review-dir", str(out_dir), "--report", str(review_dir / "report.md"),
+                    "--mode", "changes", "--findings", str(consolidation), "--personas", "adversarial",
+                    "--files", "a.ts")
+    assert persisted.returncode == 0, persisted.stderr
+    assert "Verdict: BLOCK" in (out_dir / "REVIEW.md").read_text()
+
+
+def test_two_groups_with_one_title_keep_their_own_originals(tmp: Path) -> None:
+    rows = [candidate("Same title", 3, "blocking"), candidate("Duplicate of the first group", 3, "attention"),
+            candidate("Same title", 25, "attention"), candidate("Duplicate of the second group", 25, "nit")]
+    review_dir, done = consolidate_raw(tmp / "review", rows)
+    assert done.returncode == 0, done.stderr
+    assert len(json.loads((review_dir / "candidates.json").read_text())["groups"]) == 2
+    assert run("normalize", str(review_dir / "candidates.json"), "--output", str(review_dir / "consolidation.json")).returncode == 0
+    assert run("consolidate", "--review-dir", str(review_dir), "--render", "--mode", "changes").returncode == 0
+    text = (review_dir / "report.md").read_text()
+    first, second = text.split("\n2. ")
+    assert "Duplicate of the first group" in first and "Duplicate of the second group" not in first, text
+    assert "Duplicate of the second group" in second and "Duplicate of the first group" not in second, text
+
+
+def test_different_kinds_at_one_line_stay_separate_findings(tmp: Path) -> None:
+    rows = [candidate("Wrong result", 3, "attention"), candidate("Unescaped input", 3, "attention", kind="security"),
+            candidate("Also wrong", 3, "nit")]
+    review_dir, done = consolidate_raw(tmp / "review", rows)
+    assert done.returncode == 0, done.stderr
+    draft = json.loads((review_dir / "candidates.json").read_text())
+    kinds = {f["title"]: f.get("disposition") for f in draft["findings"]}
+    assert kinds["Unescaped input"] == "patch" and "group" not in draft["findings"][1], draft
+    assert kinds["Also wrong"] == "merged" and len(draft["groups"]) == 1, draft["groups"]
+
+
+def test_a_deferred_finding_never_absorbs_an_emitted_one(tmp: Path) -> None:
+    """Only patch and decide findings group; a defer or dropped member keeps its own disposition."""
+    rows = [candidate("Pre-existing crash", 3, "blocking", disposition="defer"),
+            candidate("New guard missing", 3, "attention"),
+            candidate("Dropped duplicate", 3, "attention", disposition="dropped")]
+    review_dir, done = consolidate_raw(tmp / "review", rows)
+    assert done.returncode == 0, done.stderr
+    draft = json.loads((review_dir / "candidates.json").read_text())
+    kinds = {f["title"]: f.get("disposition") for f in draft["findings"]}
+    assert kinds == {"Pre-existing crash": "defer", "New guard missing": "patch", "Dropped duplicate": "dropped"}, kinds
+    assert draft["groups"] == [] and all("group" not in f for f in draft["findings"]), draft
+    rows = [candidate("Decide this", 3, "blocking", disposition="decide", line_end=5), candidate("Patch this", 4, "attention"),
+            candidate("Deferred", 4, "blocking", disposition="defer")]
+    review_dir, done = consolidate_raw(tmp / "mixed", rows)
+    draft = json.loads((review_dir / "candidates.json").read_text())
+    kinds = {f["title"]: f.get("disposition") for f in draft["findings"]}
+    assert kinds == {"Decide this": "decide", "Patch this": "merged", "Deferred": "defer"}, kinds
+    assert draft["groups"][0]["members"] == ["Decide this", "Patch this"], draft["groups"]
+
+
+def test_a_hand_set_anchor_marker_is_not_trusted(tmp: Path) -> None:
+    source = tmp / "c.json"
+    doc = {**candidate("Stale doc", 1, "attention"), "file": "README.md", "evidence": "README.md:1", "anchor": "non-hunk"}
+    source.write_text(json.dumps([doc]))
+    done = run("normalize", str(source), "--files", "a.ts")
+    assert done.returncode == 2, "an incoming anchor marker must not skip the evidence-in-set rule: " + done.stdout
+
+
+def anchored_repo(tmp: Path) -> Path:
+    repo = tmp / "repo"
+    repo.mkdir()
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_GLOBAL": "/dev/null", "PATH": os.environ["PATH"]}
+    (repo / "a.ts").write_text("x\n")
+    (repo / "README.md").write_text("docs\n")
+    for command in (["init", "-q"], ["add", "a.ts", "README.md"], ["commit", "-q", "-m", "x"]):
+        subprocess.run(["git", "-C", str(repo), *command], check=True, env=env, capture_output=True)
+    (repo / "scratch.md").write_text("untracked\n")
+    return repo
+
+
+def test_an_anchor_outside_the_diff_must_be_tracked_and_blocking_needs_a_read_line(tmp: Path) -> None:
+    repo = anchored_repo(tmp)
+    source = tmp / "c.json"
+
+    def normalize_with(finding: dict) -> subprocess.CompletedProcess:
+        source.write_text(json.dumps([finding]))
+        return run("normalize", str(source), "--files", "a.ts", "--repo", str(repo), "--head", "HEAD")
+
+    doc = {**candidate("Stale doc", 1, "attention"), "file": "README.md", "evidence": "README.md:1"}
+    ok = normalize_with(doc)
+    assert ok.returncode == 0, ok.stderr
+    assert json.loads(ok.stdout)["findings"][0]["anchor"] == "non-hunk", "marked, and no hunk id demanded"
+    untracked = normalize_with({**doc, "file": "scratch.md", "evidence": "scratch.md:1"})
+    assert untracked.returncode == 2 and "not a tracked file" in untracked.stderr, untracked.stderr
+    unread = normalize_with({**doc, "label": "blocking"})
+    assert unread.returncode == 2 and "line_read" in unread.stderr, unread.stderr
+    assert normalize_with({**doc, "label": "blocking", "line_read": True}).returncode == 0
+    source.write_text(json.dumps([doc]))
+    assert run("normalize", str(source), "--files", "a.ts").returncode == 2, "without --repo the old rule stands"
 
 
 def main() -> int:

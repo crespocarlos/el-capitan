@@ -2,7 +2,9 @@
 """List crew task state without failing on malformed task metadata.
 
 Modes: the table (default), `--md` (Markdown, for pasting into chat), `--tsv` (slug, branch,
-status, verdict, age), `--json` (machine-readable array). `--all` includes done specs;
+status, verdict, age), `--json` (machine-readable array), `--watch [--interval N]` (the table
+redrawn every N seconds, default 3, until Ctrl-C; it only reads). `--all` includes done specs and shows
+`landed: yes | no | unknown` for each (a PR read, see `ls_landed.py`);
 `--limit` and `--max-chars` bound a long listing, and `--status-file SPEC.md` prints one spec's
 `## Status` value.
 
@@ -17,6 +19,7 @@ This file is the argparse entry point only: the record, the writes, and the reco
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 from pathlib import Path
 
@@ -28,8 +31,8 @@ for _path in (_TASK_DIR.parent, _TASK_DIR):
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 from task_gates import mark_approved, mark_done, mark_implementing  # noqa: E402
 from task_normalize import normalize_all  # noqa: E402
+from ls_data import DEFAULT_INTERVAL, LandedCache, load_rows, watch  # noqa: E402
 from task_report import (  # noqa: E402
-    load_rows,
     print_listing,
     print_status_file,
     reconcile,
@@ -48,6 +51,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true",
                         help="machine-readable JSON array on stdout, diagnostics on stderr")
     parser.add_argument("--all", action="store_true", help="list done specs too")
+    parser.add_argument("--cost", action="store_true",
+                        help="print each task's recorded stage cost lines")
+    parser.add_argument("--watch", action="store_true", help="redraw the table until Ctrl-C")
+    parser.add_argument("--interval", type=float, default=None, metavar="N", help="seconds between redraws (3)")
     parser.add_argument("--limit", type=int, default=None, help="show at most N tasks")
     parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
                         help="truncate output past N chars with a marker")
@@ -91,12 +98,24 @@ def main() -> int:
         parser.error("--limit must be at least 1")
     if args.max_chars < 1:
         parser.error("--max-chars must be at least 1")
+    if args.cost:
+        from task_cost import print_cost
+
+        return print_cost(args.tasks_dir)
     if args.normalize_status:
         if not args.tasks_dir.is_dir():
             print(f"error: no tasks directory: {args.tasks_dir}", file=sys.stderr)
             return 2
         return 0 if normalize_all(args.tasks_dir, args.apply) >= 0 else 1
+    if args.interval is not None and not args.watch:
+        parser.error("--interval requires --watch")
+    if args.watch and (args.json or args.tsv or args.reconcile or (args.interval is not None and args.interval <= 0)):
+        parser.error("--watch redraws the table: no --json, --tsv or --reconcile, and --interval must be positive")
     try:
+        if args.watch:
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+            cache = LandedCache()  # `--watch --all` reads each DONE task's PR at most once a minute
+            return watch(lambda: print_listing(load_rows(args.tasks_dir), args, cache.lines), args.interval or DEFAULT_INTERVAL)
         rows = load_rows(args.tasks_dir)
         if not args.reconcile:
             print_listing(rows, args)

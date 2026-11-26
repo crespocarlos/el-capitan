@@ -51,6 +51,9 @@ def add_normalize_parsers(commands) -> None:
                                   help="hunks.json; emitted findings must cite real hunk ids")
     normalize_parser.add_argument("--files", nargs="*", default=[],
                                   help="reviewed paths; evidence must point inside this set")
+    normalize_parser.add_argument("--repo", type=Path, default=None,
+                                  help="with --files: a tracked file at --head outside the set is a non-hunk anchor")
+    normalize_parser.add_argument("--head", default="", help="the reviewed commit for --repo (default HEAD)")
     persist_parser = commands.add_parser("persist")
     persist_parser.add_argument("--review-dir", required=True, type=Path)
     persist_parser.add_argument("--report", required=True, type=Path)

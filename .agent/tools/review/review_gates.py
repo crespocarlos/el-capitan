@@ -131,7 +131,7 @@ def check_strict(findings: list[Finding], files: list[str] | None = None) -> Non
     check_findings(emitted)
     for f in emitted:
         evidence = None if f.evidence is ABSENT else f.evidence
-        if files and evidence:
+        if files and evidence and f.extra.get("anchor") != "non-hunk":
             # Shape is not enough: evidence must point at something under review, or a
             # finding about an untouched file is reported as verified. A finding with no
             # evidence is allowed here — `blocking`/`attention` were already required to have

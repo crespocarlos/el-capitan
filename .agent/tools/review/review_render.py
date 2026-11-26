@@ -15,6 +15,7 @@ findings every reader already agrees on.
 from __future__ import annotations
 
 from lib.next_steps import next_sentence
+from review_degraded import capped
 from review_models import ABSENT, Finding
 from review_vocabulary import verdict
 
@@ -26,12 +27,13 @@ STAGE_BY_MODE = {"self": "review", "changes": "review", "pr": "review.pr",
                  "spec": "review.spec", "idea": "review.idea"}
 
 
-def stage_key(mode: str, findings: list[Finding]) -> str:
-    """The `next-steps.json` key for this mode and its derived verdict."""
+def stage_key(mode: str, findings: list[Finding], degraded: bool = False) -> str:
+    """The `next-steps.json` key for this mode and its derived verdict (capped when degraded)."""
     stage = STAGE_BY_MODE.get(mode)
     if stage is None:
         raise ValueError(f"no next-step stage for mode {mode!r}: {', '.join(sorted(STAGE_BY_MODE))}")
-    return f"build.{stage}.{verdict(findings).lower()}" if stage == "review" else f"build.{stage}"
+    word = capped(verdict(findings), degraded).lower()
+    return f"build.{stage}.{word}" if stage == "review" else f"build.{stage}"
 
 
 def score_suffix(finding: Finding) -> str:
@@ -49,7 +51,7 @@ def label_with_score(finding: Finding) -> str:
 
 
 def footer(findings: list[Finding], head: str, mode: str, next_step: str = "",
-          derived: bool = True) -> str:
+          derived: bool = True, degraded: bool = False) -> str:
     """The decision block `persist` appends last: verdict, next step, and the reviewed commit.
 
     Written from the findings rather than copied from the report, because the report's verdict is a
@@ -67,10 +69,10 @@ def footer(findings: list[Finding], head: str, mode: str, next_step: str = "",
     `next_step` to override it, which is what `persist --next` does. A skill's own trailer is written
     prose that `lint_handoff` holds to the router; it does not read this table.
     """
-    step = next_step or next_sentence(stage_key(mode, findings))
+    step = next_step or next_sentence(stage_key(mode, findings, degraded))
     lines = [f"> Next: {step}"]
     if derived:
-        lines.insert(0, f"Verdict: {verdict(findings)}")
+        lines.insert(0, f"Verdict: {capped(verdict(findings), degraded)}")
     if head:
         lines.append(f"Reviewed at: {head}")
     return "\n".join(lines)

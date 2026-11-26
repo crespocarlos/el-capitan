@@ -40,8 +40,8 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-next.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_review.py`, `task_normalize.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
-| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_vocabulary.py`, `review_models.py`, `review_probe.py`, `review_gates.py`, `review_layers.py`, `review_map.py`, `review_personas.py`, `review_classify.py`, `review_coverage.py`, `review_report.py`, `review_report_sections.py`, `review_manifest.py`, `review_prior.py`, `review_persist_gates.py`, `review_parse.py`, `review_limits.py`, `assemble_config.py`, `assemble_common.py`, `assemble_prior.py`, `assemble_map.py`, `assemble_files.py`, `assemble_personas.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-next.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task-context.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_review.py`, `task_normalize.py`, `task_resolve.py`, `task_report.py`, `task_gates.py`, `task_typed_tests.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_create.py`, `task_worktree_cli.py`, `task_worktree_prune.py`, `ls_landed.py`, `task_lock.py`, `task_cost.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_sources.py`, `task_verify_safety.py`, `task_verify_yaml.py`, `task_verify_wait.py`, `task_verify_notes.py`, `task_report_check.py`, `ls_bases.py`, `ls_data.py`, `task_worktree_pref.py`, `task_worktree_check.py`, `task_node_pin.py`, `task_gate_prose.py`, `task_verify_resolve.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
+| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_findings.py`, `review_vocabulary.py`, `review_models.py`, `review_probe.py`, `review_gates.py`, `review_layers.py`, `review_map.py`, `review_personas.py`, `review_classify.py`, `review_coverage.py`, `review_report.py`, `review_report_sections.py`, `review_manifest.py`, `review_prior.py`, `review_persist_gates.py`, `review_parse.py`, `review_limits.py`, `assemble_config.py`, `assemble_common.py`, `assemble_prior.py`, `assemble_map.py`, `assemble_files.py`, `assemble_personas.py`, `assemble_build.py`, `assemble_run.py`, `assemble_applicability.py`, `assemble_slice.py`, `review_save_out.py`, `review_provenance.py`, `review_degraded.py`, `review_consolidate.py`, `review_consolidation_report.py`, `review_anchors.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py` | `memory_store.py`, `memory_paths.py`, `memory_scalars.py`, `memory_frontmatter.py`, `memory_index.py`, `memory_commit.py`, `memory_add.py`, `memory_units.py`, `memory_cite.py`, `memory_search.py`, `memory_context.py`, `memory_journal.py`, `memory_journal_add.py`, `memory_recall.py`, `memory_inbox.py`, `memory_ingest.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
@@ -290,6 +290,45 @@ module.
   the git index, not the working tree, and `mode_kind: "pr"` refuses both because a PR review may not
   read the local checkout at all. The persona list is derived from `crew-review-findings.py`, and a persona
   with no `PRIMARY_KINDS` entry stops the run instead of shipping without a package.
+- **Assembly decisions.** `crew-assemble-packages.py` skips a persona that cannot apply (today Prompt
+  Quality, when no changed path is a prompt, agent, skill, rule or a prompt embedded in code such as
+  `**/prompts/*.md`, and no `prompt_files` were named) and records the skip, with its reason, in
+  `manifest.json` under `personas` (merged, so `prior-review` keeps writing the keys it reads); it also
+  prints a per-persona size report. `"slice": true` in `assemble.json` (needs `layers.json`) narrows only
+  product-flow and code-quality to their primary layers plus a caller and callee closure, and refuses to
+  slice when a hunk would reach no package; adversarial and architecture always get the whole diff.
+  `--expand` is not built: the size report is the evidence for whether it would pay.
+- **Evidence trail.** `crew-review-findings.py save-out` stores a persona's raw reply from stdin and a
+  `<persona>.provenance.json` (`harness`, `agent_id|null`, `model|null`, `time`, `sha256`); `persist`
+  verifies the hash when the record exists and passes a review directory without one with
+  `provenance: absent (legacy)` (tamper evidence applies to new reviews only). Fewer agents than lenses
+  is a `Degraded: 1 agent, N lenses` review capped at `WARN`. `consolidate --review-dir D` only GROUPS
+  candidates (`raw-candidates.json`; identical file and overlapping `line`..`line_end`, never title
+  similarity) into a draft `candidates.json` that `normalize` reads unchanged: every original keeps its
+  label, the representative carries `group_severity`, the others get `disposition: merged`, and hunk ids
+  are resolved from file:line. `consolidate --render` writes `report.md` from `consolidation.json`.
+  `normalize --files ... --repo R --head H` accepts a tracked file at `H` outside the diff as a
+  `non-hunk` anchor (untracked is rejected; `[blocking]` needs `line_read: true`).
+- **Gates and cost.** `crew-progress.py verify` runs the repository's gates as its CI runs them, reading
+  them from the BASE branch: CI workflow `run:` steps are the source whenever the repo has CI, the
+  `AGENTS.md` `gates` block is the fallback for a repo with none, the repo's optional `gates.json` (in its `.agent` directory) may add gates and
+  never changes a CI one (a clash prints a warning naming the gate and both commands) and stands alone
+  only when it is the only source. It pins Node from the first of `.nvmrc`, `.node-version`,
+  `.tool-versions`, `package.json` `engines.node` (none: "no Node pin found, using PATH"), names CI it
+  cannot read ("CI not readable here (buildkite)") and falls through, and with no runnable gate prints
+  the nearest `AGENTS.md`'s prose checks as "repo-declared check, run this: ..." (never run) plus
+  "NOT VERIFIED" (exit 3, or 2 with `--strict`). It writes `gates.json` (`schema_version: 1`) and caches passes by
+  (tree hash, command, env, Node version). `crew-progress.py worktree pref|record` resolves where the
+  worker runs (here by default) and records the one-time answer. `crew ls --watch [--interval N]`
+  redraws the table (data from `ls_data.py`). The `AGENTS.md` settings (`gates`, `landing_bases`,
+  `worktree`, `e2e`) are documented in `.agent/tools/AGENTS.md`. `crew-progress.py lock write|remove` owns
+  `.crew-worker.lock` and `blocked` writes the `BLOCKED:` line `crew ls` shows. `crew-metric.py` accepts
+  `stage_start stage=<implement|review>` and `stage_end stage=... tokens_reported=<n|unknown>` (tokens
+  only as the harness reported them), prints the cost line, and `crew ls --cost` lists them; `crew ls
+  --all` shows `landed: yes|no|unknown` for done tasks.
+- **Review yield** is defined over accepted `[blocking]` and `[attention]` findings only: the findings
+  a review stood behind (disposition `patch` or `decide`) divided by its persona runs, never counting
+  `[nit]`, `[concern]`, `[needs more info]`, deferred or dropped findings.
 - `crew-nightshift-e2e.py` is the only nightshift-coupled tool: it drives the local nightshift-pr-helper
   server over HTTP for e2e runs and cannot be generalized. `doctor` is read-only and never calls
   `/api/state`, which advances the queue and can start a run. It never uses the queue or
@@ -383,6 +422,7 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 | `guard/local-pr-ref.sh` | Bash | `gh pr checkout` and `pull/<n>` reads |
 | `guard/source-edit.sh` | Bash | Python snippets that rewrite a tracked file |
 | `guard/zsh-equals.sh` | Bash | a bare unquoted `=word`, which zsh reads as a command path |
+| `guard/worker-tree.sh` | Bash | `git checkout`, `switch`, `restore`, `reset --hard` in a tree with a fresh `.crew-worker.lock` (advisory defence behind the always-on worktree; stale after 6 hours) |
 | `guard/credentials.sh` | Bash | credential-like commits, `gh pr create` with an implied target |
 | `check-write-boundary.sh` | Write, Edit | writes outside the active worktree |
 | `check-task-spec-owner.sh` | Write, Edit | a `SPEC.md` written into another task's directory |

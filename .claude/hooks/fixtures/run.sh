@@ -34,7 +34,7 @@ test "$rc" -eq 2
 # `{}` has declined — the credential rule's empty decision under Cursor's `failClosed` — so only an
 # explicit `permission: deny` counts.
 guard_dir="$root/.claude/hooks/guard"
-GUARDS="destructive-git local-pr-ref source-edit zsh-equals credentials"
+GUARDS="destructive-git local-pr-ref source-edit zsh-equals credentials worker-tree"
 guard() { # <command> [cwd] [home]
   local c=$1 d=${2:-$PWD} h=${3:-$HOME} rule out verdict=allow json
   json=$(jq -n --arg c "$c" --arg d "$d" '{hook_event_name:"beforeShellExecution",command:$c,cwd:$d}')
@@ -77,6 +77,40 @@ test "$(guard 'git -C "$REPO" status')" = allow
 test "$(guard 'gh pr view 1 --jq "$.headRefOid"')" = allow
 # A quoted message is data, not a command.
 test "$(guard 'git commit -m "please do not git reset --hard here"')" = allow
+# A fresh worker lock denies a tree change in that tree (cwd, `git -C`, leading `cd`); a stale lock
+# (older than 6 hours) and a tree without a lock allow it.
+wt_fresh="$home/wt-fresh"; wt_stale="$home/wt-stale"; wt_none="$home/wt-none"
+for wt in "$wt_fresh" "$wt_stale" "$wt_none"; do git init -q "$wt"; done
+printf 'task=T-1\nstarted=%s\n' "$(( $(date +%s) - 60 ))" > "$wt_fresh/.crew-worker.lock"
+printf 'task=T-1\nstarted=%s\n' "$(( $(date +%s) - 25200 ))" > "$wt_stale/.crew-worker.lock"
+test "$(guard 'git checkout main' "$wt_fresh")" = deny
+test "$(guard 'git switch -c x' "$wt_fresh")" = deny
+test "$(guard 'git restore a.txt' "$wt_fresh")" = deny
+test "$(guard 'git reset --hard' "$wt_fresh")" = deny
+test "$(guard "git -C $wt_fresh checkout main" "$wt_none")" = deny
+test "$(guard "cd $wt_fresh && git switch main" "$wt_none")" = deny
+test "$(guard 'git status' "$wt_fresh")" = allow
+test "$(guard 'git commit -m "git checkout main"' "$wt_fresh")" = allow
+# The denial gives the lock's age and sends removal to the user: no task id, no removal command,
+# because the denied agent cannot tell a live worker from a crashed one.
+printf '%s' "{\"hook_event_name\":\"beforeShellExecution\",\"command\":\"git checkout main\",\"cwd\":\"$wt_fresh\"}" \
+  | bash "$guard_dir/worker-tree.sh" | jq -e '.user_message | (contains("ask the user before removing the lock")
+      and contains("1 min old") and (contains("T-1") | not) and (contains("lock remove") | not))' >/dev/null
+test "$(guard 'git checkout main' "$wt_stale")" = allow
+test "$(guard 'git checkout main' "$wt_none")" = allow
+test "$(guard "git -C $wt_none checkout main" "$wt_fresh")" = allow
+test "$(guard "cd $wt_none && git switch main" "$wt_fresh")" = allow
+# The builder holding the lock is exempt: CREW_WORKER_TASK equal to the lock's task= allows it, as an
+# environment variable or as an inline prefix (a hook sees the command, not the builder's shell).
+# Another id, an empty value and an unset variable still deny.
+test "$(CREW_WORKER_TASK=T-1 guard 'git checkout main' "$wt_fresh")" = allow
+test "$(CREW_WORKER_TASK=T-2 guard 'git checkout main' "$wt_fresh")" = deny
+test "$(CREW_WORKER_TASK= guard 'git checkout main' "$wt_fresh")" = deny
+test "$(guard 'git checkout main' "$wt_fresh")" = deny
+test "$(guard 'CREW_WORKER_TASK=T-1 git checkout main' "$wt_fresh")" = allow
+test "$(guard 'export CREW_WORKER_TASK=T-1 && git switch main' "$wt_fresh")" = allow
+test "$(guard 'CREW_WORKER_TASK=T-2 git checkout main' "$wt_fresh")" = deny
+test "$(CREW_WORKER_TASK=T-1 guard "git -C $wt_fresh checkout main" "$wt_none")" = allow
 large_command="git reset --hard; # $(head -c 70000 < /dev/zero | tr '\0' x)"
 test "$(guard "$large_command")" = deny
 printf '%s' '{"hook_event_name":"preToolUse","file_path":"/outside/file"}' \
@@ -451,7 +485,7 @@ python3 "$ls_tool" --mark-done "$tasks/reviewed-ancestor" --pr-url x --branch ma
 test "$(status_of reviewed-ancestor)" = DONE
 
 bad_tools="$home/bad-tools"; mkdir -p "$bad_tools"
-cp "$ls_tool" "$root"/.agent/tools/task/task_*.py "$root/.agent/tools/task/crew-progress.py" "$bad_tools/"
+cp "$ls_tool" "$root"/.agent/tools/task/task_*.py "$root"/.agent/tools/task/ls_*.py "$root/.agent/tools/task/crew-progress.py" "$bad_tools/"
 # crew-ls.py imports `lib.output` from the tools root, so the fixture carries that package too.
 cp -R "$root/.agent/tools/lib" "$home/lib"
 printf '{bad' > "$bad_tools/transitions.json"

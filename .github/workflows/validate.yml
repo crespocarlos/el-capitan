@@ -96,6 +96,27 @@ jobs:
       - name: Review cost metric (review_cost_metric)
         run: python3 evals/tools/test_review_cost_metric.py
 
+      - name: Stage gates in skills (open-pr base, routing, e2e, cost line)
+        run: python3 evals/tools/test_open_pr_gate.py
+
+      - name: Landed state in crew ls
+        run: python3 evals/tools/test_landed.py
+
+      - name: Gate verify with CI parity
+        run: python3 evals/tools/test_task_verify.py
+
+      - name: Gate sources outside this repo (Node pin, unreadable CI, prose checks)
+        run: python3 evals/tools/test_task_gate_sources.py
+
+      - name: crew ls --watch
+        run: python3 evals/tools/test_ls_watch.py
+
+      - name: Builder report checks (verbatim gates, unverified claims)
+        run: python3 evals/tools/test_builder_report.py
+
+      - name: Implement worktree rule
+        run: python3 evals/tools/test_implement_worktree.py
+
       - name: Nightshift e2e client tests
         run: python3 evals/tools/test_nightshift_e2e.py
 

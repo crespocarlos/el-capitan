@@ -227,11 +227,114 @@ def test_elided_lines_carry_their_file_line_numbers(tmp: Path) -> None:
     assert "… (lines 2-5 are in the diff above)" in tier
 
 
+def test_the_builders_unverified_claims_reach_every_persona(tmp: Path) -> None:
+    report = tmp / "REPORT.md"
+    report.write_text("### Unverified claims\n- cursor runs the hook — verify: `bash run.sh`\n\n### Files Changed\na\n")
+    run = build(tmp / "new", {"report": str(report)})
+    for persona in ("adversarial", "architecture", "code-quality", "product-flow", "prompt-quality"):
+        text = read(run, persona)
+        assert "## Builder's unverified claims" in text and "cursor runs the hook — verify: `bash run.sh`" in text, persona
+
+
+def test_a_report_without_the_section_changes_nothing(tmp: Path) -> None:
+    old = tmp / "REPORT.md"
+    old.write_text("## Implementation Report\n\n### Quality gates\n- `npm test` — pass\n")
+    plain = read(build(tmp / "plain"), "adversarial")
+    for config in ({"report": str(old)}, {"report": str(tmp / "missing.md")}):
+        text = read(build(tmp / f"with{len(str(config))}", config), "adversarial")
+        assert "unverified claims" not in text and text.count("# Diff") == plain.count("# Diff")
+
+
 def test_missing_inputs_are_reported(tmp: Path) -> None:
     run = tmp / "review" / "20260101000001"
     run.mkdir(parents=True)
     result = subprocess.run([sys.executable, str(TOOL), str(run)], capture_output=True, text=True)
     assert result.returncode == 2 and "package.diff" in result.stderr
+
+
+def file_diff(path: str, body: str) -> str:
+    return (f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1,1 +1,2 @@\n context\n"
+            + "".join(f"+{line}\n" for line in body.splitlines()))
+
+
+def custom_run(tmp: Path, files: dict[str, str], layers: list[dict], config: dict | None = None):
+    """A review directory over several files; `layers` is `[(kind, [path, ...])]` shaped dicts."""
+    run = tmp / "review" / "20260101000002"
+    run.mkdir(parents=True)
+    (run / "package.diff").write_text("".join(file_diff(p, b) for p, b in files.items()))
+    hunks = [{"id": f"h{i}", "file": p} for i, p in enumerate(files, 1)]
+    ids = {p: f"h{i}" for i, p in enumerate(files, 1)}
+    (run / "hunks.index.md").write_text("# Hunk index\n\n" + "".join(f"- `{p}`: {ids[p]}\n" for p in files))
+    (run / "hunks.json").write_text(json.dumps({"files": [], "hunks": hunks}))
+    (run / "layers.json").write_text(json.dumps({"layers": [
+        {"kind": kind, "title": kind, "explainer": "e", "reviewFocus": "f", "hunks": [ids[p] for p in paths]}
+        for kind, paths in layers]}))
+    (run / "mem.md").write_text("none\n")
+    (run / "agent-context.json").write_text(json.dumps({"files": {}}))
+    (run / "assemble.json").write_text(json.dumps(config or {}))
+    done = subprocess.run([sys.executable, str(TOOL), str(run)], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    return run, done.stdout
+
+
+CODE_FILES = {"web/App.tsx": "const total = computeTotal(rows)", "core/engine.ts": "function computeTotal(rows) {}",
+              "core/other.ts": "const unrelated = 1", "docs/guide.md": "notes about nothing"}
+CODE_LAYERS = [("ui", ["web/App.tsx"]), ("core", ["core/engine.ts", "core/other.ts"]), ("docs", ["docs/guide.md"])]
+
+
+def test_a_persona_that_cannot_apply_is_skipped_as_a_recorded_decision(tmp: Path) -> None:
+    run, out = custom_run(tmp, CODE_FILES, CODE_LAYERS)
+    assert not (run / "prompt-quality.in.md").exists() and (run / "adversarial.in.md").exists()
+    assert "skipped: prompt-quality: no prompt" in out, out
+    manifest = json.loads((run / "manifest.json").read_text())["personas"]
+    assert manifest["schema_version"] == 1 and "prompt-quality" not in manifest["packaged"]
+    assert manifest["skipped"] == [{"persona": "prompt-quality",
+                                    "reason": "no prompt, agent, skill, rule or embedded prompt path in the diff"}]
+    assert "size: adversarial" in out, "the per-persona size report is printed"
+
+
+def test_a_prompt_embedded_in_code_keeps_prompt_quality(tmp: Path) -> None:
+    run, out = custom_run(tmp, {"src/prompts/system.md": "be careful", "src/a.ts": "const x = 1"},
+                          [("prompts", ["src/prompts/system.md"]), ("core", ["src/a.ts"])])
+    assert (run / "prompt-quality.in.md").exists() and "skipped:" not in out, out
+    run2, out2 = custom_run(tmp / "forced", {"src/a.ts": "const x = 1"}, [("core", ["src/a.ts"])],
+                            {"skip_personas": {"architecture": "no contract changed"}})
+    assert not (run2 / "architecture.in.md").exists() and "skipped: architecture: no contract changed" in out2
+
+
+def test_slicing_is_opt_in_and_keeps_every_hunk_reachable(tmp: Path) -> None:
+    def shown(run: Path, persona: str) -> str:
+        text = read(run, persona)
+        return text[text.index("# Diff"):text.index("\n```\n", text.index("```diff"))]
+
+    whole, _ = custom_run(tmp / "off", CODE_FILES, CODE_LAYERS)
+    assert "core/other.ts" in shown(whole, "product-flow"), "no slice unless asked"
+    run, out = custom_run(tmp / "on", CODE_FILES, CODE_LAYERS, {"slice": True})
+    flow = shown(run, "product-flow")
+    assert "web/App.tsx" in flow and "docs/guide.md" in flow, "its primary layers"
+    assert "core/engine.ts" in flow, "closure: App.tsx calls a symbol engine.ts defines, so it travels with it"
+    assert "core/other.ts" not in flow and "sliced to 3 of 4 files" in flow, flow[:400]
+    quality = shown(run, "code-quality")
+    assert "docs/guide.md" not in quality and "web/App.tsx" in quality, "its caller travels with core code"
+    for persona in ("adversarial", "architecture"):
+        assert all(path in shown(run, persona) for path in CODE_FILES), f"{persona} keeps the whole diff"
+    note = json.loads((run / "manifest.json").read_text())["personas"]["sliced"]["product-flow"]
+    assert note["files"] == 3 and note["of"] == 4 and note["closure"] == ["core/engine.ts"], note
+    assert "sliced 3 of 4 files" in out, out
+
+
+def test_the_coverage_gate_refuses_a_slice_that_would_lose_a_hunk(tmp: Path) -> None:
+    sys.path[:0] = [str(TOOL.parent), str(TOOL.parents[1])]
+    import assemble_slice  # noqa: E402 - the path must be set first
+
+    diff = "".join(file_diff(p, b) for p, b in CODE_FILES.items())
+    hunks = {"hunks": [{"id": f"h{i}", "file": p} for i, p in enumerate(CODE_FILES, 1)]}
+    layers = [{"kind": "ui", "hunks": ["h1"]}, {"kind": "core", "hunks": ["h2"]}]
+    sliced, note = assemble_slice.plan(layers, hunks, diff, ["product-flow", "code-quality"])
+    assert sliced == {} and "coverage gate" in note, (sliced, note)
+    with_full, _ = assemble_slice.plan(layers, hunks, diff, ["product-flow", "adversarial"])
+    assert list(with_full) == ["product-flow"], "a lens reading the whole diff covers the rest"
+    assert assemble_slice.plan([], hunks, diff, ["adversarial"])[0] == {}
 
 
 def main() -> int:

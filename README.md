@@ -37,7 +37,7 @@ feature list below.
 | `~/.agent/memory/`, `~/.agent/tasks/`, `~/.agent/journal/` | Your data: memory units, task state, telemetry. Created once, never overwritten |
 
 **It registers hooks that can block your commands**: a destructive-git guard, a secret-scanning commit
-guard, a write-boundary check, and a shell-expansion guard. They are described in
+guard, a write-boundary check, a shell-expansion guard, and a worker-tree guard. They are described in
 [Claude Code hooks](#claude-code-hooks), and each is one small file you can read first.
 
 **There is no uninstaller.** To reverse an install, remove the symlinks under `~/.cursor`, `~/.claude`,
@@ -273,7 +273,7 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 |---|---|
 | `crew spec <issue URL or #N>` | Draft a SPEC.md from a GitHub issue |
 | `crew spec <plain description>` | Draft a SPEC.md from a description |
-| `crew implement` | Select spec, create worktree, build |
+| `crew implement` | Select spec, branch off the default branch here (a worktree only on request or `worktree: true` in `AGENTS.md`), build |
 | `crew review` | Multi-lens review of your changes |
 | `crew review address` | Work through last review findings inline |
 | `crew commit` | Propose and apply a semantic commit message |
@@ -338,7 +338,7 @@ Drafts a `SPEC.md` from a GitHub issue or plain description. Sends the explorer 
 
 ### 🔨 crew-builder
 
-The implementation engine. Reads a SPEC.md, works through each task in order, runs per-task acceptance checks, and writes a REPORT.md. Launched by `crew implement`, which handles worktree setup, spec selection, and pattern auto-recall.
+The implementation engine. Reads a SPEC.md, works through each task in order, runs per-task acceptance checks, and writes a REPORT.md. Launched by `crew implement`, which handles branch (or opt-in worktree) setup, spec selection, and pattern auto-recall.
 
 - Runs as a subagent launched by `crew implement`
 - Per-task acceptance checks and a spec-compliance check run before marking each task done
@@ -466,7 +466,7 @@ install time:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| `PreToolUse` / Cursor `beforeShellExecution` | Bash | Four rules, one per file under `guard/`: `destructive-git.sh` (destructive git: `git reset --hard`, `git clean -f`, force pushes including `-f` and through `git -C`/`-c`, and the escaped form); `local-pr-ref.sh` (`gh pr checkout` and local `pull/<n>` reads); `source-edit.sh` (Python snippets that rewrite a tracked file); `zsh-equals.sh` (a bare unquoted `=word` that zsh expands as a command path and which aborts the rest of the line — `echo ====` and longer, while a quoted separator and a lone `=` pass). A fifth, `credentials.sh`, blocks commits whose staged lines match known secret formats and `gh pr create` without `--repo` when an `upstream` remote exists. |
+| `PreToolUse` / Cursor `beforeShellExecution` | Bash | Five rules, one per file under `guard/`: `destructive-git.sh` (destructive git: `git reset --hard`, `git clean -f`, force pushes including `-f` and through `git -C`/`-c`, and the escaped form); `local-pr-ref.sh` (`gh pr checkout` and local `pull/<n>` reads); `source-edit.sh` (Python snippets that rewrite a tracked file); `zsh-equals.sh` (a bare unquoted `=word` that zsh expands as a command path and which aborts the rest of the line — `echo ====` and longer, while a quoted separator and a lone `=` pass); `worker-tree.sh` (`git checkout`, `switch`, `restore` and `reset --hard` in a tree that holds a fresh `.crew-worker.lock`, resolved from the cwd, `git -C <path>` or a leading `cd <path> &&`; advisory defence for the tree a worker holds, main checkout included; the builder is exempt through `CREW_WORKER_TASK`). A sixth, `credentials.sh`, blocks commits whose staged lines match known secret formats and `gh pr create` without `--repo` when an `upstream` remote exists. |
 | `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-write-boundary.sh` blocks writes outside the active worktree. |
 | `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-task-spec-owner.sh` blocks a `SPEC.md` whose slug does not match the task directory's recorded slug. |
 | `UserPromptSubmit` | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |

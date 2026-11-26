@@ -52,8 +52,8 @@ for scratch artifacts and task-directory writes only.
 
 ## Self-application
 
-The pipeline improves itself: `crew spec "add X to the pipeline"`, then `crew implement` (worktree at
-`~/worktrees/el-capitan-<branch>/`), `crew test`, `crew commit`.
+The pipeline improves itself: `crew spec "add X to the pipeline"`, then `crew implement` (optional worktree;
+default: a branch off main), `crew test`, `crew commit`.
 
 ## Persistent memory
 

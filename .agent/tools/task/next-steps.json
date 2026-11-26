@@ -59,7 +59,7 @@
     },
     "build.open-pr.opened": {
       "command": "crew resolve PR",
-      "why": "the draft PR is open and review comments arrive there"
+      "why": "the draft PR is open and review comments arrive there; a PR merged into a base other than the default branch is merged but not landed there, and `crew ls --all` shows it as `landed: no`"
     },
     "respond.address-pr.applied": {
       "command": "crew commit",

@@ -2,6 +2,7 @@
 
 ## Type: [feature | bugfix | refactor | chore | docs]
 ## Branch: [type/short-description — e.g. feat/sigevents-verdict-rename]
+## Base: [optional: the parent branch this stacks on, read by `crew open pr`; omit otherwise]
 ## Status
 DRAFTING
 
@@ -29,6 +30,7 @@ Out of scope: [adjacent work a reader might expect — one-phrase reason each]
 - **Command**: `[command]`
 ### E2E
 - **Command**: `[command]`
+- A frontend feature gets one golden-path e2e from the first group, so `crew review` can run it.
 ### Validation
 - **Command**: `[lint, type-check, or other quality gate]`
 

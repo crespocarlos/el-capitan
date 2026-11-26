@@ -59,9 +59,19 @@ BASE=$(~/.agent/bin/crew-repo-info.py --network --remote "$([ -n "$UPSTREAM_REPO
 TARGET_REPO="${UPSTREAM_REPO:-$ORIGIN_REPO}"
 ```
 
-Ask: "Does this branch stack on another branch? If so, name it." If it does, set `BASE` to that
-branch. With an `upstream` remote, that base must exist there, so check; if it does not, the PR
-cannot target upstream. Say so, and switch to `origin` only after the user confirms:
+**Stack gate.** `BASE` is the default branch (the value resolved above)
+unless SPEC.md `## Base:` names a parent branch; do not ask whether the branch stacks. A base that fully matches (whole branch name) a `landing_bases` pattern from the repo's
+`AGENTS.md` (release branches such as `9.x`; format in `.agent/tools/AGENTS.md`) is a normal base:
+no stack message, no question, and say "Base is X (landing base)" once. With no `landing_bases` the
+default branch only is normal. For any other base, print exactly this one line and ask once:
+
+> Base is X, not <default>. Merging this lands the change in X only. Merge order: #a -> #b -> <default>. Reply `stack` to open it or `<default>` to retarget.
+
+`stack` keeps the named base; `<default>` retargets to the default branch. List in the merge order
+only PRs that exist (look them up); with none, omit the clause. An autonomous run stops with that
+line at the top of the final message and opens nothing, after running
+`crew-progress.py blocked "$TASK_DIR" "<reason>"`. With an `upstream` remote, a non-default base must exist there, so check; if it
+does not, the PR cannot target upstream. Say so, and switch to `origin` only after the user confirms:
 
 ```bash
 if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/crew-repo-info.py --remote upstream --field default_branch)" ]; then
@@ -94,7 +104,15 @@ Enforce summary quality:
 ### Step 3: Approve, push, and create the PR
 
 `BASE` and `TARGET_REPO` come from Step 1. Show the title, description, `BASE`, and `TARGET_REPO`,
-and wait for approval before running the push. Do not push before approval.
+and wait for approval before running the push. Do not push before approval. A `BASE` that is
+neither the default branch nor a landing base passes the Step 1 stack gate first; never open the PR
+against it without that answer. When
+`$TASK_DIR/REPORT.md` exists, show the builder's unverified claims in the confirmation (the full list
+stays in REPORT.md):
+
+```bash
+~/.agent/bin/crew-progress.py report-check "$TASK_DIR/REPORT.md" --unverified 5
+```
 
 ```bash
 git push -u origin HEAD

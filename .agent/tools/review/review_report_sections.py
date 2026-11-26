@@ -19,8 +19,9 @@ from review_vocabulary import ASSESSMENT_ORDER
 ASSESSMENT_HEADING = "### Assessment of the change"
 COVERAGE_HEADING = "### Coverage by layer"
 FILES_HEADING = "### Files reviewed"
+PROVENANCE_HEADING = "### Provenance"
 # What `persist` appends. A report must not carry any of them, or it renders twice.
-GENERATED_SECTIONS = (ASSESSMENT_HEADING, COVERAGE_HEADING, FILES_HEADING)
+GENERATED_SECTIONS = (ASSESSMENT_HEADING, COVERAGE_HEADING, FILES_HEADING, PROVENANCE_HEADING)
 # A lens writes a sentence or three of reason. Past this the line is cut with its remainder reported,
 # so a reader skimming `REVIEW.md` gets every lens's judgement without paying for four long paragraphs.
 CLAUSE_DISPLAY_MAX = 600

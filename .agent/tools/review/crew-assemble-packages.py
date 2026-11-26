@@ -30,7 +30,16 @@ Per-run judgement stays in a config file, not in code: the review directory may 
 
     {"repo": "<repository root>", "mode": "<markdown block>", "size_gate": "<one-line summary>",
      "consumers": [[path, start, end, label], ...], "prompt_files": [path, ...],
-     "guidance_keep": {"<persona>": ["<level-2 heading prefix>", ...]}, "mode_kind": "pr"}
+     "guidance_keep": {"<persona>": ["<level-2 heading prefix>", ...]}, "mode_kind": "pr",
+     "report": "<the builder's REPORT.md; its Unverified claims go to every persona>",
+     "slice": true, "skip_personas": {"<persona>": "<why>"}, "selected": ["<persona>", ...]}
+
+A persona that cannot apply (today: Prompt Quality with no prompt, agent, skill, rule or embedded
+`**/prompts/*.md` path in the diff) is skipped, and the skip is recorded in `manifest.json` under
+`personas` and printed. A per-persona size report is printed after the packages. `"slice": true` (needs
+the layer map) narrows only product-flow and code-quality, with a caller/callee closure and a hunk
+coverage gate (`assemble_slice.py`); adversarial and architecture always get the whole diff. There is
+no `--expand`: the size report is how to decide whether it would pay.
 
 `--config` names a different file. Missing keys mean "no such section". The mode block falls back to
 the label vocabulary and return shape only, because a package with no mode leaves a persona without
@@ -54,6 +63,7 @@ for _path in (_TOOLS_ROOT, _REVIEW_DIR):
         sys.path.insert(0, str(_path))
 
 from assemble_build import assemble_all, build, write_packages  # noqa: E402,F401
+from assemble_run import assemble_run, write_run  # noqa: E402
 from assemble_common import HUNK_SENTENCE, common  # noqa: E402,F401
 from assemble_config import (  # noqa: E402,F401
     DEFAULT_MODE,
@@ -88,11 +98,11 @@ def main(argv: list[str] | None = None) -> int:
     hunks_path = review_dir / "hunks.json"
     hunks_json = read_json(hunks_path, "the hunk index") if hunks_path.is_file() else None
     try:
-        assembled = assemble_all(review_dir, config, hunks_json)
+        run = assemble_run(review_dir, config, hunks_json)
     except ValueError as error:
         print(f"assemble-packages: {error}", file=sys.stderr)
         return 2
-    write_packages(review_dir, assembled)
+    write_run(review_dir, *run)
     return 0
 
 

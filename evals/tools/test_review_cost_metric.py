@@ -134,6 +134,50 @@ def test_a_missing_metric_writer_does_not_fail_the_persistence(tmp: Path) -> Non
     assert "warning: cost metric not recorded" in stderr.getvalue(), stderr.getvalue()
 
 
+METRIC_CLI = ROOT / ".agent" / "tools" / "task" / "crew-metric.py"
+LS_CLI = ROOT / ".agent" / "tools" / "task" / "crew-ls.py"
+
+
+def metric(owner: Path, *words: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(METRIC_CLI), str(owner), *words], capture_output=True, text=True)
+
+
+def test_stage_keys_parse_and_stage_end_prints_the_cost_line(tmp: Path) -> None:
+    (tmp / "PROGRESS.md").write_text("# Progress\n", encoding="utf-8")
+    assert metric(tmp, "stage_start", "stage=implement").returncode == 0
+    done = metric(tmp, "stage_end", "stage=implement", "workers=3", "tokens_reported=410000")
+    assert done.returncode == 0 and done.stdout.strip() == "implement: 3 workers, 410k tokens", done
+    review = metric(tmp, "stage_end", "stage=review", "personas=4", "tokens_reported=unknown")
+    assert review.stdout.strip() == "review: 4 personas, tokens unknown", review.stdout
+    lines = (tmp / "PROGRESS.md").read_text(encoding="utf-8")
+    assert "METRIC: stage_start stage=implement" in lines and "tokens_reported=unknown" in lines, lines
+
+
+def test_stage_keys_refuse_a_guessed_or_missing_value(tmp: Path) -> None:
+    (tmp / "PROGRESS.md").write_text("# Progress\n", encoding="utf-8")
+    for words in (("stage_end", "stage=implement", "tokens_reported=lots"), ("stage_end", "stage=implement"),
+                  ("stage_start", "stage=deploy"), ("stage_end", "stage=review", "personas=x", "tokens_reported=1")):
+        refused = metric(tmp, *words)
+        assert refused.returncode == 1 and "log-metric:" in refused.stderr, (words, refused.stderr)
+    assert "stage_" not in (tmp / "PROGRESS.md").read_text(encoding="utf-8"), "a refused line is not written"
+    assert metric(tmp, "implement_start", "mode=inline").returncode == 0, "the free-form keys still work"
+
+
+def test_crew_ls_cost_reads_the_same_lines(tmp: Path) -> None:
+    owner = tmp / "tasks" / "abc"
+    owner.mkdir(parents=True)
+    (owner / "PROGRESS.md").write_text("# Progress\n", encoding="utf-8")
+    metric(owner, "stage_end", "stage=implement", "workers=2", "tokens_reported=100")
+    metric(owner, "stage_end", "stage=implement", "workers=3", "tokens_reported=410000")
+    metric(owner, "stage_end", "stage=review", "personas=4", "tokens_reported=380000")
+    (tmp / "tasks" / "empty").mkdir()
+    listed = subprocess.run([sys.executable, str(LS_CLI), "--tasks-dir", str(tmp / "tasks"), "--cost"],
+                            capture_output=True, text=True)
+    assert listed.returncode == 0, listed.stderr
+    assert listed.stdout.strip() == "abc: implement: 3 workers, 410k tokens; review: 4 personas, 380k tokens", \
+        listed.stdout
+
+
 def main() -> int:
     tests = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
     failed = 0

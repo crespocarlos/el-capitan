@@ -11,13 +11,15 @@ import sys
 from pathlib import Path
 
 from lib.output import json_payload, print_lines, rows_limit
+from ls_data import snapshot
+from ls_landed import landed_lines, landed_rows
+from task_lock import blocked_reason
 from task_state import (
     STATUS,
     StatusError,
     TaskState,
     decide,
     head,
-    load,
     load_rules,
     name,
     set_status,
@@ -87,13 +89,28 @@ def json_row(r: TaskState) -> dict:
     """One task as machine-readable state: the fields an agent branches on, no display text."""
     return {"slug": name(r), "directory": str(r.task), "status": r.status or "",
             "state": head(r) or "", "branch": r.branch_name(""), "verdict": r.verdict,
-            "age_days": r.age, "open": r.open, "done": r.done}
+            "age_days": r.age, "open": r.open, "done": r.done, "blocked": blocked_reason(r.task)}
 
 
-def print_listing(rows: list[TaskState], args) -> None:
-    """The listing in whichever shape the flags select, bounded by `--limit` and `--max-chars`."""
+def landed_section(landed: list[str]) -> list[str]:
+    """The `landed: yes | no | unknown` lines (gathered by `ls_data.snapshot`, only with `--all`)."""
+    if not landed:
+        return []
+    return ["", "landed (DONE means a PR was opened, not that it reached the default branch):", *landed]
+
+
+def print_listing(rows: list[TaskState], args, landed=None) -> None:
+    """The listing in whichever shape the flags select, bounded by `--limit` and `--max-chars`.
+
+    `landed` replaces the `landed:` line reader (a `--watch` loop passes its cache).
+    """
     if getattr(args, "json", False):
-        print(json_payload([json_row(r) for r in rows], args.limit, args.max_chars, what="tasks"))
+        records = [json_row(r) for r in rows]
+        if args.all:
+            kept = [(record, r) for record, r in list(zip(records, rows))[:args.limit] if head(r) == "DONE"]
+            for (record, _), found in zip(kept, landed_rows([r.task for _, r in kept])):
+                record.update(found)
+        print(json_payload(records, args.limit, args.max_chars, what="tasks"))
         return
     if args.tsv:
         printed, marker = rows_limit(rows, args.limit)
@@ -103,20 +120,9 @@ def print_listing(rows: list[TaskState], args) -> None:
             lines.append(marker)
         print_lines(lines, args.max_chars, what="task rows", flag="--limit")
         return
-    print_lines(table_lines(rows, args.all, args.md, args.limit), args.max_chars,
-                what="task table", flag="--max-chars")
-
-
-def load_rows(tasks_dir: Path) -> list[TaskState]:
-    rows = []
-    for task in sorted(tasks_dir.glob("*")):
-        if not (task / "SPEC.md").exists():
-            continue
-        try:
-            rows.append(load(task))
-        except (OSError, ValueError, AttributeError) as error:
-            print(f"warning: skipping {task.name}: {error}", file=sys.stderr)
-    return rows
+    data = snapshot(rows, args.all, landed or landed_lines, args.limit)
+    print_lines(table_lines(rows, args.all, args.md, args.limit) + data.blocked + landed_section(data.landed),
+                args.max_chars, what="task table", flag="--max-chars")
 
 
 def print_status_file(path: str) -> int:

@@ -7,6 +7,7 @@
       {"command": "bash \"$HOME/.claude/hooks/guard/local-pr-ref.sh\"", "failClosed": false},
       {"command": "bash \"$HOME/.claude/hooks/guard/source-edit.sh\"", "failClosed": false},
       {"command": "bash \"$HOME/.claude/hooks/guard/zsh-equals.sh\"", "failClosed": false},
+      {"command": "bash \"$HOME/.claude/hooks/guard/worker-tree.sh\"", "failClosed": false},
       {"command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"", "failClosed": true}
     ],
     "preToolUse": [

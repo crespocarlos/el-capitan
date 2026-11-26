@@ -82,52 +82,19 @@ Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no
 search unavailable), set `RECALLED_PATTERNS="none"` — do **not** leave it as an empty string.
 Passing an empty string causes crew-builder to re-run auto-recall redundantly.
 
-### Step 4: Branch setup
+### Step 4: Where the worker runs
 
-**If already on a feature branch** (not `main` or the default branch): set `WORK_DIR` to the current
-directory and proceed to Step 5.
+Run `~/.agent/bin/crew-progress.py worktree pref`; when it is `here`, run `worktree check` too. Follow [worker dispatch](references/worker-dispatch.md).
 
-**If on the default branch:** ask the user:
-
-> "Create a worktree for this implementation, or work directly on this branch? (worktree / here)"
-
-Read the branch name from SPEC.md:
-  ```bash
-  BRANCH_NAME=$(grep "^## Branch:" "$TASK_DIR/SPEC.md" | sed 's/^## Branch: *//')
-  ```
-If `## Branch:` is absent or empty, derive it from the SPEC.md type and goal (type-prefix/slug, ≤50
-chars), propose it, and confirm before proceeding.
-
-  - **worktree** — create a worktree for the branch:
-
-  ```bash
-  cd "$(~/.agent/bin/crew-worktree.py -b "$BRANCH_NAME" "origin/$(~/.agent/bin/crew-default-branch.sh)")"
-  ```
-
-After the worktree is created: **bootstrap dependencies.** Read the repo's `AGENTS.md` (or
-`CONTRIBUTING.md`) for a setup/bootstrap command and run it in the worktree. Set `WORK_DIR` to the
-worktree directory.
-
-- **here** — set `WORK_DIR` to the current directory. Ask:
-
-> "Create a new branch (`$BRANCH_NAME`), or commit directly to `<current-branch>`? (new-branch /
-> here)"
-
-  - **here** — create the branch, fetching it first:
-
-    ```bash
-    ~/.agent/bin/crew-worktree.py sync --branch "$BRANCH_NAME"
-    ```
-
-  - **here** — work in the current directory on the current branch as-is.
-
-The UUID task directory (`$TASK_DIR`) is stable — it does not move either way.
+Then **bootstrap dependencies**: read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup
+command and run it in `WORK_DIR`. The UUID task directory (`$TASK_DIR`) is stable and does not move.
 
 ### Step 5: Update progress
 
 ```bash
 ~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR" --branch "$(~/.agent/bin/crew-repo-info.py --root "$WORK_DIR" --field branch)"
 ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
+~/.agent/bin/crew-metric.py "$TASK_DIR" stage_start stage=implement 2>/dev/null || true
 ```
 
 `--root` reads `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
@@ -164,7 +131,10 @@ the synchronous turn limit. Pass these inputs:
   `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and
   shell commands must run. It is not a shell variable — pass the literal path.
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
-- The full contents of `SPEC.md` (so the worker has it without needing to re-read)
+- The task delta: the unchecked tasks (about 400 words, a guideline, not a gate) and the `SPEC.md`
+  path. The worker reads `~/.cursor/agents/crew-builder.md` itself, so never paste rules into the prompt.
+
+Lock, blocked line, cost line and message routing: [worker dispatch](references/worker-dispatch.md).
 
 **Batching for large specs:** when the spec has more than 8 unchecked tasks, split them into
 consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh
@@ -188,6 +158,8 @@ When the Implementation Report is available:
 
 **All tasks passed:**
 
+0. Re-run the gates as CI does (passes are cached): `~/.agent/bin/crew-progress.py verify --repo
+   <WORK_DIR> --task-dir "$TASK_DIR"`; act on its outcome per [verify outcomes](references/verify-outcomes.md).
 1. Run the completion metric:
 
    ```bash
@@ -214,7 +186,6 @@ When the Implementation Report is available:
 ## Rules
 
 - Never start the worker without a gate-checked, approved SPEC.md
-- Create a worktree before launching the worker, unless the user chose `here` in Step 4
 - The skill handles ALL user interaction — the worker is non-interactive
 - If the worker returns failures, always surface them to the user with options
 - **Stop after all tasks pass.** Never commit, push, or create a PR. Always output the handoff message (Step 7) before stopping.

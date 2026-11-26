@@ -197,9 +197,62 @@ def test_an_addendum_below_the_footer_keeps_the_commit(base: Path) -> None:
           review_module.reviewed_at(resolved) == "0123456789abcdef", resolved)
 
 
+def progress(*arguments: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(TASK_TOOLS / "crew-progress.py"), *arguments],
+                          capture_output=True, text=True)
+
+
+def listing(tasks: Path, *arguments: str) -> str:
+    done = subprocess.run([sys.executable, str(CLI), "--tasks-dir", str(tasks), *arguments],
+                          capture_output=True, text=True)
+    return done.stdout
+
+
+def blocked_event_shows_until_the_next_stage(base: Path) -> None:
+    """An autopilot stop writes one BLOCKED line that `crew ls` shows until the next stage starts."""
+    tasks = base / "blocked-tasks"
+    task = make_task(tasks)
+    written = progress("blocked", str(task), "stacked base: #51 is not main\nsecond line")
+    check("blocked event exits 0", written.returncode == 0, written.stderr)
+    lines = (task / "PROGRESS.md").read_text(encoding="utf-8").splitlines() if (task / "PROGRESS.md").is_file() else []
+    check("blocked event is one BLOCKED line", len(lines) == 1 and "BLOCKED: stacked base: #51 is not main second line" in lines[0], lines)
+    check("crew ls shows the reason", "BLOCKED: stacked base: #51 is not main" in listing(tasks))
+    rows = json.loads(listing(tasks, "--json") or "[]")
+    check("crew ls --json carries blocked", bool(rows) and rows[0].get("blocked", "").startswith("stacked base"), rows)
+    progress(str(task), "IMPLEMENTING → IMPLEMENTING")
+    check("the next stage clears it", "BLOCKED" not in listing(tasks))
+    cleared = json.loads(listing(tasks, "--json") or "[{}]")
+    check("a task never blocked has an empty field", cleared[0].get("blocked") == "", cleared)
+    check("blocked on a missing directory fails", progress("blocked", str(base / "none"), "x").returncode == 1)
+
+
+def blocked_survives_trailing_metric_lines(base: Path) -> None:
+    """The same instructions that write BLOCKED then append `METRIC: stage_end`; neither order hides the reason."""
+    tasks = base / "metric-tasks"
+    task = make_task(tasks)
+    progress("blocked", str(task), "waiting on a decision")
+
+    def append(directory: Path, text: str) -> None:
+        with (directory / "PROGRESS.md").open("a", encoding="utf-8") as handle:
+            handle.write(f"[2026-01-01 00:00:00] {text}\n")
+
+    append(task, "METRIC: stage_end stage=implement workers=1 tokens_reported=unknown")
+    append(task, "WORKTREE: current (asked once; recorded in x)")
+    check("BLOCKED then stage_end and WORKTREE lines still shows the reason", "BLOCKED: waiting on a decision" in listing(tasks), listing(tasks))
+    append(task, "METRIC: stage_start stage=implement")
+    check("a later stage_start clears it", "BLOCKED" not in listing(tasks), listing(tasks))
+    reverse_tasks = base / "metric-reverse"
+    reverse = make_task(reverse_tasks)
+    append(reverse, "METRIC: stage_end stage=implement workers=1 tokens_reported=unknown")
+    progress("blocked", str(reverse), "late block")
+    check("stage_end then BLOCKED shows the reason", "BLOCKED: late block" in listing(reverse_tasks), listing(reverse_tasks))
+
+
 def main() -> int:
     base = Path(tempfile.mkdtemp(prefix="crew-lifecycle-"))
     try:
+        blocked_event_shows_until_the_next_stage(base)
+        blocked_survives_trailing_metric_lines(base)
         temp_review_accepts(base)
         temp_review_refuses(base)
         missing_review_still_refuses(base)
