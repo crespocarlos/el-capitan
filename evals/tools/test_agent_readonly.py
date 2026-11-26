@@ -7,7 +7,7 @@ flag was copied by hand into each persona, and a new one could ship without it a
 because an absent key looks like every other absent key.
 
 The rule has two exemption sets, and both are the point of the test: a worker that writes by definition
-(`crew-builder`, `crew-pr-resolver`) and an orchestrator the router refuses to dispatch, where a
+(`crew-builder`, `reviewer-probe`) and an orchestrator the router refuses to dispatch, where a
 subagent-only field cannot apply. A blanket rule would flag both, and the temptation is to satisfy it by
 setting the flag on an agent that must write.
 """
@@ -97,7 +97,6 @@ def test_an_exempt_writer_writes_freely() -> None:
     with tempfile.TemporaryDirectory() as temporary:
         root = make_root(Path(temporary), {
             "crew-builder": "",
-            "crew-pr-resolver": "",
             "crew-reviewer": "",
             "crew-specwriter": "",
         })
@@ -105,6 +104,34 @@ def test_an_exempt_writer_writes_freely() -> None:
         hits = findings(result, "missing-readonly")
         check("no worker or orchestrator is flagged", not hits, result.stdout)
         check("exempt agents exit 0", result.returncode == 0, result.stdout + result.stderr)
+
+
+def test_the_resolver_analysis_must_declare_readonly() -> None:
+    """`crew-pr-resolver` is a read-only analysis subagent; the main session applies its plan."""
+    with tempfile.TemporaryDirectory() as temporary:
+        root = make_root(Path(temporary), {"crew-pr-resolver": "tools: Read\n"})
+        result = run(root)
+        check("a resolver without readonly is reported", len(findings(result, "missing-readonly")) == 1,
+              result.stdout + result.stderr)
+
+
+def test_an_inheriting_read_only_agent_must_deny_writes() -> None:
+    """No `tools:` line inherits every tool in Claude Code, so `readonly` alone leaves every writer: the
+    agent must deny exactly `READONLY_AGENT_DENY`, and leaving out any one entry is a finding."""
+    sys.path.insert(0, str(TOOL.parent))
+    from lint_prompts import READONLY_AGENT_DENY
+    full = ", ".join(READONLY_AGENT_DENY)
+    agents = {"reviewer-open": "readonly: true\n", "reviewer-denied": f"readonly: true\ndisallowedTools: {full}\n"}
+    for index, entry in enumerate(READONLY_AGENT_DENY):
+        rest = ", ".join(item for item in READONLY_AGENT_DENY if item != entry)
+        agents[f"reviewer-missing-{index}"] = f"readonly: true\ndisallowedTools: {rest}\n"
+    with tempfile.TemporaryDirectory() as temporary:
+        hits = findings(run(make_root(Path(temporary), agents)), "inherited-tools-can-write")
+        flagged = {hit.split(":")[0].rsplit("/", 1)[-1][:-3] for hit in hits}
+        check("the deny list names the native writers, Agent and MCP write servers by pattern",
+              {"Write", "Edit", "NotebookEdit", "Bash", "Agent", "mcp__github__*"} <= set(READONLY_AGENT_DENY), full)
+        check("an inheriting agent missing any listed entry, or all of them, is reported",
+              flagged == set(agents) - {"reviewer-denied"}, str(sorted(flagged)))
 
 
 def test_a_broken_frontmatter_is_its_own_finding() -> None:

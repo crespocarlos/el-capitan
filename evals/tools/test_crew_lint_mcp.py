@@ -5,6 +5,7 @@ Builds a fixture root for each case so a finding can only come from the rule und
 checks stay quiet because the fixture supplies a valid catalog and an empty rules directory.
 """
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -57,9 +58,14 @@ def findings(result: subprocess.CompletedProcess, rule: str) -> list[str]:
 def main() -> int:
     cases = [
         (
-            "declared mcp reference and declared native id",
-            "tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search",
+            "declared native ids only",
+            "tools: Read, Grep, Glob",
             None, 0,
+        ),
+        (
+            "a declared mcp id granted in tools:",
+            "tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search",
+            "mcp-grant-policy", 1,
         ),
         (
             "undeclared mcp server",
@@ -95,6 +101,14 @@ def main() -> int:
                 check(f"{label}: exit code 0", result.returncode == 0,
                       result.stdout + result.stderr)
 
+    # A declared id in prose is optional guidance, not a grant: the policy leaves it alone.
+    with tempfile.TemporaryDirectory() as temporary:
+        root = make_root(Path(temporary), "tools: Read",
+                         "Use mcp__sourcerer__sourcerer_code_search when the tool is available.\n")
+        result = run(root)
+        check("an mcp id in prose is not a grant", not findings(result, "mcp-grant-policy")
+              and result.returncode == 0, result.stdout)
+
     # An MCP reference in prose is caught too, so a stale id cannot hide in a rule or doc.
     with tempfile.TemporaryDirectory() as temporary:
         root = make_root(Path(temporary), "tools: Read")
@@ -119,15 +133,9 @@ def main() -> int:
         check("malformed mcp_servers is reported", len(hits) == 1, result.stdout)
         check("malformed allowlist exits 1", result.returncode == 1, str(result.returncode))
 
-    # A docs server declared but no persona able to reach it is the gap this repo hit: the
-    # instruction keeps running while nobody can execute it. The lint cannot judge prose intent, so
-    # the repo asserts reachability. There are two populations, and they reach it differently:
-    #
-    # - the five reviewer lenses load `reviewer-contract.md`, which names the docs tools and tells
-    #   them to use the harness equivalent when the server is absent. They grant only ids that always
-    #   resolve, because a granted `mcp__` id fails the entire dispatch on a project that has not
-    #   configured that server — how three personas once returned `Failed` with no output.
-    # - the explorers and spec critics load no contract, so their reachability is the grant itself.
+    # The policy: no agent grants an `mcp__` id, because a granted id fails the whole dispatch on a
+    # project without that server. Vendor tools stay optional prose; the reviewer lenses reach the
+    # docs tools through `reviewer-contract.md`, which names them for when the server is present.
     text = (ROOT / ".cursor/agents/crew-reviewer.md").read_text()
     check("docs trigger still names a docs server capability", "docs\nMCP server" in text or
           "docs MCP server" in text, "crew-reviewer.md lost the docs instruction")
@@ -142,13 +150,12 @@ def main() -> int:
         check(f"{name} loads the contract that names the docs tools",
               "reviewer-contract.md" in body, frontmatter)
         check(f"{name} grants no MCP id that can fail its dispatch",
-              "mcp__" not in frontmatter, frontmatter)
-    direct_grant = ["reviewer-explorer", "specwriter-adversarial", "specwriter-scope",
-                    "specwriter-explorer"]
-    for name in direct_grant:
-        frontmatter = (ROOT / f".cursor/agents/{name}.md").read_text().split("---")[1]
-        check(f"{name} holds a docs fetch tool", "get_internal_document_by_url" in frontmatter
-              or "get_document_by_url" in frontmatter, frontmatter)
+              not re.search(r"^tools:.*mcp__", frontmatter, re.MULTILINE), frontmatter)
+    # Only a `tools:` grant can fail a dispatch; `disallowedTools` denies MCP write servers by pattern
+    # (READONLY_AGENT_DENY in lint_prompts.py), which grants nothing.
+    granting = [path.name for path in sorted((ROOT / ".cursor/agents").glob("*.md"))
+                if re.search(r"^tools:.*mcp__", path.read_text().split("---")[1], re.MULTILINE)]
+    check("no agent frontmatter grants an mcp id", not granting, ", ".join(granting))
 
     print("all crew-lint tool-reference checks passed")
     return 0

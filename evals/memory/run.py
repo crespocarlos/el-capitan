@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MEM = ROOT.parent.parent / '.agent' / 'tools' / 'memory' / 'crew-mem.py'
+PATH_AT_START = sys.path[:]
 
 def command(memory_dir, *arguments, journal_dir=None, input=None):
     env = {
@@ -28,6 +29,21 @@ def run(memory_dir, *arguments, journal_dir=None):
     if result.returncode:
         raise RuntimeError(result.stderr or result.stdout)
     return json.loads(result.stdout)
+
+def store_error_checks(temporary):
+    """A missing store is reported as one line with exit 2, and the store error never shadows the builtin MemoryError."""
+    tools = MEM.parent.parent
+    saved = sys.path[:]
+    sys.path[:0] = [str(tools), str(tools / 'memory')]
+    try:
+        import builtins
+        import memory_paths
+    finally:
+        sys.path[:] = saved
+    missing = command(temporary / 'no-store', 'search', 'anything')
+    return (hasattr(memory_paths, 'MemoryStoreError')
+            and getattr(memory_paths, 'MemoryError', builtins.MemoryError) is builtins.MemoryError
+            and missing.returncode == 2 and 'Traceback' not in missing.stderr and 'run crew-mem.py init' in missing.stderr)
 
 def main():
     queries = json.loads((ROOT / 'queries.json').read_text())
@@ -295,6 +311,8 @@ Body.
                 in (store / 'global' / 'procedure_cite-quotes.md').read_text().lower()
                 and "it's mine" in (store / 'global' / 'procedure_cite-single.md').read_text()
             ),
+            'store_error_is_reported_without_shadowing_builtin': store_error_checks(Path(temporary)),
+            'store_error_check_restores_sys_path': sys.path == PATH_AT_START,
             'cite_counts_used_outcome': (
                 'uses: 1' in (store / 'global' / 'procedure_cite-uses.md').read_text()
             ),

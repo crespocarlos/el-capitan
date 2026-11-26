@@ -248,9 +248,27 @@ def blocked_survives_trailing_metric_lines(base: Path) -> None:
     check("stage_end then BLOCKED shows the reason", "BLOCKED: late block" in listing(reverse_tasks), listing(reverse_tasks))
 
 
+def spec_writes_ignore_a_fixed_temp_name(base: Path) -> None:
+    """Status writes go through a unique temp file: a leftover `SPEC.md.tmp` from another writer is never touched."""
+    task = make_task(base / "tmp-close", "Verdict: pass\n")
+    (task / "SPEC.md.tmp").mkdir()
+    code, out, err = run(task, "--pr-url", "https://example.test/pr/1")
+    check("--mark-done writes DONE beside a stray SPEC.md.tmp", code == 0 and "DONE" in (task / "SPEC.md").read_text(encoding="utf-8"),
+          (code, out, err))
+    tasks = base / "tmp-normalize"
+    task = make_task(tasks)
+    (task / "SPEC.md").write_text(SPEC.replace("IMPLEMENTING", "implementing"), encoding="utf-8")
+    (task / "SPEC.md.tmp").mkdir()
+    done = subprocess.run([sys.executable, str(CLI), "--tasks-dir", str(tasks), "--normalize-status", "--apply"], capture_output=True, text=True)
+    check("--normalize-status --apply rewrites beside a stray SPEC.md.tmp",
+          done.returncode == 0 and "## Status\nIMPLEMENTING\n" in (task / "SPEC.md").read_text(encoding="utf-8"), (done.returncode, done.stderr))
+    check("no temp file is left behind", sorted(p.name for p in task.iterdir()) == ["SPEC.md", "SPEC.md.tmp"], sorted(p.name for p in task.iterdir()))
+
+
 def main() -> int:
     base = Path(tempfile.mkdtemp(prefix="crew-lifecycle-"))
     try:
+        spec_writes_ignore_a_fixed_temp_name(base)
         blocked_event_shows_until_the_next_stage(base)
         blocked_survives_trailing_metric_lines(base)
         temp_review_accepts(base)

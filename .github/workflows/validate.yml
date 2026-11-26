@@ -13,6 +13,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The upgrade fixture installs origin/main before this tree, so the full history is needed.
+          fetch-depth: 0
 
       # Every check below is hermetic: no network, no API key, no model calls.
       - name: Repo conventions (routing, catalog, references)
@@ -24,8 +27,17 @@ jobs:
       - name: Hook stdout/stderr/exit contract
         run: python3 evals/tools/test_hooks_contract.py
 
+      - name: Guard cases (deny table, allow corpus, both payload shapes)
+        run: python3 evals/tools/test_hook_cases.py
+
       - name: Install migration and idempotency
         run: bash .claude/hooks/fixtures/install.sh
+
+      - name: Upgrade from origin/main into a fake HOME
+        run: python3 evals/tools/test_upgrade.py
+
+      - name: Installed commands through a symlink from outside the repo
+        run: python3 evals/tools/test_installed_commands.py
 
       - name: Memory eval
         run: python3 evals/memory/run.py
@@ -189,5 +201,5 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n install.sh
-          bash -n .claude/hooks/*.sh
+          for f in .claude/hooks/*.sh .claude/hooks/guard/*.sh .claude/hooks/lib/*.sh; do bash -n "$f"; done
           find .agent/tools -name '*.sh' -print0 | xargs -0 -r -n1 bash -n

@@ -21,14 +21,13 @@ thread must clear to be applied or rejected, the second is the verdict for a thr
 open — and neither means anything to a reviewer, which is why they live here and not in the shared
 file. A thread that would render `Ask` gets a probe before it becomes a question.
 
-## The clean-tree rule is stricter here
+## The probe writes nothing here
 
-The resolver runs in a worktree it owns, so the shared compare tightens into this: after deleting the
-probe, `git status --porcelain` must be clean — empty output — because this worktree started that way
-and a leftover file is the run's own defect. That check, not a path-scoped diff, is what makes the
-tree clean before the report. A reviewer's tree already holds the edits under review, so there the
-compare is against the reading taken before the probe; both rest on the same command and only the
-expected reading differs.
+The resolver's analysis is a read-only subagent, so the shared lifecycle's write and delete steps do
+not apply: a probe runs the code or tests already in the tree, with commands that write no file. One
+that needs a written artifact is not run; the thread stays `Ask` and the plan names that probe, so the
+main session can raise it with the user. `git status --porcelain` must still read empty after the
+probe, as it did before.
 
 ## Reporting a thread
 

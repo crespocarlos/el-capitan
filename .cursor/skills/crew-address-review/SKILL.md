@@ -101,13 +101,8 @@ Never apply any change during this step. Collect all verdicts first.
 
 **Both modes** — present the table, then ask. Never edit before the answer.
 
-The harness asks before this flow records anything: `.claude/settings.json` holds a
-`permissions.ask` rule for `Edit`/`Write` under the task directory and for
-`crew-review-findings.py`, so recording the outcome log prompts for approval with the table on
-screen. No marker file, no state to clear.
-
-That prompt does not cover the sources the findings cite; only the answer below authorizes those
-edits. If you are about to edit without the table on screen, stop.
+The user's answer is the gate: it is the only approval for recording outcomes and for editing the
+sources the findings cite. If you are about to edit without the table on screen, stop.
 
 Code mode table:
 
@@ -150,8 +145,7 @@ outcome line, and one it leaves alone gets none.
 
 ### Step 4: Execute approved fixes
 
-Only after the user responds. An edit the harness did not prompt for means the ask rule is missing —
-say so rather than proceeding silently.
+Only after the user responds.
 
 **Code mode:** apply each approved edit, reading the file immediately before editing if it wasn't
 already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; a failed

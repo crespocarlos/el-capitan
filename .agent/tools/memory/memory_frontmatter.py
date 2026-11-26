@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 
 from lib.files import atomic_write
-from memory_paths import MemoryError, canonical_scope, memory_root, scope_from_path, today
+from memory_paths import MemoryStoreError, canonical_scope, memory_root, scope_from_path, today
 from memory_scalars import integer, list_value, parse_scalar
 
 TYPES = {

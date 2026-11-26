@@ -127,6 +127,8 @@ module.
   an agent may name in a `tools:` line. `crew-lint.py` reports `mcp-tool-unknown` for an
   `mcp__<server>__<tool>` reference and `tool-id-unknown` for a bare `tools:` id that neither list
   declares. A project that adds an MCP server or a new native tool id adds it here in the same change.
+  `mcp-grant-policy` fails on any `mcp__` id in an agent's `tools:` line: a granted id fails the
+  whole dispatch on a project without that server, so vendor tools appear only in prose, as optional.
 - `crew-diff.sh` is source-only; it exports review context and intentionally does not implement an
   executable `--help`.
 - `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state
@@ -418,9 +420,9 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 
 | File | Event | Purpose |
 | --- | --- | --- |
-| `guard/destructive-git.sh` | Bash | `git reset --hard`, `git clean -f`, force pushes, escaped `gh`/`git` |
-| `guard/local-pr-ref.sh` | Bash | `gh pr checkout` and `pull/<n>` reads |
-| `guard/source-edit.sh` | Bash | Python snippets that rewrite a tracked file |
+| `guard/destructive-git.sh` | Bash | `git reset --hard`, `git clean` with force, force pushes |
+| `guard/local-pr-ref.sh` | Bash | `gh pr checkout` and `refs/pull/...` or `pull/<n>` refs |
+| `guard/source-edit.sh` | Bash | `python -c`, `node -e`, `perl -e` and heredoc snippets that rewrite a tracked file |
 | `guard/zsh-equals.sh` | Bash | a bare unquoted `=word`, which zsh reads as a command path |
 | `guard/worker-tree.sh` | Bash | `git checkout`, `switch`, `restore`, `reset --hard` in a tree with a fresh `.crew-worker.lock` (advisory defence behind the always-on worktree; stale after 6 hours) |
 | `guard/credentials.sh` | Bash | credential-like commits, `gh pr create` with an implied target |
@@ -433,12 +435,13 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 | `memory-capture-prompt.sh` | Stop | asks once for a memory candidate |
 
 One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
-reader sees one purpose per file. `lib/hook.sh` is sourced, never registered, and `lib/anchor.sh`
+reader sees one purpose per file. `lib/hook.sh` is sourced, never registered; it holds the command
+normaliser every shell guard reads through and the off switches (`EL_CAPITAN_GUARDS=off`,
+`EL_CAPITAN_GUARD_<NAME>=off`, documented in the README's hooks section). `lib/anchor.sh`
 holds the anchor line `spec-status-reconcile.sh` computes and `mode-anchor.sh` reprints.
 
-The review-address gate is a `permissions.ask` rule in `.claude/settings.json`, not a hook: the
-harness asks before a review-address run writes anything, so no state file, marker, or
-approval-recording hook exists to go stale.
+The review-address gate is the user's answer in `crew-address-review` Step 3; no hook or permission
+rule records it.
 
 ## Sandboxed network and `gh`
 

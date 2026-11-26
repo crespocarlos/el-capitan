@@ -13,5 +13,6 @@ means the implement handoff or the commit, whichever step you are in.
 | anything else, or the expected line is missing | (a traceback, an error, nothing) | Verify itself failed. Show its stderr, do not hand off / commit, ask. |
 
 A `NOT VERIFIED: partial mirror (N steps skipped)` line means part of the CI was not mirrored (an
-`if:`, an expression, a deployment job, a publish command, a workflow that is not CI): the gates ran,
-but the run is NOT VERIFIED even when every gate line is `exit=0`. A failed gate is still exit 1.
+`if:`, an expression, a deployment job, a publish command, a CI workflow with a release trigger): the
+gates ran, but the run is NOT VERIFIED even when every gate line is `exit=0`. A failed gate is still
+exit 1. A workflow with no `push` or `pull_request` trigger is listed as `not CI` and does not count.

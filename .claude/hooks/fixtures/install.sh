@@ -116,3 +116,69 @@ test "$(cat "$home/broken.json")" = '{bad'
 before=$(find "$home" -type f | wc -l | tr -d ' ')
 HOME="$home" bash "$root/install.sh" --dry-run >/dev/null
 test "$before" = "$(find "$home" -type f | wc -l | tr -d ' ')"
+
+# Preflight and the README `bash -c "$(curl ...)"` form: an empty cwd, a fake HOME, no checkout next
+# to the script, and no network (the clone reads a local copy of this tree).
+bare=$(mktemp -d)
+trap 'rm -rf "$home" "$bare"' EXIT
+bash_bin=$(command -v bash)
+script=$(cat "$root/install.sh")
+mkdir -p "$bare/cwd" "$bare/nogh" "$bare/oldpy"
+for tool in python3 git jq dirname basename cat mkdir; do ln -s "$(command -v "$tool")" "$bare/nogh/$tool"; done
+for tool in git gh jq dirname basename cat mkdir; do
+  path=$(command -v "$tool" || true)
+  if [ -n "$path" ]; then ln -s "$path" "$bare/oldpy/$tool"; fi
+done
+printf '#!/bin/sh\n[ "$1" = -V ] && echo "Python 3.8.10" && exit 0\nexit 1\n' > "$bare/oldpy/python3"
+chmod +x "$bare/oldpy/python3"
+# macOS's system python3 writes its bytecode cache under ~/Library/Caches on any run; that is the
+# interpreter, not the installer.
+snapshot() { (cd "$1" && find . ! -path './Library*' | sort); }
+refuses() {  # $1 fake HOME, $2 PATH, $3 expected text, then the command after `bash`
+  local fake="$1" path="$2" expected="$3" before
+  shift 3
+  mkdir -p "$fake"
+  before=$(snapshot "$fake")
+  if (cd "$bare/cwd" && HOME="$fake" PATH="$path" "$bash_bin" "$@" >/dev/null 2>"$bare/err"); then exit 1; fi
+  grep -q "$expected" "$bare/err"
+  test "$(wc -l < "$bare/err" | tr -d ' ')" = 1           # one line
+  test "$before" = "$(snapshot "$fake")"                  # nothing written
+  test -z "$(ls -A "$bare/cwd")"
+}
+refuses "$bare/h1" "$bare/nogh" 'missing: gh' -c "$script"
+refuses "$bare/h2" "$bare/nogh" 'missing: gh' "$root/install.sh"
+refuses "$bare/h3" "$bare/oldpy" '3.9 or newer' -c "$script"
+mkdir -p "$bare/h4/el-capitan" && touch "$bare/h4/el-capitan/notes.txt"
+refuses "$bare/h4" "$PATH" 'not an el-capitan checkout' -c "$script"
+(cd "$bare/cwd" && HOME="$bare/h5" EL_CAPITAN_REPO_URL="file://$bare/missing" "$bash_bin" -c "$script" >/dev/null 2>&1) && exit 1
+test ! -e "$bare/h5/el-capitan" && test ! -e "$bare/h5/.agent"
+
+# A clone of this tree, working-tree changes included, stands in for GitHub.
+python3 - "$root" "$bare/src" <<'PY'
+import os, shutil, subprocess, sys
+root, dest = sys.argv[1], sys.argv[2]
+names = subprocess.run(["git", "-C", root, "ls-files", "-co", "--exclude-standard", "-z"], check=True, capture_output=True, text=True).stdout.split("\0")
+for name in filter(None, names):
+    source = os.path.join(root, name)
+    if os.path.lexists(source):
+        os.makedirs(os.path.dirname(os.path.join(dest, name)), exist_ok=True)
+        shutil.copy2(source, os.path.join(dest, name), follow_symlinks=False)
+PY
+git -C "$bare/src" init -q
+git -C "$bare/src" add -A
+git -C "$bare/src" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -qm tree --no-verify
+(cd "$bare/cwd" && HOME="$bare/h6" EL_CAPITAN_REPO_URL="file://$bare/src" "$bash_bin" -c "$script" > "$bare/out")
+test -f "$bare/h6/el-capitan/install.sh"
+case "$(readlink "$bare/h6/.agent/bin/crew-mem.py")" in "$bare/h6/el-capitan/"*) ;; *) exit 1 ;; esac
+grep -q '^Done. Installed:' "$bare/out"
+test -z "$(ls -A "$bare/cwd")"
+# A second curl-mode run reuses the checkout instead of cloning over it, and says it was not updated.
+(cd "$bare/cwd" && HOME="$bare/h6" EL_CAPITAN_REPO_URL="file://$bare/missing" "$bash_bin" -c "$script" > "$bare/out")
+grep -qF "Using the existing checkout at $bare/h6/el-capitan (not updated; run git -C $bare/h6/el-capitan pull to upgrade)" "$bare/out"
+
+# The summary prints only after every step: a failing step ends the run without it.
+chmod 000 "$bare/h6/.claude"
+if (HOME="$bare/h6" bash "$root/install.sh" > "$bare/out" 2>&1); then chmod 755 "$bare/h6/.claude"; exit 1; fi
+chmod 755 "$bare/h6/.claude"
+if grep -q '^Done. Installed:' "$bare/out"; then exit 1; fi
+grep -q 'Install INCOMPLETE' "$bare/out"

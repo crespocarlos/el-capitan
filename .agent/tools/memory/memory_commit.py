@@ -21,7 +21,7 @@ from typing import Callable
 from lib.files import atomic_write
 from lib.git import GitError, conflicted_paths, dirty_files as _dirty_files, run_git as _run_git
 from memory_index import ensure_store, refresh, store_lock, write_indexes_for_scopes
-from memory_paths import MemoryError, memory_root
+from memory_paths import MemoryStoreError, memory_root
 
 
 def run_git(arguments: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -43,7 +43,7 @@ def unresolved_conflicts() -> list[str]:
     try:
         return conflicted_paths(memory_root())
     except GitError as error:
-        raise MemoryError("cannot verify the memory store's merge state: " + str(error)) from error
+        raise MemoryStoreError("cannot verify the memory store's merge state: " + str(error)) from error
 
 
 def git_commit(message: str) -> None:
@@ -52,14 +52,14 @@ def git_commit(message: str) -> None:
         "commit", "-m", message
     ], check=False)
     if result.returncode:
-        raise MemoryError(f"git commit failed: {result.stderr.strip() or result.stdout.strip()}")
+        raise MemoryStoreError(f"git commit failed: {result.stderr.strip() or result.stdout.strip()}")
 
 
 def commit_external_changes() -> None:
     """Adopt changes already in the store as one commit, refusing across a merge conflict."""
     conflicts = unresolved_conflicts()
     if conflicts:
-        raise MemoryError(
+        raise MemoryStoreError(
             "memory store has unresolved merge conflicts: " + ", ".join(conflicts)
             + " — resolve them in " + str(memory_root()) + " and retry"
         )
@@ -92,7 +92,7 @@ def mutate(operation: str, change: Callable[[], list[tuple[Path, str | None]]]) 
             if run_git(["diff", "--cached", "--quiet"], check=False).returncode:
                 git_commit(operation)
             return 0
-        except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
+        except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryStoreError) as error:
             restore_units(locals().get("backups", []))
             print(str(error), file=sys.stderr)
             return 2

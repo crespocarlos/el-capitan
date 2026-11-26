@@ -1,7 +1,7 @@
 # Acting on approved threads
 
-Step 7 detail for `crew-pr-resolver`. Loaded after the user answers the approval questions; nothing
-here runs before that.
+Step 7 detail for `crew-pr-resolver`, run inline by the main session, never by the read-only analysis
+subagent. Loaded after the user answers the approval question; nothing here runs before that.
 
 ## The order is fixed
 
@@ -9,7 +9,7 @@ A reply says the fix is in the branch, and a thread resolved before the push sen
 branch that does not carry it. So:
 
 1. Apply each approved edit and verify it.
-2. Commit, then push — only when the user approved both in Step 6.
+2. Commit, then push — only under Step 6's option 1, or option 3 with edits chosen.
 3. Reply on each approved thread.
 4. Resolve it, or leave it open per its verdict.
 
@@ -50,7 +50,7 @@ reply as part of the fix.
 
 ## Commit and push
 
-One commit for the approved edits, in the PR's worktree. `git add` only the files those edits touched.
+One commit for the approved edits, in the PR's worktree (the path the plan opens with). `git add` only the files those edits touched.
 The message follows `crew commit`'s format — `type(scope): imperative description`, one line, 72
 characters at most — and names what the review asked for when that fits.
 
@@ -76,7 +76,8 @@ so the voice rules are part of the deliverable rather than a style preference. I
 unreadable, stop and report it — post nothing, since a reply written without it is the failure the rule
 names.
 
-Two operations per thread (both ids come from the Step 2 query):
+Two operations per thread (both ids come from the plan's `Ids` column, read in Step 2; `OWNER/REPO`
+and `PR_NUMBER` from the plan's opening lines):
 
 1. **Reply** with the draft the user approved: say what changed and why, name the check that backs it,
    or why it remains as-is. No verdict label. Put every code symbol, path, command, field, API, and

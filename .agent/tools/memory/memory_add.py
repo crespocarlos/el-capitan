@@ -21,7 +21,7 @@ from memory_commit import commit_external_changes, git_commit, run_git
 from memory_frontmatter import TYPES, render_unit
 from memory_index import ensure_store, refresh, store_lock, write_indexes_for_scopes
 from memory_paths import (
-    MemoryError,
+    MemoryStoreError,
     canonical_scope,
     observation_directory,
     scope_directory,
@@ -72,7 +72,7 @@ def write_new_unit(unit: dict, path: Path, previous: str | None) -> int:
         refreshed.close()
         run_git(["add", "-A"])
         git_commit(f"mem: add {unit['id']}")
-    except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
+    except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryStoreError) as error:
         if previous is None:
             path.unlink(missing_ok=True)
         else:

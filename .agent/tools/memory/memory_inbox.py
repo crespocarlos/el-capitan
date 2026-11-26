@@ -19,7 +19,7 @@ from memory_commit import commit_external_changes, git_commit, run_git
 from memory_frontmatter import parse_unit, render_unit
 from memory_index import ensure_store, refresh, write_indexes_for_scopes
 from memory_paths import (
-    MemoryError,
+    MemoryStoreError,
     memory_root,
     normalized,
     repo_key,
@@ -116,7 +116,7 @@ def apply_inbox(writes: list[tuple[Path, str]], removals: list[Path]) -> int:
         refreshed.close()
         run_git(["add", "-A"])
         git_commit(f"mem: import-inbox {len(writes)} units")
-    except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
+    except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryStoreError) as error:
         restore_units(backups)
         print(str(error), file=sys.stderr)
         return 2

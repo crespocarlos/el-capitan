@@ -25,7 +25,7 @@ from memory_commit import commit_external_changes, git_commit, run_git
 from memory_frontmatter import render_unit
 from memory_index import ensure_store, refresh, store_lock
 from memory_paths import (
-    MemoryError,
+    MemoryStoreError,
     canonical_scope,
     journal_root,
     observation_directory,
@@ -124,7 +124,7 @@ def write_observations(writes: list[tuple[Path, str, str]], message: str) -> int
         refreshed.close()
         run_git(["add", "-A"])
         git_commit(message)
-    except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
+    except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryStoreError) as error:
         restore_observations(backups)
         print(str(error), file=sys.stderr)
         return 2

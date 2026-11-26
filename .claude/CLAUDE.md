@@ -4,9 +4,10 @@ Canonical rules live in `rules/` and are shared with Cursor. Claude Code reads n
 no globs, so a rule that must hold on every request is imported here as well as marked always-on;
 without the import it is invisible to this harness.
 
-Two rules stay glob-scoped, so importing them would charge every request for them: read
-`typescript.mdc` before writing a `.ts` or `.tsx` file, and `crew-explorer-conventions.mdc` applies to code research; `voice.mdc` to
-text published under Carlos's name.
+Glob-scoped rules stay unimported, which would charge every request: `crew-explorer-conventions.mdc`
+applies to code research, `voice.mdc` to text published under Carlos's name.
+
+Read ~/.cursor/rules/typescript.mdc before writing a .ts or .tsx file.
 
 @~/.cursor/rules/personal.mdc
 @~/.cursor/rules/agent-output.mdc
@@ -14,20 +15,19 @@ text published under Carlos's name.
 @~/.cursor/rules/crew-orchestrator.mdc
 @~/.cursor/rules/memory-capture.mdc
 @~/.cursor/rules/prompt-engineering.mdc
-@~/.cursor/rules/typescript.mdc
 
 ---
 
 # el-capitan
 
-Routing, workflows, and the pipeline state machine live in the imported rules; this file adds only
-what is specific to this harness.
+Routing, workflows and the pipeline state machine live in the imported rules; this file adds only
+harness specifics.
 
 ## Invocation
 
-**Orchestrators** (`crew-reviewer`, `crew-specwriter`, `crew-pr-resolver`) run **inline in the main
-session**: read `~/.claude/agents/crew-<name>.md` and execute it directly. Claude Code cannot nest
-agent calls, so an orchestrator in a subagent cannot dispatch its personas.
+**Orchestrators** (`crew-reviewer`, `crew-specwriter`) run **inline in the main session**: read
+`~/.claude/agents/crew-<name>.md` and execute it directly. Claude Code cannot nest agent calls, so an
+orchestrator in a subagent cannot dispatch its personas. `crew-pr-resolver`: the router's Dispatch.
 
 For an explicit `crew <command>`, do not call Claude's `Skill` tool: read the routed
 `~/.claude/skills/<name>/SKILL.md` and execute its workflow inline.

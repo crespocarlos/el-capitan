@@ -13,7 +13,9 @@ Six properties, each with its own failure that no other suite covers:
 - every command the catalog documents as machine-readable emits valid JSON on stdout with nothing
   human interleaved, so a caller can parse it without guessing;
 - every command that prints a collection exposes `--limit` or `--max-chars`, advertises it, and prints
-  a marker naming what was dropped — a silent cut makes a model treat a partial list as complete.
+  a marker naming what was dropped — a silent cut makes a model treat a partial list as complete;
+- `crew resolve PR` dispatches `crew-pr-resolver` as a read-only subagent that returns a plan, and the
+  main session asks one question and applies it; the router, `.claude/CLAUDE.md` and the agent file agree.
 """
 from __future__ import annotations
 
@@ -326,7 +328,53 @@ def is_json(text: str) -> bool:
         return False
 
 
+def resolver_split_agrees() -> None:
+    """`crew-pr-resolver` is a read-only subagent returning a plan; the main session asks once and applies it.
+
+    The main session creates the worktree before dispatch and, once the plan (the subagent's final
+    message) returns, reads the agent file from Step 6 and `acting-on-threads.md`; the router says so
+    once and `.claude/CLAUDE.md` points to it instead of restating it.
+    """
+    router = (ROOT / "rules" / "crew-router.mdc").read_text(encoding="utf-8")
+    dispatch = [p for p in router.split("\n\n") if "crew-pr-resolver" in p and "subagent" in p]
+    check("the router dispatches crew-pr-resolver read-only, with the worktree, and has the main session read Step 6 on",
+          len(dispatch) == 1 and all(s in dispatch[0] for s in ("read-only", "crew-worktree.py", "final", "from Step 6", "acting-on-threads.md")),
+          str(dispatch))
+    check("the router's retry rule counts a resolver reply without the Step 6 table as no report",
+          bool(re.search(r"Retry once[^\n]*\n[^\n]*Step 6 table", router)), router[-900:])
+    claude = (ROOT / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+    inline_list = re.search(r"\*\*Orchestrators\*\* \(([^)]*)\)", claude)
+    named = [p for p in claude.split("\n\n") if "crew-pr-resolver" in p]
+    check(".claude/CLAUDE.md points crew-pr-resolver to the router, not an inline orchestrator or a restated contract",
+          bool(inline_list) and "crew-pr-resolver" not in inline_list.group(1) and bool(named)
+          and all("router" in p and "main session applies" not in p for p in named), str(named))
+    agent = (ROOT / ".cursor" / "agents" / "crew-pr-resolver.md").read_text(encoding="utf-8")
+    front = agent.split("---")[1]
+    tools = re.search(r"^tools:\s*(.+)$", front, re.MULTILINE)
+    check("the resolver frontmatter is read-only: readonly: true and no Edit or Write tool",
+          "readonly: true" in front and bool(tools) and not re.search(r"\b(Edit|Write)\b", tools.group(1)), front)
+    model = agent[agent.index("## Execution model"):agent.index("## When Invoked")]
+    check("the execution model says the main session creates the worktree and read-only holds by instruction in Claude Code",
+          "crew-worktree.py" in model and "Bash" in model and "by instruction" in model and "final message" in model, model)
+    step_one = agent[agent.index("### Step 1:"):agent.index("### Step 2:")]
+    check("Step 1 only cds into the given worktree and creates none", "crew-worktree.py" not in step_one and "cd WORKTREE_PATH" in step_one, step_one)
+    step_four = agent[agent.index("### Step 4:"):agent.index("### Step 5:")]
+    check("Step 4 drafts edits for Step 7 and applies none", "draft every edit" in step_four and "apply them together" not in step_four, step_four)
+    step_six = agent[agent.index("### Step 6:"):agent.index("### Step 7:")]
+    questions = [line for line in step_six.splitlines() if re.match(r"(\d+\. )?\*\*\"", line)]
+    check("the resolver's analysis runs read-only and the main session asks one question",
+          "read-only" in agent and "main session" in step_six and len(questions) == 1, str(questions))
+    check("the plan is the final message, opens with worktree, repo and PR, and each row carries its ids",
+          all(s in step_six for s in ("final message", "worktree path", "OWNER/REPO", "PR number", "databaseId", "| Ids |", "no report")), step_six)
+    step_seven = agent[agent.index("### Step 7:"):]
+    check("the Next line is the main session's, after Step 7", "After Step 7, the main session" in step_seven, step_seven[-300:])
+    guide = (ROOT / ".agent" / "tools" / "AGENTS.md").read_text(encoding="utf-8")
+    check(".agent/tools/AGENTS.md says the resolver keeps Bash for gh reads and is read-only by instruction in Claude Code",
+          bool(re.search(r"crew-pr-resolver[^\n]*(\n[^\n]+)*?Bash[^\n]*(\n[^\n]+)*?by instruction", guide)), "")
+
+
 def main() -> int:
+    resolver_split_agrees()
     catalog()
     install_links()
     naming_finding()

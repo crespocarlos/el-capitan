@@ -1,58 +1,59 @@
 #!/usr/bin/env bash
-# Credential-like commits, and `gh pr create` whose target is implied rather than named. The only rule
-# registered `onFailure: "block"` / `failClosed: true`: a failure here is a credential leak.
+# Credential-like commits, and `gh pr create` whose target is implied rather than named. A commit is
+# scanned for what it would record: the index, the working tree with `-a`, and whatever a `git add` in
+# the same command stages. Registered `onFailure: "block"` / `failClosed: true`, yet only an error once
+# the secret scan has started (scanning=1) blocks; one before it (input, normaliser) reports a line and
+# lets the command through, as does any failure under an off switch. Piped scripts: the command guards.
 set -euo pipefail
 HOOK_NAME=credentials
-HOOK_FAIL_CLOSED=1
+HOOK_FAIL_CLOSED=1 HOOK_FAIL_BLOCKS=0 HOOK_SHELL_STDIN=allow
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/../lib/hook.sh"
 hook_input
 hook_event
 cmd=$(hook_field command)
-repo=$HOOK_CWD
+[ -n "$cmd" ] || hook_allow
 
-matches() { grep -Eq -- "$1" <<<"$2"; }
-COMMIT='(^|[;&|(/[:space:]])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
-PR_CREATE='(^|[;&|(/[:space:]])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
-if [ -z "$cmd" ] || ! matches "$COMMIT|$PR_CREATE" "$cmd"; then hook_allow; fi
-
-# Message bodies are data, blanked before the directory scan: `git commit -m "fix cd back"` must not
-# look for a repository named `back`, while a quoted directory (`cd 'x'`) keeps its value. Only a `cd`
-# in a command position counts, or one inside a message would redirect the scan.
-skeleton=$(printf '%s' "$cmd" | sed -E \
-  -e "s/(-m|-F|--message|--file|--body)[[:space:]]+'[^']*'/\1 ''/g" \
-  -e 's/(-m|-F|--message|--file|--body)[[:space:]]+"[^"]*"/\1 ""/g')
-dir=""
-if [[ $skeleton =~ git[[:space:]]+-C[[:space:]]+([^[:space:];&|]+) ]]; then dir=${BASH_REMATCH[1]}
-elif [[ $skeleton =~ (^|[;&|][[:space:]]*|&&[[:space:]]*|\|\|[[:space:]]*)cd[[:space:]]+([^[:space:];&|]+) ]]; then
-  dir=${BASH_REMATCH[2]}
-fi
-# Adopt the candidate only when it is a repository, rather than denying a clean commit.
-if [ -n "$dir" ]; then
-  dir=${dir//\"/}; dir=${dir//\'/}; dir=${dir/#\~/$HOME}
-  [[ $dir = /* ]] || dir=$HOOK_CWD/$dir
-  if git -C "$dir" rev-parse --git-dir >/dev/null 2>&1; then repo=$dir; fi
-fi
-
-added_lines() { grep -E '^\+' <<<"$1" | grep -Ev '^\+\+\+ (a/|b/|/dev/null)' || true; }
+scanning=0
+internal() {
+  if [ "$scanning" = 1 ]; then hook_deny "Commit blocked: the secret scan failed ($1), so the commit was not checked."; fi
+  printf '%s: %s; no objection\n' "$HOOK_NAME" "$1" >&2
+  hook_allow
+}
+trap 'rc=$?; [ "$rc" = 0 ] || [ "$rc" = 2 ] || internal "unexpected exit $rc"' EXIT
 # High-precision formats only: a false positive blocks a real commit.
 SECRET='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}'
-if matches "$COMMIT" "$cmd"; then
-  staged=$(git -C "$repo" diff --cached -U0 2>/dev/null) \
-    || hook_deny "Commit check failed: cannot read the git index in $repo."
-  added=$(added_lines "$staged")
-  if matches '[[:space:]](-a|--all|-[A-Za-z]*a[A-Za-z]*)([[:space:]]|$)' "$cmd"; then
-    unstaged=$(git -C "$repo" diff -U0 2>/dev/null) \
-      || hook_deny "Commit check failed: cannot read the working tree in $repo."
-    added+=$'\n'$(added_lines "$unstaged")
+hook_segments "$cmd"
+commits="" adds="" i=0
+while [ "$i" -lt "${#HOOK_SEGS[@]}" ]; do
+  hook_seg "$i"
+  i=$((i + 1))
+  if [ "${SEG_WORDS[0]##*/}" = gh ] && [ "${SEG_WORDS[1]:-} ${SEG_WORDS[2]:-}" = "pr create" ]; then
+    named=0
+    for word in "${SEG_WORDS[@]}"; do case "$word" in --repo | --repo=* | -R*) named=1 ;; esac; done
+    hook_repo "$SEG_DIR"
+    if [ "$named" = 0 ] && [ -n "$REPO" ] && git -C "$REPO" remote get-url upstream >/dev/null 2>&1; then
+      hook_deny 'PR blocked: an upstream remote exists, so pass --repo explicitly. Target upstream unless the user chose origin.'
+    fi
   fi
-  if matches "$SECRET" "$added"; then
-    hook_deny 'Commit blocked: changes being committed contain a credential-like token or private key. Remove it; rotate it if it was real.'
-  fi
-fi
+  hook_git || continue
+  case "$GIT_SUB" in commit) commits+=" $((i - 1))" ;; add) adds+=" $((i - 1))" ;; esac
+done
+[ -n "$commits" ] || hook_allow
 
-if matches "$PR_CREATE" "$cmd" && git -C "$repo" remote get-url upstream >/dev/null 2>&1 \
-  && ! matches '[[:space:]](--repo|-R)([[:space:]=]|$)' "$cmd"; then
-  hook_deny 'PR blocked: an upstream remote exists, so pass --repo explicitly. Target upstream unless the user chose origin.'
-fi
+scanning=1 added="" HOOK_FAIL_BLOCKS=1
+for k in $adds $commits; do
+  hook_seg "$k"
+  hook_git
+  hook_repo "$GIT_TREE"
+  [ -n "$REPO" ] || continue
+  if [ "$GIT_SUB" = add ]; then added+=$'\n'$(hook_git_added "$REPO" yes ${GIT_ARGS[@]+"${GIT_ARGS[@]}"}); continue; fi
+  staged=$(git -C "$REPO" diff --cached -U0 2>/dev/null) || hook_deny "Commit check failed: cannot read the git index in $REPO."
+  added+=$'\n'$(hook_plus_lines <<<"$staged")
+  if hook_git_arg '^(--all|-[A-Za-z]*a[A-Za-z]*)$'; then added+=$'\n'$(hook_git_added "$REPO" no); fi
+done
+found=0
+grep -Eq -- "$SECRET" <<<"$added" 2>/dev/null || found=$?
+[ "$found" -le 1 ] || internal "grep exited $found"
+[ "$found" = 1 ] || hook_deny 'Commit blocked: changes being committed contain a credential-like token or private key. Remove it; rotate it if it was real.'
 hook_allow
