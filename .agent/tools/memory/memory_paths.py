@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 """Where the memory store lives, and how a scope names a directory inside it.
 
-The base of the memory package's dependency chain: roots, the database path, repository scope,
-and the text normalization every other module shares. Nothing here opens the index, parses a unit,
-or prints a command result, so every module above can import it without a cycle.
-
-Scope is the upstream repository's bare name, so a fork and its worktrees share one store. Git
-failing to answer is not an error for a scope — the store must still open — which is why
-`repo_key` falls back to the directory name.
+The base of the memory package (roots, database path, scope, text normalization); it imports no
+other memory module. Scope is the upstream repository's bare name, so a fork and its worktrees share
+one store; when git cannot answer, `repo_key` falls back to the directory name.
 """
 from __future__ import annotations
 
 import datetime as dt
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
-from lib.git import GitError, remotes, remote_url, toplevel
+from lib.git import GitError, remote_url, remotes, repo_name_from_url, toplevel
 
 
 class MemoryStoreError(Exception):
@@ -55,10 +51,9 @@ def tokens(value: str) -> list[str]:
 def repo_key() -> str:
     """The repository scope: the upstream (or origin) repository's bare name, else the directory.
 
-    One `toplevel` and one `remote_url` per remote answer what three hand-rolled calls used to ask:
-    a fork's `upstream` wins over `origin`, and a checkout with neither falls back to its directory
-    name. Git failing here is not an error for a scope — the memory store must still open — so the
-    directory fallback covers an unreadable or absent repository.
+    A fork's `upstream` wins over `origin`; a local-path or file:// remote gives its last path
+    segment (`lib.git.repo_name_from_url`), so existing scopes keep their key. Git failing is not an
+    error for a scope (the store must still open): the directory name is the fallback.
     """
     try:
         top = toplevel(None)
@@ -68,9 +63,9 @@ def repo_key() -> str:
         url = remote_url(top, remote_name)
         if not url:
             continue
-        match = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?$", url)
-        if match:
-            return match.group(2)
+        found = repo_name_from_url(url)
+        if found:
+            return found
     return top.name
 
 

@@ -21,7 +21,7 @@ TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
 sys.path.insert(0, str(TASK_TOOLS))
 sys.path.insert(0, str(TASK_TOOLS.parent))
 
-import ls_landed  # noqa: E402
+import ls_data  # noqa: E402
 
 FAILED: list[str] = []
 URL = "https://github.com/acme/widgets/pull/51"
@@ -59,24 +59,24 @@ HERE = lambda: {"acme/widgets": "origin"}  # the current directory's remotes, fo
 
 
 def decide(tmp: Path, read, reach=lambda sha, default: True) -> dict:
-    return ls_landed.landed_row(task_with_pr(tmp), read, reach, local=HERE)
+    return ls_data.landed_row(task_with_pr(tmp), read, reach, local=HERE)
 
 
 def foreign_repo_case(tmp: Path) -> None:
     """Reachability and `landing_bases` belong to the cwd repository: another repo's PR is unknown, never a wrong no."""
     never = lambda s, d: (_ for _ in ()).throw(AssertionError("reachability belongs to another repository"))
     elsewhere = lambda: {"someone/else": "origin", "someone/upstream": "upstream"}
-    other = ls_landed.landed_row(task_with_pr(tmp / "a"), reader("MERGED", "feat/parent"), never, BACKPORT, local=elsewhere)
+    other = ls_data.landed_row(task_with_pr(tmp / "a"), reader("MERGED", "feat/parent"), never, BACKPORT, local=elsewhere)
     check("a merge into a non-default base of another repo is unknown", other["landed"] == "unknown", other)
-    backport = ls_landed.landed_row(task_with_pr(tmp / "b"), reader("MERGED", "9.x"), never, BACKPORT, local=elsewhere)
+    backport = ls_data.landed_row(task_with_pr(tmp / "b"), reader("MERGED", "9.x"), never, BACKPORT, local=elsewhere)
     check("another repo's landing_bases are not borrowed from the cwd repo", backport["landed"] == "unknown" and "note" not in backport, backport)
-    plain = ls_landed.landed_row(task_with_pr(tmp / "c"), reader("MERGED", "main"), never, BACKPORT, local=elsewhere)
+    plain = ls_data.landed_row(task_with_pr(tmp / "c"), reader("MERGED", "main"), never, BACKPORT, local=elsewhere)
     check("a merge into the default branch is still yes (the PR record is the answer)", plain["landed"] == "yes", plain)
-    check("no origin at all counts as another repo", ls_landed.landed_row(task_with_pr(tmp / "d"), reader("MERGED", "feat/parent"), never,
+    check("no origin at all counts as another repo", ls_data.landed_row(task_with_pr(tmp / "d"), reader("MERGED", "feat/parent"), never,
                                                                           [], local=lambda: {})["landed"] == "unknown")
-    check("a matching origin keeps the old answer", ls_landed.landed_row(task_with_pr(tmp / "e"), reader("MERGED", "feat/parent"),
+    check("a matching origin keeps the old answer", ls_data.landed_row(task_with_pr(tmp / "e"), reader("MERGED", "feat/parent"),
                                                                          lambda s, d: False, [], local=HERE)["landed"] == "no")
-    slugs = [ls_landed.repo_slug(u) for u in ("https://github.com/Acme/Widgets.git", "git@github.com:acme/widgets.git", "ssh://git@github.com/acme/widgets")]
+    slugs = [ls_data.repo_slug(u) for u in ("https://github.com/Acme/Widgets.git", "git@github.com:acme/widgets.git", "ssh://git@github.com/acme/widgets")]
     check("origin URLs normalise to owner/repo", slugs == ["acme/widgets"] * 3, slugs)
 
 
@@ -87,13 +87,13 @@ def fork_case(tmp: Path) -> None:
     """The fork workflow: a PR into upstream counts as local, and reachability reads `upstream/<default>`."""
     asked: list[str] = []
     reach = lambda sha, ref: asked.append(ref) or True
-    stacked = ls_landed.landed_row(task_with_pr(tmp / "a"), reader("MERGED", "feat/parent"), reach, [], local=FORK)
+    stacked = ls_data.landed_row(task_with_pr(tmp / "a"), reader("MERGED", "feat/parent"), reach, [], local=FORK)
     check("a stacked PR into upstream merged on afterwards is yes", stacked["landed"] == "yes", stacked)
     check("reachability is asked of upstream/main, not origin/main", asked == ["upstream/main"], asked)
-    backport = ls_landed.landed_row(task_with_pr(tmp / "b"), reader("MERGED", "9.x"), reach, BACKPORT, local=FORK)
+    backport = ls_data.landed_row(task_with_pr(tmp / "b"), reader("MERGED", "9.x"), reach, BACKPORT, local=FORK)
     check("a backport into upstream's landing base is yes with its note, not flagged",
           backport == {"landed": "yes", "flag": "", "note": "backport to 9.x"}, backport)
-    rows = ls_landed.landed_rows([task_with_pr(tmp / "c")], reader("MERGED", "feat/parent"), lambda s, r: None, [], FORK)
+    rows = ls_data.landed_rows([task_with_pr(tmp / "c")], reader("MERGED", "feat/parent"), lambda s, r: None, [], FORK)
     check("not reachable in local refs stays unknown, never no", rows[0]["landed"] == "unknown", rows)
     repo = tmp / "repo"
     repo.mkdir(parents=True)
@@ -103,7 +103,7 @@ def fork_case(tmp: Path) -> None:
     cwd = os.getcwd()
     os.chdir(repo)
     try:
-        found = ls_landed.local_remotes()
+        found = ls_data.local_remotes()
     finally:
         os.chdir(cwd)
     check("local_remotes maps origin and upstream to their owner/repo", found == {"me/widgets": "origin", "acme/widgets": "upstream"}, found)
@@ -131,7 +131,7 @@ def decision_cases(tmp: Path) -> None:
     check("an open PR on the default is no and not flagged", open_default == {"landed": "no", "flag": ""}, open_default)
     closed = decide(tmp / "i", reader("CLOSED", "feat/parent"))
     check("a closed PR is no and not flagged", closed == {"landed": "no", "flag": ""}, closed)
-    nopr = ls_landed.landed_row(task_with_pr(tmp / "j", None), reader("MERGED", "main"))
+    nopr = ls_data.landed_row(task_with_pr(tmp / "j", None), reader("MERGED", "main"))
     check("a task with no recorded PR is unknown", nopr["landed"] == "unknown", nopr)
     nosha = decide(tmp / "k", reader("MERGED", "feat/parent", sha=None))
     check("merged into another base with no merge commit is no", nosha["landed"] == "no", nosha)
@@ -173,11 +173,11 @@ def stale_origin_case(tmp: Path) -> None:
         check("the stale clone does not hold the merge commit yet",
               subprocess.run(["git", "cat-file", "-e", merged], capture_output=True).returncode != 0)
         check("the listing never fetches: a stale origin/main is unknown, not no",
-              ls_landed.reachable_from(merged, "origin/main") is None)
+              ls_data.reachable_from(merged, "origin/main") is None)
         check("the listing left the stale clone as it was (no fetch)",
               subprocess.run(["git", "cat-file", "-e", merged], capture_output=True).returncode != 0)
         git(clone, "fetch", "-q", "origin")
-        check("a commit already in origin/main is reachable", ls_landed.reachable_from(merged, "origin/main") is True)
+        check("a commit already in origin/main is reachable", ls_data.reachable_from(merged, "origin/main") is True)
     finally:
         os.chdir(cwd)
         os.environ["PATH"] = previous
@@ -253,29 +253,28 @@ def backport_cases(tmp: Path) -> None:
     check("with no landing_bases the default branch is the only normal base", unset["landed"] == "no" and "9.x" in unset["flag"], unset)
     default = decide_with(tmp / "g", reader("MERGED", "main"), BACKPORT, fixed)
     check("a default-base merge is plain yes, no backport note", default == {"landed": "yes", "flag": ""}, default)
-    line = ls_landed.landed_lines([("fix-it", task_with_pr(tmp / "h"))], reader("MERGED", "9.x"), lambda s, d: False, BACKPORT, HERE)
+    line = ls_data.landed_lines([("fix-it", task_with_pr(tmp / "h"))], reader("MERGED", "9.x"), lambda s, d: False, BACKPORT, HERE)
     check("the listing line reads `landed: yes (backport to 9.x)`", line == ["  fix-it  landed: yes (backport to 9.x)"], line)
 
 
 def decide_with(tmp: Path, read, patterns: list[str], reach) -> dict:
-    return ls_landed.landed_row(task_with_pr(tmp), read, reach, patterns, local=HERE)
+    return ls_data.landed_row(task_with_pr(tmp), read, reach, patterns, local=HERE)
 
 
 def landing_bases_parse(tmp: Path) -> None:
-    import ls_bases
     line = "# Repo\n\nlanding_bases: ^\\d+\\.\\d+$ `^\\d+\\.x$`\n"
-    check("a landing_bases line lists patterns separated by spaces", ls_bases.parse(line) == BACKPORT, ls_bases.parse(line))
+    check("a landing_bases line lists patterns separated by spaces", ls_data.parse(line) == BACKPORT, ls_data.parse(line))
     block = "# Repo\n\n```landing_bases\n^\\d+\\.\\d+$\n# release lines\n^\\d+\\.x$\n```\n"
-    check("a fenced landing_bases block lists one pattern per line", ls_bases.parse(block) == BACKPORT, ls_bases.parse(block))
-    check("no setting means no patterns", ls_bases.parse("# Repo\nnothing\n") == [])
-    check("a broken regex is dropped, not fatal", ls_bases.parse("landing_bases: ( ^ok$\n") == ["^ok$"])
-    check("matching is a full match", ls_bases.matches("9.x", BACKPORT) and not ls_bases.matches("v9.x", BACKPORT))
+    check("a fenced landing_bases block lists one pattern per line", ls_data.parse(block) == BACKPORT, ls_data.parse(block))
+    check("no setting means no patterns", ls_data.parse("# Repo\nnothing\n") == [])
+    check("a broken regex is dropped, not fatal", ls_data.parse("landing_bases: ( ^ok$\n") == ["^ok$"])
+    check("matching is a full match", ls_data.matches("9.x", BACKPORT) and not ls_data.matches("v9.x", BACKPORT))
     root = tmp / "repo"
     root.mkdir(parents=True)
     git(root, "init", "-q", "-b", "main")
     (root / "AGENTS.md").write_text(line, encoding="utf-8")
-    check("the repo's AGENTS.md is read from its root", ls_bases.load(root) == BACKPORT, ls_bases.load(root))
-    check("a directory with no repo has no patterns", ls_bases.load(tmp / "nowhere") == [])
+    check("the repo's AGENTS.md is read from its root", ls_data.load_bases(root) == BACKPORT, ls_data.load_bases(root))
+    check("a directory with no repo has no patterns", ls_data.load_bases(tmp / "nowhere") == [])
 
 
 def backport_end_to_end(tmp: Path) -> None:

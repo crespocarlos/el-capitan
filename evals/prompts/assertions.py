@@ -16,7 +16,7 @@ _TOOLS = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "task"
 if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 
-from task_typed_tests import typed_tests_block_problem  # noqa: E402
+from task_status import typed_tests_block_problem  # noqa: E402
 
 LABELS = {"blocking", "attention", "nit", "needs more info", "concern"}
 # The score suffix a label may carry: `attention · 4`. Stripped before a label is compared, so the

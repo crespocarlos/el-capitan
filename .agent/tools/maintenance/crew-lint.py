@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """Validate cross-file el-capitan conventions.
 
-Usage: crew-lint.py [--root DIR] [--budget]
+Usage: crew-lint.py [--root DIR] [--budget] [--json] [--list-rules]
 
-Four families run in a fixed order, each in its own module so a rule change stays local:
-`lint_catalog` (the manifest, `kind`, naming, and module resolution), `lint_prompts` (rules, skills,
-and tool grants), `lint_references` (paths, installed names, routing, and swallowed calls),
-`lint_progress` (PROGRESS transitions, edit discipline, and hook registration), and `lint_budget`
-(always-on accounting, with `--budget`). This file only parses arguments and maps findings to an
-exit code.
+Each family lives in its own `lint_*` module and every rule is registered in `lint_files.RULES`
+(`--list-rules` prints it). This file only parses arguments and maps findings to an exit code.
 """
 from __future__ import annotations
 
@@ -17,35 +13,29 @@ import json
 import sys
 from pathlib import Path
 
-# Installed flat into ~/.agent/bin, but in the repo this file is `.agent/tools/maintenance`; the
-# family modules are its siblings there. `resolve()` follows the installed symlink back into the
-# repo, so one directory covers both, and the `lint_*` names keep them from colliding on `sys.path`.
-_MAINTENANCE_DIR = Path(__file__).resolve().parent
-if str(_MAINTENANCE_DIR) not in sys.path:
-    sys.path.insert(0, str(_MAINTENANCE_DIR))
+import maintenance_bootstrap  # noqa: F401
 
-from lint_budget import (  # noqa: E402
+from lint_catalog import installed_tool_names, lint_tool_catalog
+from lint_files import files, rule_table
+from lint_prompts import (
     MAX_ALWAYS_RULE_TOKENS,
     always_on_files,
-    lint_budget,
-)
-from lint_catalog import lint_tool_catalog  # noqa: E402
-from lint_files import files  # noqa: E402
-from lint_handoff import lint_handoff  # noqa: E402
-from lint_naming import installed_tool_names  # noqa: E402
-from lint_progress import (  # noqa: E402
-    lint_edit_discipline,
-    lint_hook_registration,
-    lint_local_state_tracked,
-    lint_progress_transitions,
-)
-from lint_prompts import (  # noqa: E402
     lint_agent_readonly,
+    lint_budget,
     lint_rule_setup,
     lint_skill_setup,
     lint_tool_surface,
 )
-from lint_references import lint_documents, lint_repo_paths  # noqa: E402
+from lint_python import lint_python
+from lint_references import lint_documents, lint_handoff, lint_repo_paths
+from lint_writing import (
+    lint_edit_discipline,
+    lint_hook_registration,
+    lint_local_state_tracked,
+    lint_progress_transitions,
+    lint_removed_forms,
+    lint_tool_prose,
+)
 
 Finding = tuple[str, int, str, str]
 # The two documentation roots a stale path is most likely to hide in, checked alongside the prompts.
@@ -94,6 +84,9 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_handoff(root, router_path(root)))
     findings.extend(lint_hook_registration(root))
     findings.extend(lint_local_state_tracked(root))
+    findings.extend(lint_python(root))
+    findings.extend(lint_removed_forms(root))
+    findings.extend(lint_tool_prose(root))
     if budget:
         findings.extend(lint_budget(root, all_files, rules))
     return findings
@@ -105,7 +98,11 @@ def main() -> int:
     parser.add_argument("--budget", action="store_true", help="also check the always-on and prompt ceilings")
     parser.add_argument("--json", action="store_true",
                         help="print findings as a JSON array on stdout; the measurement goes to stderr")
+    parser.add_argument("--list-rules", action="store_true", help="print every registered rule and exit")
     args = parser.parse_args()
+    if args.list_rules:
+        print("\n".join(rule_table()))
+        return 0
     if not args.root.is_dir():
         print(f"error: root does not exist: {args.root}", file=sys.stderr)
         return 2

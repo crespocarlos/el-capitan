@@ -13,19 +13,17 @@ import os
 import sys
 from pathlib import Path
 
-_TASK_DIR = Path(__file__).resolve().parent
-if str(_TASK_DIR) not in sys.path:
-    sys.path.insert(0, str(_TASK_DIR))
+import task_bootstrap  # noqa: F401
 
-from task_artifacts import (  # noqa: E402
+from task_artifacts import (
     ARTIFACT_KEYS,
     ARTIFACTS,
     DEFAULT_MAX_CHARS,
     build_context,
     markdown_context,
 )
-from task_resolve import ResolverUnavailable, resolve_record  # noqa: E402
-from task_state import read_status  # noqa: E402
+from task_resolve import ResolverUnavailable, resolve_record
+from task_status import read_status
 
 
 def cached_identity(directory: str) -> tuple[dict | None, int]:
@@ -83,7 +81,7 @@ def parse_artifact_selection(args: argparse.Namespace, parser: argparse.Argument
     return requested
 
 
-def build_parser() -> argparse.ArgumentParser:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Emit resolved crew task status and bounded task artifact contents."
     )
@@ -106,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    parser = build_parser()
+    parser = make_parser()
     args = parser.parse_args()
     requested = parse_artifact_selection(args, parser)
     resolved, exit_code = resolve_task(args)

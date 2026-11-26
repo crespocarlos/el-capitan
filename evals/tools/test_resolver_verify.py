@@ -25,7 +25,7 @@ MAINTENANCE = ROOT / ".agent" / "tools" / "maintenance"
 if str(MAINTENANCE) not in sys.path:
     sys.path.insert(0, str(MAINTENANCE))
 
-from lint_budget import MAX_PROMPT_FILE_BYTES  # noqa: E402
+from lint_prompts import MAX_PROMPT_FILE_BYTES  # noqa: E402
 
 # Runner names from one repository or ecosystem. The prompt states the obligation; guidance supplies
 # the command, so naming a runner here would only work on the repo where it was written.

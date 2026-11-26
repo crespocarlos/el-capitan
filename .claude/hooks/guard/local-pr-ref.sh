@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Local PR refs: `gh pr checkout` and `pull/<n>` fetches put a PR into the working checkout, which
-# makes a review read the author's tree instead of the reviewed commit. Only a ref counts: an argument
+# makes a review read the author's tree instead of the reviewed commit. `gh` is read by hook_gh, so
+# `-R`, escapes and a runner in front hide nothing. Only a ref counts: an argument
 # before `--` that starts with `refs/pull/`, `pull/<n>` or `pull/*` (or carries one after `..`, `:`, `^`, `+`
 # or `~`), so a path such as `src/pull/handler.ts` is never mistaken for one.
 set -euo pipefail
@@ -20,8 +21,8 @@ i=0
 while [ "$i" -lt "${#HOOK_SEGS[@]}" ]; do
   hook_seg "$i"
   i=$((i + 1))
-  if [ "${SEG_WORDS[0]##*/}" = gh ] && [ "${SEG_WORDS[1]:-}" = pr ]; then
-    case "${SEG_WORDS[2]:-}" in checkout | co) hook_deny "$PULL" ;; esac
+  if hook_gh && [ "$GH_CMD" = pr ]; then
+    case "$GH_SUB" in checkout | co) hook_deny "$PULL" ;; esac
   fi
   hook_git || continue
   case "$GIT_SUB" in

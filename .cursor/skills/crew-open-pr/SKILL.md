@@ -70,7 +70,7 @@ default branch only is normal. For any other base, print exactly this one line a
 `stack` keeps the named base; `<default>` retargets to the default branch. List in the merge order
 only PRs that exist (look them up); with none, omit the clause. An autonomous run stops with that
 line at the top of the final message and opens nothing, after running
-`crew-progress.py blocked "$TASK_DIR" "<reason>"`. With an `upstream` remote, a non-default base must exist there, so check; if it
+`crew-task.py blocked "$TASK_DIR" "<reason>"`. With an `upstream` remote, a non-default base must exist there, so check; if it
 does not, the PR cannot target upstream. Say so, and switch to `origin` only after the user confirms:
 
 ```bash
@@ -111,7 +111,7 @@ against it without that answer. When
 stays in REPORT.md):
 
 ```bash
-~/.agent/bin/crew-progress.py report-check "$TASK_DIR/REPORT.md" --unverified 5
+~/.agent/bin/crew-verify.py report-check "$TASK_DIR/REPORT.md" --unverified 5
 ```
 
 ```bash
@@ -153,7 +153,7 @@ After creating the PR, resolve `TASK_DIR`:
 source ~/.agent/bin/task-env.sh
 ```
 
-If `TASK_DIR` is non-empty, set the spec to `DONE` and log the transition. `--mark-done` writes the
+If `TASK_DIR` is non-empty, set the spec to `DONE` and log the transition. `mark-done` writes the
 status and appends to `PROGRESS.md`; it refuses unless the spec is `IMPLEMENTING`, all criteria are
 checked, the last review verdict is pass or warn, the task branch matches the current branch, and the
 last review's `Reviewed at:` commit is an ancestor of HEAD. Because `crew commit` runs after
@@ -164,14 +164,14 @@ different branch, or one older than a rebase, must be re-run.
 if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
   echo "error: task state unreadable — PR opened but spec not marked done" >&2
 elif [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/crew-ls.py --mark-done "$TASK_DIR" --pr-url "$PR_URL" \
+  ~/.agent/bin/crew-task.py mark-done "$TASK_DIR" --pr-url "$PR_URL" \
     --branch "$(~/.agent/bin/crew-repo-info.py --field branch)" \
     || echo "warning: PR opened but spec not marked done" >&2
 fi
 ```
 
 On a non-zero exit, show the `error:` line and the PR URL, and say the spec is not marked done. Do not
-re-run `gh pr create`. Once the cause is fixed, re-run the same `--mark-done` command; `--force`
+re-run `gh pr create`. Once the cause is fixed, re-run the same `mark-done` command; `--force`
 skips the evidence checks only when the user asks for it. With no `TASK_DIR` (for example `crew
 quick`), there is nothing to mark.
 

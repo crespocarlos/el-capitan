@@ -18,10 +18,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
 CLI = TASK_TOOLS / "crew-ls.py"
+TASK_CLI = TASK_TOOLS / "crew-task.py"
 
 sys.path.insert(0, str(TASK_TOOLS))
 
-import task_normalize  # noqa: E402
+import task_state  # noqa: E402
 import task_status  # noqa: E402
 
 FAILED: list[str] = []
@@ -100,7 +101,7 @@ def cli_rejects_unknown(base: Path) -> None:
     check("a malformed status exits 2 and names the allowed set",
           result.returncode == 2 and "DRAFTING" in result.stderr and "DONE" in result.stderr,
           (result.returncode, result.stderr))
-    result = subprocess.run([sys.executable, str(CLI), "--normalize-status",
+    result = subprocess.run([sys.executable, str(TASK_CLI), "normalize-status",
                              "--tasks-dir", str(base)], capture_output=True, text=True)
     check("the migration skips an unknown token", "skip:" in result.stderr and "SHIPPED" in
           result.stderr, result.stderr)
@@ -114,13 +115,13 @@ def migration_cases(base: Path) -> None:
     write_spec(tasks / "canonical", "DONE")
     write_spec(tasks / "open", "IMPLEMENTING")
     preview = io.StringIO()
-    would_change = task_normalize.normalize_all(tasks, False, out=preview)
+    would_change = task_state.normalize_all(tasks, False, out=preview)
     check("a dry run reports every legacy spec", would_change == 2, would_change)
     check("a dry run writes nothing",
           task_status.read_status(tasks / "legacy-one" / "SPEC.md") == "done")
     applied = io.StringIO()
     check("the applied run changes the same files",
-          task_normalize.normalize_all(tasks, True, out=applied) == 2, applied.getvalue())
+          task_state.normalize_all(tasks, True, out=applied) == 2, applied.getvalue())
     check("the legacy token is rewritten",
           task_status.read_status(tasks / "legacy-one" / "SPEC.md") == "DONE")
     check("a suffixed legacy token keeps its suffix",
@@ -130,7 +131,7 @@ def migration_cases(base: Path) -> None:
     check("an open status is untouched",
           task_status.read_status(tasks / "open" / "SPEC.md") == "IMPLEMENTING")
     second = io.StringIO()
-    check("a second run changes nothing", task_normalize.normalize_all(tasks, True, out=second) == 0,
+    check("a second run changes nothing", task_state.normalize_all(tasks, True, out=second) == 0,
           second.getvalue())
     check("the second run says so", "already canonical" in second.getvalue(), second.getvalue())
 

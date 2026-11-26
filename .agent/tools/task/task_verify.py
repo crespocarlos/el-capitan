@@ -1,13 +1,9 @@
-"""`crew-progress.py verify`: run the repository's gates the way its CI runs them, and record the result.
+"""`crew-verify.py`: run the repository's CI the way CI runs it, and record one exit code per gate.
 
-Hosted by `crew-progress.py` (which already records what a stage did into the task directory) as a
-subcommand, so no new top-level command exists. The commands come from the BASE branch's declaration
-(`task_verify_sources.py`), run under the Node `.nvmrc` names, with the runner defaults `CI=true` and
-`GITHUB_ACTIONS=true` plus the workflow's own env, in the workflow's step order. It prints one
-`<name> exit=<N>` line per gate and writes a JSON file (`schema_version: 1`) with the command, env,
-Node version, exit code and duration of each. A passing result is cached by (tree hash, command, env,
-Node version). `--background` runs detached; `--wait <json>` blocks until that run is done (exit 4
-when `--wait-timeout` runs out first). Exit codes: 0 pass, 1 failed gate, 2 or 3 NOT VERIFIED, 4 still running.
+The mirror runs each base-branch workflow `run:` step under the pinned Node, `CI=true` and the workflow
+env (`task_verify_sources`).
+Prints `<name> exit=<N>` lines and a JSON result (`schema_version: 1`); `--background`/`--wait <json>`
+detach. Exit codes: 0 pass, 1 failed gate, 2 or 3 NOT VERIFIED, 4 still running.
 """
 from __future__ import annotations
 
@@ -18,21 +14,41 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
+from task_verify_env import (
+    EXIT_NOT_VERIFIED,
+    cache_get,
+    cache_key,
+    cache_put,
+    gate_line,
+    is_partial,
+    kinds,
+    log_of,
+    node_env,
+    not_ci,
+    partial_exit,
+    partial_line,
+    run_argv,
+    tree_key,
+    write_failed,
+    write_result,
+)
+from task_verify_sources import resolve
+
+from lib.cli import EXIT_INVALID
+from lib.clock import utc_iso
 from lib.files import atomic_write
 from lib.git import GitError, base_ref, toplevel
-from task_verify_env import cache_get, cache_key, cache_put, node_env, tree_key
-from task_verify_notes import is_partial, note_lines, partial_exit
-from task_verify_resolve import resolve
-from task_verify_wait import background, gate_line, wait, write_failed
 
 RUNNER_DEFAULTS = {"CI": "true", "GITHUB_ACTIONS": "true"}
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="crew-progress.py verify", description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="crew-verify.py", description=__doc__.split("\n\n")[0],
+                                     epilog="crew-verify.py report-check REPORT.md [--gates JSON] checks a builder "
+                                            "report against a run (its own --help).")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="the tree to verify (default: cwd)")
     parser.add_argument("--task-dir", type=lambda value: Path(value) if value else None, default=None, help="writes <task-dir>/gates.json")
     parser.add_argument("--out", type=Path, default=None, help="the JSON result file")
@@ -40,7 +56,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--only", default="", help="comma-separated gate names to run")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds per gate")
     parser.add_argument("--no-cache", action="store_true", help="re-run even a cached pass")
-    parser.add_argument("--strict", action="store_true", help="exit 2 (not 3) when only prose checks were found")
+    parser.add_argument("--strict", action="store_true", help="exit 2 (not 3) for a partial run or only prose checks")
     parser.add_argument("--list", action="store_true", help="print the gates and their source; run nothing")
     parser.add_argument("--background", action="store_true", help="run detached; poll with --wait")
     parser.add_argument("--wait", type=Path, default=None, metavar="JSON", help="wait for a background run")
@@ -57,19 +73,7 @@ def out_path(args: argparse.Namespace) -> Path | None:
 
 def run_command(gate: dict, root: Path, env: dict, timeout: int, log: Path) -> tuple[int, float]:
     shell = ["bash", "-e", "-o", "pipefail", "-c"] if shutil.which("bash") else ["sh", "-e", "-c"]
-    started = time.monotonic()
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open("w", encoding="utf-8") as handle:
-        try:
-            done = subprocess.run([*shell, gate["command"]], cwd=root / gate["cwd"], env=env,
-                                  stdout=handle, stderr=subprocess.STDOUT, timeout=timeout)
-            code = done.returncode
-        except subprocess.TimeoutExpired:
-            code = 124
-        except OSError as error:
-            handle.write(f"cannot run: {error}\n")
-            code = 127
-    return code, round(time.monotonic() - started, 2)
+    return run_argv([*shell, gate["command"]], root / gate["cwd"], env, timeout, log)
 
 
 def run_gate(gate: dict, root: Path, tree: str, node: dict, path: str, args: argparse.Namespace,
@@ -87,11 +91,6 @@ def run_gate(gate: dict, root: Path, tree: str, node: dict, path: str, args: arg
     if code == 0:
         cache_put(root, key, {"exit": 0, "duration_s": seconds})
     return {**record, "exit": code, "duration_s": seconds}
-
-
-def write_result(out: Path | None, payload: dict) -> None:
-    if out is not None:
-        atomic_write(out, json.dumps(payload, indent=2) + "\n")
 
 
 def declaration(args: argparse.Namespace) -> tuple[Path, str, dict] | None:
@@ -115,7 +114,7 @@ def new_payload(base: str, declared: dict, node: dict, tree: str, state: str) ->
             "base": base, "notes": declared["notes"], "skipped": declared["skipped"], "node": node, "tree": tree,
             "ci_unreadable": declared["ci_unreadable"], "prose_checks": declared["prose_checks"],
             "partial": is_partial(declared["skipped"]), "pid": os.getpid(),
-            "started": datetime.now(timezone.utc).isoformat(), "gates": []}
+            "started": utc_iso(), "gates": []}
 
 
 def unverified(args: argparse.Namespace, root: Path, base: str, declared: dict, out: Path | None) -> int:
@@ -124,7 +123,7 @@ def unverified(args: argparse.Namespace, root: Path, base: str, declared: dict, 
     for item in declared["prose_checks"]:
         print(f"repo-declared check, run this: {item['command']}  [from {item['from']}]")
     print("verify: NOT VERIFIED: no gates declared (CI workflow, AGENTS.md gates block, .agent/gates.json). This is not a pass.")
-    code = 2 if args.strict or not declared["prose_checks"] else 3
+    code = EXIT_INVALID if args.strict or not declared["prose_checks"] else EXIT_NOT_VERIFIED
     write_result(out, {**new_payload(base, declared, node, tree_key(root), "done"), "verdict_exit": code})
     return code
 
@@ -164,6 +163,7 @@ def main(argv: list[str]) -> int:
 
 
 def execute(args: argparse.Namespace, out: Path | None) -> int:
+    """`--list` prints the gates; otherwise the mirror runs them."""
     found = declaration(args)
     if found is None:
         write_failed(out, "the repository or its base ref could not be resolved")
@@ -172,3 +172,117 @@ def execute(args: argparse.Namespace, out: Path | None) -> int:
         print("\n".join(f"{g['name']}: {g['command'].splitlines()[0]}" for g in found[2]["gates"]))
         return 0
     return run_all(args, *found, out) if found[2]["gates"] else unverified(args, *found, out)
+
+
+CLI = Path(__file__).resolve().parent / "crew-verify.py"
+NO_PID_GRACE = 30  # seconds a payload may go without a recorded pid before --wait calls the run failed
+EXIT_STILL_RUNNING = 4
+
+
+def now() -> str:
+    return utc_iso()
+
+
+def print_lines(result: dict) -> None:
+    for gate in result["gates"]:
+        print(gate_line(gate))
+
+
+def read(path: Path) -> dict:
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return result if isinstance(result, dict) else {}
+
+
+def background(argv: list[str], out: Path | None) -> int:
+    if out is None:
+        print("verify: --background needs --out or --task-dir", file=sys.stderr)
+        return 2
+    launched = now()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    starting = {"schema_version": 1, "state": "starting", "started": launched, "gates": []}
+    atomic_write(out, json.dumps(starting) + "\n")
+    rest = [a for a in argv if a != "--background"]
+    with log_of(out).open("w", encoding="utf-8") as handle:
+        child = subprocess.Popen([sys.executable, str(CLI), *rest, "--out", str(out)],
+                                 stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
+    if read(out).get("state") == "starting":  # the child's own payloads carry its pid too
+        atomic_write(out, json.dumps({**starting, "pid": child.pid}) + "\n")
+    print(f"started pid={child.pid} out={out} (wait: crew-verify.py --wait {out} --since {launched})")
+    return 0
+
+
+def fresh(result: dict, since: str | None) -> bool:
+    try:
+        return since is None or datetime.fromisoformat(str(result.get("started"))) >= datetime.fromisoformat(since)
+    except ValueError:
+        return False
+
+
+def alive(pid: object) -> bool:
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def answer(result: dict, since: str | None, path: Path) -> int | None:
+    """The exit code a finished (`done` or `failed`) fresh result gives, or None while it is not finished."""
+    if result.get("state") == "failed" and fresh(result, since):
+        print(f"verify: NOT VERIFIED: the run failed: {result.get('reason')} (log: {log_of(path)})", file=sys.stderr)
+        return 2
+    if result.get("state") != "done" or not fresh(result, since):
+        return None
+    if result.get("partial") and result["gates"]:
+        print(partial_line(result["skipped"]))
+    print_lines(result)
+    if result.get("verified", True):
+        return 0 if all(g["exit"] == 0 for g in result["gates"]) else 1
+    if not result["gates"]:
+        print("verify: NOT VERIFIED: no gates declared (CI workflow, AGENTS.md gates block, .agent/gates.json). This is not a pass.")
+    return int(result.get("verdict_exit", 3))
+
+
+def wait(path: Path, wait_timeout: int | None, since: str | None = None) -> int:
+    """Block until the run at `path` finishes, its child dies, or `wait_timeout` seconds pass (exit 4)."""
+    started = time.monotonic()
+    while wait_timeout is None or time.monotonic() - started < wait_timeout:
+        result = read(path)
+        code = answer(result, since, path)
+        if code is not None:
+            return code
+        pid = result.get("pid")
+        gone = not alive(pid) if pid is not None else time.monotonic() - started > NO_PID_GRACE
+        if gone:
+            code = answer(read(path), since, path)
+            if code is not None:
+                return code
+            what = f"pid {pid} exited" if pid is not None else "no running verify is recorded"
+            print(f"verify: NOT VERIFIED: the run failed: {what} without a result (log: {log_of(path)})", file=sys.stderr)
+            return 2
+        time.sleep(1)
+    print(f"verify: {path} still running after {wait_timeout}s; do not hand off (log: {log_of(path)})", file=sys.stderr)
+    return EXIT_STILL_RUNNING
+
+
+def note_lines(declared: dict) -> list[str]:
+    """The lines printed before any gate runs: the verdict of a partial mirror, the workflow files, what was skipped."""
+    gates = declared["gates"]
+    files = sorted({g["workflow"] for g in gates if g.get("workflow")})
+    setup, other, uses = kinds(declared["skipped"])
+    lines = [partial_line(declared["skipped"])] if other and gates else []
+    lines += [f"workflows: {', '.join(files)}"] if files else []
+    if setup or other:
+        lines.append(f"skipped: {len(setup) + len(other)} steps ({'; '.join(setup + other)})")
+    if uses:
+        lines.append(f"not mirrored: {len(uses)} uses: steps")
+    if not_ci(declared["skipped"]):
+        lines.append(f"not CI: {'; '.join(not_ci(declared['skipped']))}")
+    return lines

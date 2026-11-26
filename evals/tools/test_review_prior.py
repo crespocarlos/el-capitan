@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / ".agent" / "tools"), str(ROOT / ".agent" / "tools" / "review"),
                 str(ROOT / ".agent" / "tools" / "lib")]
 
-import review_manifest as manifest  # noqa: E402
+import review_workspace as manifest  # noqa: E402
 from review_parse import parse  # noqa: E402
 
 DIFF = """diff --git a/a.ts b/a.ts

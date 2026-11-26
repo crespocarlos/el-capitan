@@ -1,36 +1,27 @@
-#!/usr/bin/env python3
-"""The journal: reading a month file into immutable observations, and importing them.
+"""The journal: month files read into immutable observations, imported, and single entries added.
 
-Journal evidence is append-only, so every observation gets an id that is a deterministic hash of
-its source and content. That is what makes a re-import idempotent: the same paragraph yields the
-same id, and one whose stored file already holds identical content is skipped rather than
-duplicated. A differing file under a known id is a collision, reported instead of overwritten.
-
-Nothing here modifies a journal source file; only the store is written. Adding one entry straight
-to the store is `memory_journal_add`.
+An observation's id hashes its source and content, so a re-import or a second add of the same entry is
+a no-op; a differing body under a known id is reported as a collision, never overwritten. Journal
+source files are never written.
 """
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import hashlib
+import json
 import re
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
+
+from memory_frontmatter import render_unit
+from memory_paths import MemoryStoreError, canonical_scope, journal_root, observation_directory, slug, today
+from memory_store import commit_external_changes, ensure_store, git_commit, refresh, run_git, store_lock
 
 from lib.files import atomic_write
-from memory_commit import commit_external_changes, git_commit, run_git
-from memory_frontmatter import render_unit
-from memory_index import ensure_store, refresh, store_lock
-from memory_paths import (
-    MemoryStoreError,
-    canonical_scope,
-    journal_root,
-    observation_directory,
-    slug,
-)
 
 
 def journal_entries(path: Path) -> Iterator[dict]:
@@ -161,4 +152,60 @@ def journal_import(args: argparse.Namespace) -> int:
             return code
     for _, _, ident in writes:
         print(ident)
+    return 0
+
+
+def observation_unit(ident: str, args: argparse.Namespace, scope: str, entry_date: str,
+                     body: str) -> dict:
+    """The unit a `journal add` writes: one immutable observation with a deterministic identity."""
+    return {
+        "id": ident, "type": "observation", "scope": scope, "title": args.title,
+        "paths": [], "keywords": [tag.removeprefix("#") for tag in args.tags], "status": "active",
+        "superseded_by": None, "created": entry_date, "modified": entry_date,
+        "review_by": None, "evidence": [], "uses": 0, "last_used": None,
+        "helped": 0, "misled": 0,
+        "body": body if body.endswith("\n") else body + "\n",
+        "source_identity": f"journal-add:{ident}",
+    }
+
+
+def journal_add(args: argparse.Namespace) -> int:
+    """Store a new journal entry directly as one immutable observation."""
+    ensure_store()
+    body = sys.stdin.read()
+    if not body.strip():
+        print("journal add body must be supplied on stdin", file=sys.stderr)
+        return 1
+    entry_date = args.date or today()
+    try:
+        dt.date.fromisoformat(entry_date)
+    except ValueError:
+        print(f"invalid --date: {entry_date}", file=sys.stderr)
+        return 1
+    scope = canonical_scope(args.repo) if args.repo else "global"
+    try:
+        observation_directory(scope)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    keywords = [tag.removeprefix("#") for tag in args.tags]
+    identity = json.dumps(
+        {"scope": scope, "date": entry_date, "title": args.title, "tags": keywords, "body": body},
+        sort_keys=True, separators=(",", ":"),
+    )
+    ident = f"observation-{hashlib.sha256(identity.encode('utf-8')).hexdigest()[:16]}"
+    unit = observation_unit(ident, args, scope, entry_date, body)
+    path = observation_directory(scope) / f"{ident}.md"
+    rendered = render_unit(unit)
+    with store_lock():
+        if path.exists():
+            if path.read_text(encoding="utf-8") != rendered:
+                print(f"observation collision: {ident}", file=sys.stderr)
+                return 2
+            print(ident)
+            return 0
+        code = write_observations([(path, rendered, ident)], f"mem: journal add {ident}")
+        if code:
+            return code
+    print(ident)
     return 0

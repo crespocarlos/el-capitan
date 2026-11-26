@@ -194,7 +194,7 @@ def test_a_finding_quoting_a_verdict_is_not_the_reports_verdict(tmp: Path) -> No
 
 
 def test_a_bold_label_entry_is_counted(tmp: Path) -> None:
-    """`review_classify` credits `1. **[attention · 4]**`; a gate that counts fewer refuses it."""
+    """`review_vocabulary` credits `1. **[attention · 4]**`; a gate that counts fewer refuses it."""
     report = ("## Review: changes\n\n1. **[attention · 4]** **`a.ts:3`** — Guard missing\n\n"
               "Verdict: WARN\n")
     result = persist(tmp, report, [attention()])

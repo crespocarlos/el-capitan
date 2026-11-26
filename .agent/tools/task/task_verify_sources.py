@@ -1,30 +1,105 @@
-"""Where a verify run learns its gates, always from the BASE branch and never from the PR head.
+"""Which gates a verify run has, read from the BASE branch, and what it must never mirror.
 
-A PR that edits the workflow it is judged by could weaken its own gates, so the declaration is read
-from the base ref (`git show <base>:<path>`). CI workflow `run:` steps are THE source whenever the repo
-has CI; a fenced `gates` block in `AGENTS.md` is the fallback for a repo with no CI; `.agent/gates.json`
-may ADD gates (never remove or change a CI gate, a clash warns) and is used as is when it is the only
-source. The source that answered is returned with the gates and printed by the caller.
-
-A `gates` block holds one gate per line, `<name>: <command>`, and `env: NAME=value` lines for
-variables every gate shares. Steps that only set up the machine (`npm ci`, `pip install`) are
-skipped and listed, as are steps with an `if:` or a `${{ }}` expression, which cannot be mirrored.
-What may never be mirrored (a release workflow, a job with an `if:`, a publish command) is decided by
-`task_verify_safety.py` and recorded in `skipped`, so the run is partial.
+Order of trust: GitHub Actions `run:` steps from the base ref; then the `AGENTS.md` gates block;
+`.agent/gates.json` may only add. Setup and `if:` steps are skipped and listed; a release workflow or
+publish command is never mirrored and makes the run partial. With no runnable gate, prose checks from
+the nearest `AGENTS.md` are surfaced for the builder, never run; unreadable CI (Buildkite) is named.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 from pathlib import Path
+from typing import Callable
 
+from task_verify_env import node_pin
+
+from lib.files import FENCE
 from lib.git import GitError, blob_at, output, rev_parse
-from task_verify_safety import is_ci, job_if, not_mirrored, publishes
-from task_verify_yaml import parse
+from lib.workflow_yaml import load
+
+CI_FILES = {".buildkite": "buildkite", ".circleci": "circleci", ".gitlab-ci.yml": "gitlab", "Jenkinsfile": "jenkins",
+            ".travis.yml": "travis", "azure-pipelines.yml": "azure", "bitbucket-pipelines.yml": "bitbucket",
+            ".drone.yml": "drone"}
+RUNNERS = ("node", "npm", "npx", "yarn", "pnpm", "bun", "make", "python", "python3", "pytest", "tox", "nox", "cargo",
+           "go", "mvn", "gradle", "bash", "sh", "bundle", "rake", "dotnet", "uv", "poetry")
+KEYWORDS = ("check", "test", "lint", "type", "verify", "format", "fmt", "ci", "jest", "eslint", "tsc")
+GATES_FENCE = re.compile(r"^```gates[ \t]*\n(.*?)^```[ \t]*\n?", re.M | re.S)  # group 1: the block body
+INLINE = re.compile(r"`([^`\n]+)`")
+LIMIT = 20
+
+
+def unreadable_ci(root: Path, ref: str | None) -> list[str]:
+    """Names of CI systems the repo declares at the top level that no reader here understands."""
+    try:
+        names = (output(root, ["ls-tree", "--name-only", ref]).split("\n") if ref
+                 else [p.name for p in root.iterdir()])
+    except (GitError, OSError):
+        return []
+    return sorted({CI_FILES[name.strip()] for name in names if name.strip() in CI_FILES})
+
+
+def is_check(line: str) -> bool:
+    words = line.split()
+    if not words or not (words[0] in RUNNERS or words[0].startswith("./")):
+        return False
+    return any(token in KEYWORDS for token in re.split(r"[^a-z0-9]+", line.lower()))
+
+
+def prose_commands(text: str) -> list[str]:
+    """Check-looking commands in fenced blocks and backtick spans, in order, without the `gates` block."""
+    text = GATES_FENCE.sub("", text)
+    fenced = [line for block in FENCE.findall(text) for line in block.splitlines()]
+    inline = INLINE.findall(FENCE.sub("", text))
+    found: list[str] = []
+    for raw in fenced + inline:
+        line = raw.strip().removeprefix("$ ").strip()
+        if not line.startswith("#") and is_check(line) and line not in found:
+            found.append(line)
+    return found[:LIMIT]
+
+
+def touched_paths(root: Path, ref: str | None) -> list[str]:
+    """Paths changed against the base (or HEAD), plus untracked files; empty when git cannot say."""
+    try:
+        changed = output(root, ["diff", "--name-only", ref or "HEAD"]).split("\n")
+        changed += output(root, ["ls-files", "--others", "--exclude-standard"]).split("\n")
+    except GitError:
+        return []
+    return sorted({path for path in changed if path})
+
+
+def guidance_resolver() -> Callable[[Path, Path], list[Path]]:
+    """`guidance_paths` of `crew-agent-context.py`, the resolver the builder's guidance comes from."""
+    source = Path(__file__).with_name("crew-agent-context.py")
+    spec = importlib.util.spec_from_file_location("crew_agent_context", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.guidance_paths
+
+
+def prose_checks(root: Path, ref: str | None) -> list[dict]:
+    """`{command, from}` for the nearest AGENTS.md of each touched path (the root's when nothing is touched)."""
+    resolve = guidance_resolver()
+    top = root.resolve()
+    nearest: list[Path] = []
+    for path in touched_paths(root, ref) or ["."]:
+        try:
+            files = resolve(top, top / path)
+        except ValueError:
+            continue
+        if files and files[-1] not in nearest:
+            nearest.append(files[-1])
+    checks: list[dict] = []
+    for guidance in nearest:
+        text = guidance.read_text(encoding="utf-8", errors="replace")
+        checks += [{"command": c, "from": str(guidance.relative_to(top))} for c in prose_commands(text)]
+    return checks
+
 
 WORKFLOWS = ".github/workflows"
 SETUP = re.compile(r"^\s*(npm|pnpm|yarn|bun)\s+(ci|install|i)\b|^\s*(pip3?|python3? -m pip)\s+install\b")
-GATES_BLOCK = re.compile(r"^```gates[ \t]*\n(.*?)^```", re.M | re.S)
 DECLARED = (f"{WORKFLOWS}/", "AGENTS.md", ".agent/gates.json", ".nvmrc", ".node-version", ".tool-versions")
 
 
@@ -105,12 +180,17 @@ def step_gate(job_id: str, job: dict, step: dict, top: dict, index: int) -> tupl
             "env": clean_env(top.get("env"), job.get("env"), step.get("env"))}, ""
 
 
-def workflow_gates(texts: dict[str, str]) -> tuple[list[dict], list[str]]:
-    """The mirrored gates of every CI workflow, in file, job and step order, plus what was skipped."""
+def workflow_gates(texts: dict[str, str], parsers: set[str] | None = None) -> tuple[list[dict], list[str]]:
+    """The mirrored gates of every CI workflow, in file, job and step order, plus what was skipped.
+
+    `parsers` collects which YAML parser read each file (`yq`, else the stdlib fallback).
+    """
     gates: list[dict] = []
     skipped: list[str] = []
     for path in sorted(texts):
-        doc = parse(texts[path])
+        doc, parser = load(texts[path])
+        if parsers is not None:
+            parsers.add(parser)
         if not is_ci(doc) or not isinstance(doc.get("jobs"), dict):
             skipped.append(not_mirrored(path, doc))
             continue
@@ -147,7 +227,7 @@ def unique(gates: list[dict]) -> list[dict]:
 
 def block_gates(text: str) -> list[dict]:
     """Gates from the fenced `gates` block of AGENTS.md."""
-    found = GATES_BLOCK.search(text)
+    found = GATES_FENCE.search(text)
     gates: list[dict] = []
     shared: dict[str, str] = {}
     for line in (found.group(1).splitlines() if found else []):
@@ -174,3 +254,102 @@ def override_gates(text: str) -> list[dict]:
         return []
 
 
+def resolve(root: Path, base: str | None) -> dict:
+    """`{source, gates, skipped, pin, notes, ci_unreadable, prose_checks}` from the base ref (or the tree)."""
+    notes: list[str] = []
+    ref = base if base and base_has(root, base) else None
+    if base and ref is None:
+        notes.append(f"base {base} not found, reading the working tree")
+    elif ref and head_changed(root, ref):
+        notes.append("declaration changed in PR head, using base")
+    where = f"@{ref}" if ref else " (working tree)"
+    texts = {p: read_at(root, ref, p) or "" for p in declared_paths(root, ref) if p.startswith(WORKFLOWS)}
+    extra = override_gates(read_at(root, ref, ".agent/gates.json") or "")
+    parsers: set[str] = set()
+    gates, skipped = workflow_gates(texts, parsers)
+    if parsers:
+        fallback = " (stdlib: last fallback, install yq for a maintained parser)" if "stdlib" in parsers else ""
+        notes.append(f"workflow parser: {', '.join(sorted(parsers))}{fallback}")
+    source, unreadable = f"ci-workflow {WORKFLOWS}{where}", []
+    if not gates:
+        unreadable = unreadable_ci(root, ref)
+        notes += [f"CI not readable here ({name})" for name in unreadable]
+        gates = block_gates(read_at(root, ref, "AGENTS.md") or "")
+        source = f"AGENTS.md gates block{where}" if gates else "none"
+    if gates and extra:
+        added, drift = merge_extra(gates, extra)
+        notes.extend(drift)
+        if added:
+            gates, source = gates + added, f"{source} + .agent/gates.json additions{where}"
+    elif extra:
+        gates, source = extra, f".agent/gates.json only{where}"
+    source_pin, required = node_pin(lambda path: read_at(root, ref, path))
+    return {"source": source, "gates": gates, "skipped": skipped, "notes": notes, "ci_unreadable": unreadable,
+            "pin": {"source": source_pin, "required": required},
+            "prose_checks": [] if gates else prose_checks(root, ref)}
+
+
+def merge_extra(gates: list[dict], extra: list[dict]) -> tuple[list[dict], list[str]]:
+    """gates.json may ADD gates; it never removes or changes one: a clash keeps the CI command and warns."""
+    known = {g["name"]: g for g in gates}
+    added: list[dict] = []
+    warnings: list[str] = []
+    for gate in extra:
+        current = known.get(gate["name"])
+        if current is None:
+            added.append(gate)
+        elif current["command"] != gate["command"]:
+            warnings.append(f"warning: gate {gate['name']}: .agent/gates.json redefines the command CI runs "
+                            f"(CI: {current['command']!r}; gates.json: {gate['command']!r}); using CI")
+    return added, warnings
+
+
+DANGEROUS = {"pull_request_target", "workflow_run", "release"}
+PUBLISH = re.compile(
+    r"^(?:\w+=\S*\s+)*(?:sudo\s+)?(?:(?:npm|pnpm)\s+publish|yarn\s+(?:npm\s+)?publish|docker\s+push"
+    r"|gh\s+release\s+(?:create|upload|edit)|twine\s+upload|cargo\s+publish|gem\s+push|git\s+push)\b")
+
+
+def trigger_map(doc: dict) -> dict[str, object]:
+    """`{event: filter}` of a workflow's `on:`, written as a string, a list or a map (and the YAML 1.1 `True` key)."""
+    on = doc.get("on", doc.get(True))
+    if isinstance(on, dict):
+        return {str(key): value for key, value in on.items()}
+    if isinstance(on, list):
+        return {str(item): None for item in on}
+    return {part.strip(): None for part in str(on or "").strip("[] ").split(",") if part.strip()}
+
+
+def tags_only(value: object) -> bool:
+    """True for a `push` filter that names `tags` and no branch filter: it runs on a release tag."""
+    return isinstance(value, dict) and ("tags" in value or "tags-ignore" in value) \
+        and not ({"branches", "branches-ignore"} & set(value))
+
+
+def is_ci(doc: dict) -> bool:
+    """True when push (not tags-only) or pull_request is present and no dangerous event is."""
+    found = trigger_map(doc)
+    if DANGEROUS & set(found):
+        return False
+    return "pull_request" in found or ("push" in found and not tags_only(found["push"]))
+
+
+def has_ci_trigger(doc: dict) -> bool:
+    """True when the workflow runs on `push` or `pull_request` at all; without either it is not CI."""
+    return bool({"push", "pull_request"} & set(trigger_map(doc)))
+
+
+def not_mirrored(path: str, doc: dict) -> str:
+    """The skipped entry of a workflow left out: `not CI` when it has no CI trigger, else `workflow not mirrored`."""
+    kind = "workflow not mirrored" if has_ci_trigger(doc) else "not CI"
+    return f"{path}: {kind} (on: {', '.join(trigger_map(doc)) or 'none'})"
+
+
+def job_if(job_id: str, job: dict) -> str:
+    """The skipped entry of a job gated by a job-level `if:`, or ''."""
+    return f"{job_id}: job with an if:, not mirrored" if job.get("if") else ""
+
+
+def publishes(command: str) -> bool:
+    """True when any line or any `&&`, `;`, `||` segment of the command starts a publish or deploy command."""
+    return any(PUBLISH.match(part.strip()) for line in command.splitlines() for part in re.split(r"&&|\|\||;", line))

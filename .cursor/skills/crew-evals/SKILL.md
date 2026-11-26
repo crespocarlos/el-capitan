@@ -1,6 +1,6 @@
 ---
 name: crew-evals
-description: "Use when the user asks to inspect, compare, or explain evaluation experiments or scores, including after an eval run. Alias: 'crew evals'."
+description: "Use when the user asks to inspect, compare, or explain Kibana evaluation experiments or scores (this skill targets Kibana's evals suites), including after an eval run. Alias: 'crew evals'."
 ---
 
 # Evals
@@ -36,7 +36,6 @@ Rules:
 Run `crew-evals-compare.py diagnose <baseline> <candidate> --repo <read-only Kibana checkout> --json`. It
 derives the suite from score metadata, reads only the repository's Git history, and classifies
 changed files as prompt, tool, retrieval, evaluator, dataset, or other.
-
 - Treat `not_comparable` (evaluator or dataset changed) and `insufficient_evidence` as blockers for
   prompt proposals.
 - Propose at most three prompt edits only when a statistically supported regression, judge

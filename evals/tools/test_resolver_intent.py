@@ -23,7 +23,7 @@ MAINTENANCE = ROOT / ".agent" / "tools" / "maintenance"
 if str(MAINTENANCE) not in sys.path:
     sys.path.insert(0, str(MAINTENANCE))
 
-from lint_budget import MAX_PROMPT_FILE_BYTES  # noqa: E402
+from lint_prompts import MAX_PROMPT_FILE_BYTES  # noqa: E402
 
 # Names that only made sense for the one PR that failed. A prompt that repeats them is overfitted to
 # that repository and says nothing about the next one.

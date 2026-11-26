@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Checks for `review-dir`: the task directory when writable, a temp path when it is not.
 
-The defect this guards is specific: the pipeline used to fall back only when no task was resolved,
-so a sandbox that resolved the task and then denied the write left the review with nowhere to go.
-Every case here drives the decision by making a directory unwritable rather than by mocking a
-predicate, because the original bug was a predicate that could not observe the failure.
+A resolved task whose directory denies the write still gets a review directory. Each case makes a
+directory unwritable rather than mocking a predicate, so the check observes the real failure.
+Run as root, the two fallback cases are skipped with a printed reason: root writes anywhere.
 """
 from __future__ import annotations
 
@@ -93,6 +92,9 @@ def task_cases(workspace) -> None:
 
 def fallback_cases(workspace) -> None:
     """An unwritable task directory falls back to a temp path that names the repo."""
+    if os.geteuid() == 0:
+        print("skip: unwritable task directory: root writes through mode 0500, so it cannot be made unwritable")
+        return
     task = writable_task()
     try:
         read_only(task)
@@ -120,6 +122,9 @@ def pr_cases(workspace) -> None:
 
 def report_cases() -> None:
     """The reason for a fallback reaches stderr, never the captured stdout."""
+    if os.geteuid() == 0:
+        print("skip: fallback reason on stderr: root can create /nonexistent/task, so nothing falls back")
+        return
     code, out, err = run("--repo", "probe-unwritable", "--task-dir", "/nonexistent/task")
     check("an unusable task directory still yields a path", code == 0 and out.strip() != "", (code, out))
     check("the fallback reason is on stderr", "not writable" in err, err)

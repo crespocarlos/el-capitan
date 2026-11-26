@@ -357,7 +357,8 @@ mkspec implementing-pass $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict
 mkspec implementing-nits $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict: pass-with-nits'
 mkspec implementing-rerun $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' $'Verdict: pass\n\nround 2\nVerdict: BLOCK'
 mkspec empty-status $'# T\n\n## Status\n\n## Summary\n\n- [x] a\n' 'Verdict: pass'
-python3 "$root/.agent/tools/task/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply >/dev/null
+task_tool="$root/.agent/tools/task/crew-task.py"
+python3 "$task_tool" reconcile --tasks-dir "$tasks" --apply >/dev/null
 test "$(status_of abandoned)" = ABANDONED
 test "$(status_of onhold)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)'
 test "$(status_of drafting-old)" = 'ON-HOLD (auto-hold: no activity 14d; was DRAFTING)'
@@ -370,7 +371,8 @@ grep -q '^## Summary$' "$tasks/empty-status/SPEC.md"
 grep -q 'DRAFTING → ON-HOLD' "$tasks/drafting-old/PROGRESS.md"
 
 hook_home="$home/hook-home"; mkdir -p "$hook_home/.agent/bin" "$hook_home/.agent/tasks"
-ln -s "$root/.agent/tools/task/crew-ls.py" "$hook_home/.agent/bin/crew-ls.py"
+ln -s "$root/.agent/tools/task/crew-ls.py" "$hook_home/.agent/bin/crew-ls.py"  # anchor.sh reads --status-file
+ln -s "$task_tool" "$hook_home/.agent/bin/crew-task.py"
 mkdir -p "$hook_home/.agent/tasks/idle" "$hook_home/.agent/tasks/shipped"
 printf '# T\n\n## Status\nDRAFTING\n\n- [ ] a\n' > "$hook_home/.agent/tasks/idle/SPEC.md"; touch -t 202610010000 "$hook_home/.agent/tasks/idle/SPEC.md"
 printf '# T\n\n## Status\ndone\n\n- [x] a\n' > "$hook_home/.agent/tasks/shipped/SPEC.md"
@@ -384,7 +386,7 @@ grep -q '1 done spec(s) lack a review pass' <<<"$hook_out"
 grep -q 'spec-status: 1 ready to open PR: ready' <<<"$hook_out"
 grep -q 'spec-status: 1 stalled IMPLEMENTING: stuck' <<<"$hook_out"
 missing_out=$(HOME="$home/no-tool" bash "$root/.claude/hooks/spec-status-reconcile.sh")
-grep -q 'reconcile failed' <<<"$missing_out"
+grep -q 'reconcile failed (.*crew-task.py missing; re-run install.sh from your el-capitan checkout)' <<<"$missing_out"
 table_out=$(python3 "$root/.agent/tools/task/crew-ls.py" --tasks-dir "$tasks")
 grep -q '^STATE  *TASK  *BRANCH  *REVIEW  *AGE$' <<<"$table_out"
 python3 "$root/.agent/tools/task/crew-ls.py" --tasks-dir "$tasks" --tsv | awk -F'\t' 'NF!=5{bad=1} END{exit bad}'
@@ -397,7 +399,7 @@ mkspec implementing-old-open $'# T\n\n## Status\nIMPLEMENTING\n\n- [ ] a\n' 'Ver
 mkspec approved-done-old $'# T\n\n## Status\nAPPROVED\n\n- [x] a\n' 'Verdict: pass' 202610010000
 mkspec implementing-nobox $'# T\n\n## Status\nIMPLEMENTING\n\nno boxes\n' 'Verdict: pass'
 mkspec implementing-warn $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' 'Verdict: warn'
-python3 "$ls_tool" --tasks-dir "$tasks" --reconcile --apply >/dev/null
+python3 "$task_tool" reconcile --tasks-dir "$tasks" --apply >/dev/null
 test "$(status_of approved-old)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)'
 test "$(status_of implementing-old-open)" = IMPLEMENTING
 test "$(status_of approved-done-old)" = 'ON-HOLD (auto-hold: no activity 14d; was APPROVED)'
@@ -414,58 +416,61 @@ if grep -q 'implementing-pass' <<<"$(section 'stalled IMPLEMENTING')"; then exit
 
 fails() { local expect=$1; shift; local rc=0 err; err=$("$@" 2>&1 >/dev/null) || rc=$?; test "$rc" -ne 0; grep -q -- "$expect" <<<"$err"; }
 mkspec approved-new $'# T\n\n## Status\nAPPROVED\n\n- [x] a\n' 'Verdict: warn'
-fails 'not APPROVED' python3 "$ls_tool" --mark-implementing "$tasks/drafting-new"
-fails 'no SPEC.md' python3 "$ls_tool" --mark-implementing "$tasks/missing"
-python3 "$ls_tool" --mark-implementing "$tasks/approved-new" >/dev/null
+fails 'not APPROVED' python3 "$task_tool" mark-implementing "$tasks/drafting-new"
+fails 'no SPEC.md' python3 "$task_tool" mark-implementing "$tasks/missing"
+python3 "$task_tool" mark-implementing "$tasks/approved-new" >/dev/null
 test "$(status_of approved-new)" = IMPLEMENTING
 grep -q 'APPROVED → IMPLEMENTING' "$tasks/approved-new/PROGRESS.md"
-python3 "$ls_tool" --mark-implementing "$tasks/approved-new" | grep -q 'already implementing'
-python3 "$ls_tool" --mark-done "$tasks/approved-new" --pr-url https://example.test/pr/2 >/dev/null
+python3 "$task_tool" mark-implementing "$tasks/approved-new" | grep -q 'already implementing'
+python3 "$task_tool" mark-done "$tasks/approved-new" --pr-url https://example.test/pr/2 >/dev/null
 test "$(status_of approved-new)" = DONE
 
 printf '{"slug":"implementing-pass","branch":"feature/x"}' > "$tasks/implementing-pass/.task-id"
-fails 'current branch is feature/y' python3 "$ls_tool" --mark-done "$tasks/implementing-pass" --pr-url x --branch feature/y
+fails 'current branch is feature/y' python3 "$task_tool" mark-done "$tasks/implementing-pass" --pr-url x --branch feature/y
 test "$(status_of implementing-pass)" = IMPLEMENTING
-python3 "$ls_tool" --mark-done "$tasks/implementing-pass" --pr-url https://example.test/pr/1 --branch feature/x >/dev/null
+python3 "$task_tool" mark-done "$tasks/implementing-pass" --pr-url https://example.test/pr/1 --branch feature/x >/dev/null
 test "$(status_of implementing-pass)" = DONE
 grep -q 'IMPLEMENTING → DONE (PR opened: https://example.test/pr/1)' "$tasks/implementing-pass/PROGRESS.md"
-python3 "$ls_tool" --mark-done "$tasks/implementing-pass" --pr-url x | grep -q 'already done'
-fails 'unchecked' python3 "$ls_tool" --mark-done "$tasks/implementing-old-open" --pr-url x
-fails 'need pass or warn' python3 "$ls_tool" --mark-done "$tasks/implementing-rerun" --pr-url x
-fails 'not IMPLEMENTING' python3 "$ls_tool" --mark-done "$tasks/drafting-new" --pr-url x
-fails 'no SPEC.md' python3 "$ls_tool" --mark-done "$tasks/missing" --pr-url x
-fails '--pr-url' python3 "$ls_tool" --mark-done "$tasks/drafting-new"
+python3 "$task_tool" mark-done "$tasks/implementing-pass" --pr-url x | grep -q 'already done'
+fails 'unchecked' python3 "$task_tool" mark-done "$tasks/implementing-old-open" --pr-url x
+fails 'need pass or warn' python3 "$task_tool" mark-done "$tasks/implementing-rerun" --pr-url x
+fails 'not IMPLEMENTING' python3 "$task_tool" mark-done "$tasks/drafting-new" --pr-url x
+fails 'no SPEC.md' python3 "$task_tool" mark-done "$tasks/missing" --pr-url x
+fails '--pr-url' python3 "$task_tool" mark-done "$tasks/drafting-new"
 test "$(status_of drafting-new)" = DRAFTING
-python3 "$ls_tool" --mark-done "$tasks/implementing-old-open" --pr-url x --force >/dev/null
+python3 "$task_tool" mark-done "$tasks/implementing-old-open" --pr-url x --force >/dev/null
 test "$(status_of implementing-old-open)" = DONE
 
-# Gate 1: APPROVED is written by --mark-approved, never hand-edited.
+# Gate 1: APPROVED is written by crew-task.py mark-approved, never hand-edited.
 mkspec gate1 $'# T\n\n## Status\nDRAFTING\n\n- [ ] a\n'
-python3 "$ls_tool" --mark-approved "$tasks/gate1" >/dev/null
+python3 "$task_tool" mark-approved "$tasks/gate1" >/dev/null
 test "$(status_of gate1)" = APPROVED
-python3 "$ls_tool" --mark-approved "$tasks/gate1" | grep -q 'already approved'
-fails 'not DRAFTING' python3 "$ls_tool" --mark-approved "$tasks/implementing-pass"
+python3 "$task_tool" mark-approved "$tasks/gate1" | grep -q 'already approved'
+# crew-ls.py only reads: a state-changing flag is an unknown argument (argparse exit 2).
+rc=0; python3 "$ls_tool" --mark-approved "$tasks/gate1" >/dev/null 2>&1 || rc=$?
+test "$rc" = 2
+fails 'not DRAFTING' python3 "$task_tool" mark-approved "$tasks/implementing-pass"
 mkspec gate1-open $'# T\n\n## Status\nDRAFTING\n\n## Open questions\n- [NEEDS CLARIFICATION: which API?]\n\n- [ ] a\n'
-fails 'NEEDS CLARIFICATION' python3 "$ls_tool" --mark-approved "$tasks/gate1-open"
+fails 'NEEDS CLARIFICATION' python3 "$task_tool" mark-approved "$tasks/gate1-open"
 test "$(status_of gate1-open)" = DRAFTING
 
 # A typed ## Tests block with no runnable Command is not approvable: crew test would WARN on it.
 mkspec gate1-notests $'# T\n\n## Status\nDRAFTING\n\n## Tests\n### Unit\n- **Command**: none\n\n- [ ] a\n'
-fails 'spec-typed-tests' python3 "$ls_tool" --mark-approved "$tasks/gate1-notests"
+fails 'spec-typed-tests' python3 "$task_tool" mark-approved "$tasks/gate1-notests"
 test "$(status_of gate1-notests)" = DRAFTING
 mkspec gate1-tests $'# T\n\n## Status\nDRAFTING\n\n## Tests\n### Unit\n- **Command**: `pytest`\n\n- [ ] a\n'
-python3 "$ls_tool" --mark-approved "$tasks/gate1-tests" >/dev/null
+python3 "$task_tool" mark-approved "$tasks/gate1-tests" >/dev/null
 test "$(status_of gate1-tests)" = APPROVED
 
 # .task-id records the implementing branch so a worktree still resolves the task.
 mkspec gate1-branch $'# T\n\n## Status\nDRAFTING\n\n- [ ] a\n'
 printf '{"slug":"gate1-branch","branch":"main"}' > "$tasks/gate1-branch/.task-id"
-python3 "$ls_tool" --mark-approved "$tasks/gate1-branch" >/dev/null
-python3 "$ls_tool" --mark-implementing "$tasks/gate1-branch" --branch feat/worktree >/dev/null
+python3 "$task_tool" mark-approved "$tasks/gate1-branch" >/dev/null
+python3 "$task_tool" mark-implementing "$tasks/gate1-branch" --branch feat/worktree >/dev/null
 grep -q '"branch": "feat/worktree"' "$tasks/gate1-branch/.task-id"
 # A hand-edited APPROVED spec with an open clarification still cannot be implemented.
 mkspec gate1-blocked $'# T\n\n## Status\nAPPROVED\n\n## Open questions\n- [NEEDS CLARIFICATION: which API?]\n\n- [ ] a\n'
-fails 'NEEDS CLARIFICATION' python3 "$ls_tool" --mark-implementing "$tasks/gate1-blocked"
+fails 'NEEDS CLARIFICATION' python3 "$task_tool" mark-implementing "$tasks/gate1-blocked"
 test "$(status_of gate1-blocked)" = APPROVED
 
 # --apply must report write failures in its exit code.
@@ -474,17 +479,19 @@ test "$(status_of gate1-blocked)" = APPROVED
 # carry `chmod` because approving it globally is broader than this one test needs.
 mkspec apply-ro $'# T\n\n## Status\nDRAFTING\n\n- [ ] a\n'
 touch -t 202610010000 "$tasks/apply-ro"/*
-if ! chmod 555 "$tasks/apply-ro" 2>/dev/null; then
+if [ "$(id -u)" = 0 ]; then
+  echo "skip: --apply write failure: root writes through mode 555, so the write cannot fail" >&2
+elif ! chmod 555 "$tasks/apply-ro" 2>/dev/null; then
   echo "skip: cannot chmod the fixture directory; the write-failure case needs it" >&2
 else
-  if python3 "$ls_tool" --tasks-dir "$tasks" --reconcile --apply >/dev/null 2>&1; then exit 1; fi
+  if python3 "$task_tool" reconcile --tasks-dir "$tasks" --apply >/dev/null 2>&1; then exit 1; fi
   chmod 755 "$tasks/apply-ro"
   test "$(status_of apply-ro)" = DRAFTING
 fi
 
 # A review records the commit it approved; a review of a different tree must block close-out.
 mkspec reviewed $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' $'Verdict: pass\n\nReviewed at: 0123456789abcdef0123456789abcdef01234567\n'
-fails 'cannot verify that review' python3 "$ls_tool" --mark-done "$tasks/reviewed" --pr-url x --branch main
+fails 'cannot verify that review' python3 "$task_tool" mark-done "$tasks/reviewed" --pr-url x --branch main
 test "$(status_of reviewed)" = IMPLEMENTING
 
 # A reviewed ancestor of HEAD passes, because crew commit runs after crew review.
@@ -493,20 +500,20 @@ mkspec reviewed-ancestor $'# T\n\n## Status\nIMPLEMENTING\n\n- [x] a\n' "Verdict
 
 Reviewed at: $git_sha
 "
-python3 "$ls_tool" --mark-done "$tasks/reviewed-ancestor" --pr-url x --branch main >/dev/null
+python3 "$task_tool" mark-done "$tasks/reviewed-ancestor" --pr-url x --branch main >/dev/null
 test "$(status_of reviewed-ancestor)" = DONE
 
 bad_tools="$home/bad-tools"; mkdir -p "$bad_tools"
-cp "$ls_tool" "$root"/.agent/tools/task/task_*.py "$root"/.agent/tools/task/ls_*.py "$root/.agent/tools/task/crew-progress.py" "$bad_tools/"
+cp "$ls_tool" "$task_tool" "$root"/.agent/tools/task/task_*.py "$root"/.agent/tools/task/ls_*.py "$root/.agent/tools/task/crew-progress.py" "$bad_tools/"
 # crew-ls.py imports `lib.output` from the tools root, so the fixture carries that package too.
 cp -R "$root/.agent/tools/lib" "$home/lib"
 printf '{bad' > "$bad_tools/transitions.json"
 python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" >/dev/null
 fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile
 printf '{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["bogus"],"status":"x","log":"y"}]}' > "$bad_tools/transitions.json"
-fails 'unknown predicate' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply
+fails 'unknown predicate' python3 "$bad_tools/crew-task.py" reconcile --tasks-dir "$tasks" --apply
 printf '{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["idle"],"status":"{typo}","log":"y"}]}' > "$bad_tools/transitions.json"
-fails 'error: transitions.json' python3 "$bad_tools/crew-ls.py" --tasks-dir "$tasks" --reconcile --apply
+fails 'error: transitions.json' python3 "$bad_tools/crew-task.py" reconcile --tasks-dir "$tasks" --apply
 
 # The installed surface is flat while the source tree is grouped, so install.sh must resolve every
 # command through its subdirectory, link the catalog's commands and nothing else (a module is

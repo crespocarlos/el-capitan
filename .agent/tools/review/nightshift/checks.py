@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """The preflight probes, as one table: what blocks a run, and what is only a note.
 
-Nothing in `location_checks` or `server_checks` is a warning. `crew e2e` starts real runs, so a
-check that cannot pass must stop the skill; a note is something a usable machine can be in the
-middle of, such as a stack already listening on the port, and reporting it as a failure would
-reject a machine that works. `server_checks` also returns the queue payload it read, so the caller
-reuses it instead of asking twice.
+A failing check in `location_checks` or `server_checks` stops the skill, because `crew e2e` starts
+real runs; a note (a stack already on the port) describes a usable machine. `server_checks` also
+returns the queue payload it read, so the caller does not ask twice.
 """
 from __future__ import annotations
 
@@ -14,7 +12,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from lib.git import GitError, behind_count, current_branch, fetch_remote
 from nightshift.client import ApiError, Unreachable, agent_check, base_url, request
 from nightshift.location import (
     CANONICAL_REMOTE,
@@ -25,6 +22,8 @@ from nightshift.location import (
     launchd_state,
     ports_status,
 )
+
+from lib.git import GitError, behind_count, current_branch, fetch_remote
 
 
 def check(name: str, ok: bool, detail: str, fix: str = "") -> dict:

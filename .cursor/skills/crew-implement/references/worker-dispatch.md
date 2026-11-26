@@ -6,12 +6,12 @@ What the orchestrator does around the worker. Step 4 and Step 6 of `crew-impleme
 
 This tool is project-agnostic, so a worktree is opt-in. The default is a branch off the default
 branch in the current checkout (no worktree); a worktree is created only when the user asks for one
-or the repo's `AGENTS.md` sets `worktree: true`. Resolve it with `crew-progress.py worktree pref`,
+or the repo's `AGENTS.md` sets `worktree: true`. Resolve it with `crew-task.py worktree pref`,
 which prints `worktree`, `here` or `ask`. On `ask` the repo never answered: ask once per repo ("Use a
 worktree for this repo? Default: no"), then record the answer so it is never asked again:
 
 ```bash
-~/.agent/bin/crew-progress.py worktree record <worktree|here> "$TASK_DIR"   # marker + one WORKTREE: line in PROGRESS.md
+~/.agent/bin/crew-task.py worktree record <worktree|here> "$TASK_DIR"   # marker + one WORKTREE: line in PROGRESS.md
 ```
 
 Here (the default): `BRANCH_NAME` is SPEC.md's `## Branch:`; when absent derive type-prefix/slug
@@ -21,7 +21,7 @@ any switch:
 ```bash
 WORK_DIR=$(~/.agent/bin/crew-repo-info.py --field root)
 DEFAULT=$(~/.agent/bin/crew-default-branch.sh)
-~/.agent/bin/crew-progress.py worktree check "$WORK_DIR" --task-dir "$TASK_DIR"
+~/.agent/bin/crew-task.py worktree check "$WORK_DIR" --task-dir "$TASK_DIR"
 ```
 
 - `ok` (exit 0): cut the branch as below.
@@ -50,8 +50,8 @@ orchestrator removes it as soon as a worker returns or fails, so a crashed build
 tree denied for 6 hours:
 
 ```bash
-~/.agent/bin/crew-progress.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"
-~/.agent/bin/crew-progress.py lock remove "$WORK_DIR"     # builder's last step; the orchestrator's too, when a worker returns or fails
+~/.agent/bin/crew-task.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"
+~/.agent/bin/crew-task.py lock remove "$WORK_DIR"     # builder's last step; the orchestrator's too, when a worker returns or fails
 ```
 
 The lock is `<tree root>/.crew-worker.lock` (`task=<id>`, `started=<epoch>`), excluded from git
@@ -82,7 +82,7 @@ An autonomous run that pauses or stops (open question, scope change, stacked bas
 blocked gate) records why, once, before the final message:
 
 ```bash
-~/.agent/bin/crew-progress.py blocked "$TASK_DIR" "<reason in one line>"
+~/.agent/bin/crew-task.py blocked "$TASK_DIR" "<reason in one line>"
 ```
 
 `crew ls` shows the line until the next stage writes its own transition.

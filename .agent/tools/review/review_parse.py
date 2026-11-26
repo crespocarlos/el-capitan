@@ -1,19 +1,60 @@
-#!/usr/bin/env python3
-"""Unified-diff parsing: git's path quoting, file records, and hunk records.
+"""Unified-diff parsing and the size policy over it: path quoting, file and hunk records.
 
-Shared by the hunk splitter, which numbers the hunks a review is organised around, and by the
-finding model, which reads a hunk index back to check that a finding cites one that exists. One
-parser means the id a package cites and the id the gate accepts are produced by the same code.
-
-The parse is project-agnostic on purpose, because a review that silently loses its layer map to a
-missing external tool is worse than one that never had a map. Which files are generated, and which
-are too large to quote, is `review_limits`; the ids survive either way, so hunks stay addressable.
+One parser for the hunk splitter and the finding model, so a cited id and an accepted id agree. A
+generated file (lockfile, snapshot, bundle) or a hunk over `SUPPRESS_LINES`/`SUPPRESS_CHARS` loses
+its text but keeps its hunk ids; only `byName` lets a package collapse a body.
 """
 from __future__ import annotations
 
 import re
 
-from review_limits import apply_limits, new_file
+GENERATED = re.compile(
+    r"(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum|Cargo\.lock|poetry\.lock|uv\.lock"
+    r"|Gemfile\.lock|composer\.lock)$|__snapshots__/|\.snap$|(^|/)dist/|\.min\.(js|css)$|\.map$"
+    r"|\.gen\.|_generated|\.generated\.|(^|/)generated/|(^|/)__generated__/|\.pb\.go$"
+    r"|_pb2(_grpc)?\.py$|(^|/)vendor/|\.bundled\.(json|ya?ml)$"
+)
+SUPPRESS_LINES = 5000
+SUPPRESS_CHARS = 500_000
+LARGE_LINES = 400
+MAX_LINE_CHARS = 5000
+
+
+def new_file(path: str, old_path: str) -> dict:
+    """A file record before its hunks are seen; `byName` is what a package may collapse."""
+    return {"path": path, "oldPath": old_path, "status": "modified",
+            "generated": bool(GENERATED.search(path)), "byName": bool(GENERATED.search(path)),
+            "hunkIds": []}
+
+
+def apply_limits(files: list[dict], hunks: list[dict]) -> None:
+    """Flag oversized and generated-by-content files, and cut a line that would dwarf the package."""
+    by_file: dict[str, list[dict]] = {}
+    for hunk in hunks:
+        by_file.setdefault(hunk["file"], []).append(hunk)
+    for entry in files:
+        owned = by_file.get(entry["path"], [])
+        total = sum(h["additions"] + h["deletions"] for h in owned)
+        chars = sum(len(line["s"]) for h in owned for line in h["lines"])
+        longest = max((len(line["s"]) for h in owned for line in h["lines"]), default=0)
+        # Minified or machine-written content counts as generated even with a plain name.
+        if longest > 2000 or (chars and chars / max(total, 1) > 400):
+            entry["generated"] = True
+        if total > SUPPRESS_LINES or chars > SUPPRESS_CHARS:
+            entry["suppressed"] = True
+            entry["size"] = chars
+            for h in owned:
+                h["suppressed"] = True
+                h["lines"] = []
+            continue
+        if total > LARGE_LINES:
+            entry["large"] = True
+        for h in owned:
+            for line in h["lines"]:
+                if len(line["s"]) > MAX_LINE_CHARS:
+                    line["cut"] = len(line["s"])
+                    line["s"] = line["s"][:MAX_LINE_CHARS]
+
 
 HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$")
 QUOTED = r'"((?:[^"\\]|\\.)*)"'
@@ -147,7 +188,7 @@ def parse(diff: str) -> dict:
         if current is None:
             continue
 
-        if hunk is None or not line[:1] in " +-\\":
+        if hunk is None or line[:1] not in " +-\\":
             new_file_status(current, line)
 
         header = HUNK_HEADER.match(line)

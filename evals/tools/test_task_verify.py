@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""`crew-progress.py verify`: the repository's gates, run the way its CI runs them.
+"""`crew-verify.py`: the repository's gates, run the way its CI runs them.
 
-The incident behind it: a test cleared `CI` but not `GITHUB_ACTIONS`, passed every local gate and
-review, and kept the CI Test job red on `main` for days. The fixture repo's workflow sets
-`GITHUB_ACTIONS`, and its test script is the same kind of test, so a verify that did not mirror the
-runner env would pass it. Declarations are read from the base branch, so a PR that edits its own
-workflow cannot weaken the gates it is judged by. A `gh` is never called: nothing here uses it.
+The fixture's test clears `CI` but not `GITHUB_ACTIONS`, which the workflow sets, so a mirror that
+did not copy the runner env would pass it. Declarations come from the base branch, so a PR cannot
+weaken the gates it is judged by. The removed `crew-progress.py verify` form exits 2.
 """
 from __future__ import annotations
 
@@ -19,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
-CLI = TASK_TOOLS / "crew-progress.py"
+CLI = TASK_TOOLS / "crew-verify.py"
 sys.path.insert(0, str(TASK_TOOLS))
 sys.path.insert(0, str(TASK_TOOLS.parent))
 FAILED: list[str] = []
@@ -89,7 +87,7 @@ def verify(root: Path, home: Path, *extra: str) -> tuple[int, str, dict]:
     out.unlink(missing_ok=True)
     env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
     env.pop("CREW_TASK_DIR", None)
-    done = subprocess.run([sys.executable, str(CLI), "verify", "--repo", str(root), "--base", "main",
+    done = subprocess.run([sys.executable, str(CLI), "--repo", str(root), "--base", "main",
                            "--out", str(out), *extra], capture_output=True, text=True, env=env)
     data = json.loads(out.read_text(encoding="utf-8")) if out.is_file() else {}
     return done.returncode, done.stdout + done.stderr, data
@@ -214,17 +212,17 @@ def background_run(tmp: Path) -> None:
     home.mkdir(parents=True)
     out = tmp / "bg" / "gates.json"
     env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
-    started = subprocess.run([sys.executable, str(CLI), "verify", "--repo", str(root), "--base", "main", "--out", str(out),
+    started = subprocess.run([sys.executable, str(CLI), "--repo", str(root), "--base", "main", "--out", str(out),
                               "--background"], capture_output=True, text=True, env=env)
     check("--background prints started and returns at once", started.returncode == 0 and "started pid=" in started.stdout, started)
-    waited = subprocess.run([sys.executable, str(CLI), "verify", "--wait", str(out), "--timeout", "60"],
+    waited = subprocess.run([sys.executable, str(CLI), "--wait", str(out), "--timeout", "60"],
                             capture_output=True, text=True, env=env)
     check("--wait prints the gate lines and the failing exit", "unit-tests exit=1" in waited.stdout and waited.returncode == 1, waited)
 
 
 def cli(*arguments: str, home: Path) -> subprocess.CompletedProcess:
     env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
-    return subprocess.run([sys.executable, str(CLI), "verify", *arguments], capture_output=True, text=True, env=env)
+    return subprocess.run([sys.executable, str(CLI), *arguments], capture_output=True, text=True, env=env)
 
 
 def stale_result_is_not_waited_on(tmp: Path) -> None:
@@ -248,7 +246,7 @@ def bounded(*arguments: str, home: Path, seconds: int = 60) -> subprocess.Comple
     """`cli` that gives up after `seconds`: None means the wait hung."""
     env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
     try:
-        return subprocess.run([sys.executable, str(CLI), "verify", *arguments], capture_output=True, text=True, env=env, timeout=seconds)
+        return subprocess.run([sys.executable, str(CLI), *arguments], capture_output=True, text=True, env=env, timeout=seconds)
     except subprocess.TimeoutExpired:
         return None
 
@@ -302,12 +300,19 @@ def wait_matches_foreground_when_unverified(tmp: Path) -> None:
     check("--wait prints the NOT VERIFIED line", "NOT VERIFIED" in waited.stdout + waited.stderr, waited)
 
 
+def old_form_is_gone(tmp: Path) -> None:
+    root = fixture(tmp / "old")
+    done = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-progress.py"), "verify", "--repo", str(root), "--base", "main",
+                           "--list"], capture_output=True, text=True)
+    check("`crew-progress.py verify` is an unknown argument (exit 2)", done.returncode == 2 and "unrecognized" in done.stderr, done)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         for case in (mirrors_the_runner, caching, base_declaration_wins, fallback_order, drift_warning, background_run,
                      stale_result_is_not_waited_on, early_exit_is_reported, wait_matches_foreground_when_unverified,
-                     wait_follows_the_child):
+                     wait_follows_the_child, old_form_is_gone):
             try:
                 case(tmp / case.__name__)
             except (RuntimeError, KeyError, IndexError, OSError, ValueError) as error:

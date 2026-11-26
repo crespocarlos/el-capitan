@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`crew-progress.py verify` in repos that are not this one: the Node pin and the gate sources.
+"""`crew-verify.py` in repos that are not this one: the Node pin and the gate sources.
 
 el-capitan is project-agnostic. A Kibana-shaped repo has a `.nvmrc`, Buildkite CI that no reader here
 understands, prose gate commands in nested `AGENTS.md` files and no GitHub workflow; a Python-only
@@ -17,8 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import test_task_verify as base  # noqa: E402
-from test_task_verify import check, fake_node, fixture, git, verify, write  # noqa: E402
+import test_task_verify as base
+from test_task_verify import check, fake_node, fixture, git, verify, write
 
 FAILED = base.FAILED
 
@@ -244,7 +244,7 @@ PUBLISH_COMMANDS = ("npm publish", "pnpm publish", "yarn publish", "yarn npm pub
 
 def publish_paths(tmp: Path) -> None:
     """A tag-gated publish job, a tags-only push and any publish command are never mirrored, and the run is partial."""
-    from task_verify_notes import is_partial
+    from task_verify_env import is_partial
     from task_verify_sources import workflow_gates
     gated = wf(" push", "    if: startsWith(github.ref, 'refs/tags/')\n").replace("make gate", "npm publish")
     gates, skipped = workflow_gates({"a.yml": gated})
@@ -351,11 +351,58 @@ def non_ci_workflows_are_not_partial(tmp: Path) -> None:
     check("a skipped step inside the CI workflow still makes the run partial", code == 3 and data.get("partial") is True, (code, out))
 
 
+FAKE_YQ = """#!/bin/sh
+if [ "$1" = --version ]; then echo "$YQ_VERSION"; exit 0; fi
+printf '{"on":{"push":null},"env":{"PYTHON":3.10,"BIG":12345678901234567890,"NODE":22},"jobs":{"j":{"timeout-minutes":5,"steps":[{"run":"echo hi","continue-on-error":true}]}}}'
+"""
+
+
+def parser_chain(tmp: Path) -> None:
+    """mikefarah yq reads the workflow when installed (scalars as strings); otherwise the stdlib reader does."""
+    import os
+
+    from lib.workflow_yaml import load
+    tmp.mkdir(parents=True)
+    (tmp / "yq").write_text(FAKE_YQ, encoding="utf-8")
+    (tmp / "yq").chmod(0o755)
+    saved = dict(os.environ)
+    try:
+        os.environ.update(PATH=f"{tmp}{os.pathsep}{saved['PATH']}", YQ_VERSION="yq (https://github.com/mikefarah/yq/) version v4.44.1")
+        doc, parser = load("on: push\n")
+        check("mikefarah yq is the parser when installed", parser == "yq", parser)
+        check("its scalars come back as strings as written (3.10 stays 3.10), null as ''", doc == {"on": {"push": ""},
+              "env": {"PYTHON": "3.10", "BIG": "12345678901234567890", "NODE": "22"}, "jobs": {"j": {
+            "timeout-minutes": "5", "steps": [{"run": "echo hi", "continue-on-error": "true"}]}}}, doc)
+        os.environ["YQ_VERSION"] = "yq 3.2.3"
+        doc, parser = load("on: push\n")
+        check("another yq (the Python wrapper) is not used: the stdlib reader is the fallback",
+              parser == "stdlib" and doc == {"on": "push"}, (parser, doc))
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+    root, home = fixture(tmp / "note"), tmp / "home-note"
+    home.mkdir(parents=True)
+    _, out, _ = verify(root, home, "--list")
+    check("verify names the workflow parser it used", "workflow parser: " in out, out)
+
+
+def one_gates_fence(tmp: Path) -> None:
+    """One pattern describes the `gates` fence: the block it reads is the block prose checks leave out."""
+    import task_verify_sources as sources
+    fences = sorted(name for name in vars(sources) if name.startswith("GATES_"))
+    check("one GATES_* pattern, with the block body as its capture group", fences == ["GATES_FENCE"]
+          and sources.GATES_FENCE.groups == 1, fences)
+    text = "Run `npm test`.\n\n```gates\nunit: npm run check\n```\n\nThen `npm run lint`.\n"
+    check("the block read is the block stripped", [g["command"] for g in sources.block_gates(text)] == ["npm run check"]
+          and sources.prose_commands(text) == ["npm test", "npm run lint"], (sources.block_gates(text), sources.prose_commands(text)))
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         for case in (node_pin_order, python_only, kibana_shape, prose_only_repo, workflows_win, triggers, publish_paths,
-                     setup_steps, partial_mirror_is_not_verified, non_ci_workflows_are_not_partial):
+                     setup_steps, partial_mirror_is_not_verified, non_ci_workflows_are_not_partial, parser_chain,
+                     one_gates_fence):
             try:
                 case(tmp / case.__name__)
             except (RuntimeError, KeyError, IndexError, OSError, ValueError, TypeError) as error:

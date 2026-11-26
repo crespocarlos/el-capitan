@@ -226,7 +226,7 @@ approving the updated spec is.
 **Record Gate 1 on approval.** Once the user approves, run:
 
 ```bash
-~/.agent/bin/crew-ls.py --mark-approved "$TASK_DIR"
+~/.agent/bin/crew-task.py mark-approved "$TASK_DIR"
 ```
 
 It sets `Status: APPROVED` (the only writer of that value, and only from `DRAFTING`) and refuses

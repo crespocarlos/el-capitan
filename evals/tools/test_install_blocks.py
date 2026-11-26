@@ -90,7 +90,7 @@ def main() -> int:
     if FAILED:
         print(f"\n{len(FAILED)} failed")
         return 1
-    print(f"\nall install-block checks passed")
+    print("\nall install-block checks passed")
     return 0
 
 

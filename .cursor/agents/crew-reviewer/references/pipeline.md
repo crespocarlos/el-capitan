@@ -99,7 +99,7 @@ task's `REVIEW.md`.
    `--files` all fail without a flag — plus the diff gates: hunk coverage below, and evidence paths
    checked against `--files`. `--files` takes `nargs="*"`: pass every reviewed path as its own shell
    argument, because quoting them as one string makes the evidence check treat that string as one
-   nonexistent path. `--head` records the approved commit so `crew commit` and `--mark-done` can
+   nonexistent path. `--head` records the approved commit so `crew commit` and `mark-done` can
    detect a tree that moved. `--lenient` is the single supported way to skip the gates, and this
    pipeline never passes it.
    With `layers.json` in `$REVIEW_ROOT`, persistence also requires every hunk id in `hunks.json` to

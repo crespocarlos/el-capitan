@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
-"""`crew-review-findings.py consolidate`: group candidates, resolve hunks, draft `candidates.json`.
+"""`crew-review-findings.py consolidate`: group candidates, resolve hunks, draft `candidates.json`, and
+render `report.md` from `consolidation.json` (`--render`).
 
-Consolidation used to be a hand-built `candidates.json` (eight times, with three recurring anchor
-failures). This step only GROUPS: it never rewrites a finding, its title or its label. Two candidates
-group when they name the SAME file and `kind` and their line ranges overlap (`line` to `line_end`,
-default one line); there is no title similarity, so two distinct defects ten lines apart, or a
-correctness and a security finding on one line, stay separate findings. Only findings whose
-`disposition` is emitted (`patch` or `decide`) group: a `defer` or `dropped` finding is never a member,
-so it can neither absorb an emitted finding nor be overwritten to `merged`.
-
-The draft is `{"schema_version": 1, "findings": [...], "groups": [...]}`, the shape `normalize`
-reads unchanged (it takes the `findings` list and ignores the rest). Every original keeps its own
-`label`; each member gets `group`, and the group's representative (highest label, then highest
-confidence, then first) gets `group_severity`, the highest label of the group. The other members get
-`disposition: "merged"` and `merged_into` (the group id), which keeps them out of the numbered list and the verdict
-while `consolidation.json` still lists them as originals. A consolidator who disagrees with a group
-edits the draft before `normalize`. `hunks` are filled from file:line against `hunks.json` when the
-finding names none. `--render` then writes `report.md` (`review_consolidation_report.py`).
+Grouping never rewrites a finding, its title or its label: two emitted findings (`patch`, `decide`)
+group when they name the same file and `kind` and their line ranges overlap. The representative keeps
+`group_severity`; the others become `merged` with `merged_into`. The report numbers emitted findings only.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
+from review_findings import is_path_prefix, read_findings
+from review_models import Finding
+from review_render import label_with_score
+
 from lib.files import atomic_write
-from review_consolidation_report import render_report
-from review_gates import is_path_prefix
 
 SCHEMA_VERSION = 1
 SEVERITY_ORDER = ("blocking", "attention", "concern", "needs more info", "nit")
@@ -142,3 +133,53 @@ def consolidate(args: argparse.Namespace) -> int:
     if not args.review_dir.is_dir():
         raise ValueError(f"no such review directory: {args.review_dir}")
     return render_report(args.review_dir, args.mode) if args.render else draft(args)
+
+
+def anchor_text(finding: Finding) -> str:
+    """`file:line` as `persist` reads it back: the record's own file and line, else its evidence."""
+    if finding.text("file") and finding.text("line").isdigit():
+        return f"{finding.text('file')}:{finding.text('line')}"
+    return finding.text("evidence")
+
+
+def originals(findings: list[Finding], representative: Finding) -> list[Finding]:
+    """The merged findings whose `merged_into` is the representative's group id (never its title)."""
+    group = representative.extra.get("group")
+    return [f for f in findings if group and f.disposition == "merged" and f.extra.get("merged_into") == group]
+
+
+def entry(number: int, finding: Finding, absorbed: list[Finding]) -> list[str]:
+    lines = [f"{number}. {label_with_score(finding)} — {finding.title}"]
+    if anchor_text(finding):
+        lines.append(f"   Anchor: {anchor_text(finding)}")
+    if finding.extra.get("anchor") == "non-hunk":
+        lines.append("   Outside the diff: read at the reviewed head, not a changed hunk.")
+    if finding.extra.get("group_severity"):
+        lines.append(f"   Group severity: {finding.extra['group_severity']}")
+    if absorbed:
+        lines.append(f"   Merged {len(absorbed)} duplicate{'' if len(absorbed) == 1 else 's'}; originals:")
+        for other in absorbed:
+            who = ", ".join(other.persona) if isinstance(other.persona, list) else "unattributed"
+            lines.append(f"   - {label_with_score(other)} {other.title} ({who}; {anchor_text(other) or 'no anchor'})")
+    return lines
+
+
+def render_report(review_dir: Path, mode: str) -> int:
+    source = review_dir / "consolidation.json"
+    if not source.is_file():
+        raise ValueError(f"{source} not found: run `normalize --output` on the draft candidates first")
+    findings = read_findings(source)
+    emitted = [f for f in findings if f.is_emitted()]
+    merged = [f for f in findings if f.disposition == "merged"]
+    body = [f"## Review: {mode}", "", f"Consolidated {len(findings)} candidates: {len(emitted)} emitted, "
+            f"merged {len(merged)} duplicates." if merged else
+            f"Consolidated {len(findings)} candidates: {len(emitted)} emitted, no duplicates merged.", ""]
+    for number, finding in enumerate(emitted, 1):
+        body.extend(entry(number, finding, originals(findings, finding)))
+        body.append("")
+    if not emitted:
+        body.append("No emitted findings.")
+    target = review_dir / "report.md"
+    atomic_write(target, "\n".join(body).rstrip() + "\n")
+    print(f"report: {target} ({len(emitted)} emitted, merged {len(merged)} duplicates)", file=sys.stdout)
+    return 0

@@ -1,36 +1,24 @@
 #!/usr/bin/env python3
 """Harness-neutral Markdown memory CLI backed by a rebuildable SQLite FTS5 index.
 
-This file is the argparse entry point only: the store, unit, recall, and maintenance logic
-lives in the sibling `memory_store.py`, `memory_units.py`, `memory_recall.py`, and
-`memory_maintenance.py` modules. `Path(__file__).resolve()` follows the installed
-`~/.agent/bin` symlink back to this directory, so the siblings and the `lib` package above
-them are found from either invocation path.
+This file is the argparse entry point only: the logic lives in the sibling `memory_*.py` modules
+(store, units, context, search, journal, maintenance), found through `memory_bootstrap`.
 """
 import argparse
 import sqlite3
 import sys
-from pathlib import Path
 
-_MEMORY_DIR = Path(__file__).resolve().parent
-_TOOLS_ROOT = _MEMORY_DIR.parent
-for _path in (_TOOLS_ROOT, _MEMORY_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import memory_bootstrap  # noqa: F401
 
-from memory_maintenance import (  # noqa: E402
-    consolidate,
-    doctor,
-    import_inbox,
-    ingest,
-    init_store,
-    reindex,
-    stats,
-)
-from memory_recall import context, journal_add, journal_import, search  # noqa: E402
-from memory_store import STATUSES, TYPES, MemoryStoreError  # noqa: E402
-from memory_units import add, archive, cite, listing, show, supersede  # noqa: E402
-from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
+from memory_add import add, archive, cite, listing, show, supersede
+from memory_frontmatter import STATUSES, TYPES
+from memory_inbox import import_inbox, ingest
+from memory_journal import journal_add, journal_import
+from memory_maintenance import consolidate, doctor, init_store, reindex, stats
+from memory_paths import MemoryStoreError
+from memory_search import context, search
+
+from lib.output import DEFAULT_MAX_CHARS
 
 
 def add_unit_parsers(commands) -> None:
@@ -126,7 +114,7 @@ def add_journal_parsers(commands) -> None:
     journal_import_parser.add_argument("--dry-run", action="store_true")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Typed, repo-scoped memory: units, search, journal.")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init", help="create the store and index")
@@ -139,7 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    args = make_parser().parse_args()
     handlers = {
         "init": lambda _: init_store(), "add": add, "search": search, "context": context,
         "show": show, "list": listing, "supersede": supersede, "archive": archive,

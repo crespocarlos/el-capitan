@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """The nightshift HTTP client: one request shape, and one error per way it can fail.
 
-The server is `NIGHTSHIFT_URL` (default `http://localhost:3737`). Two failures are distinguished
-because they mean different things to a caller: `ApiError` means the server answered and rejected
-the request, carrying nightshift's own `error` text unchanged, and `Unreachable` means nothing
-answered at all. The entry point maps those to exit 1 and exit 3, so "the run was refused" never
-reads the same as "the machine could not be asked".
+The server is `NIGHTSHIFT_URL` (default `http://localhost:3737`). `ApiError` (exit 1) carries
+nightshift's own `error` text from a rejected request; `Unreachable` (exit 3) means nothing answered.
 """
 from __future__ import annotations
 

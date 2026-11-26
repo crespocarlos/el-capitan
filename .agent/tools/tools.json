@@ -175,6 +175,26 @@
       "output": "human"
     },
     {
+      "name": "crew-task.py",
+      "dir": "task",
+      "kind": "command",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "argparse",
+      "smoke": "--help",
+      "output": "human"
+    },
+    {
+      "name": "crew-verify.py",
+      "dir": "task",
+      "kind": "command",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "argparse",
+      "smoke": "--help",
+      "output": "human"
+    },
+    {
       "name": "crew-mem.py",
       "dir": "memory",
       "kind": "command",
@@ -283,6 +303,60 @@
   ],
   "modules": [
     {
+      "name": "task_bootstrap.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported first by every task module that needs .agent/tools on sys.path",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_progress.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "repository",
+      "help": "imported by crew-ls.py, crew-metric.py and crew-progress.py: PROGRESS.md: append and read entries; BLOCKED, METRIC and stage cost lines",
+      "smoke": "imported by crew-ls.py, crew-metric.py and crew-progress.py"
+    },
+    {
+      "name": "review_bootstrap.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported first by every review module that needs .agent/tools on sys.path",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "memory_bootstrap.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported first by every memory module that needs .agent/tools on sys.path",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "evals_bootstrap.py",
+      "dir": "evals",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported first by every evals module that needs .agent/tools on sys.path",
+      "smoke": "imported by crew-evals-inspect.py"
+    },
+    {
+      "name": "maintenance_bootstrap.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported first by every maintenance module that needs .agent/tools on sys.path",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
       "name": "evals_query.py",
       "dir": "evals",
       "kind": "module",
@@ -333,16 +407,25 @@
       "kind": "module",
       "category": "maintenance",
       "owner": "repository",
-      "help": "imported by crew-prune.py",
+      "help": "imported by crew-prune.py: the caller set for a catalog command (`crew-prune.py`)",
       "smoke": "imported by crew-prune.py"
     },
     {
-      "name": "lint_budget.py",
+      "name": "lint_python.py",
       "dir": "maintenance",
       "kind": "module",
       "category": "maintenance",
       "owner": "repository",
-      "help": "imported by crew-lint.py",
+      "help": "imported by crew-lint.py: the repository Python rules (module size, single owner, bootstrap, git argv)",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_writing.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py: removed command forms, docstrings, narration, pipeline prose rules",
       "smoke": "imported by crew-lint.py"
     },
     {
@@ -351,7 +434,7 @@
       "kind": "module",
       "category": "maintenance",
       "owner": "repository",
-      "help": "imported by crew-lint.py",
+      "help": "imported by crew-lint.py: `tools.json`: kinds, fields, resolution, basename naming",
       "smoke": "imported by crew-lint.py"
     },
  {
@@ -360,43 +443,16 @@
   "kind": "module",
   "category": "maintenance",
   "owner": "repository",
-  "help": "imported by crew-lint.py",
+  "help": "imported by crew-lint.py: the in-scope document set, shared path helpers, the rule registry (`RULES`)",
   "smoke": "imported by crew-lint.py"
  },
- {
-  "name": "lint_handoff.py",
-  "dir": "maintenance",
-  "kind": "module",
-  "category": "maintenance",
-  "owner": "repository",
-  "help": "imported by crew-lint.py: the `> Next:` handoff trailer grammar",
-  "smoke": "imported by crew-lint.py"
- },
-    {
-      "name": "lint_naming.py",
-      "dir": "maintenance",
-      "kind": "module",
-      "category": "maintenance",
-      "owner": "repository",
-      "help": "imported by crew-lint.py",
-      "smoke": "imported by crew-lint.py"
-    },
-    {
-      "name": "lint_progress.py",
-      "dir": "maintenance",
-      "kind": "module",
-      "category": "maintenance",
-      "owner": "repository",
-      "help": "imported by crew-lint.py",
-      "smoke": "imported by crew-lint.py"
-    },
     {
       "name": "lint_prompts.py",
       "dir": "maintenance",
       "kind": "module",
       "category": "maintenance",
       "owner": "repository",
-      "help": "imported by crew-lint.py",
+      "help": "imported by crew-lint.py: prompt frontmatter, tool grants, the always-on budget and size ceilings",
       "smoke": "imported by crew-lint.py"
     },
     {
@@ -405,8 +461,35 @@
       "kind": "module",
       "category": "maintenance",
       "owner": "repository",
-      "help": "imported by crew-lint.py",
+      "help": "imported by crew-lint.py: reference integrity in documents and the `> Next:` handoff grammar",
       "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "clock.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by task and review modules: the UTC stamp and the legacy-stamp parser",
+      "smoke": "imported by task_progress.py"
+    },
+    {
+      "name": "workflow_yaml.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by task_verify_sources.py: a CI workflow through yq, else the stdlib reader (last fallback)",
+      "smoke": "imported by task_verify_sources.py"
+    },
+    {
+      "name": "gh_reads.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by review_pr_reads.py, crew-pr-actions.py and ls_data.py: the gh argv of one PR, repo or issue read",
+      "smoke": "imported by review_pr_reads.py, crew-pr-actions.py and ls_data.py"
     },
     {
       "name": "files.py",
@@ -445,15 +528,6 @@
       "smoke": "imported by memory and review modules"
     },
     {
-      "name": "git_remote.py",
-      "dir": "lib",
-      "kind": "module",
-      "category": "library",
-      "owner": "repository",
-      "help": "imported by lib/git.py, which re-exports its helpers",
-      "smoke": "imported by lib/git.py"
-    },
-    {
       "name": "cli.py",
       "dir": "lib",
       "kind": "module",
@@ -468,8 +542,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
+      "help": "imported by crew-resolve-task-dir.py and crew-task-context.py: the `## Status` contract, the review location, the typed `## Tests` rule",
+      "smoke": "imported by crew-resolve-task-dir.py and crew-task-context.py"
     },
     {
       "name": "task_state.py",
@@ -477,8 +551,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
+      "help": "imported by crew-ls.py and crew-task.py: the SPEC record, the status write, reconcile rules, the status migration",
+      "smoke": "imported by crew-ls.py and crew-task.py"
     },
     {
       "name": "task_resolve.py",
@@ -486,8 +560,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-resolve-task-dir.py",
-      "smoke": "imported by crew-resolve-task-dir.py"
+      "help": "imported by crew-resolve-task-dir.py and crew-task-context.py: task resolution: repo and branch to `.task-id`",
+      "smoke": "imported by crew-resolve-task-dir.py and crew-task-context.py"
     },
     {
       "name": "task_report.py",
@@ -495,35 +569,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
-    },
-    {
-      "name": "task_review.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
-    },
-    {
-      "name": "ls_landed.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
-    },
-    {
-      "name": "ls_bases.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "imported by ls_landed.py (landing_bases setting)",
-      "smoke": "imported by ls_landed.py"
+      "help": "imported by crew-ls.py and crew-task.py: rendering task state and reconcile",
+      "smoke": "imported by crew-ls.py and crew-task.py"
     },
     {
       "name": "ls_data.py",
@@ -531,53 +578,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py and task_report.py (listing data and the --watch loop)",
-      "smoke": "imported by crew-ls.py"
-    },
-    {
-      "name": "task_worktree_check.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by crew-progress.py (worktree check)",
-      "smoke": "imported by crew-progress.py"
-    },
-    {
-      "name": "task_worktree_pref.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by crew-progress.py (worktree subcommand)",
-      "smoke": "imported by crew-progress.py"
-    },
-    {
-      "name": "task_node_pin.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by task_verify_resolve.py",
-      "smoke": "imported by task_verify_resolve.py"
-    },
-    {
-      "name": "task_gate_prose.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by task_verify_resolve.py",
-      "smoke": "imported by task_verify_resolve.py"
-    },
-    {
-      "name": "task_verify_resolve.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by task_verify.py",
-      "smoke": "imported by task_verify.py"
+      "help": "imported by crew-ls.py and crew-task.py: what `crew ls` shows: rows, BLOCKED and `landed` lines, landing bases, `--watch`",
+      "smoke": "imported by crew-ls.py and crew-task.py"
     },
     {
       "name": "task_gates.py",
@@ -585,8 +587,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
+      "help": "imported by crew-task.py: the transition gates: approve, implement, close out",
+      "smoke": "imported by crew-task.py"
     },
     {
       "name": "task_verify.py",
@@ -594,8 +596,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-implement",
-      "help": "imported by crew-progress.py (verify subcommand)",
-      "smoke": "imported by crew-progress.py"
+      "help": "imported by crew-verify.py: the `crew-verify.py` run: gates, the mirror, the result JSON",
+      "smoke": "imported by crew-verify.py"
     },
     {
       "name": "task_verify_env.py",
@@ -603,8 +605,17 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-implement",
-      "help": "imported by task_verify.py",
-      "smoke": "imported by task_verify.py"
+      "help": "imported by task_verify.py and task_verify_sources.py: Node pin, pass cache, result file, partial verdict",
+      "smoke": "imported by task_verify.py and task_verify_sources.py"
+    },
+    {
+      "name": "task_verify_report.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-verify.py and assemble_build.py: `report-check` of a builder's REPORT.md against the gates JSON",
+      "smoke": "imported by crew-verify.py and assemble_build.py"
     },
     {
       "name": "task_verify_sources.py",
@@ -612,53 +623,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-implement",
-      "help": "imported by task_verify.py",
+      "help": "imported by task_verify.py: where gates come from: CI workflows, the gates block, prose checks",
       "smoke": "imported by task_verify.py"
-    },
-    {
-      "name": "task_verify_safety.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by task_verify_sources.py (what is never mirrored)",
-      "smoke": "imported by task_verify_sources.py"
-    },
-    {
-      "name": "task_verify_yaml.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by task_verify_sources.py",
-      "smoke": "imported by task_verify_sources.py"
-    },
-    {
-      "name": "task_verify_wait.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by task_verify.py",
-      "smoke": "imported by task_verify.py"
-    },
-    {
-      "name": "task_verify_notes.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by task_verify.py",
-      "smoke": "imported by task_verify.py"
-    },
-    {
-      "name": "task_report_check.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by crew-progress.py (report-check subcommand)",
-      "smoke": "imported by crew-progress.py"
     },
     {
       "name": "task_lock.py",
@@ -666,26 +632,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-implement",
-      "help": "imported by crew-progress.py (lock and blocked subcommands) and task_report.py",
-      "smoke": "imported by crew-progress.py"
-    },
-    {
-      "name": "task_normalize.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
-    },
-    {
-      "name": "task_typed_tests.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py",
-      "smoke": "imported by crew-ls.py"
+      "help": "imported by crew-task.py: the worker lock and BLOCKED lines (`crew-task.py lock|blocked`)",
+      "smoke": "imported by crew-task.py"
     },
     {
       "name": "task_artifacts.py",
@@ -693,7 +641,7 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-task-context.py",
+      "help": "imported by crew-task-context.py: bounded task artifacts: read one, render the resolved task",
       "smoke": "imported by crew-task-context.py"
     },
     {
@@ -702,7 +650,7 @@
       "kind": "module",
       "category": "task",
       "owner": "repository",
-      "help": "imported by crew-repo-info.py",
+      "help": "imported by crew-repo-info.py: the repository record a prompt reads: root, branch, head, remotes, files",
       "smoke": "imported by crew-repo-info.py"
     },
     {
@@ -711,17 +659,8 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-implement",
-      "help": "imported by crew-worktree.py",
-      "smoke": "imported by crew-worktree.py"
-    },
-    {
-      "name": "task_worktree_create.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by crew-worktree.py",
-      "smoke": "imported by crew-worktree.py"
+      "help": "imported by crew-task.py: worktree reads: listing, `worktree check`, `worktree pref|record`",
+      "smoke": "imported by crew-task.py"
     },
     {
       "name": "task_worktree_cli.py",
@@ -729,16 +668,7 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-implement",
-      "help": "imported by crew-worktree.py",
-      "smoke": "imported by crew-worktree.py"
-    },
-    {
-      "name": "task_worktree_prune.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-implement",
-      "help": "imported by crew-worktree.py",
+      "help": "imported by crew-worktree.py: worktree writes and the `crew-worktree.py` subcommands: create, sync, prune, remove",
       "smoke": "imported by crew-worktree.py"
     },
     {
@@ -747,8 +677,8 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
+      "help": "imported by memory_add.py, memory_inbox.py, memory_journal.py and others: the FTS5 index and committing a change (`mutate`)",
+      "smoke": "imported by memory_add.py, memory_inbox.py, memory_journal.py and others"
     },
     {
       "name": "memory_paths.py",
@@ -756,17 +686,8 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by every memory module",
-      "smoke": "imported by every memory module"
-    },
-    {
-      "name": "memory_scalars.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by memory_frontmatter.py",
-      "smoke": "imported by memory_frontmatter.py"
+      "help": "imported by crew-inbox.py and crew-mem.py: store locations, scopes, slugs, tokens, `MemoryStoreError`",
+      "smoke": "imported by crew-inbox.py and crew-mem.py"
     },
     {
       "name": "memory_frontmatter.py",
@@ -774,26 +695,8 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
-    },
-    {
-      "name": "memory_index.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by every memory module",
-      "smoke": "imported by every memory module"
-    },
-    {
-      "name": "memory_commit.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
+      "help": "imported by crew-inbox.py and crew-mem.py: the unit format: scalars, frontmatter parsing and rendering",
+      "smoke": "imported by crew-inbox.py and crew-mem.py"
     },
     {
       "name": "memory_add.py",
@@ -801,17 +704,8 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by memory_units.py",
-      "smoke": "imported by memory_units.py"
-    },
-    {
-      "name": "memory_cite.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by memory_units.py",
-      "smoke": "imported by memory_units.py"
+      "help": "imported by crew-mem.py: unit writes: add, cite, supersede, archive, list, show",
+      "smoke": "imported by crew-mem.py"
     },
     {
       "name": "memory_search.py",
@@ -819,16 +713,7 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
-    },
-    {
-      "name": "memory_context.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
+      "help": "imported by crew-mem.py: retrieval: `search` and ranked `context`",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -837,16 +722,7 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
-    },
-    {
-      "name": "memory_journal_add.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
+      "help": "imported by crew-mem.py: journal observations: import and single-entry add",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -855,34 +731,7 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
-    },
-    {
-      "name": "memory_ingest.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
-    },
-    {
-      "name": "memory_units.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
-      "smoke": "imported by crew-mem.py"
-    },
-    {
-      "name": "memory_recall.py",
-      "dir": "memory",
-      "kind": "module",
-      "category": "memory",
-      "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
+      "help": "imported by crew-mem.py: intake: `.inbox` drafts and ingesting external units",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -891,7 +740,7 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py",
+      "help": "imported by crew-mem.py: init, reindex, doctor, stats, consolidate",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -900,7 +749,7 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
+      "help": "imported by crew-review-findings.py: the finding gates, anchors outside the diff, `normalize` and `validate`",
       "smoke": "imported by crew-review-findings.py"
     },
     {
@@ -909,7 +758,7 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
+      "help": "imported by crew-review-findings.py: the closed finding vocabularies and the persona-reply classifier",
       "smoke": "imported by crew-review-findings.py"
     },
     {
@@ -918,34 +767,7 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_gates.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_probe.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_models.py and review_gates.py",
-      "smoke": "imported by review_models.py and review_gates.py"
-    },
-    {
-      "name": "review_comments.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
+      "help": "imported by crew-review-findings.py: the `Finding` record and the probe score rules",
       "smoke": "imported by crew-review-findings.py"
     },
     {
@@ -954,17 +776,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_commands.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
+      "help": "imported by review_report.py and review_stats.py: deferred and dropped records, the cost METRIC, the outcome journal",
+      "smoke": "imported by review_report.py and review_stats.py"
     },
     {
       "name": "review_parse.py",
@@ -972,26 +785,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-hunks.py",
+      "help": "imported by crew-review-hunks.py: unified-diff parsing and the generated/oversized size policy",
       "smoke": "imported by crew-review-hunks.py"
-    },
-    {
-      "name": "review_limits.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_parse.py",
-      "smoke": "imported by review_parse.py"
-    },
-    {
-      "name": "review_classify.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
     },
     {
       "name": "review_coverage.py",
@@ -999,71 +794,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
+      "help": "imported by crew-review-findings.py: persona selection and coverage, package rules, the persist gates",
       "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_map.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_persist_gates.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_report.py",
-      "smoke": "imported by review_report.py"
-    },
-    {
-      "name": "assemble_config.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-assemble-packages.py",
-      "smoke": "imported by crew-assemble-packages.py"
-    },
-    {
-      "name": "assemble_common.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-assemble-packages.py",
-      "smoke": "imported by crew-assemble-packages.py"
-    },
-    {
-      "name": "assemble_map.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-assemble-packages.py",
-      "smoke": "imported by crew-assemble-packages.py"
-    },
-    {
-      "name": "assemble_files.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-assemble-packages.py",
-      "smoke": "imported by crew-assemble-packages.py"
-    },
-    {
-      "name": "assemble_personas.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-assemble-packages.py",
-      "smoke": "imported by crew-assemble-packages.py"
     },
     {
       "name": "assemble_build.py",
@@ -1071,7 +803,16 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-assemble-packages.py",
+      "help": "imported by crew-assemble-packages.py: building and writing the reviewer packages and their manifest record",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "assemble_inputs.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py: what each reviewer package reads: config, personas, header, prior round",
       "smoke": "imported by crew-assemble-packages.py"
     },
     {
@@ -1120,21 +861,12 @@
       "smoke": "imported by crew-nightshift-e2e.py"
     },
     {
-      "name": "review_personas.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
-    },
-    {
       "name": "review_pr_reads.py",
       "dir": "review",
       "kind": "module",
       "category": "review",
       "owner": "crew-pr-resolver",
-      "help": "imported by crew-pr-actions.py",
+      "help": "imported by crew-pr-actions.py: the read half of `crew-pr-actions.py`: running and printing PR, repo, issue and thread reads",
       "smoke": "imported by crew-pr-actions.py"
     },
     {
@@ -1143,8 +875,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-pr-resolver",
-      "help": "imported by crew-pr-actions.py",
-      "smoke": "imported by crew-pr-actions.py"
+      "help": "imported by crew-pr-actions.py and crew-review-findings.py: the write half: the `gh` mutation plan, `comments` and `check-map`",
+      "smoke": "imported by crew-pr-actions.py and crew-review-findings.py"
     },
     {
       "name": "review_layers.py",
@@ -1152,7 +884,7 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
+      "help": "imported by crew-review-findings.py: the layer map: validation, hunk references, per-layer reports",
       "smoke": "imported by crew-review-findings.py"
     },
     {
@@ -1161,8 +893,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
-      "smoke": "imported by crew-review-findings.py"
+      "help": "imported by crew-review-findings.py and crew-review-hunks.py: where a review writes, and the content manifest of what it read",
+      "smoke": "imported by crew-review-findings.py and crew-review-hunks.py"
     },
  {
   "name": "review_report.py",
@@ -1170,143 +902,17 @@
   "kind": "module",
   "category": "review",
   "owner": "crew-reviewer",
-  "help": "imported by crew-review-findings.py",
+  "help": "imported by crew-review-findings.py: `persist`: writing the report and gating it against the findings JSON",
   "smoke": "imported by crew-review-findings.py"
  },
- {
-  "name": "review_report_gate.py",
-  "dir": "review",
-  "kind": "module",
-  "category": "review",
-  "owner": "crew-reviewer",
-  "help": "imported by review_report.py: checks the report's list and verdict against `persist`'s findings",
-  "smoke": "imported by review_report.py"
- },
-    {
-      "name": "review_report_sections.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_report.py: the generated section headings, their guard, and the assessment tally",
-      "smoke": "imported by review_report.py"
-    },
-    {
-      "name": "review_save_out.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py: the save-out subcommand (raw reply plus provenance record)",
-      "smoke": "imported by crew-review-findings.py"
-    },
     {
       "name": "review_consolidate.py",
       "dir": "review",
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py: the consolidate subcommand (group candidates, draft candidates.json)",
+      "help": "imported by crew-review-findings.py: the `consolidate` subcommand: grouping and `candidates.json`",
       "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_consolidation_report.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_consolidate.py: report.md rendered from consolidation.json",
-      "smoke": "imported by review_consolidate.py"
-    },
-    {
-      "name": "review_anchors.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_findings.py: tracked-file anchors outside the diff (normalize --repo)",
-      "smoke": "imported by review_findings.py"
-    },
-    {
-      "name": "assemble_applicability.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by assemble_run.py: recorded persona skips, the size report, manifest personas record",
-      "smoke": "imported by assemble_run.py"
-    },
-    {
-      "name": "assemble_slice.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by assemble_run.py: product-flow and code-quality slicing with closure and a coverage gate",
-      "smoke": "imported by assemble_run.py"
-    },
-    {
-      "name": "assemble_run.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-assemble-packages.py: one assembly run (decide, slice, build, write, report)",
-      "smoke": "imported by crew-assemble-packages.py"
-    },
-    {
-      "name": "task_cost.py",
-      "dir": "task",
-      "kind": "module",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "imported by crew-metric.py and crew-ls.py: stage cost keys and the cost line",
-      "smoke": "imported by crew-metric.py"
-    },
-    {
-      "name": "review_provenance.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_report.py: hash verification of saved replies and the agents-versus-lenses count",
-      "smoke": "imported by review_report.py"
-    },
-    {
-      "name": "review_degraded.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_report.py, review_render.py and review_report_gate.py: the degraded banner and the WARN cap",
-      "smoke": "imported by review_report.py"
-    },
-    {
-      "name": "review_manifest.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by review_prior.py and crew-review-hunks.py: per-file content ids for incremental review",
-      "smoke": "imported by review_prior.py"
-    },
-    {
-      "name": "review_prior.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py: the `prior-review` subcommand",
-      "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "assemble_prior.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by assemble_build.py: the earlier-round findings block in a package",
-      "smoke": "imported by assemble_build.py"
     },
     {
       "name": "review_cli.py",
@@ -1314,26 +920,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
+      "help": "imported by crew-review-findings.py: the `crew-review-findings.py` subcommand definitions",
       "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_outcomes.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py and crew-review-stats.py",
-      "smoke": "imported by crew-review-findings.py and crew-review-stats.py"
-    },
-    {
-      "name": "review_corpus.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-stats.py",
-      "smoke": "imported by crew-review-stats.py"
     },
     {
       "name": "review_stats.py",
@@ -1341,7 +929,7 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-stats.py",
+      "help": "imported by crew-review-stats.py: `crew review-stats`: the corpus, findings by label, precision",
       "smoke": "imported by crew-review-stats.py"
     },
     {
@@ -1350,7 +938,7 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py",
+      "help": "imported by crew-review-findings.py: rendered findings, generated sections, the degraded mark, `save-out` and provenance",
       "smoke": "imported by crew-review-findings.py"
     }
   ],

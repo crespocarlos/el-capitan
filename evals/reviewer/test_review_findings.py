@@ -2,8 +2,8 @@
 """Contract checks for .agent/tools/review/crew-review-findings.py normalize and persist."""
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 
 TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
+# The tool is loaded by path below; its package directory holds the bootstrap it imports first.
+sys.path.insert(0, str(TOOL.parent))
 
 
 def run(*args: str) -> subprocess.CompletedProcess:

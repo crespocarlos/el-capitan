@@ -25,7 +25,7 @@ for directory in (ROOT / ".agent" / "tools" / "review", ROOT / ".agent" / "tools
     if str(directory) not in sys.path:
         sys.path.insert(0, str(directory))
 
-from lint_budget import MAX_PROMPT_FILE_BYTES  # noqa: E402
+from lint_prompts import MAX_PROMPT_FILE_BYTES  # noqa: E402
 from review_vocabulary import ACTED_CONFIDENCE, CONFIDENCE  # noqa: E402
 
 # The scale as the resolver prompt is written against. A frozen snapshot on purpose: parity is only

@@ -15,7 +15,9 @@ import re
 import statistics
 
 from evals_query import spans
-from evals_rows import EvalRow, to_row  # noqa: F401  re-exported for the compare entry point
+from evals_rows import EvalRow, to_row
+
+from lib.cli import fail
 
 COST_NAMES = {"Input Tokens", "Output Tokens", "Tool Calls", "Latency",
               "reported_input_tokens", "reported_output_tokens"}
@@ -83,7 +85,7 @@ def cmd_compare(rs: list[EvalRow], args) -> None:
     picked = ([c for p in args.commits for c in order if match(c, p)] if args.commits
               else order[-3:])
     if not picked:
-        raise SystemExit("no matching commits; run `runs`")
+        fail("no matching commits; run `runs`")
     print("columns:", " | ".join(picked), "   (mean(n) over examples and repetitions)")
     experiments = sorted({r.exp for r in rs
                           if r.commit in picked and args.exp.lower() in r.exp.lower()})
@@ -106,7 +108,7 @@ def cmd_detail(rs: list[EvalRow], args) -> None:
     order = commit_order(rs)
     commit = next((c for c in reversed(order) if match(c, args.commit)), None)
     if not commit:
-        raise SystemExit("unknown commit")
+        fail("unknown commit")
     for r in sorted((r for r in rs if r.commit == commit and r.score is not None
                      and r.score < args.below and r.ev not in COST_NAMES
                      and args.ev in r.ev),
@@ -159,7 +161,7 @@ def cmd_traces(rs: list[EvalRow], args) -> None:
     order = commit_order(rs)
     commit = next((c for c in reversed(order) if match(c, args.commit)), None)
     if not commit:
-        raise SystemExit("unknown commit")
+        fail("unknown commit")
     traces = {}
     for r in rs:
         if r.commit == commit and r.trace:

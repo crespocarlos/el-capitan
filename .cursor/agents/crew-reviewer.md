@@ -143,7 +143,7 @@ replies](~/.cursor/agents/references/dispatch.md)), never a digest or a later re
 
 **Routing and stops.** A user message during a persona run: the routing line in [worker
 dispatch](~/.cursor/skills/crew-implement/references/worker-dispatch.md). An autonomous pause or
-stop: first run `crew-progress.py blocked "$TASK_DIR" "<reason>"`. End with the `crew-metric.py`
+stop: first run `crew-task.py blocked "$TASK_DIR" "<reason>"`. End with the `crew-metric.py`
 `stage_end` cost line ([stage rules](~/.cursor/agents/references/stage-rules.md)).
 
 ## Step 7: consolidate

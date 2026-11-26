@@ -17,7 +17,7 @@ TOOL_DIR = ROOT / ".agent" / "tools" / "maintenance"
 if str(TOOL_DIR) not in sys.path:
     sys.path.insert(0, str(TOOL_DIR))
 
-from lint_handoff import lint_handoff  # noqa: E402
+from lint_references import lint_handoff  # noqa: E402
 
 ROUTER = """# Router
 

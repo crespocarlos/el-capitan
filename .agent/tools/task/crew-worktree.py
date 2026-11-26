@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Resolve or create a git worktree, and answer what the other worktrees are.
 
-Two things in one command because they are one question asked from two ends. With a branch it
-resolves or creates that branch's worktree, pruning stale registrations first — what `crew
-implement` asks. With `--list` it reports every worktree as data — what `crew cleanup` asks — and
-with `fetch`, `sync`, and `--remove` it performs the three mutations those two prompts used to
-assemble as raw git: refresh the remote, check a branch out, and remove a worktree with its branch.
+With a branch it resolves or creates that branch's worktree, pruning stale registrations first
+(`crew implement`); `--list` reports every worktree as JSON (`crew cleanup`); `fetch`, `sync` and
+`--remove` refresh the remote, check a branch out, and remove a worktree with its branch.
 """
 from __future__ import annotations
 
@@ -14,13 +12,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-_TOOLS_ROOT = Path(__file__).resolve().parents[1]
-if str(_TOOLS_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TOOLS_ROOT))
+import task_bootstrap  # noqa: F401
 
-from lib.git import GitError  # noqa: E402
-from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
-from task_worktree_cli import is_operation, run_operation, resolve  # noqa: E402
+from task_worktree_cli import is_operation, resolve, run_operation
+
+from lib.git import GitError
+from lib.output import DEFAULT_MAX_CHARS
 
 OPERATIONS = ("resolve", "fetch", "sync")
 

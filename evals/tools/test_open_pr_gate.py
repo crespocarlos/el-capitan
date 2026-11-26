@@ -56,9 +56,9 @@ def main() -> int:
             check("crew-implement points at worker-dispatch.md for lock, blocked, cost and routing, restating none",
                   "Lock, blocked line, cost line and message routing: [worker dispatch]" in stage_text
                   and "lock write" not in stage_text and "lock remove" not in stage_text
-                  and 'crew-progress.py blocked "$TASK_DIR"' in dispatch)
+                  and 'crew-task.py blocked "$TASK_DIR"' in dispatch)
         else:
-            check(f"{stage.name} documents the BLOCKED call", 'crew-progress.py blocked "$TASK_DIR"' in stage_text)
+            check(f"{stage.name} documents the BLOCKED call", 'crew-task.py blocked "$TASK_DIR"' in stage_text)
         check(f"{stage.name} writes no INBOX file for it", "INBOX" not in stage_text)
         check(f"{stage.name} does not copy the routing sentence", routing not in stage_text)
         if stage.parent.name != "crew-open-pr":
@@ -105,8 +105,11 @@ def main() -> int:
         check(f"{skill} no longer says any nonzero exit is a failed gate", "any nonzero exit" not in skill_text.lower()
               and "a nonzero exit means a failed gate" not in skill_text.lower())
     exits = (ROOT / ".agent" / "tools" / "AGENTS.md").read_text(encoding="utf-8").split("## Exit codes")[1].split("\n## ")[0]
-    check("the exit-code contract names its exceptions: verify 2, 3, 4 and worktree check 4, 5",
-          "| exceptions |" in exits and "`4` still running" in exits and "`4` on-feature-branch" in exits and "`5` dirty" in exits)
+    rows = {(line.split("|")[1].strip(), line.split("|")[2].strip()) for line in exits.splitlines()
+            if line.startswith(("| `crew-verify.py", "| `crew-task.py"))}
+    check("the exit-code table has rows for verify 3, 4 and worktree check 4, 5 (test_command_names checks all)",
+          {("`crew-verify.py`", "`3`"), ("`crew-verify.py --wait`", "`4`"),
+           ("`crew-task.py worktree check`", "`4`"), ("`crew-task.py worktree check`", "`5`")} <= rows)
     check("the e2e line format is documented for repo owners",
           "e2e: " in (ROOT / ".agent" / "tools" / "AGENTS.md").read_text(encoding="utf-8"))
     check("spec template asks for one golden-path e2e from the first group",

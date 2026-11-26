@@ -1,28 +1,23 @@
-#!/usr/bin/env python3
-"""The task-level records a review leaves beside its report: deferred and dropped findings.
+"""Review records: deferred and dropped findings beside the report, and the outcome journal.
 
-`persist` writes both, because a finding cut in consolidation is otherwise invisible: one measured
-run dropped three legitimate nits to stay inside the nit budget and left no artifact saying so, so a
-reviewer who raised one could not tell it had been seen. `defer` and `dropped` differ in meaning and
-land in different files: deferred is "real, not this PR's", dropped is "not worth acting on".
-
-Dedupe keys on the title and its anchor rather than the rendered label, because the label carries
-the score and a re-run that raised it would append the same finding twice.
+Dedupe keys on title and anchor, not the rendered label, so a raised score never appends twice.
+`crew review address` appends one outcome per decision to `<review>/outcomes.jsonl` or
+`<task>/review/outcomes.jsonl`; both shapes are read back for the denominator.
 """
 from __future__ import annotations
 
-import subprocess
+import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
-from review_models import Finding
-from review_render import label_with_score
-from review_vocabulary import PERSONAS, canonical_personas
+import review_bootstrap  # noqa: F401
 
-# The one writer of a METRIC line, resolved through this file's real path: installed modules are
-# symlinked from `~/.agent/bin` into the repository, so `resolve()` reaches the sibling package.
-METRIC = Path(__file__).resolve().parent.parent / "task" / "crew-metric.py"
+from review_models import Finding, score_move
+from review_render import label_with_score
+from review_vocabulary import CONFIDENCE, PERSONAS, canonical_personas
+from task_progress import append_metric, has_metric
+
+from lib.clock import utc_date, utc_iso
 
 # Disposition → the file it is recorded in, and the reason written when the finding states none.
 RECORDED = (
@@ -46,7 +41,7 @@ def line(finding: Finding, stamp: str, default_reason: str) -> str:
 
 def append(owner: Path, rows: list[Finding]) -> dict[str, int]:
     """Append each deferred and dropped finding, skipping one already recorded. Returns the counts."""
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    stamp = utc_date()
     counts: dict[str, int] = {}
     for filename, disposition, default_reason in RECORDED:
         selected = [f for f in rows if f.disposition == disposition]
@@ -80,7 +75,7 @@ def measured_personas(review_dir: Path) -> list[str]:
     head is in fact shared, which is indistinguishable from a head that diverges at byte 0.
 
     `explorer` is dispatched by hand and never gets a lens package, so it is excluded — the same
-    rule `assemble_personas` applies to the same registry.
+    rule `assemble_inputs.reviewer_personas` applies to the same registry.
     """
     lenses = [persona for persona in PERSONAS if persona != "explorer"]
     return [persona for persona in canonical_personas(lenses, split_commas=False)
@@ -115,16 +110,13 @@ def cost_line(review_dir: Path, personas: list[str], mapped: bool) -> str:
 
 
 def record_cost(owner: Path | None, review_dir: Path, mapped: bool) -> str:
-    """Append the cost line through `crew-metric.py`; "" when the run has no task directory.
+    """Append the cost line through `task_progress.append_metric`; "" when the run has no task directory.
 
     `owner` is the task directory `persist` already resolved, so the `.task-id`-versus-`SPEC.md`
     question is answered once, and a review that fell back to a temp path still records its cost
-    because its owner came from the caller rather than from parent links.
-
-    `crew-metric.py` stays the only writer of a METRIC line — its own docstring says so, and the
-    progress lint fails a hand-appended one — but a hyphenated command cannot be imported, so the
-    line reaches it as a subprocess argument. Nothing here may fail a review that already persisted,
-    so both a non-zero exit and a failed spawn are reported and swallowed.
+    because its owner came from the caller rather than from parent links. `append_metric` is the one
+    METRIC writer (`crew-metric.py` calls it too). Nothing here may fail a review that already
+    persisted, so a rejected payload or a failed write is reported and swallowed.
     """
     if owner is None or not owner.is_dir():
         return ""
@@ -132,16 +124,152 @@ def record_cost(owner: Path | None, review_dir: Path, mapped: bool) -> str:
     if not personas:
         return ""
     payload = cost_line(review_dir, personas, mapped)
-    progress = owner / "PROGRESS.md"
-    if progress.is_file() and f"METRIC: review run={review_dir.name} " in progress.read_text(
-            encoding="utf-8", errors="replace"):
+    if has_metric(owner, f"review run={review_dir.name} "):
         return payload
     try:
-        result = subprocess.run([sys.executable, str(METRIC), str(owner), payload],
-                                capture_output=True, text=True, check=False)
-    except (OSError, subprocess.SubprocessError) as error:
+        append_metric(owner, payload)
+    except (OSError, ValueError) as error:
         print(f"warning: cost metric not recorded: {error}", file=sys.stderr)
-        return payload
-    if result.returncode != 0:
-        print(f"warning: cost metric not recorded: {result.stderr.strip()}", file=sys.stderr)
     return payload
+
+
+JOURNAL = "outcomes.jsonl"
+
+
+def journals(review_dir: Path) -> list[Path]:
+    """Every journal one review directory can own, without duplicates."""
+    candidates = [review_dir / JOURNAL, review_dir.parent / JOURNAL]
+    return [path for index, path in enumerate(candidates) if path not in candidates[:index]]
+
+
+def read_journal(path: Path) -> list[dict]:
+    """The parseable records of one journal; a damaged line is skipped, never guessed at."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    records: list[dict] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict) and isinstance(record.get("fingerprint"), str):
+            records.append(record)
+    return records
+
+
+def owner(path: Path, record: dict) -> Path:
+    """The review directory a record attributes itself to, resolved.
+
+    `outcome --review-dir .` records the literal `.`, so a relative value is resolved against the
+    journal holding it rather than against whoever reads the journal later.
+    """
+    named = Path(str(record.get("review_dir") or ".")).expanduser()
+    return named.resolve() if named.is_absolute() else (path.parent / named).resolve()
+
+
+def decided(review_dir: Path) -> dict[str, str]:
+    """Fingerprint → outcome for one review directory, the last record winning.
+
+    Last wins because append-only position encodes sequence and an outcome can change: a `deferred`
+    fix applied in a later pass is `fixed`, and the earlier line is history rather than truth.
+    """
+    return {fingerprint: outcome for fingerprint, (outcome, _) in _joined(review_dir).items()}
+
+
+def scored(directory: Path) -> dict:
+    """Fingerprint → the score a decision was made under, when the record carries one.
+
+    A raise is only evidence while it stays attached to the read that settled it, so the outcome
+    journal is where the final score is authoritative: `crew review-stats` joins the score the
+    finding was acted on under, not the one it arrived with. Absent means the decision recorded no
+    score, which stays `unscored` rather than inheriting a persona's original guess.
+
+    The task-level journal holds records from every review of that task, so a record is read only
+    when it names this review — the same filter `_joined` applies — or one review's raise would be
+    joined to a sibling review's finding that happens to share a fingerprint. A value outside the
+    1-5 scale is not a score either, and is dropped rather than banded as `unscored`, which would
+    hide the score the finding itself carries.
+    """
+    target = directory.resolve()
+    found: dict = {}
+    for path in journals(directory):
+        for record in read_journal(path):
+            if owner(path, record) != target:
+                continue
+            value = record.get("confidence")
+            if isinstance(value, int) and not isinstance(value, bool) and value in CONFIDENCE:
+                found[str(record["fingerprint"])] = value
+    return found
+
+
+def _joined(review_dir: Path) -> dict[str, tuple[str, str]]:
+    """Fingerprint → (outcome, journal shape) for one review directory.
+
+    The shape is retained because the two journals record different populations: a run scoped to a
+    review directory journals beside it, while a run naming the review's path journals once per task
+    and disambiguates with its `review_dir` field. Reporting only one shape is what made a corpus
+    holding 356 recorded decisions read as 15.
+    """
+    target = review_dir.resolve()
+    found: dict[str, tuple[str, str]] = {}
+    for path in journals(review_dir):
+        shape = "review" if path.parent == review_dir else "task"
+        for record in read_journal(path):
+            value = str(record.get("outcome") or "").strip().lower()
+            if value and owner(path, record) == target:
+                found[record["fingerprint"]] = (value, shape)
+    return found
+
+
+def by_shape(review_dir: Path) -> dict[str, int]:
+    """How many findings each journal shape accounts for, so a total can be broken down."""
+    counts = {"review": 0, "task": 0}
+    for _, shape in _joined(review_dir).values():
+        counts[shape] += 1
+    return counts
+
+
+def summary(review_dir: Path) -> dict:
+    """What one review recorded: counts per outcome and the fingerprints behind them."""
+    outcomes = decided(review_dir)
+    counts: dict[str, int] = {}
+    for value in outcomes.values():
+        counts[value] = counts.get(value, 0) + 1
+    return {"recorded": len(outcomes), "outcomes": dict(sorted(counts.items())),
+            "fingerprints": sorted(outcomes)}
+
+
+def missing(review_dir: Path, acted: list[str]) -> list[str]:
+    """The acted fingerprints with no recorded outcome, so a summary can fail instead of claim.
+
+    `acted` is what the run applied or rejected. Nothing else needs an outcome: a nit left alone is
+    a decision the run did not make, and demanding one for every finding would block a commit on
+    polish nobody classified.
+    """
+    outcomes = decided(review_dir)
+    return [fingerprint for fingerprint in acted if fingerprint not in outcomes]
+
+
+def append_outcome(args) -> int:
+    """Append one audit record for a decision, carrying the score it was made under."""
+    record = {
+        "ts": utc_iso(),
+        "review_dir": str(args.review_dir),
+        "fingerprint": args.fingerprint,
+        "persona": canonical_personas(args.persona),
+        "label": args.label,
+        "outcome": args.outcome,
+        "reason": args.reason,
+        "memory_ids": args.memory_id,
+    }
+    record.update(score_move(args))
+    target = args.review_dir.parent / JOURNAL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+    print(json.dumps(record, sort_keys=True))
+    return 0

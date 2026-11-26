@@ -9,14 +9,14 @@ HOOK_NAME=spec-status
 . "$(dirname "$0")/lib/anchor.sh"
 
 # Not `set -e`: a missing tool is reported and the session continues.
-tool="$HOME/.agent/bin/crew-ls.py"
+tool="$HOME/.agent/bin/crew-task.py"
 if [ ! -x "$tool" ]; then
-  printf 'spec-status: reconcile failed (%s missing)\n' "$tool"
+  printf 'spec-status: reconcile failed (%s missing; re-run install.sh from your el-capitan checkout)\n' "$tool"
   exit 0
 fi
 err=$(mktemp)
 trap 'rm -f "$err"' EXIT
-out=$(python3 "$tool" --reconcile --apply 2>"$err")
+out=$(python3 "$tool" reconcile --apply 2>"$err")
 rc=$?
 if [ "$rc" -ne 0 ]; then
   printf 'spec-status: reconcile failed (exit %s: %s)\n' "$rc" "$(head -n 1 "$err")"

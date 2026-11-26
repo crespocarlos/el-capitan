@@ -2,7 +2,7 @@
   "id": "pr-body-closes-and-tests",
   "prompt": ".cursor/skills/crew-open-pr/SKILL.md",
   "request": "crew open pr for refactor/lifecycle-and-pruning, which closes issue 42 in the same repo.",
-  "artifact": "closes #42\n\n## Summary\n\nA task now closes when its review passed, wherever that review was persisted, so finished work stops\naccumulating in `IMPLEMENTING`. The close-out gate reads the review directory the run recorded. The\nsame change normalizes the stored status token, so a legacy `done` no longer hides a finished task.\n\n### How to test\n\n- Approve a spec, implement it, run `crew review`, then `crew open pr` and confirm the task flips to `DONE`.\n- Review a task in PR mode and confirm `--mark-done` accepts it.\n- Run `crew ls` and confirm a legacy `done` spec counts as done.\n\nAutomated: `crew test` passes in the worktree.\n",
+  "artifact": "closes #42\n\n## Summary\n\nA task now closes when its review passed, wherever that review was persisted, so finished work stops\naccumulating in `IMPLEMENTING`. The close-out gate reads the review directory the run recorded. The\nsame change normalizes the stored status token, so a legacy `done` no longer hides a finished task.\n\n### How to test\n\n- Approve a spec, implement it, run `crew review`, then `crew open pr` and confirm the task flips to `DONE`.\n- Review a task in PR mode and confirm `crew-task.py mark-done` accepts it.\n- Run `crew ls` and confirm a legacy `done` spec counts as done.\n\nAutomated: `crew test` passes in the worktree.\n",
   "assertions": [
     {"kind": "closes_first"},
     {"kind": "headings", "names": ["## Summary", "### How to test"]},

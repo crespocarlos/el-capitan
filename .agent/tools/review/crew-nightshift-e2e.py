@@ -1,70 +1,56 @@
 #!/usr/bin/env python3
-"""Drive nightshift-pr-helper e2e runs through its local HTTP API.
+"""Drive nightshift-pr-helper e2e runs through its local HTTP API; Kibana-specific by design.
 
-Subcommands: `doctor` (read-only machine and server preflight), `worktrees`, `start`,
-`status`, `report`, `followup`, `stop`, `stack-stop`. The server is `NIGHTSHIFT_URL`, default
-`http://localhost:3737`; PR keys are nightshift's `owner__repo__number`.
-
-Deliberately absent: the queue (`POST /api/e2e/queue`) and `post-comment`. A queued run
-comments on the PR by default, which is external state the caller has to confirm, and a
-direct start already reaches the same runner.
-
-Exit codes: 0 ok, 1 request rejected or invalid output, 2 invalid invocation, 3 server
-unreachable. Diagnostics for 1 come from nightshift's own `error` field, so its message
-for an untracked PR or a disabled e2e reaches the user unchanged.
-
-This file is the argparse entry point only: the HTTP client, the checkout and machine probes, the
-preflight assembly, and the run operations live in the `nightshift/` package beside it.
+Subcommands: `doctor` (read-only preflight), `worktrees`, `start`, `status`, `report`, `followup`,
+`stop`, `stack-stop`; server `NIGHTSHIFT_URL` (default `http://localhost:3737`), PR keys
+`owner__repo__number`. Never the queue or `post-comment` (both comment on the PR). Exit: 0 ok,
+1 rejected (nightshift's `error` text), 2 invalid invocation, 3 server unreachable. Logic: `nightshift/`.
 """
 from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
-_REVIEW_DIR = Path(__file__).resolve().parent
-_TOOLS_ROOT = _REVIEW_DIR.parent
-for _path in (_TOOLS_ROOT, _REVIEW_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import review_bootstrap  # noqa: F401
 
-from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
-from nightshift.client import Unreachable, ApiError, base_url  # noqa: E402
-from nightshift.commands import (  # noqa: E402
+# Re-exported for the contract tests, which exercise the probes without a live server, and so a
+# caller reading this command keeps one import site after the split.
+from nightshift.client import (
+    ApiError,
+    Unreachable,
+    base_url,
+)
+from nightshift.commands import (
     followup,
-    is_end_to_end as _is_end_to_end,
     report,
     stack_stop,
     start,
     status,
     stop,
-    tail_fatal,
     worktrees,
 )
-from nightshift.doctor import doctor  # noqa: E402
-
-# Re-exported for the contract tests, which exercise the probes without a live server, and so a
-# caller reading this command keeps one import site after the split.
-from nightshift.checks import config_checks, location_checks, machine_notes, server_checks  # noqa: E402,F401
-from nightshift.checks import agent_check  # noqa: E402,F401
-from nightshift.client import check_key  # noqa: E402,F401
-from nightshift.location import (  # noqa: E402,F401
-    build_is_fresh,
+from nightshift.doctor import doctor
+from nightshift.location import (
     dev_stack_current,
     duplicate_config_keys,
-    elastic_remote,
     is_canonical_remote,
-    launchd_state,
-    plist_working_directory,
     port_in_use,
-    ports_status,
-    resolve_root,
 )
 
-UNREACHABLE = 3
+from lib.output import DEFAULT_MAX_CHARS
+
+__all__ = [  # the public names: re-exported for callers and tests that import this command file
+    "dev_stack_current",
+    "duplicate_config_keys",
+    "is_canonical_remote",
+    "main",
+    "port_in_use",
+]
+
+EXIT_UNREACHABLE = 3
 
 
-def build_parser() -> argparse.ArgumentParser:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Drive nightshift-pr-helper e2e runs over HTTP; PR keys are owner__repo__number.",
     )
@@ -95,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    args = make_parser().parse_args()
     if getattr(args, "max_chars", DEFAULT_MAX_CHARS) < 1:
         print("nightshift-e2e: --max-chars must be at least 1", file=sys.stderr)
         return 2
@@ -106,7 +92,7 @@ def main() -> int:
         return handlers[args.command](args)
     except Unreachable as error:
         print(f"nightshift-e2e: {base_url()} unreachable: {error}", file=sys.stderr)
-        return UNREACHABLE
+        return EXIT_UNREACHABLE
     except ApiError as error:
         print(f"nightshift-e2e: {error}", file=sys.stderr)
         return 1

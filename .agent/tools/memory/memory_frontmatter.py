@@ -1,13 +1,8 @@
-#!/usr/bin/env python3
-"""The unit format: vocabulary, frontmatter parsing, and rendering a unit back to Markdown.
+"""The unit format: vocabulary, frontmatter scalars and lists, parsing, and rendering back to Markdown.
 
-One unit is one Markdown file whose frontmatter carries the fields the gates read. Parsing and
-rendering are exact inverses, or a rewrite re-escapes what it just read: `render_unit` writes
-scalars with `json.dumps` and `memory_scalars.parse_scalar` decodes with the same decoder. Keys the
-model does not own are preserved verbatim and in order, so a hand-authored unit round-trips intact.
-
-Scalar and list decoding live in `memory_scalars`; a path question belongs to `memory_paths`. This
-module owns only what a whole unit is: its vocabulary, its frontmatter, and its body.
+One unit is one Markdown file. Parsing and rendering are exact inverses (`json.dumps` scalars decoded
+by `parse_scalar`, which also accepts the YAML spellings hand-authored units contain), and keys the
+model does not own keep their text and order, so a hand-authored unit round-trips intact.
 """
 from __future__ import annotations
 
@@ -15,9 +10,79 @@ import json
 import re
 from pathlib import Path
 
+from memory_paths import canonical_scope, memory_root, scope_from_path, today
+
 from lib.files import atomic_write
-from memory_paths import MemoryStoreError, canonical_scope, memory_root, scope_from_path, today
-from memory_scalars import integer, list_value, parse_scalar
+
+
+def split_inline_list(inner: str) -> list[str]:
+    """Split an inline list body on commas that sit outside quotes."""
+    parts, current, quote, index = [], [], None, 0
+    while index < len(inner):
+        char = inner[index]
+        if quote:
+            if char == "\\" and index + 1 < len(inner):
+                current.append(inner[index:index + 2])
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+        elif char in {'"', "'"}:
+            quote = char
+        elif char == ",":
+            parts.append("".join(current))
+            current = []
+            index += 1
+            continue
+        current.append(char)
+        index += 1
+    parts.append("".join(current))
+    return [part.strip() for part in parts if part.strip()]
+
+
+def parse_scalar(value: str) -> object:
+    value = value.strip()
+    if value in {"null", "None", "~"}:
+        return None
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+        return [part.strip("'\"") for part in split_inline_list(inner)]
+    if value[:1] in {'"', "'"}:
+        # render_unit writes scalars with json.dumps, so unescape must be its inverse;
+        # plain strip() re-escapes backslashes on every rewrite.
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            # Not JSON: single-quoted YAML escapes an inner quote by doubling it.
+            if value[0] == "'" and value.endswith("'"):
+                return value[1:-1].replace("''", "'")
+            return value.strip("'\"")
+        return parsed if isinstance(parsed, str) else value.strip("'\"")
+    return value
+
+
+def list_value(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def integer(value: object) -> int:
+    try:
+        return int(value or 0)
+    except ValueError:
+        return 0
+
 
 TYPES = {
     "user", "feedback", "project", "reference", "failure-shield", "procedure",

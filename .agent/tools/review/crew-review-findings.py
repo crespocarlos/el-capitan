@@ -2,94 +2,22 @@
 """Normalize review findings, persist review reports, and append outcome records.
 
 Subcommands: `normalize`, `persist`, `select`, `coverage`, `validate-map`, `spec-context`,
-`check-packages`, `outcome`, `outcomes`, `review-dir`, `save-out`, `consolidate`. This file is the argparse entry point only:
-parsing and validation live in the sibling `review_findings.py`, the flag definitions in
-`review_cli.py`, personas in `review_personas.py`, layers in `review_layers.py`, and report
-persistence in `review_report.py`. `Path(__file__).resolve()` follows the installed `~/.agent/bin`
-symlink back to this directory, so the siblings and the `lib` package above them are found from
-either invocation path.
-
-The full contract — required finding fields, fingerprints, the evidence gates and `--lenient`,
-`--files` as an evidence allowlist rather than a diff check, and `--head` tree identity — is
-documented in `.agent/tools/TOOLS.md` under this command.
+`check-packages`, `outcome`, `outcomes`, `review-dir`, `save-out`, `consolidate`. Entry point only:
+logic in `review_findings`, `review_cli`, `review_coverage`, `review_layers`, `review_report`.
+Contract (fields, fingerprints, evidence gates, `--files`, `--head`): `.agent/tools/TOOLS.md`.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from pathlib import Path
 
-_REVIEW_DIR = Path(__file__).resolve().parent
-_TOOLS_ROOT = _REVIEW_DIR.parent
-for _path in (_TOOLS_ROOT, _REVIEW_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import review_bootstrap  # noqa: F401
 
 # Re-exported deliberately: `assemble-packages.py` imports PERSONAS from this file as the single
 # persona registry, and the contract tests import the classifier and the label pattern to exercise
 # them directly. A caller must not have to know which private module now owns them.
-from review_findings import (  # noqa: E402,F401
-    CODE_MODES,
-    EMITTED,
-    KINDS,
-    LABELS,
-    LEGACY_PERSONAS,
-    MAX_FINDINGS,
-    MAX_NITS,
-    OUTCOMES,
-    PERSONAS,
-    atomic_write,
-    canonical_personas,
-    check_findings,
-    check_strict,
-    fingerprint,
-    mode_arg,
-    normalize,
-    normalized_title,
-    read_findings,
-    strict_mode,
-)
-from review_layers import (  # noqa: E402,F401
-    check_coverage,
-    check_hunk_refs,
-    check_layers,
-    coverage,
-    hunk_ids,
-    layer_coverage,
-    validate_map,
-)
-from review_personas import (  # noqa: E402,F401
-    ANCHOR_ANYWHERE,
-    EXPLORER_FINDING,
-    FIX_RESPONSE_FINDING,
-    LABELED_FINDING,
-    LABEL_LINE,
-    NO_FINDINGS,
-    QUOTED_EVIDENCE,
-    SPEC_FINDING,
-    SUMMARY_ARTIFACT,
-    check_packages,
-    check_persona_coverage,
-    has_findings,
-    has_review_content,
-    package_violations,
-    persona_outcome,
-    select,
-    spec_context,
-    spec_for,
-    spec_sections,
-)
-from review_report import check_outcomes, outcome, persist  # noqa: E402,F401
-from review_prior import prior_review  # noqa: E402,F401
-from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
-from review_commands import check_map, comments  # noqa: E402
-from review_save_out import add_save_out_parser, save_out  # noqa: E402
-from review_consolidate import add_consolidate_parser, consolidate  # noqa: E402
-
-
-from review_workspace import claim, cleanup_stale, report, review_dir  # noqa: E402
-from review_cli import (  # noqa: E402,F401
+from review_cli import (
     add_context_parsers,
     add_map_parsers,
     add_map_reply_parser,
@@ -97,6 +25,73 @@ from review_cli import (  # noqa: E402,F401
     add_normalize_parsers,
     add_review_dir_parser,
 )
+from review_consolidate import add_consolidate_parser, consolidate
+from review_coverage import (
+    check_packages,
+    check_persona_coverage,
+    package_violations,
+    select,
+    spec_context,
+    spec_for,
+    spec_sections,
+)
+from review_findings import check_findings, normalize, read_findings
+from review_layers import (
+    check_coverage,
+    check_hunk_refs,
+    coverage,
+    hunk_ids,
+    layer_coverage,
+    validate_map,
+)
+from review_models import fingerprint
+from review_pr_plan import check_map, comments
+from review_render import add_save_out_parser, save_out
+from review_report import check_outcomes, outcome, persist
+from review_vocabulary import (
+    CODE_MODES,
+    EMITTED,
+    KINDS,
+    LABELED_FINDING,
+    LABELS,
+    OUTCOMES,
+    PERSONAS,
+    canonical_personas,
+    mode_arg,
+    persona_outcome,
+)
+from review_workspace import claim, cleanup_stale, prior_review, report, review_dir
+
+from lib.files import atomic_write
+from lib.output import DEFAULT_MAX_CHARS
+
+__all__ = [  # the public names: re-exported for callers and tests that import this command file
+    "add_mode_flags",
+    "atomic_write",
+    "canonical_personas",
+    "check_coverage",
+    "check_findings",
+    "check_hunk_refs",
+    "check_persona_coverage",
+    "CODE_MODES",
+    "DEFAULT_MAX_CHARS",
+    "EMITTED",
+    "fingerprint",
+    "hunk_ids",
+    "KINDS",
+    "LABELED_FINDING",
+    "LABELS",
+    "layer_coverage",
+    "main",
+    "mode_arg",
+    "OUTCOMES",
+    "package_violations",
+    "persona_outcome",
+    "PERSONAS",
+    "read_findings",
+    "spec_for",
+    "spec_sections",
+]
 
 
 def review_dir_command(args: argparse.Namespace) -> int:

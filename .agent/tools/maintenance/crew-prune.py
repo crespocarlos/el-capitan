@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """Report catalog commands nothing references, so the next uncalled command is visible.
 
-A prompt change is unmeasurable without a suite; a command surface grows without one, because
-nothing notices a command that no prompt, hook, installer, or other tool names. The verdict here is
-narrow on purpose: a command with no reference at all is `uncalled`, and that is the only automatic
-judgment. Anything the report cannot settle — a command whose only mention is a test — is listed in
-its own verdict so a person decides.
-
-Usage: crew-prune.py [--root DIR] [--tasks-dir DIR] [--json]
-Exit:  0 when nothing is uncalled, 1 when at least one command is, 2 when the catalog is unreadable.
+`uncalled` (no prompt, hook, installer or tool names it) is the only automatic verdict; `test-only`
+is listed for a person to decide. Usage: crew-prune.py [--root DIR] [--tasks-dir DIR] [--json].
+Exit: 0 nothing uncalled, 1 at least one uncalled, 2 the catalog is unreadable.
 """
 from __future__ import annotations
 
@@ -17,15 +12,10 @@ import json
 import sys
 from pathlib import Path
 
-_MAINTENANCE = Path(__file__).resolve().parent
-_TOOLS = _MAINTENANCE.parent
-for _path in (_TOOLS, _MAINTENANCE):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import maintenance_bootstrap  # noqa: F401
 
-from prune_callers import (  # noqa: E402
+from prune_callers import (
     caller_texts,
-    count,
     journal_texts,
     telemetry,
     tool_names,

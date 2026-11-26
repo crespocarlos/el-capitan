@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / ".agent" / "tools" / "maintenance"))
-from lint_progress import lint_local_state_tracked  # noqa: E402
+from lint_writing import lint_local_state_tracked  # noqa: E402
 
 FAILED: list[str] = []
 ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.invalid",

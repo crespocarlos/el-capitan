@@ -1,37 +1,26 @@
-#!/usr/bin/env python3
-"""Task listing and rendering: the table, the `--tsv` line, the JSON array, and the reconcile report.
+"""Rendering task state for `crew-ls.py` (table, `--tsv`, JSON, the landed section) and `reconcile`.
 
-Rendering is separate from `task_gates.py` because it never writes: a listing failure is a display
-problem, while a gate failure must refuse. Both read the record `task_state.py` builds, so a change
-to the record lands in one place.
+Rendering never writes, so a listing failure is a display problem; `reconcile` applies holds and
+statuses through `task_state`.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
+from ls_data import landed_lines, landed_rows, snapshot
+from task_progress import blocked_reason
+from task_state import TaskState, decide, head, load_rules, name, set_status
+from task_status import STATUS, StatusError, token
+
 from lib.output import json_payload, print_lines, rows_limit
-from ls_data import snapshot
-from ls_landed import landed_lines, landed_rows
-from task_lock import blocked_reason
-from task_state import (
-    STATUS,
-    StatusError,
-    TaskState,
-    decide,
-    head,
-    load_rules,
-    name,
-    set_status,
-    token,
-)
 
 OPEN_ORDER = ["IMPLEMENTING", "APPROVED", "DRAFTING", "ON-HOLD"]
 
 
 def state_label(r: TaskState) -> str:
     if head(r) == "ON-HOLD":
-        import re
         was = re.search(r"was ([A-Za-z-]+)", r.status)
         return f"ON-HOLD (was {was.group(1)})" if was else "ON-HOLD"
     return head(r) or "?"
