@@ -1,8 +1,10 @@
 name: Reviewer Evals
 
+# Live model calls with a key: run by hand or weekly, never on every pull request (a free-tier rate
+# limit or a missing secret failed every PR). The hermetic checks live in validate.yml.
 on:
-  pull_request:
-    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       provider:
@@ -42,9 +44,12 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Inputs reach the script as data, never spliced into its text.
+          INPUT_MODEL: ${{ github.event.inputs.model }}
+          INPUT_PROVIDER: ${{ github.event.inputs.provider }}
         run: |
-          MODEL="${{ github.event.inputs.model || 'nvidia/nemotron-3-super-120b-a12b:free' }}"
-          PROVIDER="${{ github.event.inputs.provider || 'openrouter' }}"
+          MODEL="${INPUT_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}"
+          PROVIDER="${INPUT_PROVIDER:-openrouter}"
           if [ "$PROVIDER" = anthropic ] && [ -f reviewer/baseline.json ]; then
             MODEL=$(python -c 'import json; print(json.load(open("reviewer/baseline.json"))["model"])')
           fi
