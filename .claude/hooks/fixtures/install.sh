@@ -179,8 +179,12 @@ test -z "$(ls -A "$bare/cwd")"
 grep -qF "Using the existing checkout at $bare/h6/el-capitan (not updated; run git -C $bare/h6/el-capitan pull to upgrade)" "$bare/out"
 
 # The summary prints only after every step: a failing step ends the run without it.
-chmod 000 "$bare/h6/.claude"
-if (HOME="$bare/h6" bash "$root/install.sh" > "$bare/out" 2>&1); then chmod 755 "$bare/h6/.claude"; exit 1; fi
-chmod 755 "$bare/h6/.claude"
-if grep -q '^Done. Installed:' "$bare/out"; then exit 1; fi
-grep -q 'Install INCOMPLETE' "$bare/out"
+if [ "$(id -u)" = 0 ]; then
+  echo "skip: failing install step: root writes through mode 000, so no step fails" >&2
+else
+  chmod 000 "$bare/h6/.claude"
+  if (HOME="$bare/h6" bash "$root/install.sh" > "$bare/out" 2>&1); then chmod 755 "$bare/h6/.claude"; exit 1; fi
+  chmod 755 "$bare/h6/.claude"
+  if grep -q '^Done. Installed:' "$bare/out"; then exit 1; fi
+  grep -q 'Install INCOMPLETE' "$bare/out"
+fi

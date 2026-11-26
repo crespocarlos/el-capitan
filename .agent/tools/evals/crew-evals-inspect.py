@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect evaluation documents in Elasticsearch. Read-only; exits 2 when ES is unavailable.
+"""Inspect evaluation documents in Elasticsearch; targets Kibana. Read-only; exits 2 when ES is unavailable.
 
 Subcommands: `latest`, `scores <experiment>`, `failures <experiment>`, `trace <experiment>
 <example>`, `ki`, `flips <a> <b>`, `cluster <experiment>...`. Every subcommand prints JSON on stdout
@@ -15,11 +15,10 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import evals_bootstrap  # noqa: F401
 
-from lib.output import DEFAULT_MAX_CHARS, bounded_json  # noqa: E402
+from lib.output import DEFAULT_MAX_CHARS, bounded_json
 
 URL = os.environ.get("ES_URL", "http://localhost:9200").rstrip("/")
 MAX_DOCS = 500
@@ -70,7 +69,7 @@ def add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--limit", type=int, default=None, help="show at most N result rows")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -139,7 +138,7 @@ def limited(payload: object, limit: int | None) -> object:
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    args = make_parser().parse_args()
     if args.max_chars < 1:
         print("error: --max-chars must be at least 1", file=sys.stderr)
         return 2

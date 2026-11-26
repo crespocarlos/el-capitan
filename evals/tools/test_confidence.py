@@ -304,8 +304,9 @@ def test_the_report_line_carries_the_score_beside_the_label(tmp: Path) -> None:
     for path in (str(TOOL.parent), str(TOOL.parent.parent)):
         if path not in sys.path:
             sys.path.insert(0, path)
-    from review_models import ABSENT, Finding
+    from review_models import Finding
     from review_render import label_with_score, score_suffix
+    from review_vocabulary import ABSENT
 
     scored = Finding(title="Guard missing", label="attention", file="a.ts", line=3, confidence=4)
     assert label_with_score(scored) == "[attention · 4]"

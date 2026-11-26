@@ -112,8 +112,8 @@ remove the files from staging, or update the spec.
 
 ### Step 2c: Gates
 
-Run the repository's gates as its CI does: `~/.agent/bin/crew-progress.py verify --task-dir
-"$TASK_DIR"` (passes on an unchanged tree are cached; no task: `--out /tmp/gates.json`). It reads the
+Run the repository's gates as its CI does: `~/.agent/bin/crew-verify.py --task-dir
+"$TASK_DIR"` (a pass on an unchanged tree is reused; no task: `--out /tmp/gates.json`). It reads the
 commands from the base branch, never the PR head, and prints `<name> exit=<N>`. Act on the outcome
 per `~/.cursor/skills/crew-implement/references/verify-outcomes.md`.
 

@@ -2,31 +2,27 @@
 """Memory maintenance: init, reindex, doctor, stats, and consolidate.
 
 Store lifecycle and the bulk operations that report on the whole store. Ingesting external
-Markdown is `memory_ingest`, and inbox drafting and importing is `memory_inbox`, because each has
-its own failure modes; both are re-exported here so `crew-mem.py` keeps one import site.
+Markdown, inbox drafting and importing are `memory_inbox`, because each has its own failure modes.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
-import sys
 from pathlib import Path
 
-from lib.files import atomic_write
-from memory_commit import mutate, run_git
-from memory_context import is_stale
-from memory_frontmatter import render_unit
-from memory_index import (
+from memory_add import archive
+from memory_inbox import inbox_report
+from memory_paths import memory_root, normalized, repo_key, tokens
+from memory_search import is_stale
+from memory_store import (
     ensure_store,
     initialize_database,
+    mutate,
     refresh,
-    write_indexes_for_scopes,
+    run_git,
 )
-from memory_paths import memory_root, normalized, repo_key, tokens
-from memory_units import archive
-from memory_ingest import ingest, parse_imports, write_units  # noqa: F401 — re-exported
-from memory_inbox import import_inbox, imported_path, inbox_report  # noqa: F401 — re-exported
+
+from lib.files import atomic_write
 
 
 def init_store() -> int:
@@ -129,22 +125,3 @@ def consolidate(args: argparse.Namespace) -> int:
             return result
     print(run_git(["diff", "--stat"], check=False).stdout, end="")
     return 0
-
-
-def write_units(writes: list[tuple[Path, str]]) -> list[tuple[Path, str | None]]:
-    """Commit, then write each rendered unit, and return each file's previous content.
-
-    Every write happens inside one commit so a failure can restore each file from its backup,
-    which is why the caller gets the backup list rather than a bare success flag.
-    """
-    backups: list[tuple[Path, str | None]] = []
-    commit_external_changes()
-    for path, rendered in writes:
-        previous = path.read_text(encoding="utf-8") if path.exists() else None
-        atomic_write(path, rendered)
-        backups.append((path, previous))
-    refreshed = refresh(write_indexes=False)
-    backups.extend(write_indexes_for_scopes(refreshed))
-    refreshed.close()
-    run_git(["add", "-A"])
-    return backups

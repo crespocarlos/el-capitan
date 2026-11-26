@@ -102,7 +102,7 @@ def test_the_specwriter_stays_under_the_byte_ceiling() -> None:
     maintenance = ROOT / ".agent" / "tools" / "maintenance"
     if str(maintenance) not in sys.path:
         sys.path.insert(0, str(maintenance))
-    from lint_budget import MAX_PROMPT_FILE_BYTES
+    from lint_prompts import MAX_PROMPT_FILE_BYTES
 
     for path in [SPECWRITER] + [AGENTS / f"{name}.md" for name in CRITICS]:
         size = len(path.read_text(encoding="utf-8").encode("utf-8"))

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / ".agent" / "tools"), str(ROOT / ".agent" / "tools" / "review"),
                 str(ROOT / ".agent" / "tools" / "lib")]
 
-from assemble_prior import section  # noqa: E402
+from assemble_inputs import prior_section as section  # noqa: E402
 
 REWORDED = {"file": "prompt/discovery.md.text", "line": 11, "label": "nit", "fingerprint": "aaa",
             "title": "The flaky flag and the flaky_probe reason are explained in two bullets",

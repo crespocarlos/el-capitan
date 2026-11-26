@@ -395,6 +395,29 @@ hook_git() {
   GIT_ARGS=("${SEG_WORDS[@]:$((i + 1))}")
 }
 
+# When the loaded segment runs gh: GH_CMD and GH_SUB are its first two words that are not options
+# (`gh pr -R o/r checkout 12` gives `pr` and `checkout`), with `-R`/`--repo` taking a value. The gh
+# word is found the way hook_git finds git, so a runner in front (`xargs gh`) hides nothing.
+hook_gh() {
+  local i=0 n=${#SEG_WORDS[@]}
+  GH_CMD="" GH_SUB=""
+  while [ "$i" -lt "$n" ]; do
+    if [ "${SEG_WORDS[$i]##*/}" = gh ] && { [ "$i" = 0 ] || [ "${SEG_QUOTED:$i:1}" = 0 ]; }; then break; fi
+    i=$((i + 1))
+  done
+  [ "$i" -lt "$n" ] || return 1
+  i=$((i + 1))
+  while [ "$i" -lt "$n" ] && [ -z "$GH_SUB" ]; do
+    case "${SEG_WORDS[$i]}" in
+      -R | --repo) i=$((i + 1)) ;;
+      -*) ;;
+      *) if [ -z "$GH_CMD" ]; then GH_CMD=${SEG_WORDS[$i]}; else GH_SUB=${SEG_WORDS[$i]}; fi ;;
+    esac
+    i=$((i + 1))
+  done
+  [ -n "$GH_CMD" ]
+}
+
 # REPO is $1 when it is a git repository, else the hook's cwd when that is one, else empty.
 hook_repo() {
   local dir

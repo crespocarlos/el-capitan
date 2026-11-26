@@ -1,32 +1,25 @@
-#!/usr/bin/env python3
-"""Task state: the SPEC record, the status write, and the reconcile rule matching.
+"""Task state: the SPEC record, the status write, the reconcile rule matching and the status migration.
 
-This module answers what a task is and what its next state is; `task_report.py` renders it,
-`task_gates.py` applies the transitions, and `task_resolve.py` finds it. The `## Status` contract
-itself stays in `task_status.py` and is re-exported here, so the entry points and the hooks keep one
-reader.
+`task_report.py` renders this record, `task_gates.py` applies the transitions, `task_resolve.py`
+finds it; the `## Status` contract is `task_status.py`. `normalize-status` rewrites only a legacy
+token (`done` to `DONE`), keeps any suffix and reports each file; a second run finds nothing.
 """
 from __future__ import annotations
 
 import json
 import re
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Installed flat into ~/.agent/bin, but in the repo this file is `.agent/tools/task`; `resolve()`
-# follows the installed symlink back into the repo, so one directory covers both. A hyphenated tool
-# name cannot be imported, which is why the contract lives in a snake_case module.
-for _dir in (Path(__file__).resolve().parent,):
-    if (_dir / "task_status.py").is_file() and str(_dir) not in sys.path:
-        sys.path.insert(0, str(_dir))
-if str(Path(__file__).resolve().parents[1]) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib.files import atomic_write  # noqa: E402
-from task_review import review_file  # noqa: E402
-from task_status import STATUS, StatusError, head as state_head, read_status, token  # noqa: E402,F401  re-exported
+import task_bootstrap  # noqa: F401
+
+from task_progress import PROGRESS_FILE, append_transition
+from task_status import STATUS, StatusError, canonical, read_status, review_file
+from task_status import head as state_head
+
+from lib.files import atomic_write
 
 
 @dataclass
@@ -101,8 +94,7 @@ VERDICT = re.compile(
 # An unresolved clarification blocks implementation; one shown inside a fenced example does not.
 UNRESOLVED = re.compile(r"\[NEEDS CLARIFICATION", re.M)
 FENCED = re.compile(r"^```.*?^```", re.M | re.S)
-ACTIVITY_FILES = ("SPEC.md", "PROGRESS.md", "REVIEW.md", "REPORT.md")
-LOG_PROGRESS = Path(__file__).resolve().parent / "crew-progress.py"
+ACTIVITY_FILES = ("SPEC.md", PROGRESS_FILE, "REVIEW.md", "REPORT.md")
 
 
 def unresolved(spec_text: str) -> bool:
@@ -186,10 +178,81 @@ def set_status(r: TaskState, value: str, transition: str) -> bool:
     except OSError as error:
         print(f"error: {name(r)}: {error}", file=sys.stderr)
         return False
-    logged = subprocess.run([sys.executable, str(LOG_PROGRESS), str(r.task), transition],
-                            capture_output=True, text=True)
-    if logged.returncode != 0:
-        print(f"warning: {name(r)}: PROGRESS.md not updated: {logged.stderr.strip()}",
-              file=sys.stderr)
+    try:
+        append_transition(r.task, transition)
+    except OSError as error:
+        print(f"warning: {name(r)}: PROGRESS.md not updated: {error}", file=sys.stderr)
     print(f"applied: {name(r)} -> {value.split()[0]}")
     return True
+
+
+def rewritten(path: Path) -> str:
+    """The SPEC.md text with a canonical status, or "" when the file needs no change.
+
+    Returns "" for an unreadable file, an unset status, an already-canonical value, and an unknown
+    token: a migration reports what it cannot fix rather than guessing a state for it.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    match = STATUS.search(text)
+    if not match:
+        return ""
+    value = match.group(2).strip()
+    try:
+        if canonical(value) == value:
+            return ""
+    except StatusError:
+        return ""
+    return STATUS.sub(lambda m: m.group(1) + canonical(m.group(2).strip()), text, count=1)
+
+
+def unknown_status(path: Path) -> str:
+    """The status value of a spec that cannot be normalized because its token is not in the set."""
+    value = read_status(path)
+    if not value:
+        return ""
+    try:
+        canonical(value)
+    except StatusError as error:
+        return str(error)
+    return ""
+
+
+def normalize_all(tasks_dir: Path, apply: bool, out=None) -> int:
+    """Report, and with `apply` rewrite, every spec whose status is not canonical.
+
+    The return value counts the files changed (or, in a dry run, would change), so a caller can
+    assert idempotence: the second run returns 0 and prints the same "already canonical" summary.
+    """
+    sink = out or sys.stdout
+    changed = 0
+    failed = 0
+    specs = sorted(tasks_dir.glob("*/SPEC.md"))
+    for spec in specs:
+        problem = unknown_status(spec)
+        if problem:
+            print(f"skip: {spec.parent.name}: {problem}", file=sys.stderr)
+            continue
+        updated = rewritten(spec)
+        if not updated:
+            continue
+        before = read_status(spec) or ""
+        if apply:
+            try:
+                atomic_write(spec, updated)
+            except OSError as error:
+                failed += 1
+                print(f"error: {spec}: {error}", file=sys.stderr)
+                continue
+        changed += 1
+        print(f"{'normalized' if apply else 'would normalize'}: {spec}: "
+              f"{before} -> {canonical(before)}", file=sink)
+    verb = "normalized" if apply else "would normalize"
+    print(f"{verb} {changed} of {len(specs)} spec(s)" + ("" if changed else ": already canonical"),
+          file=sink)
+    if failed:
+        print(f"error: {failed} spec(s) not written", file=sys.stderr)
+        return -1
+    return changed

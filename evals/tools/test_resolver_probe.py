@@ -24,7 +24,7 @@ MAINTENANCE = ROOT / ".agent" / "tools" / "maintenance"
 if str(MAINTENANCE) not in sys.path:
     sys.path.insert(0, str(MAINTENANCE))
 
-from lint_budget import MAX_PROMPT_FILE_BYTES  # noqa: E402
+from lint_prompts import MAX_PROMPT_FILE_BYTES  # noqa: E402
 
 
 def prompt() -> str:

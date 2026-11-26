@@ -22,8 +22,9 @@ for _path in (ROOT / ".agent" / "tools", ROOT / ".agent" / "tools" / "task",
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-from lib.next_steps import known_stages, load_table, resolve, sentence  # noqa: E402
 from lint_references import routing_commands  # noqa: E402
+
+from lib.next_steps import known_stages, load_table, resolve, sentence  # noqa: E402
 
 TABLE = ROOT / ".agent" / "tools" / "task" / "next-steps.json"
 ROUTER = ROOT / "rules" / "crew-router.mdc"

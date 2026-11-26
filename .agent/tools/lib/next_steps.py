@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """The next-step table: one answer per completed stage, shared by the CLI and the report footer.
 
-`crew-router.mdc` routes a `crew` trigger to a crew member, and `transitions.json` decides the next
-*task state*; neither answered the question a session asks at the end of a stage — which command runs
-next. That answer was prose in fourteen files and had drifted into six shapes. It lives in
-`task/next-steps.json`, keyed by `<workflow>.<stage>.<outcome>`, so one fact has one home.
-
-Loading and resolving live here rather than in the command so `review_render.footer` reads the same
-table it does: the persisted report's `> Next:` line and `crew-next.py` must not answer differently. A
-skill's trailer is written prose, and `lint_handoff` holds it to the router rather than to this table.
+The table is `task/next-steps.json`, keyed by `<workflow>.<stage>.<outcome>`: which command runs
+after a stage. `crew-next.py` and `review_render.footer` both read it here, so the report's
+`> Next:` line and the command never disagree. A skill's own trailer is prose (`lint_handoff`).
 """
 from __future__ import annotations
 

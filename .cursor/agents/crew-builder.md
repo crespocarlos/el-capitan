@@ -103,14 +103,14 @@ Otherwise run steps 1-4 and overwrite `REPORT.md`.
    retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or
    explicit file inspection stated in the criterion).
 4. Leave `## Status` as `IMPLEMENTING`. `DONE` is written only by `crew open pr` when it creates the
-   PR (`crew-ls.py --mark-done`); the status is not the builder's to change, and a hand-written value
+   PR (`crew-task.py mark-done`); the status is not the builder's to change, and a hand-written value
    skips the gate that proves the review passed.
 
 Then write `REPORT.md`.
 
 **Exit step, every run (also a batch part, also after a failure):** the orchestrator wrote
 `<WORK_DIR>/.crew-worker.lock` at dispatch; once the report file exists run
-`~/.agent/bin/crew-progress.py lock remove <WORK_DIR>` so the tree is free for the next stage.
+`~/.agent/bin/crew-task.py lock remove <WORK_DIR>` so the tree is free for the next stage.
 
 ---
 
@@ -132,7 +132,7 @@ Write to **`$TASK_DIR/REPORT.md`** in this shape:
 - `<decision>` — `<why>` — `<cost if wrong>`, or `none`.
 
 ### Quality gates
-<the `crew-progress.py verify` output pasted verbatim: `<name> exit=<N>` lines>
+<the `crew-verify.py` output pasted verbatim: `<name> exit=<N>` lines>
 - `<gate name>` — `<pass/fail/skipped>` — `<reason if failed or skipped>`.
 
 ### Unverified claims
@@ -171,13 +171,13 @@ Write to **`$TASK_DIR/REPORT.md`** in this shape:
 <a json code block: {"schema_version": 1, "tasks": {"passed": N, "total": M}, "gates": [{"name": "<gate>", "exit": N}], "unverified_claims": [{"claim": "...", "verify": "..."}]}>
 ```
 
-**Gates.** Run `~/.agent/bin/crew-progress.py verify --repo <WORK_DIR> --task-dir $TASK_DIR` (for a
-long run add `--background`, then `--wait $TASK_DIR/gates.json`). It reads the commands from the base
-branch's CI workflow, mirrors its env and Node, prints `<name> exit=<N>` lines and writes
-`$TASK_DIR/gates.json`. Never claim a gate from memory or from a narrower command.
+**Gates.** Run `~/.agent/bin/crew-verify.py --repo <WORK_DIR> --task-dir $TASK_DIR` (for a
+long run add `--background`, then `--wait $TASK_DIR/gates.json`). It runs the base branch's CI
+(rule: `.agent/tools/TOOLS.md` "Gates and cost"). It prints
+`<name> exit=<N>` lines and writes `$TASK_DIR/gates.json`. Never claim a gate from memory or from a narrower command.
 
 **Check the report in the same worker.** Right after writing it, run
-`~/.agent/bin/crew-progress.py report-check <report file> --gates $TASK_DIR/gates.json`. On a
+`~/.agent/bin/crew-verify.py report-check <report file> --gates $TASK_DIR/gates.json`. On a
 mismatch, correct the report to match `gates.json` and run it once more; a second failure goes in
 `### Errors` and the task is marked failed. It is not a new stage.
 

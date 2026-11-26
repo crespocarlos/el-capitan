@@ -6,8 +6,8 @@ branch in the current checkout. The skill is prose, so the contract is its text:
 two ways to opt in (the user asks, or `AGENTS.md` says `worktree: true`), the question asked at most
 once per repo, the orchestrator running its own git as `git -C <tree>`, and the builder exporting
 `CREW_WORKER_TASK` so the guard lets it change its own branch. The pieces with code are exercised on
-a real repository: the lock round trip (`crew-progress.py lock`) and the choice and its record
-(`crew-progress.py worktree pref|record`).
+a real repository: the lock round trip (`crew-task.py lock`) and the choice and its record
+(`crew-task.py worktree pref|record`).
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SKILL = ROOT / ".cursor" / "skills" / "crew-implement" / "SKILL.md"
 REFERENCE = ROOT / ".cursor" / "skills" / "crew-implement" / "references" / "worker-dispatch.md"
 BUILDER = ROOT / ".cursor" / "agents" / "crew-builder.md"
-PROGRESS = ROOT / ".agent" / "tools" / "task" / "crew-progress.py"
+PROGRESS = ROOT / ".agent" / "tools" / "task" / "crew-task.py"
 FAILURES: list[str] = []
 
 
@@ -86,8 +86,9 @@ def worktree_choice() -> None:
         (repo / "AGENTS.md").write_text("# Repo\n\nworktree: true\n", encoding="utf-8")
         check("`worktree: true` in AGENTS.md wins over a recorded `here`", pref(repo, "pref").stdout.strip() == "worktree")
         check("--json names the source", '"source": "agents"' in pref(repo, "pref", "--json").stdout)
-        (repo / "AGENTS.md").write_text("# Repo\n\nworktree: false\n", encoding="utf-8")
-        check("`worktree: false` means here", pref(repo, "pref").stdout.strip() == "here")
+        (repo / "AGENTS.md").write_text("# Repo\n\n```\nworktree: true\n```\n\nworktree: false\n", encoding="utf-8")
+        check("`worktree: false` means here; a `worktree:` line inside a code fence is ignored",
+              pref(repo, "pref").stdout.strip() == "here")
         marker.unlink()
         (repo / "AGENTS.md").write_text("# Repo\n\nNo setting here.\n", encoding="utf-8")
         check("no setting and no record is `ask` again", pref(repo, "pref").stdout.strip() == "ask")
@@ -135,7 +136,7 @@ def main() -> int:
           and "Always create (or reuse) a worktree" not in skill and "if the answer is the main tree, stop" not in skill)
     step4 = skill.split("### Step 4")[1].split("### Step 5")[0].split("Then **bootstrap")[0]
     check("Step 4 says only: run `worktree pref` and follow worker-dispatch.md",
-          "crew-progress.py worktree pref" in step4 and "references/worker-dispatch.md" in step4 and len(step4) < 400)
+          "crew-task.py worktree pref" in step4 and "references/worker-dispatch.md" in step4 and len(step4) < 400)
     check("default: a branch off the default branch in the current checkout, no worktree",
           "current checkout" in reference and "no worktree" in reference)
     check("a worktree only when the user asks or AGENTS.md sets `worktree: true`",
@@ -145,19 +146,19 @@ def main() -> int:
     check("the dispatch reference mandates git -C <tree> for the orchestrator", "git -C <tree>" in reference)
     check("the branch comes from `## Branch:` with a derived fallback in the reference", "## Branch:" in reference and "<=50" in reference)
     check("the dispatch reference runs `worktree check` and names its three answers",
-          "crew-progress.py worktree check" in reference and all(w in reference for w in ("on-feature-branch", "dirty", "ok")))
+          "crew-task.py worktree check" in reference and all(w in reference for w in ("on-feature-branch", "dirty", "ok")))
     check("the dispatch reference: a non-default branch is used as-is, a dirty tree stops with one question",
           "as-is" in reference and "ask once" in reference)
     check("`dirty` names its options and exit 2 stops with stderr",
           all(w in reference for w in ("commit them", "stash them", "use a worktree", "or stop")) and "exit 2" in reference
           and "show its stderr and stop" in reference)
     check("WORK_DIR is assigned before `worktree check` runs on it",
-          0 <= reference.find("WORK_DIR=$(~/.agent/bin/crew-repo-info.py") < reference.find("crew-progress.py worktree check \"$WORK_DIR\""))
+          0 <= reference.find("WORK_DIR=$(~/.agent/bin/crew-repo-info.py") < reference.find("crew-task.py worktree check \"$WORK_DIR\""))
     ok_block = reference.split("- `ok` (exit 0)")[1].split("```bash")[1].split("```")[0]
     check("the `ok` block keeps only fetch and switch", "WORK_DIR=" not in ok_block and "fetch" in ok_block and "switch" in ok_block)
     check("skill links the dispatch reference", "references/worker-dispatch.md" in skill)
     check("the orchestrator removes the lock when a worker returns or fails; the skill only points there",
-          'crew-progress.py lock remove "$WORK_DIR"' in reference and "returns or fails" in reference
+          'crew-task.py lock remove "$WORK_DIR"' in reference and "returns or fails" in reference
           and "lock remove" not in skill and "lock write" not in skill)
     check("reference gives the branch commands for the in-place default",
           'git -C "$WORK_DIR" switch' in reference and "origin/" in reference)

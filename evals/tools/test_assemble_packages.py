@@ -325,16 +325,16 @@ def test_slicing_is_opt_in_and_keeps_every_hunk_reachable(tmp: Path) -> None:
 
 def test_the_coverage_gate_refuses_a_slice_that_would_lose_a_hunk(tmp: Path) -> None:
     sys.path[:0] = [str(TOOL.parent), str(TOOL.parents[1])]
-    import assemble_slice  # noqa: E402 - the path must be set first
+    import assemble_build
 
     diff = "".join(file_diff(p, b) for p, b in CODE_FILES.items())
     hunks = {"hunks": [{"id": f"h{i}", "file": p} for i, p in enumerate(CODE_FILES, 1)]}
     layers = [{"kind": "ui", "hunks": ["h1"]}, {"kind": "core", "hunks": ["h2"]}]
-    sliced, note = assemble_slice.plan(layers, hunks, diff, ["product-flow", "code-quality"])
+    sliced, note = assemble_build.plan(layers, hunks, diff, ["product-flow", "code-quality"])
     assert sliced == {} and "coverage gate" in note, (sliced, note)
-    with_full, _ = assemble_slice.plan(layers, hunks, diff, ["product-flow", "adversarial"])
+    with_full, _ = assemble_build.plan(layers, hunks, diff, ["product-flow", "adversarial"])
     assert list(with_full) == ["product-flow"], "a lens reading the whole diff covers the rest"
-    assert assemble_slice.plan([], hunks, diff, ["adversarial"])[0] == {}
+    assert assemble_build.plan([], hunks, diff, ["adversarial"])[0] == {}
 
 
 def main() -> int:
@@ -345,7 +345,7 @@ def main() -> int:
             try:
                 test(Path(directory))
                 print(f"pass: {test.__name__}")
-            except Exception as error:  # noqa: BLE001 - one broken test must not hide the rest
+            except Exception as error:
                 failed += 1
                 print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
     print(f"{len(tests) - failed}/{len(tests)} passed")

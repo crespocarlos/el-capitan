@@ -358,10 +358,10 @@ def check_the_contract_requires_an_assessment_of_the_change() -> None:
 
 def check_the_assessment_gate_is_wired() -> None:
     """The gate has to actually run, and only where the package asked for an assessment."""
-    gates = flat((AGENTS.parents[1] / ".agent" / "tools" / "review" / "review_persist_gates.py")
+    gates = flat((AGENTS.parents[1] / ".agent" / "tools" / "review" / "review_coverage.py")
                  .read_text())
     assert "ASSESSMENT_REQUEST" in gates and "check_assessments" in gates, (
-        "review_persist_gates.py holds no assessment gate"
+        "review_coverage.py holds no assessment gate"
     )
     assert "unavailable" in gates, (
         "the gate must exempt a persona that declared a failure, or its documented recovery fails"

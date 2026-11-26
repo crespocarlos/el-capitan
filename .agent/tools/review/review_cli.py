@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """The subcommand definitions for `crew-review-findings.py`, kept out of the entry point.
 
-The entry point holds argparse wiring and exit codes only, and the module ceiling is 200 lines; the
-flags for eleven subcommands are more than that budget allows once the handlers are counted. Every
-argument shape a prompt uses is defined here so the help text and the parser cannot disagree.
+The entry point holds argparse wiring and exit codes only. Every argument shape a prompt uses is
+defined here so the help text and the parser cannot disagree.
 """
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
+from review_vocabulary import CODE_MODES, LABELS, OUTCOMES, PROBE_OUTCOMES, mode_arg
+
 from lib.output import DEFAULT_MAX_CHARS
-from review_findings import CODE_MODES, LABELS, OUTCOMES, mode_arg
-from review_vocabulary import PROBE_OUTCOMES
 
 
 def add_mode_flags(parser: argparse.ArgumentParser) -> None:

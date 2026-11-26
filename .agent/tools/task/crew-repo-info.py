@@ -1,23 +1,9 @@
 #!/usr/bin/env python3
 """Print the repository facts prompts need: root, branch, remote, and default branch.
 
-One question, one command. A prompt that shells out to `git rev-parse`, `git remote get-url`, or
-`git branch --show-current` reads an empty string when git fails and then acts on it — a wrong branch
-name or a wrong diff base. This prints the same facts as data and exits nonzero when a fact it was
-asked for cannot be established.
-
-`--network` resolves the default branch through `gh` first and `git` second, because gh carries the
-authentication. Without it the answer comes from the local `refs/remotes/<remote>/HEAD` symref only,
-so a prompt that needs just the root or the branch costs no round trip.
-
-`--field` prints one value bare, so a prompt can assign what it needs (`BRANCH=$(... --field
-branch)`) instead of parsing a listing. `changed` and `staged` are the two name lists a prompt falls
-back to when it needs the files to test; `head_short` and `dirty` carry the two facts a handoff
-records, so a resumed session compares the same source rather than re-deriving them.
-
-`--diff-base` and `--fork-point` answer the other question a prompt used to ask git directly: where a
-branch's diff starts. `crew-diff.sh` captures them, so the ref order has one implementation and one
-test rather than a shell copy.
+Exits nonzero when an asked-for fact cannot be established, so empty never reads as an answer.
+`--field NAME` prints one value bare; `--network` asks gh then git for the default branch (else the
+local symref). `--diff-base` and `--fork-point` say where a branch's diff starts (`crew-diff.sh`).
 """
 from __future__ import annotations
 
@@ -26,12 +12,11 @@ import json
 import sys
 from pathlib import Path
 
-_TOOLS_ROOT = Path(__file__).resolve().parents[1]
-if str(_TOOLS_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TOOLS_ROOT))
+import task_bootstrap  # noqa: F401
 
-from lib.git import GitError, base_ref, fork_point  # noqa: E402
-from task_repo_facts import collect  # noqa: E402
+from task_repo_facts import collect
+
+from lib.git import GitError, base_ref, fork_point
 
 FIELDS = ("root", "branch", "head", "head_short", "dirty", "changed", "staged", "staged_dirty",
           "remote", "remote_url", "repo", "repo_name", "origin_repo", "default_branch")

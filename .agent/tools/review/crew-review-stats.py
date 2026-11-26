@@ -1,30 +1,22 @@
 #!/usr/bin/env python3
 """Report what the recorded reviews produced, and how much of it can actually be measured.
 
-Reads the task store's review directories (`--tasks-dir`, default `~/.agent/tasks`), joins each
-finding to its recorded outcome, and prints findings by label, the fields that are missing, and
-precision per persona. Precision is `fixed / (fixed + rejected)` and every line carries its
-denominator and the `unrecorded` count, because a ratio over a dozen decisions is not a property of
-the reviewer. Findings with no record are reported as `unrecorded`, never dropped from the total.
-
-Usage: crew-review-stats.py [--tasks-dir DIR] [--limit N] [--max-chars N] [--json]
-Exit:  0 when the corpus was read, 2 when the directory is unusable.
+Joins each finding under `--tasks-dir` (default `~/.agent/tasks`) to its outcome and prints findings
+by label, missing fields and precision per persona (`fixed / (fixed + rejected)`, always with its
+denominator and the `unrecorded` count). Usage: crew-review-stats.py [--tasks-dir DIR] [--limit N]
+[--max-chars N] [--json]. Exit: 0 the corpus was read, 2 the directory is unusable.
 """
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
-_REVIEW_DIR = Path(__file__).resolve().parent
-_TOOLS_ROOT = _REVIEW_DIR.parent
-for _path in (_TOOLS_ROOT, _REVIEW_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import review_bootstrap  # noqa: F401
 
-from lib.output import DEFAULT_MAX_CHARS, bounded_json, hint, rows_limit  # noqa: E402
-from review_stats import collect, render  # noqa: E402
+from review_stats import collect, render
+
+from lib.output import DEFAULT_MAX_CHARS, bounded_json, hint, rows_limit
 
 
 def default_tasks_dir() -> Path:
@@ -64,7 +56,7 @@ def main() -> int:
         return 0
     text = "\n".join(render({**payload, "findings": []}))
     if len(text) > args.max_chars:
-        text = text[:args.max_chars] + f"\n[truncated: raise --max-chars to see the rest]"
+        text = text[:args.max_chars] + "\n[truncated: raise --max-chars to see the rest]"
     print(text)
     return 0
 

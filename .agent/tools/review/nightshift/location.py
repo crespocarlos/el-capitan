@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 """Where the helper checkout lives, and whether the two halves of a run's evidence agree.
 
-`resolve_root` answers which checkout the running server actually serves, because a LaunchAgent
-`WorkingDirectory` and the tool's default path can differ and a preflight against the wrong clone
-reports on code nobody is running. The rest decide whether that checkout is the repository this
-tool means to drive, whether its build is current, and whether the dev-stack script it points at
-honours the flag the run needs.
+`resolve_root` names the checkout the running server serves (override, LaunchAgent
+`WorkingDirectory`, default path). The rest check the remote, the build, the dev-stack script and
+the ports. Kibana-specific by design, like the whole nightshift tool (its ports and paths are Kibana's).
 """
 from __future__ import annotations
 
 import json
 import os
 import plistlib
-import re
 import shutil
 import socket
 import subprocess
 from pathlib import Path
 
-from lib.git import GitError, commit_time, remotes, remote_url
+from lib.git import GitError, commit_time, remote_url, remotes, slug_from_url
 
 DEFAULT_DIR = Path("~/Documents/dev/nightshift-pr-helper").expanduser()
 PLIST = Path("~/Library/LaunchAgents/dev.prhelper.web.plist").expanduser()
@@ -26,8 +23,6 @@ CANONICAL_REMOTE = "elastic/nightshift-pr-helper"
 # `data/logs/<label suffix>.log` holds both streams; launchd.sh writes `web.log`/`sync.log`.
 LOG_TAIL_LINES = 15
 PORTS_TO_CHECK = (5601, 9200)
-REMOTE_URL = re.compile(
-    r"^(?:https?://[^/]+/|ssh://[^/]+/|[^/@\s]+@[^:/\s]+:)(?P<repo>[^/]+/[^/]+)$")
 
 
 def plist_working_directory() -> tuple[Path | None, str]:
@@ -62,8 +57,7 @@ def is_canonical_remote(url: str) -> bool:
     A suffix match would accept `evilelastic/nightshift-pr-helper`, which is a different repository
     and would run its code.
     """
-    match = REMOTE_URL.match(url.removesuffix(".git"))
-    return bool(match) and match.group("repo") == CANONICAL_REMOTE
+    return slug_from_url(url) == CANONICAL_REMOTE
 
 
 def elastic_remote(root: Path) -> tuple[str, str]:
@@ -121,7 +115,7 @@ def dev_stack_current(root: Path, stack: str | None) -> tuple[bool, str]:
 
     The installed script is a user-owned copy of `examples/kibana-dev-tools/dev_stack.sh`.
     Nightshift exports DEV_STACK_EIS=1 on every deploy because a stack without EIS has no chat
-    model and e2e ends `blocked`; an older copy ignores the variable and never wires EIS in.
+    model and e2e ends `blocked`; a copy that ignores the variable never wires EIS in.
     """
     example = root / "examples" / "kibana-dev-tools" / "dev_stack.sh"
     installed = Path(stack).expanduser() if stack else None

@@ -1,0 +1,106 @@
+# Ruff is the Python linter for every package (.agent/tools, evals, .claude). The version is pinned
+# here once (`required-version`); `evals/ruff.sh` reads it, locally (uvx) and in CI (pipx).
+# Repository-specific rules (module cap, bootstrap imports, single owner) are crew-lint's.
+required-version = "==0.17.4"
+target-version = "py39"
+line-length = 120
+src = [".agent/tools", "evals"]
+
+[lint]
+# ANN20x: return annotations (today's rule); PLR0915 approximates the 50-line function limit by statements.
+select = ["E", "F", "W", "I", "ANN201", "ANN202", "ANN205", "ANN206", "PLR0915", "C901", "B", "UP", "TID251", "RUF100"]
+
+[lint.pylint]
+max-statements = 50
+
+[lint.mccabe]
+max-complexity = 15
+
+[lint.flake8-tidy-imports.banned-api]
+# Generic module names collide on sys.path; a module is named <package>_<thing>.
+"store".msg = "name the module <package>_store"
+"units".msg = "name the module <package>_units"
+"recall".msg = "name the module <package>_recall"
+"maintenance".msg = "name the module <package>_maintenance"
+"findings".msg = "name the module <package>_findings"
+"layers".msg = "name the module <package>_layers"
+"personas".msg = "name the module <package>_personas"
+"report".msg = "name the module <package>_report"
+# Import paths change only in the five identical <package>_bootstrap.py files ("Imports" in .agent/tools/AGENTS.md).
+"sys.path".msg = "import <package>_bootstrap instead; only the bootstraps (and tests that load a module by path) set sys.path"
+
+[lint.isort]
+# The bootstrap sets the import path, so it is its own section, right after the standard library.
+section-order = ["future", "standard-library", "bootstrap", "third-party", "first-party", "local-folder"]
+
+[lint.isort.sections]
+bootstrap = ["task_bootstrap", "review_bootstrap", "memory_bootstrap", "evals_bootstrap", "maintenance_bootstrap"]
+
+# Baseline: existing violations per file, regenerated as packages are cleaned. Remove an entry when
+# its file is fixed; never add one for new code. TID251 is not a violation: it marks the files that may
+# set sys.path (the five bootstraps and the tests that load a module by path), each listed by name.
+[lint.per-file-ignores]
+".agent/tools/evals/crew-evals-inspect.py" = ["B904"]
+".agent/tools/evals/evals_bootstrap.py" = ["TID251"]
+".agent/tools/lib/git.py" = ["UP022"]
+".agent/tools/maintenance/lint_prompts.py" = ["E501"]
+".agent/tools/maintenance/lint_references.py" = ["C901"]
+".agent/tools/maintenance/maintenance_bootstrap.py" = ["TID251"]
+".agent/tools/memory/memory_bootstrap.py" = ["TID251"]
+".agent/tools/memory/memory_frontmatter.py" = ["ANN202"]
+".agent/tools/memory/memory_maintenance.py" = ["ANN202"]
+".agent/tools/review/review_bootstrap.py" = ["TID251"]
+".agent/tools/task/crew-ls.py" = ["E501"]
+".agent/tools/task/task_bootstrap.py" = ["TID251"]
+".agent/tools/task/task_report.py" = ["E731"]
+".agent/tools/task/task_verify.py" = ["E501"]
+".agent/tools/task/task_verify_sources.py" = ["E741"]
+".claude/merge_claude_settings.py" = ["ANN201"]
+"evals/compare_run.py" = ["ANN201", "TID251"]
+"evals/memory/run.py" = ["ANN201", "E501", "E702", "PLR0915", "TID251"]
+"evals/prompts/assertions.py" = ["TID251"]
+"evals/prompts/run.py" = ["TID251"]
+"evals/reviewer/mutate.py" = ["E501", "E702", "F401"]
+"evals/reviewer/replay.py" = ["ANN201"]
+"evals/reviewer/run.py" = ["E501", "PLR0915", "UP006", "UP035"]
+"evals/reviewer/test_personas.py" = ["B007"]
+"evals/reviewer/test_review_findings.py" = ["ANN201", "E501", "TID251"]
+"evals/reviewer/test_scoring.py" = ["ANN201"]
+"evals/run.py" = ["E501"]
+"evals/tools/test_agent_readonly.py" = ["TID251"]
+"evals/tools/test_assemble_order.py" = ["TID251"]
+"evals/tools/test_assemble_packages.py" = ["ANN201", "E501", "TID251"]
+"evals/tools/test_assemble_prior.py" = ["TID251"]
+"evals/tools/test_builder_report.py" = ["E501", "TID251"]
+"evals/tools/test_command_names.py" = ["B007", "E501", "TID251"]
+"evals/tools/test_confidence.py" = ["ANN201", "F841", "TID251"]
+"evals/tools/test_crew_lint_handoff.py" = ["TID251"]
+"evals/tools/test_crew_lint_mcp.py" = ["ANN201"]
+"evals/tools/test_crew_next.py" = ["TID251"]
+"evals/tools/test_git_lib.py" = ["ANN201", "TID251"]
+"evals/tools/test_hook_cases.py" = ["E501"]
+"evals/tools/test_hooks_contract.py" = ["E501"]
+"evals/tools/test_implement_worktree.py" = ["E501"]
+"evals/tools/test_landed.py" = ["ANN201", "E501", "E731", "TID251"]
+"evals/tools/test_lifecycle.py" = ["ANN201", "E501", "TID251"]
+"evals/tools/test_ls_watch.py" = ["E501", "E731", "TID251"]
+"evals/tools/test_nightshift_e2e.py" = ["ANN201", "TID251"]
+"evals/tools/test_open_pr_gate.py" = ["E501", "PLR0915"]
+"evals/tools/test_permission_rules.py" = ["E501"]
+"evals/tools/test_pr_reads.py" = ["ANN201"]
+"evals/tools/test_pr_review_actions.py" = ["ANN201"]
+"evals/tools/test_resolver_confidence.py" = ["TID251", "UP031"]
+"evals/tools/test_resolver_intent.py" = ["F841", "TID251"]
+"evals/tools/test_resolver_probe.py" = ["TID251"]
+"evals/tools/test_resolver_verify.py" = ["TID251"]
+"evals/tools/test_review_cost_metric.py" = ["TID251"]
+"evals/tools/test_review_dir.py" = ["ANN201", "F401", "TID251"]
+"evals/tools/test_review_prior.py" = ["F401", "TID251"]
+"evals/tools/test_review_probe.py" = ["TID251"]
+"evals/tools/test_specwriter_critics.py" = ["TID251"]
+"evals/tools/test_status_contract.py" = ["TID251"]
+"evals/tools/test_task_context.py" = ["ANN201"]
+"evals/tools/test_task_gate_sources.py" = ["E501", "F401", "TID251"]
+"evals/tools/test_task_progress.py" = ["TID251"]
+"evals/tools/test_task_verify.py" = ["E501", "TID251"]
+"evals/tools/test_tracked_state.py" = ["TID251"]

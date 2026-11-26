@@ -9,14 +9,12 @@ checkout, and refuses loudly when the suite is missing rather than guessing at a
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
-_TOOLS_ROOT = Path(__file__).resolve().parents[1]
-if str(_TOOLS_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TOOLS_ROOT))
+import evals_bootstrap  # noqa: F401
 
-from lib.git import GitError, output  # noqa: E402
+from lib.cli import fail
+from lib.git import GitError, output
 
 KIND_ORDER = ("prompt", "tool", "retrieval", "evaluator", "dataset", "other")
 # Tokens that place a path in a surface, checked in order; the first match wins.
@@ -32,7 +30,7 @@ def git(repo: Path, *args: str) -> str:
     try:
         return output(repo, list(args))
     except GitError as error:
-        raise SystemExit(f"repository unavailable: {error}") from error
+        fail(f"repository unavailable: {error}")
 
 
 def locate_suite(repo: Path, suite_id: str) -> Path:
@@ -45,7 +43,7 @@ def locate_suite(repo: Path, suite_id: str) -> Path:
             continue
         if identifier and identifier.group(1) == expected:
             return manifest.parent
-    raise SystemExit(f"suite source unavailable: {expected} was not found below {repo}")
+    fail(f"suite source unavailable: {expected} was not found below {repo}")
 
 
 def evaluator_sources(suite: Path) -> dict[str, str]:

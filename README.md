@@ -7,7 +7,7 @@ a spec to opening a pull request. You stay in control at two gates: you approve 
 code is written, and you approve the PR before anything is pushed. Everything in between is automated.
 
 Gate 1 is recorded on approval: `crew-specwriter` stops until the user approves, then runs
-`crew-ls.py --mark-approved "$TASK_DIR"` to move the spec to `APPROVED`. Gate 2 is the push and PR
+`crew-task.py mark-approved "$TASK_DIR"` to move the spec to `APPROVED`. Gate 2 is the push and PR
 creation in `crew-open-pr`, which shows the title, description, base, and target repo first.
 Autopilot chains between gates, never through them.
 
@@ -155,14 +155,14 @@ crew spec <plain description>                      # or from a description
 Stages: **spec → implement → review → commit → open-pr**  
 Terminal: PR opened as draft, and `crew open pr` moves the spec to `DONE`
 
-A task closes on evidence, not on the PR alone: `--mark-done` refuses an unchecked criterion, a
+A task closes on evidence, not on the PR alone: `crew-task.py mark-done` refuses an unchecked criterion, a
 review whose verdict is not `pass` or `warn`, a mismatched branch, and a review of a commit that no
 longer covers `HEAD`. It reads the review from the task directory when `REVIEW.md` is there, and
 otherwise from the review directory the run recorded in the task's `run.json`, so a review persisted
 to a temp directory still closes its task. `--force` skips those checks and is a user decision.
 
 A spec's status is one of `DRAFTING`, `APPROVED`, `IMPLEMENTING`, `ON-HOLD`, or `DONE`; the reader
-normalizes a legacy lowercase `done` to `DONE`, and `crew-ls.py --normalize-status --apply` rewrites
+normalizes a legacy lowercase `done` to `DONE`, and `crew-task.py normalize-status --apply` rewrites
 stored files once so a person reading a spec sees the canonical token.
 
 ### `respond` — respond to review comments

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Create deterministic reviewer mutation fixtures from a diff."""
-import argparse,json,sys
+import argparse
+import json
+import sys
+
 p=argparse.ArgumentParser();p.add_argument('diff');a=p.parse_args(); text=open(a.diff).read()
 mutations=[('removed null guard','if (value) {',''),('swallowed error','throw error;','return;'),('inverted condition','if (','if (!'),('dropped await','await ','')]
 fixtures=[]

@@ -254,7 +254,7 @@ def main() -> int:
             except Skip as reason:
                 skipped += 1
                 print(f"skip: {test.__name__}: {reason}")
-            except Exception as error:  # noqa: BLE001 - one broken test must not hide the rest
+            except Exception as error:
                 failed += 1
                 print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
     print(f"{len(tests) - failed - skipped}/{len(tests)} passed, {skipped} skipped")

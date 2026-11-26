@@ -1,26 +1,17 @@
-"""Command-line helpers: one parser factory for the shared `--help` and exit-2 contract.
+"""`fail`: a command that cannot proceed prints why on stderr and exits 2 (`EXIT_INVALID`).
 
-`build_parser` returns the parser every tool would otherwise construct by hand, so the description
-and formatter choices stay uniform. `fail` prints a message to stderr and returns its exit code,
-which is 2 for unusable infrastructure or invalid invocation.
+Every command imports it. crew-lint `no-systemexit-str` bans
+`raise SystemExit("message")` (exit 1); other codes are listed in `.agent/tools/AGENTS.md`.
 """
 from __future__ import annotations
 
-import argparse
 import sys
+from typing import NoReturn
 
 EXIT_INVALID = 2
 
 
-def build_parser(
-    description: str, *, raw_description: bool = False, epilog: str | None = None
-) -> argparse.ArgumentParser:
-    """A parser whose `--help` is the tool's docstring, optionally with a verbatim description."""
-    formatter = argparse.RawDescriptionHelpFormatter if raw_description else argparse.HelpFormatter
-    return argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=formatter)
-
-
-def fail(message: str, code: int = EXIT_INVALID) -> int:
-    """Print `message` to stderr and return `code`, for a `return fail(...)` error path."""
+def fail(message: str, code: int = EXIT_INVALID) -> NoReturn:
+    """Print `message` to stderr and exit `code` (2: invalid invocation or unavailable infrastructure)."""
     print(message, file=sys.stderr)
-    return code
+    raise SystemExit(code)

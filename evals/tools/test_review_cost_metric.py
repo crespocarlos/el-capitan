@@ -2,7 +2,7 @@
 """The cost line a persisted review records: what the run cost, and where it went.
 
 Nothing recorded what a review spent, so a change to the package layout could not be compared
-against the run it replaced. `persist` now appends one `METRIC:` line through `crew-metric.py`: the
+against the run it replaced. `persist` now appends one `METRIC:` line through `task_progress`: the
 input and reply bytes, the persona count, the length of the byte prefix every package shares, and
 whether a layer map was available. This suite pins the numbers against the files they come from, and
 pins the run that must write nothing — a PR review with no task directory at all.
@@ -115,21 +115,23 @@ def test_a_task_directory_is_recognised_by_its_id_alone(tmp: Path) -> None:
     assert len(metric_lines(tmp / "task")) == 1
 
 
-def test_a_missing_metric_writer_does_not_fail_the_persistence(tmp: Path) -> None:
+def test_a_failing_metric_writer_does_not_fail_the_persistence(tmp: Path) -> None:
     """The review is written before telemetry; a metric failure is reported, never raised."""
-    sys.path[:0] = [str(ROOT / ".agent" / "tools"), str(ROOT / ".agent" / "tools" / "review"),
-                    str(ROOT / ".agent" / "tools" / "lib")]
-    import review_records  # noqa: E402 - the path must be set first
+    sys.path[:0] = [str(ROOT / ".agent" / "tools" / "review")]
+    import review_records
+
+    def failing_writer(owner: Path, payload: str) -> None:
+        raise OSError("PROGRESS.md is not writable")
 
     directory = task(tmp)
-    original = review_records.METRIC
-    review_records.METRIC = tmp / "no-such-metric.py"
+    original = review_records.append_metric
+    review_records.append_metric = failing_writer
     stderr = io.StringIO()
     try:
         with contextlib.redirect_stderr(stderr):
             payload = review_records.record_cost(tmp / "task", directory, False)
     finally:
-        review_records.METRIC = original
+        review_records.append_metric = original
     assert payload.startswith("review run=") and "in_bytes=" in payload, payload
     assert "warning: cost metric not recorded" in stderr.getvalue(), stderr.getvalue()
 
@@ -186,7 +188,7 @@ def main() -> int:
             try:
                 test(Path(directory))
                 print(f"pass: {test.__name__}")
-            except Exception as error:  # noqa: BLE001 - one broken test must not hide the rest
+            except Exception as error:
                 failed += 1
                 print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
     print(f"{len(tests) - failed}/{len(tests)} passed")

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The builder's REPORT.md against the gates it ran: `crew-progress.py report-check`.
+"""The builder's REPORT.md against the gates it ran: `crew-verify.py report-check`.
 
-Reports claimed `knip` clean at exit 1 and `biome` failing at exit 0. The check runs in the same
-worker that wrote the report and compares every claim to the JSON `verify` wrote. Both directions
+A report may not claim a gate clean that exited nonzero, or failing when it exited 0. The check runs
+in the same worker that wrote the report and compares every claim to the JSON `crew-verify.py` wrote. Both directions
 are pinned: a new report is held to the new sections, and a report from before this change, with no
 such section and no gates JSON, still parses everywhere. Also pins what `crew-builder.md` says.
 """
@@ -16,11 +16,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
-CLI = TASK_TOOLS / "crew-progress.py"
+CLI = TASK_TOOLS / "crew-verify.py"
 BUILDER = ROOT / ".cursor" / "agents" / "crew-builder.md"
 sys.path.insert(0, str(TASK_TOOLS))
 sys.path.insert(0, str(TASK_TOOLS.parent))
-import task_report_check as rc  # noqa: E402
+import task_verify_report as rc  # noqa: E402
 
 FAILED: list[str] = []
 GATES = {"schema_version": 1, "state": "done", "gates": [
@@ -147,11 +147,11 @@ def capped(tmp: Path) -> None:
 
 def prompt_text() -> None:
     text = BUILDER.read_text(encoding="utf-8")
-    for needle in ("crew-progress.py verify", "crew-progress.py report-check", "### Unverified claims", "schema_version", "verbatim"):
+    for needle in ("crew-verify.py --repo", "crew-verify.py report-check", "### Unverified claims", "schema_version", "verbatim"):
         check(f"crew-builder.md says `{needle}`", needle in text)
     for skill in ("crew-implement", "crew-commit"):
         body = (ROOT / ".cursor" / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
-        check(f"{skill} runs the verify step", "crew-progress.py verify" in body)
+        check(f"{skill} runs the verify step", "crew-verify.py" in body)
     pr = (ROOT / ".cursor" / "skills" / "crew-open-pr" / "SKILL.md").read_text(encoding="utf-8")
     check("crew open pr shows the capped unverified list", "report-check" in pr and "--unverified 5" in pr)
 

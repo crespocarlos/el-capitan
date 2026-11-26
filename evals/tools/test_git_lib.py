@@ -37,6 +37,8 @@ def check(name: str, condition: bool, detail: object = "") -> None:
 
 def load_module():
     """The library imported by path, so the stub can be installed on the module it calls."""
+    if str(GIT_MODULE.parents[1]) not in sys.path:
+        sys.path.insert(0, str(GIT_MODULE.parents[1]))
     spec = importlib.util.spec_from_file_location("crew_git_lib", GIT_MODULE)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -103,7 +105,7 @@ class GitRecorder:
         self.calls.append(tuple(arguments))
         return self.original(root, arguments, check=check, timeout=timeout)
 
-    def __enter__(self) -> "GitRecorder":
+    def __enter__(self) -> GitRecorder:
         self.module.run_git = self
         return self
 
@@ -123,13 +125,20 @@ def expect_error(name: str, call, fragment: str = "") -> None:
     except TypeError as error:  # a helper imported from a stale module shape
         check(name, False, f"TypeError: {error}")
         return
-    except Exception as error:  # noqa: BLE001 — the point is that it must be a GitError
+    except Exception as error:
         module_error = type(error).__name__
         check(name, module_error == "GitError", f"raised {module_error}: {error}")
         if module_error == "GitError" and fragment:
             check(f"{name} names {fragment}", fragment in str(error), str(error))
         return
     check(name, False, f"returned {result!r} instead of raising")
+
+
+def slug_cases(module, repo: Path) -> None:
+    expect_error("repo_slug on a local-path remote raises", lambda: module.repo_slug(repo, "origin"))
+    git(repo, "remote", "add", "hub", "git@github.com:acme/widgets.git")
+    check("repo_slug derives owner/repo", module.repo_slug(repo, "hub") == "acme/widgets")
+    git(repo, "remote", "remove", "hub")
 
 
 def local_cases(module, repo: Path, outside: Path, base: Path) -> None:
@@ -148,8 +157,7 @@ def local_cases(module, repo: Path, outside: Path, base: Path) -> None:
           _raises(module, lambda: module.remote_url(outside, "origin")))
     check("remotes lists both", sorted(module.remotes(repo)) == ["origin", "upstream"],
           module.remotes(repo))
-    slug = module.repo_slug(repo, "origin")
-    check("repo_slug derives owner/repo", slug.count("/") == 1 and not slug.endswith(".git"), slug)
+    slug_cases(module, repo)
     expect_error("repo_slug on an absent remote raises", lambda: module.repo_slug(repo, "nowhere"))
     detached = repo.parent / "detached"
     shutil.copytree(repo, detached)
@@ -358,6 +366,9 @@ def main() -> int:
         outside = base / "outside"
         outside.mkdir()
         local_cases(module, repo, outside, base)
+        # The remotes are local bare repositories, which name no owner/repo; the network helpers
+        # are asked as if they were on GitHub (`slug_from_url` has its own cases in test_task_progress).
+        module.slug_from_url = lambda url: "acme/widgets" if url else None
         default_branch_cases(module, stub, repo, base)
         remote_tip_cases(module, stub, repo, base)
         fetch_remote_cases(module, stub, repo, base)

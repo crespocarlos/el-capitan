@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """Fetch PR review threads or plan GitHub PR review-thread actions; mutations require --execute.
 
-A reply or resolve mutates GitHub, so it plans by default and performs the call only with
-`--execute`. The plan names the exact `gh` command, so an operator can read it, edit it, or run it by
-hand. The reads — `view`, `diff`, `repo`, `issue` — exist so a prompt never spells out a `gh` read
-plus its `--jq`: `--field a,b` prints one bare line per field in the order asked. `fetch` prints
-review threads as a flat object rather than gh's raw GraphQL envelope. A field gh did not return
-prints empty with exit 0; a failed call exits nonzero carrying gh's own stderr.
-
-Mutations stay literal `gh` in the prompts — `gh pr create`, `gh pr comment`, `gh issue create` —
-because a wrapper would hide the argv from the guard that inspects it. The full contract lives in
-`.agent/tools/TOOLS.md` under this command.
+`reply` and `resolve` print the exact `gh` plan unless `--execute`. The reads (`view`, `diff`, `repo`,
+`issue`, with `--field a,b`) and `fetch` (threads as a flat object) replace hand-written `gh` reads;
+a missing field prints empty with exit 0, a failed call exits nonzero with gh's stderr. Other
+mutations stay literal `gh` in prompts, where the guards see them. Contract: `.agent/tools/TOOLS.md`.
 """
 from __future__ import annotations
 
@@ -19,20 +13,18 @@ import json
 import sys
 from pathlib import Path
 
-_TOOLS_ROOT = Path(__file__).resolve().parents[1]
-_REVIEW_DIR = Path(__file__).resolve().parent
-for _path in (_TOOLS_ROOT, _REVIEW_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import review_bootstrap  # noqa: F401
 
-from review_pr_plan import (  # noqa: E402
+from review_pr_plan import (
     default_query,
     guard,
     mutation,
     query_command,
     repository,
 )
-from review_pr_reads import add_read_parser, read, threads  # noqa: E402
+from review_pr_reads import read, threads
+
+from lib.gh_reads import add_read_parser
 
 READS = ("view", "diff", "repo", "issue")
 

@@ -67,7 +67,6 @@ def gathering(tmp: Path) -> None:
 def limit_and_cache(tmp: Path) -> None:
     """`--limit` bounds the landed reads, a repository is asked once, and a watch loop re-reads on a TTL."""
     import ls_data
-    import ls_landed
     tasks = tmp / "tasks"
     for index in range(4):
         task = tasks / f"{index:08d}-1111-1111-1111-111111111111"
@@ -92,7 +91,7 @@ def limit_and_cache(tmp: Path) -> None:
         return 0, json.dumps({"defaultBranchRef": {"name": "main"}})
 
     pairs = [(f"d{i}", t) for i, t in enumerate(sorted(tasks.iterdir()))]
-    ls_landed.landed_lines(pairs, read, lambda s, d: None, [], lambda: {"acme/w": "origin"})
+    ls_data.landed_lines(pairs, read, lambda s, d: None, [], lambda: {"acme/w": "origin"})
     check("`repo view` is asked once per repository in one snapshot", sum(1 for c in calls if c[0] == "repo") == 1 and sum(1 for c in calls if c[0] == "view") == 4, calls)
     now = [0.0]
     reads: list[list[str]] = []

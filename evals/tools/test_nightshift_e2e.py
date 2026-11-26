@@ -346,6 +346,8 @@ def test_doctor_reports_ports_and_config_duplicate_notes(tmp: Path) -> None:
 
 
 def load_module():
+    if str(TOOL.parent) not in sys.path:
+        sys.path.insert(0, str(TOOL.parent))  # the package directory, where its bootstrap lives
     spec = importlib.util.spec_from_file_location("nightshift_e2e", TOOL)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

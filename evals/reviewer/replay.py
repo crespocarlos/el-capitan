@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Replay stored reviewer input packages against baseline and current prompts."""
-import argparse, hashlib, json, os, shlex, subprocess, sys, tempfile
+import argparse
+import hashlib
+import json
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser()

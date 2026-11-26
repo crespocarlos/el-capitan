@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""What needs a human decision, in one place.
+"""What needs a human decision: inbox drafts and queued capture reviews, in one listing.
 
-The inbox drafts exist because a model wrote them; they stay because nobody was asked. Two flows
-produced that silence: a subagent cannot ask a question (its turn ends into a parent that is already
-finished), and a turn that asked once was never asked again. This command is the read side both
-needed — a list a session can print at start and a person can run when they wonder what is pending.
-
-It reports only; importing stays an explicit, named decision because bare `import-inbox` takes drafts
-left by earlier sessions too.
+Read only: a session prints it at start, a person runs it when they wonder what is pending.
+Importing stays a named decision (`crew-mem.py import-inbox <file>`), because a bare import takes
+drafts from earlier sessions too.
 """
 from __future__ import annotations
 
@@ -16,12 +12,10 @@ import json
 import sys
 from pathlib import Path
 
-_TOOLS_ROOT = Path(__file__).resolve().parents[1]
-if str(_TOOLS_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TOOLS_ROOT))
+import memory_bootstrap  # noqa: F401
 
-from memory_frontmatter import parse_unit  # noqa: E402
-from memory_paths import memory_root  # noqa: E402
+from memory_frontmatter import parse_unit
+from memory_paths import memory_root
 
 
 def drafts(root: Path) -> list[dict]:

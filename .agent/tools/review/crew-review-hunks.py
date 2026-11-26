@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """Split a unified diff into numbered hunks for the reviewer layer map.
 
-Writes `hunks.json`, `hunks.md`, `hunks.index.md`, and `package.diff` to `--out`. Every hunk gets a
-stable id (`h1`, `h2`, …) in diff order, and a file with no textual hunk (binary, pure rename, mode
-change) still gets one, so every changed file can be placed in a layer — the ids the persona Reading
-map and the `coverage` gate share. `hunks.md` feeds the layer-mapping pass, `hunks.index.md` the
-persona package that already holds the diff, and `package.diff` omits generated files' bodies.
-
-Parsing lives in `review_parse.py`; this file is the argparse entry point and the four renderers.
+Writes `hunks.json`, `hunks.md`, `hunks.index.md` and `package.diff` to `--out`. Hunk ids (`h1`, `h2`,
+…) follow diff order, and a file with no textual hunk still gets one, so every changed file has an id
+the Reading map and `coverage` share. `package.diff` omits generated files' bodies. Parsing: `review_parse`.
 """
 from __future__ import annotations
 
@@ -16,15 +12,12 @@ import json
 import sys
 from pathlib import Path
 
-_REVIEW_DIR = Path(__file__).resolve().parent
-_TOOLS_ROOT = _REVIEW_DIR.parent
-for _path in (_TOOLS_ROOT, _REVIEW_DIR):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import review_bootstrap  # noqa: F401
 
-from lib.output import DEFAULT_MAX_CHARS, bounded_json  # noqa: E402
-from review_parse import HUNK_HEADER, parse  # noqa: E402,F401
-import review_manifest as manifest  # noqa: E402
+import review_workspace as manifest
+from review_parse import HUNK_HEADER, parse
+
+from lib.output import DEFAULT_MAX_CHARS, bounded_json
 
 GENERATED_TASTE = 60
 

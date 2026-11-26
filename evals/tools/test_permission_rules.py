@@ -85,6 +85,14 @@ def main() -> int:
           [c for c in allow if "crew-review-findings" in c])
     check("a leading shell assignment is not needed, because no snippet uses one",
           not any(c.endswith("=*") for c in allow), [c for c in allow if "=*" in c])
+    gates = ("~/.agent/bin/crew-task.py mark-approved /tmp/t", "~/.agent/bin/crew-task.py mark-done /tmp/t",
+             "~/.agent/bin/crew-task.py mark-done /tmp/t --force")
+    check("no allow rule covers crew-task.py mark-approved or mark-done (Gates 1 and 2), so each prompts",
+          not [c for c in allow for command in gates if command == c or command.startswith(c + " ")],
+          [c for c in allow if "crew-task" in c])
+    routine = ("mark-implementing", "reconcile", "normalize-status", "lock", "blocked", "worktree")
+    check("crew-task.py's read and routine write subcommands are allowed one by one",
+          all(f"~/.agent/bin/crew-task.py {name}" in allow for name in routine), [c for c in allow if "crew-task" in c])
     check("hook fixtures are allowed without elevation",
           any("fixtures" in c for c in allow), allow)
 

@@ -84,7 +84,7 @@ Passing an empty string causes crew-builder to re-run auto-recall redundantly.
 
 ### Step 4: Where the worker runs
 
-Run `~/.agent/bin/crew-progress.py worktree pref`; when it is `here`, run `worktree check` too. Follow [worker dispatch](references/worker-dispatch.md).
+Run `~/.agent/bin/crew-task.py worktree pref`; when it is `here`, run `worktree check` too. Follow [worker dispatch](references/worker-dispatch.md).
 
 Then **bootstrap dependencies**: read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup
 command and run it in `WORK_DIR`. The UUID task directory (`$TASK_DIR`) is stable and does not move.
@@ -92,14 +92,14 @@ command and run it in `WORK_DIR`. The UUID task directory (`$TASK_DIR`) is stabl
 ### Step 5: Update progress
 
 ```bash
-~/.agent/bin/crew-ls.py --mark-implementing "$TASK_DIR" --branch "$(~/.agent/bin/crew-repo-info.py --root "$WORK_DIR" --field branch)"
+~/.agent/bin/crew-task.py mark-implementing "$TASK_DIR" --branch "$(~/.agent/bin/crew-repo-info.py --root "$WORK_DIR" --field branch)"
 ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
 ~/.agent/bin/crew-metric.py "$TASK_DIR" stage_start stage=implement 2>/dev/null || true
 ```
 
 `--root` reads `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
 separate shell, so a bare read reports the drafting checkout and would record
-the wrong branch. `--mark-implementing` records the branch actually being implemented in
+the wrong branch. `mark-implementing` records the branch actually being implemented in
 `.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
 branch and implemented on another, and task resolution matches either: without this every
 later `crew` command in the worktree resolves no task and silently skips its gates.
@@ -158,7 +158,7 @@ When the Implementation Report is available:
 
 **All tasks passed:**
 
-0. Re-run the gates as CI does (passes are cached): `~/.agent/bin/crew-progress.py verify --repo
+0. Re-run the gates as CI does (a pass on an unchanged tree is reused): `~/.agent/bin/crew-verify.py --repo
    <WORK_DIR> --task-dir "$TASK_DIR"`; act on its outcome per [verify outcomes](references/verify-outcomes.md).
 1. Run the completion metric:
 

@@ -18,6 +18,8 @@ from evals_report import commit_order, match, summarize_trace
 from evals_rows import EvalRow
 from evals_sources import classify_paths, evaluator_sources, git, locate_suite
 
+from lib.cli import fail
+
 
 def sign_test_pvalue(baseline: list[float], candidate: list[float]) -> tuple[float, int]:
     """Exact two-sided sign-test p-value; ties are excluded."""
@@ -132,7 +134,7 @@ def diagnose_single(rs: list[EvalRow], args) -> int:
     """One commit's lowest scores, with a trace summary per score; makes no delta claim."""
     candidate = next((commit for commit in commit_order(rs) if match(commit, args.baseline)), None)
     if not candidate:
-        raise SystemExit("unknown candidate commit; run `runs`")
+        fail("unknown candidate commit; run `runs`")
     selected = [row for row in rs if row.commit == candidate and row.score is not None]
     bundle = {
         "candidate": candidate,
@@ -154,11 +156,11 @@ def diagnose_single(rs: list[EvalRow], args) -> int:
 def compare_commit(rs: list[EvalRow], args) -> tuple[str, str]:
     """The baseline and candidate commits `diagnose` compares, or SystemExit naming the gap."""
     if not args.candidate:
-        raise SystemExit("diagnose requires BASELINE CANDIDATE, or CANDIDATE --single")
+        fail("diagnose requires BASELINE CANDIDATE, or CANDIDATE --single")
     baseline = next((commit for commit in commit_order(rs) if match(commit, args.baseline)), None)
     candidate = next((commit for commit in commit_order(rs) if match(commit, args.candidate)), None)
     if not baseline or not candidate:
-        raise SystemExit("unknown baseline or candidate commit; run `runs`")
+        fail("unknown baseline or candidate commit; run `runs`")
     return baseline, candidate
 
 
@@ -171,7 +173,7 @@ def cmd_diagnose(rs: list[EvalRow], args) -> None:
     selected = [row for row in rs if row.commit in {baseline, candidate}]
     suites = {row.suite for row in selected if row.suite}
     if len(suites) != 1:
-        raise SystemExit(f"diagnose requires one suite, found: {sorted(suites) or 'none'}")
+        fail(f"diagnose requires one suite, found: {sorted(suites) or 'none'}")
     repo = Path(args.repo).expanduser().resolve()
     suite = locate_suite(repo, next(iter(suites)))
     sources = evaluator_sources(suite)

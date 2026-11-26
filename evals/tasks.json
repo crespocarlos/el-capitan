@@ -19,7 +19,7 @@
     },
     {
       "id": "t5",
-      "description": "Cover the typed `## Tests` validation that now lives inline in `crew-ls.py` with fixture cases in `.claude/hooks/fixtures/run.sh`: a `### Unit` block with no Command line at all, a `## Tests` section whose only heading is an unrecognized layer name, and a lowercase `### unit` heading that must still be checked. Each case asserts `--mark-approved` refuses with the existing `spec-typed-tests` message and leaves the task in DRAFTING."
+      "description": "Cover the typed `## Tests` validation that now lives inline in `crew-ls.py` with fixture cases in `.claude/hooks/fixtures/run.sh`: a `### Unit` block with no Command line at all, a `## Tests` section whose only heading is an unrecognized layer name, and a lowercase `### unit` heading that must still be checked. Each case asserts `crew-task.py mark-approved` refuses with the existing `spec-typed-tests` message and leaves the task in DRAFTING."
     },
     {
       "id": "t6",

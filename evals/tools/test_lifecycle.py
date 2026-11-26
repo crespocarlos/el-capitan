@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Checks for the close-out gate: where a task's review lives and whether it can be found.
 
-The defect this guards is measured, not hypothetical: 25 of 28 `IMPLEMENTING` tasks had a
-`REPORT.md`, so the work was finished, and `--mark-done` still refused every one with `review
-verdict is ?`. A PR-mode review persists to a temp directory by design, so the gate that read only
-`<task>/REVIEW.md` could never see it. Every case here builds a task on disk and asks the real
-command, because the bug lived in the resolution of a path rather than in a predicate.
+A PR-mode review persists to a temp directory by design, so `crew-task.py mark-done` must find a
+review outside `<task>/REVIEW.md`. Every case builds a task on disk and asks the real command,
+because the contract is the resolution of a path rather than a predicate.
 """
 from __future__ import annotations
 
@@ -20,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
 REVIEW_TOOLS = ROOT / ".agent" / "tools" / "review"
 CLI = TASK_TOOLS / "crew-ls.py"
+TASK_CLI = TASK_TOOLS / "crew-task.py"
 
 FAILED: list[str] = []
 
@@ -35,8 +34,8 @@ def check(name: str, condition: bool, detail: object = "") -> None:
 
 
 def run(task: Path, *arguments: str) -> tuple[int, str, str]:
-    """Run the close-out gate with `--mark-done <task>`, keeping the argument order argparse wants."""
-    result = subprocess.run([sys.executable, str(CLI), "--mark-done", str(task), *arguments],
+    """Run the close-out gate, `crew-task.py mark-done <task>`."""
+    result = subprocess.run([sys.executable, str(TASK_CLI), "mark-done", str(task), *arguments],
                             capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
 
@@ -132,7 +131,7 @@ def reviewed_at_prefers_the_same_file(base: Path) -> None:
     task = make_task(base / "identity")
     directory = make_temp_review(base / "identity", "Verdict: pass\n\nReviewed at: 0123456789abcdef\n")
     record(task, directory)
-    review_module = read_module(TASK_TOOLS, "task_review.py")
+    review_module = read_module(TASK_TOOLS, "task_status.py")
     gate_module = read_module(TASK_TOOLS, "task_gates.py")
     resolved = review_module.review_file(task)
     check("both reads resolve to the recorded review",
@@ -169,7 +168,7 @@ def test_a_quoted_reviewed_at_above_the_footer_is_not_the_commit(base: Path) -> 
         "`crew commit` when the verdict is PASS or WARN.\nReviewed at: 0123456789abcdef\n"
     ))
     record(task, directory)
-    review_module = read_module(TASK_TOOLS, "task_review.py")
+    review_module = read_module(TASK_TOOLS, "task_status.py")
     resolved = review_module.review_file(task)
     check("a quoted Reviewed at: above the footer is ignored",
           review_module.reviewed_at(resolved) == "0123456789abcdef", resolved)
@@ -191,7 +190,7 @@ def test_an_addendum_below_the_footer_keeps_the_commit(base: Path) -> None:
         f"## Addendum\n\n{entries}"
     ))
     record(task, directory)
-    review_module = read_module(TASK_TOOLS, "task_review.py")
+    review_module = read_module(TASK_TOOLS, "task_status.py")
     resolved = review_module.review_file(task)
     check("an addendum below the footer keeps the commit",
           review_module.reviewed_at(resolved) == "0123456789abcdef", resolved)
@@ -200,6 +199,10 @@ def test_an_addendum_below_the_footer_keeps_the_commit(base: Path) -> None:
 def progress(*arguments: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(TASK_TOOLS / "crew-progress.py"), *arguments],
                           capture_output=True, text=True)
+
+
+def blocked(*arguments: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(TASK_CLI), "blocked", *arguments], capture_output=True, text=True)
 
 
 def listing(tasks: Path, *arguments: str) -> str:
@@ -212,7 +215,7 @@ def blocked_event_shows_until_the_next_stage(base: Path) -> None:
     """An autopilot stop writes one BLOCKED line that `crew ls` shows until the next stage starts."""
     tasks = base / "blocked-tasks"
     task = make_task(tasks)
-    written = progress("blocked", str(task), "stacked base: #51 is not main\nsecond line")
+    written = blocked(str(task),"stacked base: #51 is not main\nsecond line")
     check("blocked event exits 0", written.returncode == 0, written.stderr)
     lines = (task / "PROGRESS.md").read_text(encoding="utf-8").splitlines() if (task / "PROGRESS.md").is_file() else []
     check("blocked event is one BLOCKED line", len(lines) == 1 and "BLOCKED: stacked base: #51 is not main second line" in lines[0], lines)
@@ -223,14 +226,16 @@ def blocked_event_shows_until_the_next_stage(base: Path) -> None:
     check("the next stage clears it", "BLOCKED" not in listing(tasks))
     cleared = json.loads(listing(tasks, "--json") or "[{}]")
     check("a task never blocked has an empty field", cleared[0].get("blocked") == "", cleared)
-    check("blocked on a missing directory fails", progress("blocked", str(base / "none"), "x").returncode == 1)
+    check("blocked on a missing directory fails", blocked(str(base / "none"), "x").returncode == 1)
+    removed = progress("blocked", str(task), "x")
+    check("the removed `crew-progress.py blocked` form is an unknown argument (exit 2)", removed.returncode == 2, removed.stderr)
 
 
 def blocked_survives_trailing_metric_lines(base: Path) -> None:
     """The same instructions that write BLOCKED then append `METRIC: stage_end`; neither order hides the reason."""
     tasks = base / "metric-tasks"
     task = make_task(tasks)
-    progress("blocked", str(task), "waiting on a decision")
+    blocked(str(task), "waiting on a decision")
 
     def append(directory: Path, text: str) -> None:
         with (directory / "PROGRESS.md").open("a", encoding="utf-8") as handle:
@@ -244,7 +249,7 @@ def blocked_survives_trailing_metric_lines(base: Path) -> None:
     reverse_tasks = base / "metric-reverse"
     reverse = make_task(reverse_tasks)
     append(reverse, "METRIC: stage_end stage=implement workers=1 tokens_reported=unknown")
-    progress("blocked", str(reverse), "late block")
+    blocked(str(reverse), "late block")
     check("stage_end then BLOCKED shows the reason", "BLOCKED: late block" in listing(reverse_tasks), listing(reverse_tasks))
 
 
@@ -253,14 +258,14 @@ def spec_writes_ignore_a_fixed_temp_name(base: Path) -> None:
     task = make_task(base / "tmp-close", "Verdict: pass\n")
     (task / "SPEC.md.tmp").mkdir()
     code, out, err = run(task, "--pr-url", "https://example.test/pr/1")
-    check("--mark-done writes DONE beside a stray SPEC.md.tmp", code == 0 and "DONE" in (task / "SPEC.md").read_text(encoding="utf-8"),
+    check("mark-done writes DONE beside a stray SPEC.md.tmp", code == 0 and "DONE" in (task / "SPEC.md").read_text(encoding="utf-8"),
           (code, out, err))
     tasks = base / "tmp-normalize"
     task = make_task(tasks)
     (task / "SPEC.md").write_text(SPEC.replace("IMPLEMENTING", "implementing"), encoding="utf-8")
     (task / "SPEC.md.tmp").mkdir()
-    done = subprocess.run([sys.executable, str(CLI), "--tasks-dir", str(tasks), "--normalize-status", "--apply"], capture_output=True, text=True)
-    check("--normalize-status --apply rewrites beside a stray SPEC.md.tmp",
+    done = subprocess.run([sys.executable, str(TASK_CLI), "normalize-status", "--tasks-dir", str(tasks), "--apply"], capture_output=True, text=True)
+    check("normalize-status --apply rewrites beside a stray SPEC.md.tmp",
           done.returncode == 0 and "## Status\nIMPLEMENTING\n" in (task / "SPEC.md").read_text(encoding="utf-8"), (done.returncode, done.stderr))
     check("no temp file is left behind", sorted(p.name for p in task.iterdir()) == ["SPEC.md", "SPEC.md.tmp"], sorted(p.name for p in task.iterdir()))
 

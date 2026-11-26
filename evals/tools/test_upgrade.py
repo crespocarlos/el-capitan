@@ -12,7 +12,8 @@ installed into a fake HOME; then this tree's `install.sh` runs into the same HOM
   HOME, a bare program on PATH unless listed in `EXTERNAL`);
 - the generated `el-capitan:imports` block imports exactly the `.mdc` files `.claude/CLAUDE.md`
   imports, none of `FORBIDDEN_IMPORTS`, a `Read ~/.cursor/rules/<name> before ...` pointer line for
-  each of those, and is printed so the report records it.
+  each of those, and is printed so the report records it;
+- every command in `NEW_COMMANDS` is allow-listed and runs through its installed link.
 
 Every install runs with HOME set to the temporary directory; the real HOME's install surface is
 fingerprinted before and after and must not change.
@@ -41,6 +42,8 @@ HOME_PATH = re.compile(r"~/\.(?:agent/bin|cursor/skills|cursor/agents)/[A-Za-z0-
 BARE_COMMAND = re.compile(r"\bcrew-[a-z0-9-]+\.(?:py|sh)\b")
 GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+# Commands new in this release: each must be linked, run from the fake HOME, and be allow-listed.
+NEW_COMMANDS = {"crew-task.py": ["normalize-status", "--tasks-dir", "{tasks}"], "crew-verify.py": ["--help"]}
 REAL_SURFACE = (".claude/settings.json", ".claude/CLAUDE.md", ".cursor/hooks.json",
                 ".codex/AGENTS.md", ".agent/bin", ".cursor/rules", ".cursor/skills", ".cursor/agents",
                 ".claude/hooks")
@@ -120,6 +123,25 @@ def allow_list_failures(home: Path) -> list[str]:
     return failures
 
 
+def allowed_programs(home: Path) -> set[str]:
+    settings = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    return {match.group(1) for rule in settings.get("permissions", {}).get("allow", [])
+            if (match := re.fullmatch(r"Bash\(([^ )]+)[^)]*\)", rule))}
+
+
+def new_command_failures(home: Path, tasks: Path) -> list[str]:
+    """Each new command is allow-listed and runs through its installed link."""
+    failures = [f"allow-list has no entry for {name}" for name in NEW_COMMANDS
+                if f"~/.agent/bin/{name}" not in allowed_programs(home)]
+    env = {**os.environ, "HOME": str(home)}
+    for name, arguments in NEW_COMMANDS.items():
+        argv = [str(home / ".agent" / "bin" / name), *[a.replace("{tasks}", str(tasks)) for a in arguments]]
+        done = subprocess.run(argv, capture_output=True, text=True, env=env, timeout=60)
+        if done.returncode != 0:
+            failures.append(f"{name} {' '.join(arguments)} exited {done.returncode}: {done.stderr.strip()[-300:]}")
+    return failures
+
+
 def runnable(program: str) -> bool:
     """A bash builtin (`source`, `cd`) or a program on PATH."""
     found = subprocess.run(["bash", "-c", 'type -t "$1"', "bash", program], capture_output=True, text=True)
@@ -153,7 +175,9 @@ def main() -> int:
         export_previous(previous)
         install(previous, home, cwd)
         install(ROOT, home, cwd)
-        failures = reference_failures(home) + allow_list_failures(home) + imports_failures(home)
+        (tmp / "tasks").mkdir()
+        failures = (reference_failures(home) + allow_list_failures(home) + imports_failures(home)
+                    + new_command_failures(home, tmp / "tasks"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     if fingerprint(real_home) != before:

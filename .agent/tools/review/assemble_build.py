@@ -1,44 +1,46 @@
 #!/usr/bin/env python3
-"""Building the packages, and writing them.
+"""Building the reviewer packages and writing them: the diff, the per-persona tail, the prompt tier,
+the optional slice, and the size and skip record merged into `manifest.json`.
 
-A package is deterministic text built from files the run already produced, in one fixed order:
-the shared header, the whole diff, then the per-persona material (size gate, spec, reading map,
-guidance, prior-round block, consumers, prompt tier). Every package is built before any is written,
-because a refusal on persona four must not leave personas one to three written beside four stale
-ones from an earlier run — a package set nobody can tell apart from a complete one.
-
-The order is the cost model. Every persona receives the identical header and the identical diff, so
-putting both first makes the longest prefix common to all five packages as long as the content they
-share; anything per-persona before the diff splits the packages early and the shared bytes are paid
-for once per persona. Nothing is filtered to buy that: each package carries every hunk of
-`package.diff`, which is the property the order must not disturb.
+Order is the cost model: the shared header and the whole diff come first, byte-identical for every
+persona, so a cached prefix is paid once per run. Every package is built before any is written.
 """
 from __future__ import annotations
 
-import sys
+import json
+import re
 from pathlib import Path
 
-from assemble_common import common, guidance_block
-from assemble_config import read_json
-from assemble_files import excerpt, full_file
-from assemble_map import CONSUMER_LENSES, reading_map
-from assemble_personas import PERSONAS
-from assemble_prior import section as prior_section
+import review_bootstrap  # noqa: F401
+
+from assemble_inputs import (
+    CONSUMER_LENSES,
+    PERSONAS,
+    PRIMARY_KINDS,
+    changed_paths,
+    common,
+    decide,
+    guidance_block,
+    prior_section,
+    read_artifact,
+    reading_map,
+)
+from review_workspace import MANIFEST_FILE
+from task_verify_report import capped
+
+from lib.git import GitError, blob_at, rev_parse
 
 DIFF_HEADING = "\n---\n\n# Diff (package.diff — every non-generated hunk)\n\n```diff\n"
-_TASK_TOOLS = Path(__file__).resolve().parents[1] / "task"
-if str(_TASK_TOOLS) not in sys.path:
-    sys.path.insert(0, str(_TASK_TOOLS))
-
-from task_report_check import capped  # noqa: E402
+HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+SLICED = ("product-flow", "code-quality")
+DEFINES = re.compile(r"\b(?:def|class|function|const|let|var|interface|type|enum|fn|func|struct|trait)"
+                     r"\s+([A-Za-z_]\w{3,})")
+MIN_NAME = 4
+SCHEMA_VERSION = 1  # of the `personas` record in manifest.json
 
 
 def unverified_block(report: str | None) -> str:
-    """The builder's unverified claims from REPORT.md (config key `report`); empty without them.
-
-    A report from before the section existed, or an unreadable one, adds nothing: the package is
-    the same as it was.
-    """
+    """The builder's unverified claims from REPORT.md (config key `report`); '' when absent or unreadable."""
     try:
         text = Path(report).read_text(encoding="utf-8") if report else ""
     except OSError:
@@ -61,7 +63,7 @@ def tail(persona: str, review_dir: Path, config: dict) -> tuple[list[str], dict]
         parts += ["\n---\n\n## Spec\n\n", spec_path.read_text(encoding="utf-8"), "\n"]
     layers_path = review_dir / "layers.json"
     if layers_path.is_file():
-        layers = read_json(layers_path, "the layer map").get("layers") or []
+        layers = read_artifact(layers_path, "the layer map").get("layers") or []
         parts += ["\n---\n\n", reading_map(persona, layers), "\n"]
     guidance, guidance_report = guidance_block(review_dir, persona, config)
     if guidance:
@@ -104,12 +106,9 @@ def extras(persona: str, config: dict, diff: str,
 
 def build(persona: str, review_dir: Path, config: dict, shared: str,
           hunks_json: dict | None, sliced: dict | None = None) -> tuple[str, dict]:
-    """One persona's package, plus a report of what was narrowed and what elided.
+    """One persona's package and what was narrowed or elided; `sliced` narrows this lens's diff.
 
-    `sliced` (`assemble_slice.plan` entry plus its `text`) narrows the diff shown to this lens only.
-
-    The diff is read once and passed on: the prompt tier needs the same bytes to decide which lines
-    the package already quotes, and a second read is a second chance to read a different file.
+    The diff is read once, so the prompt tier decides elision on the same bytes the package quotes.
     """
     diff = (review_dir / "package.diff").read_text(encoding="utf-8")
     shown = diff if sliced is None else sliced["text"]
@@ -124,13 +123,7 @@ def build(persona: str, review_dir: Path, config: dict, shared: str,
 
 
 def assemble_all(review_dir: Path, config: dict, hunks_json: dict | None) -> list[tuple]:
-    """Every package, built before any is written.
-
-    The head is built once and passed in. It is documented as identical for every persona, and a
-    value computed inside the loop would only be identical because the files it reads happened not
-    to change between iterations — the prefix this change exists to create deserves the stronger
-    guarantee.
-    """
+    """Every package, built before any is written; the shared head is built once, so it is identical."""
     head = common(review_dir, config)
     assembled = []
     for persona in PERSONAS:
@@ -156,3 +149,228 @@ def write_packages(review_dir: Path, assembled: list[tuple]) -> None:
                          + ", ".join(p.split("/")[-1] for p in report["whole"]))
         print(f"{persona:<15} {len(content):>7} bytes"
               + (f"  [{' | '.join(notes)}]" if notes else ""))
+
+
+def staged_text(repo: Path, path: str) -> str:
+    """The staged content of a tracked file (what a staged review judges), else the working tree.
+
+    Outside a repository or for an untracked file the working tree is the source, and the label says so.
+    """
+    try:
+        return blob_at(repo, f":{path}")
+    except GitError:
+        return (repo / path).read_text(encoding="utf-8")
+
+
+def is_staged(repo: Path, path: str) -> bool:
+    """True when `path` has an index entry; the index is the only place `blob_at` reads."""
+    try:
+        rev_parse(repo, f":{path}")
+    except GitError:
+        return False
+    return True
+
+
+def excerpt(repo: Path, path: str, start: int, end: int, label: str) -> str:
+    """A numbered slice of a file, for the consumer excerpts a code lens receives."""
+    lines = staged_text(repo, path).splitlines()[start - 1:end]
+    body = "\n".join(f"{start + index}: {line}" for index, line in enumerate(lines))
+    language = Path(path).suffix.lstrip(".") or "text"
+    return f"### `{path}:{start}-{end}` ({label})\n\n```{language}\n{body}\n```\n\n"
+
+
+def covered_lines(diff: str, hunks_json: dict | None, path: str) -> tuple[set[int], bool]:
+    """New-side lines of `path` that the diff quotes, and whether elision is safe for this file."""
+    in_file = False
+    new_no = 0
+    lines: set[int] = set()
+    hunks_seen = 0
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            in_file = line.endswith(f" b/{path}")
+            continue
+        if not in_file:
+            continue
+        header = HUNK_HEADER.match(line)
+        if header:
+            new_no = int(header.group(1))
+            hunks_seen += 1
+            continue
+        if line.startswith("+") and not line.startswith("+++"):
+            lines.add(new_no)
+            new_no += 1
+        elif line.startswith(" "):
+            lines.add(new_no)
+            new_no += 1
+    if hunks_json is None:
+        return lines, False
+    expected = next((len(f["hunkIds"]) for f in hunks_json.get("files", []) if f.get("path") == path), 0)
+    return lines, expected > 0 and hunks_seen == expected
+
+
+def full_file(repo: Path, path: str, diff: str, hunks_json: dict | None) -> tuple[str, bool]:
+    """A complete file, eliding the lines the diff already carries when that is provably safe."""
+    text = staged_text(repo, path)
+    source = "staged content" if is_staged(repo, path) else "working tree, not staged"
+    covered, safe = covered_lines(diff, hunks_json, path)
+    if not safe or not covered:
+        return (f"### `{path}` (complete file, {source}; sent whole, so no line lives only in the "
+                f"diff)\n\n```text\n{text}\n```\n\n"), False
+    out: list[str] = []
+    run_start = 0
+    index = 0
+    for line in text.splitlines():
+        index += 1
+        if index not in covered:
+            if run_start:
+                # One marker per contiguous run, named by its real bounds, so the reader knows
+                # exactly which lines to look up above rather than guessing at a span.
+                out.append(f"… (lines {run_start}-{index - 1} are in the diff above)")
+                run_start = 0
+            out.append(f"{index}: {line}")
+        elif not run_start:
+            run_start = index
+    if run_start:
+        out.append(f"… (lines {run_start}-{index} are in the diff above)")
+    body = "\n".join(out)
+    return (f"### `{path}` (complete file, {source}; changed lines elided — they are in the diff above)"
+            f"\n\n```text\n{body}\n```\n\n"), True
+
+
+def split_diff(diff: str) -> dict[str, str]:
+    """`{path: that file's diff text}` in diff order."""
+    blocks = re.split(r"(?m)^(?=diff --git )", diff)
+    blocks = [b for b in blocks if b.startswith("diff --git ")]
+    return dict(zip(changed_paths(diff), blocks))
+
+
+def names_defined(path: str, text: str) -> set[str]:
+    """Symbols a file's changed lines define, plus its module stem."""
+    changed = "\n".join(line[1:] for line in text.splitlines() if line[:1] in "+-" and line[:3] not in ("+++", "---"))
+    found = set(DEFINES.findall(changed))
+    stem = Path(path).stem
+    if len(stem) >= MIN_NAME:
+        found.add(stem)
+    return found
+
+
+def mentions(text: str, names: set[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(name)}\b", text) for name in names)
+
+
+def closure(seed: set[str], files: dict[str, str]) -> set[str]:
+    """`seed` plus every file linked to it by a changed name, to a fixpoint."""
+    chosen = set(seed)
+    defined = {path: names_defined(path, text) for path, text in files.items()}
+    grown = True
+    while grown:
+        grown = False
+        for path, text in files.items():
+            if path in chosen:
+                continue
+            callers = any(mentions(text, defined[s]) for s in chosen)
+            callees = mentions("\n".join(files[s] for s in chosen), defined[path])
+            if callers or callees:
+                chosen.add(path)
+                grown = True
+    return chosen
+
+
+def seed_files(persona: str, layers: list[dict], hunk_file: dict[str, str]) -> set[str]:
+    kinds = PRIMARY_KINDS[persona]
+    return {hunk_file[h] for layer in layers if layer.get("kind") in kinds
+            for h in layer.get("hunks") or [] if h in hunk_file}
+
+
+def plan(layers: list[dict], hunks_json: dict | None, diff: str, packaged: list[str]) -> tuple[dict[str, dict], str]:
+    """`({persona: {files, of, closure, paths}}, note)`; empty plan with a note when nothing is sliced."""
+    files = split_diff(diff)
+    hunks = (hunks_json or {}).get("hunks") or []
+    if not layers or not hunks or not files:
+        return {}, "slicing needs a layer map and a hunk index; every lens gets the whole diff"
+    hunk_file = {h["id"]: h["file"] for h in hunks if isinstance(h, dict) and "id" in h and "file" in h}
+    sliced: dict[str, dict] = {}
+    for persona in SLICED:
+        if persona not in packaged:
+            continue
+        seed = seed_files(persona, layers, hunk_file) & set(files)
+        chosen = closure(seed, files) if seed else set()
+        if not chosen or chosen >= set(files):
+            continue
+        sliced[persona] = {"files": len(chosen), "of": len(files), "closure": sorted(chosen - seed),
+                           "paths": [p for p in files if p in chosen]}
+    full = [p for p in packaged if p not in sliced]
+    covered = set(hunk_file) if full else {h for n in sliced.values() for h, f in hunk_file.items() if f in n["paths"]}
+    if covered != set(hunk_file):
+        return {}, "coverage gate: a hunk would reach no persona; every lens gets the whole diff"
+    return sliced, ""
+
+
+def slice_text(diff: str, paths: list[str]) -> str:
+    """The diff restricted to `paths`, in diff order."""
+    files = split_diff(diff)
+    return "".join(files[p] for p in files if p in set(paths))
+
+
+def layers_of(review_dir: Path) -> list[dict]:
+    path = review_dir / "layers.json"
+    return (read_artifact(path, "the layer map").get("layers") or []) if path.is_file() else []
+
+
+def assemble_run(review_dir: Path, config: dict, hunks_json: dict | None) -> tuple[list[tuple], dict, dict, str]:
+    """`(assembled, skipped, sliced, note)`; nothing is written."""
+    diff = (review_dir / "package.diff").read_text(encoding="utf-8")
+    packaged, skipped = decide(PERSONAS, diff, config)
+    sliced, note = ({}, "")
+    if config.get("slice") is True:
+        sliced, note = plan(layers_of(review_dir), hunks_json, diff, packaged)
+    head = common(review_dir, config)
+    assembled = []
+    for persona in packaged:
+        cut = None
+        if persona in sliced:
+            cut = {**sliced[persona], "text": slice_text(diff, sliced[persona]["paths"])}
+        content, report = build(persona, review_dir, config, head, hunks_json, cut)
+        assembled.append((persona, content, report))
+    return assembled, skipped, sliced, note
+
+
+def write_run(review_dir: Path, assembled: list[tuple], skipped: dict, sliced: dict, note: str) -> None:
+    write_packages(review_dir, assembled)
+    sizes = {persona: len(content) for persona, content, _ in assembled}
+    for line in size_report(sizes, max(sizes.values(), default=0), skipped, sliced):
+        print(line)
+    if note:
+        print(f"slice: {note}")
+    record(review_dir, sizes, skipped, sliced)
+
+
+def size_report(sizes: dict[str, int], full: int, skipped: dict[str, str], sliced: dict[str, dict]) -> list[str]:
+    """The lines printed after the packages: bytes per persona against the full-diff package size."""
+    lines = []
+    for persona, size in sizes.items():
+        share = f"{round(100 * size / full)}% of the largest" if full else "n/a"
+        note = sliced.get(persona)
+        lines.append(f"size: {persona:<15} {size:>7} bytes ({share})"
+                     + (f"; sliced {note['files']} of {note['of']} files, +{len(note['closure'])} by closure"
+                        if note else ""))
+    lines += [f"skipped: {persona}: {reason}" for persona, reason in skipped.items()]
+    return lines
+
+
+def record(review_dir: Path, sizes: dict[str, int], skipped: dict[str, str], sliced: dict[str, dict]) -> Path:
+    """Merge the decisions and sizes into `manifest.json`, keeping whatever the manifest already holds."""
+    target = review_dir / MANIFEST_FILE
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    payload["personas"] = {
+        "schema_version": SCHEMA_VERSION, "packaged": sorted(sizes), "bytes": sizes,
+        "skipped": [{"persona": p, "reason": r} for p, r in sorted(skipped.items())],
+        "sliced": {p: {"files": n["files"], "of": n["of"], "closure": n["closure"]} for p, n in sliced.items()},
+    }
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return target

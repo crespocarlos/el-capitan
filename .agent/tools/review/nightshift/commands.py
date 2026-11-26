@@ -13,8 +13,9 @@ import json
 import sys
 from pathlib import Path
 
-from lib.output import bounded_json, rows_limit, truncate
 from nightshift.client import base_url, check_key, request
+
+from lib.output import bounded_json, rows_limit, truncate
 
 # Nightshift's own rule (prompts/e2e-common-report.md): only these observations, on a check
 # that was not skipped, count as end-to-end. `via` is a list there; accept a bare string too.

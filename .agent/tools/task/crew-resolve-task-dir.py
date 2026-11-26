@@ -1,27 +1,10 @@
 #!/usr/bin/env python3
 """crew-resolve-task-dir.py — resolve TASK_DIR for a repo+branch via .task-id reverse lookup.
 
-PROGRESS.md may contain optional `[ts] METRIC: ...` audit lines; they are never read here.
-
-By default reads remote + branch from the current git context.
-Use --remote / --branch to override (e.g. crew-cleanup resolving a different worktree's tasks).
-Use --all to return every matching dir (one per line) instead of the single best match.
-
-Outputs the absolute TASK_DIR path to stdout, or empty string if no active task.
-Exits 1 if git state is unresolvable (no remote configured, not on a branch).
-
-Usage (hard — abort caller if git state is broken):
-  TASK_DIR=$(~/.agent/bin/crew-resolve-task-dir.py) || exit 1
-
-Usage (soft — skip session capture / optional logging):
-  TASK_DIR=$(~/.agent/bin/crew-resolve-task-dir.py 2>/dev/null || echo "")
-
-Usage (crew-cleanup — all matches for a specific worktree's remote+branch):
-  mapfile -t DIRS < <(~/.agent/bin/crew-resolve-task-dir.py \\
-    --remote "$WORKTREE_REMOTE" --branch "$WORKTREE_BRANCH" --all 2>/dev/null || true)
-
-The lookup itself lives in `task_state.py`, shared with `crew-task-context.py`, so the two cannot
-disagree about which task a repo+branch owns.
+Remote and branch come from the current checkout unless `--remote`/`--branch` say otherwise; `--all`
+prints every match. Prints the absolute TASK_DIR, or nothing when no task matches; exits 1 when git
+state is unresolvable. Usage: `TASK_DIR=$(~/.agent/bin/crew-resolve-task-dir.py) || exit 1`. The
+lookup is `task_resolve`, shared with `crew-task-context.py`.
 """
 from __future__ import annotations
 
@@ -30,21 +13,19 @@ import json
 import sys
 from pathlib import Path
 
-_TASK_DIR = Path(__file__).resolve().parent
-if str(_TASK_DIR) not in sys.path:
-    sys.path.insert(0, str(_TASK_DIR))
+import task_bootstrap  # noqa: F401
 
-from task_resolve import (  # noqa: E402
+from task_resolve import (
     ResolverUnavailable,
     best_match,
     matching_tasks,
     resolve_context,
     resolved_record,
 )
-from task_state import read_status  # noqa: E402
+from task_status import read_status
 
 
-def build_parser() -> argparse.ArgumentParser:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Resolve TASK_DIR for a repo+branch via .task-id reverse lookup."
     )
@@ -73,7 +54,7 @@ def print_matches(matches: list[tuple[str, str]], record: dict, as_json: bool) -
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    args = make_parser().parse_args()
     try:
         current_remote, current_branch = resolve_context(args.remote, args.branch)
     except ResolverUnavailable as error:

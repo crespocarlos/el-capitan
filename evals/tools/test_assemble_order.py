@@ -203,7 +203,7 @@ def test_a_prompt_quality_build_reads_the_diff_once(tmp: Path) -> None:
     """The prompt tier needs the diff the build already holds; a second read is a second source."""
     review = run(tmp, {"guidance_keep": {}})
     sys.path[:0] = [str(ROOT / ".agent" / "tools"), str(REVIEW_TOOL)]
-    import assemble_build  # noqa: E402 - the path must be set first
+    import assemble_build
 
     original = pathlib.Path.read_text
     reads: list[Path] = []
@@ -227,7 +227,7 @@ def test_a_prompt_quality_build_reads_the_diff_once(tmp: Path) -> None:
 def test_pr_mode_refuses_the_extras_that_read_the_local_index(tmp: Path) -> None:
     """Both extras come from the local checkout, which a PR review must not read."""
     sys.path[:0] = [str(ROOT / ".agent" / "tools"), str(REVIEW_TOOL)]
-    from assemble_config import check_inputs  # noqa: E402 - the path must be set first
+    from assemble_inputs import check_inputs
 
     review = run(tmp)
     for key in ("consumers", "prompt_files"):
@@ -246,7 +246,7 @@ def main() -> int:
             try:
                 test(Path(directory))
                 print(f"pass: {test.__name__}")
-            except Exception as error:  # noqa: BLE001 - one broken test must not hide the rest
+            except Exception as error:
                 failed += 1
                 print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
     print(f"{len(tests) - failed}/{len(tests)} passed")

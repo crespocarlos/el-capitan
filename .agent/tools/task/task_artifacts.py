@@ -10,6 +10,8 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
+from task_progress import PROGRESS_FILE
+
 # Third field is the truncation edge for an over-budget artifact: `tail` keeps the newest content
 # for append-only logs and for reports whose identity fields are appended last. `REVIEW.md` is the one
 # report whose identity block is appended by `persist` *after* the findings, so tail keeps the
@@ -17,7 +19,7 @@ from pathlib import Path
 ARTIFACTS = (
     (".task-id", "task_id", "head"),
     ("SPEC.md", "spec", "head"),
-    ("PROGRESS.md", "progress", "tail"),
+    (PROGRESS_FILE, "progress", "tail"),
     ("REPORT.md", "report", "head"),
     ("REVIEW.md", "review", "tail"),
     ("DEFERRED.md", "deferred", "head"),

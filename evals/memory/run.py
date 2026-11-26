@@ -37,6 +37,7 @@ def store_error_checks(temporary):
     sys.path[:0] = [str(tools), str(tools / 'memory')]
     try:
         import builtins
+
         import memory_paths
     finally:
         sys.path[:] = saved

@@ -42,6 +42,9 @@ jobs:
       - name: Memory eval
         run: python3 evals/memory/run.py
 
+      - name: Memory scope key per remote shape
+        run: python3 evals/tools/test_memory_repo_key.py
+
       - name: Review-findings tests
         run: python3 evals/reviewer/test_review_findings.py
 
@@ -114,6 +117,9 @@ jobs:
       - name: Landed state in crew ls
         run: python3 evals/tools/test_landed.py
 
+      - name: PROGRESS.md owner (UTC and legacy stamps, BLOCKED, owner/repo parsing)
+        run: python3 evals/tools/test_task_progress.py
+
       - name: Gate verify with CI parity
         run: python3 evals/tools/test_task_verify.py
 
@@ -180,8 +186,11 @@ jobs:
       - name: Escape rule tests
         run: python3 evals/tools/test_escape_rule.py
 
-      - name: Python structural shape
-        run: python3 evals/tools/test_python_shape.py
+      - name: Ruff (version pinned in ruff.toml)
+        run: bash evals/ruff.sh check .
+
+      - name: crew-lint rule registry and repository Python rules
+        run: python3 evals/tools/test_lint_rules.py
 
       - name: Command surface (catalog kinds, install links)
         run: python3 evals/tools/test_command_names.py

@@ -1,6 +1,6 @@
 # Verify outcomes
 
-`crew-progress.py verify` (and `verify --wait <json>`) is read by its process exit code alone. Step 7
+`crew-verify.py` (and `crew-verify.py --wait <json>`) is read by its process exit code alone. Step 7
 of `crew-implement` and Step 2c of `crew-commit` act on it as defined here, once. "Hand off / commit"
 means the implement handoff or the commit, whichever step you are in.
 
@@ -16,3 +16,4 @@ A `NOT VERIFIED: partial mirror (N steps skipped)` line means part of the CI was
 `if:`, an expression, a deployment job, a publish command, a CI workflow with a release trigger): the
 gates ran, but the run is NOT VERIFIED even when every gate line is `exit=0`. A failed gate is still
 exit 1. A workflow with no `push` or `pull_request` trigger is listed as `not CI` and does not count.
+How the mirror runs is in `.agent/tools/TOOLS.md` "Gates and cost".

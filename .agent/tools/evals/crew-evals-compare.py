@@ -1,41 +1,25 @@
 #!/usr/bin/env python3
-"""Compare evaluation runs from Elasticsearch score and trace indices.
+"""Compare evaluation runs from Elasticsearch score and trace indices (read only); targets Kibana.
 
-  crew-evals-compare.py runs                       list runs (commit groups), newest first
-  crew-evals-compare.py compare [COMMIT ...] [--exp TEXT]
-                                             one table per experiment, one column per commit
-  crew-evals-compare.py detail COMMIT [--below 1] [--ev TEXT] [--chars N]
-                                             scores under a threshold, with the judge's explanation
-  crew-evals-compare.py traces COMMIT              per trace: tools, query targets, prefetched context
-  crew-evals-compare.py diagnose BASELINE CANDIDATE --repo PATH [--json]
-                                             read-only change attribution and regression evidence
-
-Defaults: the last 3 commits for `compare`, the first one as the baseline column. COMMIT is a
-sha prefix. Generic behavior includes every evaluator. Suite metadata is derived from
-score documents and the suite source under --repo. Env: ES_URL (http://localhost:9200),
-ES_API_KEY or ES_USER/ES_PASS, ES_SINCE, ES_TRACE_INDEX. Standard library only. Read-only.
-
-This file is argument handling and dispatch only. Elasticsearch access is `evals_query.py`, the
-printed tables are `evals_report.py`, and `diagnose`'s attribution is `evals_diagnose.py`. The
-helpers `evals/compare_run.py` exercises are re-exported here so its import path stays one file.
+Subcommands: `runs`, `compare [COMMIT ...]` (default: the last 3, first as baseline), `detail COMMIT`,
+`traces COMMIT`, `diagnose BASELINE CANDIDATE --repo PATH`. COMMIT is a sha prefix. Env: ES_URL,
+ES_API_KEY or ES_USER/ES_PASS, ES_SINCE, ES_TRACE_INDEX. Logic: `evals_query`, `evals_report`,
+`evals_diagnose`; the helpers `evals/compare_run.py` uses are re-exported here.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import sys
-from pathlib import Path
 
-_EVALS_DIR = Path(__file__).resolve().parent
-if str(_EVALS_DIR) not in sys.path:
-    sys.path.insert(0, str(_EVALS_DIR))
+import evals_bootstrap  # noqa: F401
 
-from evals_diagnose import (  # noqa: E402,F401  re-exported for evals/compare_run.py
+from evals_diagnose import (
     cmd_diagnose,
     sign_test_pvalue,
 )
-from evals_query import fetch_scores  # noqa: E402
-from evals_report import (  # noqa: E402,F401  re-exported for evals/compare_run.py
+from evals_query import fetch_scores
+from evals_report import (
     cmd_compare,
     cmd_detail,
     cmd_runs,
@@ -43,10 +27,17 @@ from evals_report import (  # noqa: E402,F401  re-exported for evals/compare_run
     common_prefix,
     rows,
 )
-from evals_sources import classify_paths  # noqa: E402,F401  re-exported for evals/compare_run.py
+from evals_sources import classify_paths
+
+__all__ = [  # the public names: re-exported for callers and tests that import this command file
+    "classify_paths",
+    "common_prefix",
+    "main",
+    "sign_test_pvalue",
+]
 
 
-def build_parser() -> argparse.ArgumentParser:
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--since", default=os.environ.get("ES_SINCE"),
@@ -76,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args = build_parser().parse_args()
+    args = make_parser().parse_args()
     rs = rows(fetch_scores(args.since))
     if not rs:
         print("no scores found", file=sys.stderr)

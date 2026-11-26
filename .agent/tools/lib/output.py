@@ -8,7 +8,8 @@ their tail, everything else keeps its head.
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 # A default high enough to leave ordinary output untouched, low enough to stop a runaway table or a
 # whole spec from spending the caller's context on one call.

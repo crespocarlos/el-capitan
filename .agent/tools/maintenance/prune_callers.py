@@ -1,16 +1,15 @@
 """The caller set for a catalog command: which files reference it, and where.
 
-A command earns its place by being invoked. The four groups that can invoke one are prompts (rules,
-agents, skills, and the always-loaded guidance), hooks, `install.sh`, and other tools; a reference in
-any of them is a caller. Documentation is deliberately not a caller: `TOOLS.md` and `tools.json` name
-every command by construction, so counting them would make the report answer "all called" forever.
-Tests are not callers either — a test proves a command runs, not that the pipeline asks for it — so
-they are reported in their own column and never decide the verdict.
+Callers are prompts (rules, agents, skills, always-loaded guidance), hooks, `install.sh` and other
+tools. `TOOLS.md` and `tools.json` name every command by construction, so they are not callers;
+tests are counted in their own column and never decide the verdict.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from task_progress import PROGRESS_FILE
 
 PROMPT_PATTERNS = (
     "rules/*.mdc",
@@ -103,4 +102,4 @@ def verdict(counts: dict[str, int]) -> str:
 def journal_texts(tasks_dir: Path | None) -> list[tuple[Path, str]]:
     if tasks_dir is None or not tasks_dir.is_dir():
         return []
-    return read(sorted(tasks_dir.glob("*/PROGRESS.md")))
+    return read(sorted(tasks_dir.glob(f"*/{PROGRESS_FILE}")))

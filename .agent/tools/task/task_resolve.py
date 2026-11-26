@@ -11,13 +11,11 @@ import json
 import sys
 from pathlib import Path
 
-_TOOLS_ROOT = Path(__file__).resolve().parents[1]
-for _path in (_TOOLS_ROOT, Path(__file__).resolve().parent):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import task_bootstrap  # noqa: F401
 
-from lib.git import GitError, current_branch, remote_url  # noqa: E402
-from task_state import read_status  # noqa: E402
+from task_status import read_status
+
+from lib.git import GitError, current_branch, remote_url
 
 
 class ResolverUnavailable(RuntimeError):
@@ -29,7 +27,7 @@ def resolve_context(remote: str = "", branch: str = "") -> tuple[str, str]:
 
     An unresolvable remote or a detached HEAD is a broken pipeline state, not "no task": git
     answering failure raises here, and the entry point exits 1 instead of silently taking the
-    no-task path. Reading empty output as a real answer was the defect this replaced.
+    no-task path: empty output is never read as an answer.
     """
     try:
         current_remote = remote or remote_url(None, "origin")

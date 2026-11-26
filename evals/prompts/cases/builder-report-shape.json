@@ -7,6 +7,6 @@
     {"kind": "report_pointer"},
     {"kind": "absent", "patterns": ["> Next:"]}
   ],
-  "broken": "## Implementation Report\n\n**Tasks:** 5/5 passed\n\n### Tasks\n- [x] Task 1 — passed\n- [x] Task 2 — passed\n- [x] Task 3 — passed\n- [x] Task 4 — passed\n- [x] Task 5 — passed\n\n### Decisions\n- `task_review.py` as a new module — both the gate and the loader need the same resolution, and the\n  loader cannot import the gate — one extra module, no behavioral risk.\n\n### Quality gates\n- `python3 evals/tools/test_lifecycle.py` — pass.\n\n### Files Changed\n.agent/tools/task/task_review.py\n",
+  "broken": "## Implementation Report\n\n**Tasks:** 5/5 passed\n\n### Tasks\n- [x] Task 1 — passed\n- [x] Task 2 — passed\n- [x] Task 3 — passed\n- [x] Task 4 — passed\n- [x] Task 5 — passed\n\n### Decisions\n- `task_status.py` as a new module — both the gate and the loader need the same resolution, and the\n  loader cannot import the gate — one extra module, no behavioral risk.\n\n### Quality gates\n- `python3 evals/tools/test_lifecycle.py` — pass.\n\n### Files Changed\n.agent/tools/task/task_status.py\n",
   "_note": "The broken variant is the report body pasted back instead of the pointer: the orchestrator then holds two copies that can disagree, and the file stopped being the contract."
 }

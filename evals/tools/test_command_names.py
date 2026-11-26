@@ -157,6 +157,33 @@ def help_cases() -> None:
         check(f"{name}: --help succeeds", result.returncode == 0, result.stderr[-400:])
         check(f"{name}: --help fits {HELP_LINE_CEILING} lines", lines <= HELP_LINE_CEILING,
               f"{lines} lines; move long prose into TOOLS.md")
+    for label, module, function, wanted, unwanted in HELP_TEXTS:
+        text = help_text(module, function)
+        check(label, all(w in text for w in wanted) and not any(u in text for u in unwanted), text)
+
+
+# (case, module, parser function, text the --help must show, text it must not): checked in process.
+HELP_TEXTS = (
+    ("crew-task.py worktree --help lists every action, check included", "task_worktrees", "pref_main",
+     ("pref", "record", "check <TREE>"), ()),
+    ("crew-verify.py report-check --help describes the report check, not the task listing", "task_verify_report", "main",
+     ("builder",), ("Rendering task state",)),
+)
+
+
+def help_text(module: str, function: str) -> str:
+    """The `--help` a subcommand parser prints, captured in this process."""
+    import contextlib
+    import importlib
+    import io
+
+    for path in (str(TOOLS / "task"), str(TOOLS)):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), contextlib.suppress(SystemExit):
+        getattr(importlib.import_module(module), function)(["--help"])
+    return buffer.getvalue()
 
 
 def prepare_memory(store: Path, entry: dict) -> str:
@@ -373,7 +400,47 @@ def resolver_split_agrees() -> None:
           bool(re.search(r"crew-pr-resolver[^\n]*(\n[^\n]+)*?Bash[^\n]*(\n[^\n]+)*?by instruction", guide)), "")
 
 
+EXIT_ROW = re.compile(r"^\| `(crew-[a-z0-9-]+\.py[^`]*)` \| `([3-9])` \| [^|]+ \| `([a-z0-9_/-]+\.py)` \|$")
+
+
+def documented_exit_codes() -> set[tuple[str, int]]:
+    """`(source module, code)` from the exit-code table in `.agent/tools/AGENTS.md`."""
+    guide = (TOOLS / "AGENTS.md").read_text(encoding="utf-8")
+    return {(found.group(3), int(found.group(2))) for found in map(EXIT_ROW.match, guide.splitlines()) if found}
+
+
+def declared_exit_codes() -> tuple[set[tuple[str, int]], list[str]]:
+    """`EXIT_* = <3..9>` constants per module, and every bare `return <3..9>` (which must be named)."""
+    import ast
+
+    declared, bare = set(), []
+    for path in sorted(TOOLS.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        source = path.relative_to(TOOLS).as_posix()
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id.startswith("EXIT_") and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, int) and node.value.value >= 3):
+                declared.add((source, node.value.value))
+            if (isinstance(node, ast.Return) and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, int) and not isinstance(node.value.value, bool)
+                    and node.value.value >= 3):
+                bare.append(f"{source}:{node.lineno} return {node.value.value}")
+    return declared, bare
+
+
+def exit_code_cases() -> None:
+    """Every non-standard exit code is a named `EXIT_*` constant and has a row in the AGENTS.md table."""
+    documented = documented_exit_codes()
+    declared, bare = declared_exit_codes()
+    check("the exit-code table lists the known non-standard codes", len(documented) >= 6, str(sorted(documented)))
+    check("no bare `return <3..9>`: a non-standard code is a named EXIT_* constant", not bare, "; ".join(bare))
+    check("every EXIT_* constant is documented", declared <= documented, str(sorted(declared - documented)))
+    check("every documented code is declared in its source", documented <= declared, str(sorted(documented - declared)))
+
+
 def main() -> int:
+    exit_code_cases()
     resolver_split_agrees()
     catalog()
     install_links()

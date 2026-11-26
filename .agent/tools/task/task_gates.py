@@ -12,14 +12,9 @@ import json
 import sys
 from pathlib import Path
 
-_TOOLS_ROOT = Path(__file__).resolve().parents[1]
-for _path in (_TOOLS_ROOT, Path(__file__).resolve().parent):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+import task_bootstrap  # noqa: F401
 
-from lib.git import GitError, head_sha, is_ancestor  # noqa: E402
-from task_review import review_file, reviewed_at  # noqa: E402
-from task_state import (  # noqa: E402
+from task_state import (
     PREDICATES,
     TaskState,
     head,
@@ -28,7 +23,10 @@ from task_state import (  # noqa: E402
     set_status,
     unresolved,
 )
-from task_typed_tests import typed_tests_problem  # noqa: E402
+from task_status import review_file, reviewed_at, typed_tests_problem
+
+from lib.files import atomic_write
+from lib.git import GitError, head_sha, is_ancestor
 
 
 def load_task(task_dir: str | Path) -> TaskState | None:
@@ -70,7 +68,6 @@ def update_task_branch(r: TaskState, branch: str) -> bool:
     metadata before SPEC.md means an interrupt cannot leave the status advanced with no branch.
     """
     metadata_path = r.task / ".task-id"
-    tmp = metadata_path.with_name(".task-id.tmp")
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if not isinstance(metadata, dict):
@@ -80,11 +77,9 @@ def update_task_branch(r: TaskState, branch: str) -> bool:
         if metadata.get("spec_branch") in (None, ""):
             metadata["spec_branch"] = metadata.get("branch", "")
         metadata["branch"] = branch
-        tmp.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-        tmp.replace(metadata_path)
+        atomic_write(metadata_path, json.dumps(metadata, indent=2) + "\n")
         return True
     except (OSError, ValueError) as error:
-        tmp.unlink(missing_ok=True)
         print(f"error: {name(r)}: .task-id not updated: {error}", file=sys.stderr)
         return False
 

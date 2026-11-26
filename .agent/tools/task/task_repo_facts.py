@@ -9,25 +9,25 @@ names — raise, because without them every other field would answer about the w
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
+from lib.cli import fail
 from lib.git import (
     GitError,
     current_branch,
     default_branch,
     dirty_files,
     head_sha,
-    remotes,
     remote_url,
+    remotes,
+    repo_name_from_url,
     run_git,
+    slug_from_url,
     staged_paths,
     toplevel,
     unstaged_paths,
 )
-
-SLUG = re.compile(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/*$")
 
 
 def primary_remote(names: list[str]) -> str:
@@ -40,14 +40,6 @@ def primary_remote(names: list[str]) -> str:
         if preferred in names:
             return preferred
     return names[0] if names else ""
-
-
-def slug_of(url: str | None) -> str | None:
-    """The `owner/repo` a remote URL names, or None when the URL carries no such path."""
-    if not url:
-        return None
-    match = SLUG.search(url)
-    return f"{match.group(1)}/{match.group(2)}" if match else None
 
 
 def local_default(root: Path, remote: str) -> str | None:
@@ -64,7 +56,7 @@ def collect(args: argparse.Namespace) -> dict:
         root = toplevel(args.root)
         names = remotes(root)
     except GitError as error:
-        raise SystemExit(f"repo-info: {error}") from error
+        fail(f"repo-info: {error}")
     remote = args.remote or primary_remote(names)
     urls = {name: remote_url(root, name) for name in names}
     record = {
@@ -78,9 +70,9 @@ def collect(args: argparse.Namespace) -> dict:
         "staged_dirty": [],
         "remote": remote,
         "remote_url": urls.get(remote),
-        "repo": slug_of(urls.get(remote)),
-        "repo_name": (slug_of(urls.get(remote)) or "/").split("/")[-1] or None,
-        "origin_repo": slug_of(urls.get("origin")),
+        "repo": slug_from_url(urls.get(remote)),
+        "repo_name": repo_name_from_url(urls.get(remote)),
+        "origin_repo": slug_from_url(urls.get("origin")),
         "remotes": {name: url for name, url in urls.items() if url},
         "default_branch": None,
     }
