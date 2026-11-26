@@ -86,7 +86,8 @@ def read_argv(command: str, args: argparse.Namespace) -> list[str]:
         return [*argv, "--name-only"] if args.name_only else argv
     fields = ",".join(gh_fields(args.field))
     if command == "repo":
-        return ["repo", "view", *repo, "--json", fields]
+        # `gh repo view` takes the repository positionally and has no `--repo` flag.
+        return ["repo", "view", *([str(args.repo)] if args.repo else []), "--json", fields]
     if command == "issue":
         return ["issue", "view", str(args.number), *repo, "--json", fields]
     return ["pr", "view", *number, *repo, "--json", fields]

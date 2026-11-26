@@ -2,7 +2,7 @@
 """Normalize review findings, persist review reports, and append outcome records.
 
 Subcommands: `normalize`, `persist`, `select`, `coverage`, `validate-map`, `spec-context`,
-`check-packages`, `outcome`, `outcomes`, `review-dir`. This file is the argparse entry point only:
+`check-packages`, `outcome`, `outcomes`, `review-dir`, `save-out`, `consolidate`. This file is the argparse entry point only:
 parsing and validation live in the sibling `review_findings.py`, the flag definitions in
 `review_cli.py`, personas in `review_personas.py`, layers in `review_layers.py`, and report
 persistence in `review_report.py`. `Path(__file__).resolve()` follows the installed `~/.agent/bin`
@@ -84,6 +84,8 @@ from review_report import check_outcomes, outcome, persist  # noqa: E402,F401
 from review_prior import prior_review  # noqa: E402,F401
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 from review_commands import check_map, comments  # noqa: E402
+from review_save_out import add_save_out_parser, save_out  # noqa: E402
+from review_consolidate import add_consolidate_parser, consolidate  # noqa: E402
 
 
 from review_workspace import claim, cleanup_stale, report, review_dir  # noqa: E402
@@ -115,12 +117,14 @@ def main() -> int:
     add_map_reply_parser(commands)
     add_context_parsers(commands)
     add_review_dir_parser(commands)
+    add_save_out_parser(commands)
+    add_consolidate_parser(commands)
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
                 "validate-map": validate_map, "spec-context": spec_context,
                 "check-packages": check_packages, "review-dir": review_dir_command,
-                "prior-review": prior_review,
+                "prior-review": prior_review, "save-out": save_out, "consolidate": consolidate,
                 "comments": comments, "check-map": check_map}
     try:
         return handlers[args.command](args)

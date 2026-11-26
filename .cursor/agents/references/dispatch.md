@@ -58,10 +58,32 @@ points backwards is the pointer case, so it gets a resume, not a relaunch.
 in an intermediate turn and end with a summary that says the list appeared earlier; the orchestrator
 receives only the final message, so that run looks empty while the work was done. Resume that persona
 once — a resume keeps the conversation, a relaunch does not — with one instruction: re-emit the
-complete list in this final message, in the finding shape, nothing else. Then write what it returns to
-`<persona>.out.md`; the resumed turn's list replaces the pointer in place, so the audit trail holds the
-findings rather than a reference to them. If the resume also points backwards, persist the failure
-artifact and name the gap under `### Reviewers`.
+complete list in this final message, in the finding shape, nothing else. Then save what it returns
+(`save-out --resume`, below); the resumed turn's list replaces the pointer in place, so the audit
+trail holds the findings rather than a reference to them. If the resume also points backwards, persist
+the failure artifact and name the gap under `### Reviewers`.
+
+**Saving replies with `save-out`.** Personas still never write their own artifacts and the reply text is still the only thing the
+orchestrator receives. What `save-out` removes is the second write: the orchestrator no longer
+re-types each reply into `<persona>.out.md`. It pipes the reply to the tool, which stores the raw
+bytes and a provenance record beside them:
+
+```bash
+~/.agent/bin/crew-review-findings.py save-out --review-dir "$REVIEW_ROOT" --persona <persona> \
+  --harness <cursor|claude-code|codex> [--agent-id <id>] [--model <id>] [--resume] [--degraded] < <reply file>
+```
+
+- The source is a file the harness already holds for the persona's final message when it has one
+  (a Task or background-agent output file), so the reply is not emitted a second time; with none,
+  pass the reply on stdin. Never a digest or a hand-edited copy: `persist` refuses a condensed digest
+  and a reply whose hash no longer matches its record.
+- Record the agent id and model the harness reports; leave a flag out when it reports nothing (stored
+  as `null`, never guessed). `--resume` marks the one allowed re-emission of the same persona.
+- Fewer agents than lenses (one fork playing every lens, or two personas answered by one agent id)
+  is a degraded review: pass `--degraded` when you played the lens yourself. The review then opens
+  with `Degraded: 1 agent, N lenses` and its verdict is capped at `WARN`; `BLOCK` stays `BLOCK`.
+- A review directory without records (created before `save-out`) still persists; its report says
+  `provenance: absent (legacy)`. Tamper evidence applies to new reviews only.
 
 Every dispatch prompt therefore states the required shape and requires a flat numbered list of
 findings, each beginning with its

@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 
 from review_classify import ANCHOR, SEVERITY, without_fences
+from review_degraded import capped
 from review_vocabulary import CODE_MODES, verdict
 
 # One numbered finding's opening line: an ordinal, then the bracketed label and its optional score.
@@ -146,17 +147,17 @@ def plan_outcome(word: str, derived: str) -> str | None:
     return PLAN_VERDICTS[word]
 
 
-def expected_verdict(report: str, findings: list, mode: str) -> str | None:
+def expected_verdict(report: str, findings: list, mode: str, degraded: bool = False) -> str | None:
     """The verdict the report states, mapped onto `PASS`/`WARN`/`BLOCK`, or None when it states none.
 
-    Raises ValueError when the stated word is outside the mode's vocabulary, or when it contradicts
-    what the findings derive.
+    ValueError when the word is outside the mode's vocabulary or contradicts the findings; a
+    degraded review derives its `PASS` as `WARN`.
     """
     stated = stated_verdict(report)
     if stated is None:
         return None
     written, word = stated
-    derived = verdict(findings)
+    derived = capped(verdict(findings), degraded)
     if mode in CODE_MODES:
         if word not in CODE_VERDICTS:
             raise ValueError(
@@ -183,16 +184,17 @@ def expected_verdict(report: str, findings: list, mode: str) -> str | None:
             )
     if mapped is not None and mapped != derived:
         raise ValueError(
-            f"the report states Verdict: {written}, but its findings derive {derived}; "
+            f"the report states Verdict: {written}, but its findings derive {derived}"
+            f"{' (degraded review: capped at WARN)' if degraded else ''}; "
             "one of the two is wrong and neither can be trusted until they agree"
         )
     return mapped if mapped is not None else derived
 
 
-def check_report(report: str, findings: list, mode: str) -> None:
+def check_report(report: str, findings: list, mode: str, degraded: bool = False) -> None:
     """Raise ValueError naming the first disagreement between a report and the findings it cites."""
     emitted = [finding for finding in findings if finding.is_emitted()]
     problem = check_list(report, emitted)
     if problem:
         raise ValueError(problem)
-    expected_verdict(report, emitted, mode)
+    expected_verdict(report, emitted, mode, degraded)

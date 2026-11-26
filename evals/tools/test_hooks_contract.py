@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -71,6 +72,30 @@ BLOCKING = {
                  {"command": "git commit -m leak", "cwd": "secret"}],
         "allow": [{"command": "git commit -m ok", "cwd": "clean"},
                   {"command": "gh pr create --draft --repo example/upstream", "cwd": "clean"}],
+    },
+    # A fresh `.crew-worker.lock` denies; a stale one (older than 6 hours) and no lock allow. The
+    # `git -C` and leading `cd` forms resolve the tree they name, not the cwd.
+    "guard/worker-tree.sh": {
+        "shell": True,
+        "says": "ask the user before removing the lock",  # the denied agent cannot tell a live worker from a crashed one
+        "never_says": ("T-1", "lock remove"),  # no task id (the exemption) and no one-paste removal command
+        "deny": [{"command": "git checkout main", "cwd": "locked"},
+                 {"command": "git switch -c other", "cwd": "locked"},
+                 {"command": "git restore src/a.ts", "cwd": "locked"},
+                 {"command": "git reset --hard HEAD~1", "cwd": "locked"},
+                 {"command": "git -C {locked} checkout main", "cwd": "clean"},
+                 {"command": "cd {locked} && git switch main", "cwd": "clean"},
+                 {"command": "CREW_WORKER_TASK=T-2 git checkout main", "cwd": "locked"},
+                 {"command": "CREW_WORKER_TASK= git checkout main", "cwd": "locked"}],
+        "allow": [{"command": "CREW_WORKER_TASK=T-1 git checkout main", "cwd": "locked"},
+                  {"command": "export CREW_WORKER_TASK=T-1 && git switch -c next", "cwd": "locked"},
+                  {"command": "git status", "cwd": "locked"},
+                  {"command": "git reset --soft HEAD~1", "cwd": "locked"},
+                  {"command": 'git commit -m "git checkout main"', "cwd": "locked"},
+                  {"command": "git checkout main", "cwd": "stale"},
+                  {"command": "git checkout main", "cwd": "clean"},
+                  {"command": "git -C {clean} checkout main", "cwd": "locked"},
+                  {"command": "cd {clean} && git switch main", "cwd": "locked"}],
     },
     "check-write-boundary.sh": {
         "home": "real",
@@ -145,7 +170,13 @@ def fixture() -> tuple[Path, dict[str, Path]]:
         "clean": repository(home / "clean"),
         "secret": repository(home / "secret", "leak.txt", SECRET_LINE),
         "source": repository(home / "source", "tracked.txt", "one\n"),
+        "locked": repository(home / "locked"),
+        "stale": repository(home / "stale"),
     }
+    # The lock is `task=` and `started=<epoch>`; seven hours old is stale, a minute old is fresh.
+    for name, age in (("locked", 60), ("stale", 7 * 3600)):
+        (repos[name] / ".crew-worker.lock").write_text(
+            f"task=T-1\nstarted={int(time.time()) - age}\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repos["clean"]), "remote", "add", "upstream",
                     "https://example.test/upstream.git"], check=True)
     return home, repos
@@ -202,6 +233,10 @@ def split(case: dict, home: Path, repos: dict[str, Path]) -> tuple[dict, str]:
     """The tool-input fields, and the cwd the envelope reports, with `{tasks}` and `cwd` resolved."""
     tasks = str(home / ".agent" / "tasks")
     fields = {key: value.replace("{tasks}", tasks) for key, value in case.items() if key != "cwd"}
+    for key, value in fields.items():
+        for repo, path in repos.items():
+            value = value.replace("{" + repo + "}", str(path))
+        fields[key] = value
     return fields, str(repos[case.get("cwd", "clean")])
 
 
@@ -215,11 +250,18 @@ def deny_failures(name: str, spec: dict, home: Path, repos: dict[str, Path]) -> 
         if (code, out) != (2, "") or len(err.strip().splitlines()) != STDERR_LINES:
             failures.append(f"{name}: Claude deny expected exit 2, empty stdout, one stderr line; "
                             f"got exit {code} stdout={out!r} stderr={err!r} for {case}")
+        if spec.get("says") and spec["says"] not in err:
+            failures.append(f"{name}: the denial must name `{spec['says']}`; stderr={err!r}")
         cursor = json.dumps({"hook_event_name": cursor_event, "cwd": cwd, **fields})
         code, out, err = run(name, cursor, home)
         if (code, err, cursor_verdict(out)) != (0, "", "deny"):
             failures.append(f"{name}: Cursor deny expected exit 0 and a JSON deny; got exit {code} "
                             f"stdout={out!r} stderr={err!r} for {case}")
+        if spec.get("says") and spec["says"] not in out:
+            failures.append(f"{name}: the denial must name `{spec['says']}`; stdout={out!r}")
+        for text in spec.get("never_says", ()):
+            if text in out or text in err:
+                failures.append(f"{name}: the denial must not contain `{text}`; stdout={out!r} stderr={err!r}")
     return failures
 
 

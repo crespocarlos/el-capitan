@@ -22,7 +22,8 @@ def prior_review(args: argparse.Namespace) -> int:
     review_dir = args.review_dir.resolve()
     previous = manifest.prior_review_dir(review_dir)
     current = manifest.manifest(args.repo.resolve(), args.paths)
-    manifest.write(review_dir, current)
+    kept = (manifest.read(review_dir) or {}).get("personas")
+    manifest.write(review_dir, {**current, **({"personas": kept} if kept else {})})
     unchanged = set()
     if previous is not None:
         earlier = manifest.read(previous)

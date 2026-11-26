@@ -15,6 +15,7 @@ for once per persona. Nothing is filtered to buy that: each package carries ever
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from assemble_common import common, guidance_block
@@ -25,6 +26,25 @@ from assemble_personas import PERSONAS
 from assemble_prior import section as prior_section
 
 DIFF_HEADING = "\n---\n\n# Diff (package.diff — every non-generated hunk)\n\n```diff\n"
+_TASK_TOOLS = Path(__file__).resolve().parents[1] / "task"
+if str(_TASK_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_TASK_TOOLS))
+
+from task_report_check import capped  # noqa: E402
+
+
+def unverified_block(report: str | None) -> str:
+    """The builder's unverified claims from REPORT.md (config key `report`); empty without them.
+
+    A report from before the section existed, or an unreadable one, adds nothing: the package is
+    the same as it was.
+    """
+    try:
+        text = Path(report).read_text(encoding="utf-8") if report else ""
+    except OSError:
+        return ""
+    lines = capped(text, 20)
+    return "\n".join(lines) + "\n" if lines else ""
 
 
 def tail(persona: str, review_dir: Path, config: dict) -> tuple[list[str], dict]:
@@ -33,6 +53,9 @@ def tail(persona: str, review_dir: Path, config: dict) -> tuple[list[str], dict]
     report: dict = {"whole": [], "guidance": {}}
     if config.get("size_gate"):
         parts += ["\n---\n\n# Size gate\n\n", config["size_gate"].rstrip() + "\n"]
+    claims = unverified_block(config.get("report"))
+    if claims:
+        parts += ["\n---\n\n## Builder's unverified claims (from REPORT.md)\n\n", claims]
     spec_path = review_dir / f"spec.{persona}.md"
     if spec_path.is_file():
         parts += ["\n---\n\n## Spec\n\n", spec_path.read_text(encoding="utf-8"), "\n"]
@@ -80,14 +103,20 @@ def extras(persona: str, config: dict, diff: str,
 
 
 def build(persona: str, review_dir: Path, config: dict, shared: str,
-          hunks_json: dict | None) -> tuple[str, dict]:
+          hunks_json: dict | None, sliced: dict | None = None) -> tuple[str, dict]:
     """One persona's package, plus a report of what was narrowed and what elided.
+
+    `sliced` (`assemble_slice.plan` entry plus its `text`) narrows the diff shown to this lens only.
 
     The diff is read once and passed on: the prompt tier needs the same bytes to decide which lines
     the package already quotes, and a second read is a second chance to read a different file.
     """
     diff = (review_dir / "package.diff").read_text(encoding="utf-8")
-    parts = [shared, DIFF_HEADING, diff, "\n```\n"]
+    shown = diff if sliced is None else sliced["text"]
+    heading = DIFF_HEADING if sliced is None else DIFF_HEADING.replace(
+        "every non-generated hunk", f"sliced to {sliced['files']} of {sliced['of']} files for this lens; "
+        "the rest are with the lenses that read the whole diff")
+    parts = [shared, heading, shown, "\n```\n"]
     tail_parts, report = tail(persona, review_dir, config)
     parts += tail_parts
     parts += extras(persona, config, diff, hunks_json, report)

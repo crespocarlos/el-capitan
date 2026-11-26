@@ -65,8 +65,13 @@ def normalize(args: argparse.Namespace) -> int:
     """Deduplicate exact fingerprints and, unless `--lenient`, apply the per-finding gates."""
     from review_layers import check_hunk_refs, hunk_ids
 
+    from review_anchors import mark_outside, strip_markers
+
     findings = read_findings(args.input)
+    strip_markers(findings)
     strict = strict_mode(args)
+    if strict and args.repo and args.files:
+        mark_outside(findings, args.files, args.repo, args.head)
     if strict and args.hunks:
         # Validate every candidate before deduplication: otherwise a duplicate's malformed
         # attribution is silently discarded, or its valid hunk never reaches the coverage report.

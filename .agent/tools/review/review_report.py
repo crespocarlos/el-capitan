@@ -26,7 +26,9 @@ from review_findings import (
     read_findings,
     strict_mode,
 )
+from review_degraded import with_banner
 from review_persist_gates import check_assessments, check_personas_present, strict_gates
+from review_provenance import Trail, check as check_provenance
 from review_render import footer
 from review_report_gate import check_report
 from review_report_sections import GENERATED_SECTIONS, assessment_section, heading_lines
@@ -80,7 +82,7 @@ def append_deferred(owner: Path, rows: list[Finding]) -> dict[str, int]:
 
 def assemble_report(args: argparse.Namespace, report: str, coverage_section: str,
                     coverage_gap: str, findings: list[Finding], head: str,
-                    assessments_section: str = "") -> str:
+                    assessments_section: str = "", degraded: bool = False) -> str:
     """The report body with its generated sections and the decision footer, appended in order.
 
     Every generated section arrives as a parameter, computed by `persist`, so this function's
@@ -115,25 +117,32 @@ def assemble_report(args: argparse.Namespace, report: str, coverage_section: str
         report = report.rstrip() + "\n\n### Files reviewed\n" + "".join(
             f"- `{name}`\n" for name in args.files)
     step = footer(findings, head, args.mode, args.next,
-                  derived=bool(args.findings))
+                  derived=bool(args.findings), degraded=degraded)
     return report.rstrip() + "\n\n" + step + "\n"
 
+
+def persona_gates(args: argparse.Namespace) -> tuple[str, str, Trail]:
+    """Run the persona gates; `(body with any degraded banner, generated sections, trail)`."""
+    check_personas_present(args)
+    trail = check_provenance(args.review_dir, args.personas)
+    sections = "\n".join(part for part in (
+        assessment_section(check_assessments(args.review_dir, args.personas)), trail.section) if part)
+    body = args.report.read_text(encoding="utf-8")
+    return (with_banner(body, trail.degraded) if trail.degraded else body), sections, trail
 
 
 def persist(args: argparse.Namespace) -> int:
     """Write the report, the coverage section, and the deferred findings, after every gate."""
     owner = validate_review_dir(args)
     findings = read_findings(args.findings) if args.findings else []
-    check_personas_present(args)
-    assessments_section = assessment_section(check_assessments(args.review_dir, args.personas))
+    body, assessments_section, trail = persona_gates(args)
     head = reviewed_head(args)
-    body = args.report.read_text(encoding="utf-8")
     coverage_section = coverage_gap = ""
     strict = strict_mode(args)
     if strict:
         coverage_section, coverage_gap = strict_gates(args, owner, findings)
     report = assemble_report(args, body, coverage_section, coverage_gap, findings, head,
-                             assessments_section)
+                             assessments_section, bool(trail.degraded))
     if strict:
         # Per-finding rules always; the path-scoped evidence gate only when a path set exists. A spec
         # or idea review passes no paths, and gating the whole check on `--files` silently skipped
@@ -144,7 +153,7 @@ def persist(args: argparse.Namespace) -> int:
     if args.findings:
         # The body, not the assembled report: the footer states the derived verdict, so comparing it
         # would let any contradiction in the model's own list pass its own gate.
-        check_report(body, findings, args.mode)
+        check_report(body, findings, args.mode, bool(trail.degraded))
     rows = [f for f in findings if f.disposition in records.RECORDED_DISPOSITIONS]
     args.review_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(args.review_dir / "REVIEW.md", report)
@@ -165,6 +174,7 @@ def persist(args: argparse.Namespace) -> int:
                       "deferred": sum(1 for f in rows if f.disposition == "defer"),
                       "dropped": sum(1 for f in rows if f.disposition == "dropped"),
                       "appended": counts.get("DEFERRED.md", 0) + counts.get("DROPPED.md", 0),
+                      **({"degraded": trail.degraded} if trail.degraded else {}),
                       **({"comments": written[1]} if len(written) > 1 else {}),
                       **({"comments_missing": True} if missing_comments else {})}))
     return 0

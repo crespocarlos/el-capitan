@@ -110,6 +110,13 @@ If `$TASK_DIR/BASELINE.diff` exists:
 Surface all warnings before proposing the commit message. The user decides whether to proceed,
 remove the files from staging, or update the spec.
 
+### Step 2c: Gates
+
+Run the repository's gates as its CI does: `~/.agent/bin/crew-progress.py verify --task-dir
+"$TASK_DIR"` (passes on an unchanged tree are cached; no task: `--out /tmp/gates.json`). It reads the
+commands from the base branch, never the PR head, and prints `<name> exit=<N>`. Act on the outcome
+per `~/.cursor/skills/crew-implement/references/verify-outcomes.md`.
+
 ### Step 3: Commit
 
 Generate the message. Then:
@@ -120,6 +127,7 @@ following are true, commit immediately:
 - Message is ≤72 characters
 - No out-of-scope warnings from Step 2b
 - Type and scope were unambiguously derivable from the diff/SPEC/REVIEW
+- verify exited 0 (Step 2c)
 
 ```bash
 git commit -m "<the message>"
@@ -132,6 +140,7 @@ Show the committed message after: `Committed: <hash> — <message>`
 - Out-of-scope files detected (Step 2b warnings)
 - Message would exceed 72 characters
 - The diff touches an unusual combination of areas with no clear single scope
+- verify exited nonzero (Step 2c): act on it per the verify outcomes before any commit
 
 In pause mode, show the proposed message and ask: "Look good?" before committing.
 

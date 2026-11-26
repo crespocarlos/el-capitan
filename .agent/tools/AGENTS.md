@@ -63,6 +63,56 @@ A new command needs a `tools.json` entry with `kind: command`, `category`, `owne
 from the manifest rather than walking directories, so a file that is not in the catalog does not
 install — and a module cannot leak into the command surface.
 
+## Features that live inside existing commands
+
+A feature that fits an existing command is a subcommand or a flag plus modules, never a new top-level
+command (a command costs always-on router budget). What the hardening work added this way:
+
+- `crew-progress.py verify|lock|blocked` (`task_verify*.py`, `task_lock.py`): gates from the base
+  branch's CI workflow, else the `AGENTS.md` `gates` block; a target repo's optional `gates.json` only adds gates (it
+  never changes a CI one, a clash warns) and stands alone only as the sole source. A release
+  workflow, a job with `if:` and a publish command are never mirrored (`task_verify_safety.py`). `lock` writes and
+  removes `.crew-worker.lock`, which `guard/worker-tree.sh` reads (the builder is exempt through
+  `CREW_WORKER_TASK`); `worktree pref|record` (`task_worktree_pref.py`) resolves and records the
+  worktree choice; `worktree check <tree>` (`task_worktree_check.py`) answers `ok`, `on-feature-branch`
+  (exit 4) or `dirty` (exit 5) before Step 4 cuts a branch.
+- `crew-ls.py` shows `landed: yes|no|unknown` (`ls_landed.py`, `ls_bases.py`), the `BLOCKED:` line,
+  `--cost` and `--watch [--interval N]` (`ls_data.py`: the gathering a future TUI imports too);
+  `crew-metric.py` validates `stage_start`, `stage_end` and `tokens_reported` (`task_cost.py`).
+- `crew-review-findings.py save-out|consolidate` and `normalize --repo` (`review_save_out.py`,
+  `review_provenance.py`, `review_consolidate.py`, `review_consolidation_report.py`,
+  `review_anchors.py`); `crew-assemble-packages.py` records skips and optional slices
+  (`assemble_run.py`, `assemble_applicability.py`, `assemble_slice.py`).
+- New prose for these stages lives in `references/` files linked in one line (`stage-rules.md`,
+  `worker-dispatch.md`): the prompt files are within bytes of `MAX_PROMPT_FILE_BYTES`.
+- `.github/workflows/validate.yml` lists suites by hand: a new `evals/**/test_*.py` is added there in
+  the same change, or CI never runs it.
+
+## Settings a repository declares in its AGENTS.md
+
+el-capitan is project-agnostic, so nothing about a target repo is guessed from its job names or
+branch names: the repo opts in with a plain line in the `AGENTS.md` at its root. Every setting is
+optional and the absence of each has one default.
+
+| Setting | Format | Default when absent |
+|---|---|---|
+| `gates` | a fenced block, one `<name>: <command>` per line, `env: NAME=value` for shared variables | CI workflow steps are read first; with neither, `verify` says NOT VERIFIED |
+| `landing_bases` | `landing_bases: ^\d+\.\d+$ ^\d+\.x$` (space separated), or a fenced `landing_bases` block, one pattern per line | the default branch is the only normal base |
+| `worktree` | `worktree: true` | the worker branches off the default branch in the current checkout |
+| `e2e` | `e2e: npm run e2e` (the script `crew-e2e` runs) | no e2e run; job names are never guessed |
+
+- `landing_bases` patterns are regular expressions that must match the WHOLE branch name (`9.x`
+  matches `^\d+\.x$`, `feat/9.x-fix` does not). A merged PR into a matching base is `landed: yes
+  (backport to <base>)` in `crew ls`, and `crew open pr` opens against it without the stack message.
+  Any other non-default base is still `no`.
+- `verify` pins Node from the first of `.nvmrc`, `.node-version`, `.tool-versions` (`nodejs` line)
+  and `package.json` `engines.node`; with none it prints "no Node pin found, using PATH" and leaves
+  the PATH alone. CI it cannot read (`.buildkite/`, `.circleci/`, ...) is named ("CI not readable
+  here (buildkite)") and skipped; the nearest `AGENTS.md` of each touched path may describe checks in
+  prose, which `verify` prints as "repo-declared check, run this: <line>" and never runs.
+- The worktree question is asked at most once per repo (see `worker-dispatch.md`): a recorded
+  choice lives in `<git dir>/crew-worktree` and in a `WORKTREE:` line of the task's PROGRESS.md.
+
 ## Naming
 
 - **Commands**: `crew-<kebab-case>.py`, for example `crew-review-findings.py`. The `crew-` prefix is
@@ -131,13 +181,14 @@ Rules that the structural gate enforces:
 
 ## Exit codes
 
-The contract is uniform and callers depend on it:
+The contract is uniform, with the exceptions in its last row, and callers depend on it:
 
 | Code | Meaning |
 |---|---|
 | `0` | Success, including "nothing to do" |
 | `1` | The command ran and found a problem (lint finding, failed check) |
 | `2` | Invalid invocation, or the infrastructure the command needs is unavailable |
+| exceptions | `crew-progress.py verify`: `2` and `3` NOT VERIFIED, `4` still running (`--wait --wait-timeout`); `crew-progress.py worktree check`: `4` on-feature-branch, `5` dirty |
 
 A command that cannot proceed says why on stderr and exits `2`. Silence with `0` is reserved for a
 genuinely empty result, and a command that reports "nothing found" must be distinguishable from one

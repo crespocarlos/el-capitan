@@ -508,6 +508,78 @@
       "smoke": "imported by crew-ls.py"
     },
     {
+      "name": "ls_landed.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "ls_bases.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by ls_landed.py (landing_bases setting)",
+      "smoke": "imported by ls_landed.py"
+    },
+    {
+      "name": "ls_data.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py and task_report.py (listing data and the --watch loop)",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_worktree_check.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-progress.py (worktree check)",
+      "smoke": "imported by crew-progress.py"
+    },
+    {
+      "name": "task_worktree_pref.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-progress.py (worktree subcommand)",
+      "smoke": "imported by crew-progress.py"
+    },
+    {
+      "name": "task_node_pin.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify_resolve.py",
+      "smoke": "imported by task_verify_resolve.py"
+    },
+    {
+      "name": "task_gate_prose.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify_resolve.py",
+      "smoke": "imported by task_verify_resolve.py"
+    },
+    {
+      "name": "task_verify_resolve.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify.py",
+      "smoke": "imported by task_verify.py"
+    },
+    {
       "name": "task_gates.py",
       "dir": "task",
       "kind": "module",
@@ -515,6 +587,87 @@
       "owner": "crew-orchestrator",
       "help": "imported by crew-ls.py",
       "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_verify.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-progress.py (verify subcommand)",
+      "smoke": "imported by crew-progress.py"
+    },
+    {
+      "name": "task_verify_env.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify.py",
+      "smoke": "imported by task_verify.py"
+    },
+    {
+      "name": "task_verify_sources.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify.py",
+      "smoke": "imported by task_verify.py"
+    },
+    {
+      "name": "task_verify_safety.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify_sources.py (what is never mirrored)",
+      "smoke": "imported by task_verify_sources.py"
+    },
+    {
+      "name": "task_verify_yaml.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify_sources.py",
+      "smoke": "imported by task_verify_sources.py"
+    },
+    {
+      "name": "task_verify_wait.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify.py",
+      "smoke": "imported by task_verify.py"
+    },
+    {
+      "name": "task_verify_notes.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by task_verify.py",
+      "smoke": "imported by task_verify.py"
+    },
+    {
+      "name": "task_report_check.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-progress.py (report-check subcommand)",
+      "smoke": "imported by crew-progress.py"
+    },
+    {
+      "name": "task_lock.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-progress.py (lock and blocked subcommands) and task_report.py",
+      "smoke": "imported by crew-progress.py"
     },
     {
       "name": "task_normalize.py",
@@ -1036,6 +1189,96 @@
       "category": "review",
       "owner": "crew-reviewer",
       "help": "imported by review_report.py: the generated section headings, their guard, and the assessment tally",
+      "smoke": "imported by review_report.py"
+    },
+    {
+      "name": "review_save_out.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py: the save-out subcommand (raw reply plus provenance record)",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_consolidate.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py: the consolidate subcommand (group candidates, draft candidates.json)",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_consolidation_report.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_consolidate.py: report.md rendered from consolidation.json",
+      "smoke": "imported by review_consolidate.py"
+    },
+    {
+      "name": "review_anchors.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_findings.py: tracked-file anchors outside the diff (normalize --repo)",
+      "smoke": "imported by review_findings.py"
+    },
+    {
+      "name": "assemble_applicability.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by assemble_run.py: recorded persona skips, the size report, manifest personas record",
+      "smoke": "imported by assemble_run.py"
+    },
+    {
+      "name": "assemble_slice.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by assemble_run.py: product-flow and code-quality slicing with closure and a coverage gate",
+      "smoke": "imported by assemble_run.py"
+    },
+    {
+      "name": "assemble_run.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-assemble-packages.py: one assembly run (decide, slice, build, write, report)",
+      "smoke": "imported by crew-assemble-packages.py"
+    },
+    {
+      "name": "task_cost.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-metric.py and crew-ls.py: stage cost keys and the cost line",
+      "smoke": "imported by crew-metric.py"
+    },
+    {
+      "name": "review_provenance.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_report.py: hash verification of saved replies and the agents-versus-lenses count",
+      "smoke": "imported by review_report.py"
+    },
+    {
+      "name": "review_degraded.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_report.py, review_render.py and review_report_gate.py: the degraded banner and the WARN cap",
       "smoke": "imported by review_report.py"
     },
     {

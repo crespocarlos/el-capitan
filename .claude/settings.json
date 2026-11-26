@@ -71,6 +71,10 @@
           },
           {
             "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/guard/worker-tree.sh\""
+          },
+          {
+            "type": "command",
             "command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"",
             "onFailure": "block"
           }

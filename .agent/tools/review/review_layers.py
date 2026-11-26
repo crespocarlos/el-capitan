@@ -44,7 +44,7 @@ def check_hunk_refs(findings: list[Finding], known: list[str]) -> None:
         unknown = [ref for ref in refs if ref not in known_set]
         if unknown:
             raise ValueError(f"finding {f.title!r} cites unknown hunk(s): {', '.join(unknown)}")
-        if f.label in {"blocking", "attention"} and not refs:
+        if f.label in {"blocking", "attention"} and not refs and f.extra.get("anchor") != "non-hunk":
             raise ValueError(
                 f"{f.label} finding {f.title!r} cites no hunk; name the hunk(s) whose change "
                 "causes it, or route it to defer"
