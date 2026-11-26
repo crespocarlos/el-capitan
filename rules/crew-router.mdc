@@ -44,26 +44,25 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew prune` | `~/.agent/bin/crew-prune.py` |
 | `crew inbox` | `~/.agent/bin/crew-inbox.py` inline; `--drain` clears it |
 
-**This table is authoritative.** Do not override it with judgment calls.
+**This table is authoritative**: no judgment-call overrides.
 
 ## Dispatch
 
-`crew spec` and `crew review` are **inline only**: never hand either to an agent tool, because each
+`crew spec` and `crew review` are **inline only**: never hand either to an agent tool: each
 dispatches its explorers, critics, or personas from the main session. Everything else runs inline
-too, except the two worker subagents — `crew implement` → `crew-builder`, `crew resolve PR` →
-`crew-pr-resolver` — which run as `crew-builder` / `crew-pr-resolver` subagents.
+too, bar two background subagents: `crew implement` → `crew-builder`; `crew resolve PR` → read-only
+`crew-pr-resolver`, given the worktree `crew-worktree.py <branch>` prints; on its plan (its final
+message), read `crew-pr-resolver.md` from Step 6 and `references/acting-on-threads.md`; follow them.
 
 ### Dispatch reliability
 
-- If native persona dispatch is unavailable, use the documented degraded fallback; never move an
-  orchestrator into a subagent.
-- Preserve model inheritance: do not set a model on agent frontmatter.
-- Launch `crew-builder` and `crew-pr-resolver` asynchronously in Cursor, so a ~30-second synchronous
-  turn limit cannot kill a healthy run.
-- Pass the task directory and worktree paths in the launch prompt, and read the durable report
-  (`SPEC.md`, `REPORT.md`, or the resolver result) after completion.
-- Retry once, asynchronously, when a dispatch ends without its durable report; never restart a task
-  that already produced one.
+- No native persona dispatch: use the documented degraded fallback, never an orchestrator subagent.
+- Preserve model inheritance: no `model` in agent frontmatter.
+- Launch both asynchronously in Cursor: a ~30-second synchronous turn limit kills healthy runs.
+- Pass task directory and worktree paths in the launch prompt; read the durable report
+  (`SPEC.md`, `REPORT.md`, the plan) once it ends.
+- Retry once, asynchronously, when a dispatch ends without its durable report (a resolver reply
+  without the Step 6 table has none); never restart a task that already produced one.
 
 ## Add-ons
 
@@ -74,7 +73,6 @@ deploy`.
 
 ## Invariants
 
-- Explicit routing only — the `crew` prefix is required.
 - `crew implement` always follows crew-builder's protocol: through the subagent or by following the
   protocol directly, never ad-hoc.
 - `crew review` is pre-commit in `build`, advisory after the push in `respond`. Mid-iteration, ask

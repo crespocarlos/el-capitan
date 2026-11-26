@@ -24,7 +24,7 @@ from memory_commit import (
 from memory_frontmatter import parse_unit, render_unit
 from memory_index import ensure_store, refresh, store_lock, write_indexes_for_scopes
 from memory_inbox import imported_path
-from memory_paths import MemoryError, canonical_scope, repo_key, slug
+from memory_paths import MemoryStoreError, canonical_scope, repo_key, slug
 
 
 def write_units(writes: list[tuple[Path, str]]) -> list[tuple[Path, str | None]]:
@@ -103,7 +103,7 @@ def ingest(args: argparse.Namespace) -> int:
         try:
             backups = write_units(writes)
             git_commit(f"mem: ingest {args.source} {len(writes)} units")
-        except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryError) as error:
+        except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryStoreError) as error:
             restore_units(backups)
             print(str(error), file=sys.stderr)
             return 2

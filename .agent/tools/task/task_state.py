@@ -9,7 +9,6 @@ reader.
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -23,6 +22,9 @@ from pathlib import Path
 for _dir in (Path(__file__).resolve().parent,):
     if (_dir / "task_status.py").is_file() and str(_dir) not in sys.path:
         sys.path.insert(0, str(_dir))
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.files import atomic_write  # noqa: E402
 from task_review import review_file  # noqa: E402
 from task_status import STATUS, StatusError, head as state_head, read_status, token  # noqa: E402,F401  re-exported
 
@@ -173,7 +175,6 @@ def decide(r: TaskState, rules: dict) -> dict | None:
 def set_status(r: TaskState, value: str, transition: str) -> bool:
     """Write the new `## Status` value, refusing when the spec changed since it was read."""
     spec = r.task / "SPEC.md"
-    tmp = spec.with_name("SPEC.md.tmp")
     try:
         current = spec.read_text(encoding="utf-8")
         if current != r.text:
@@ -181,10 +182,8 @@ def set_status(r: TaskState, value: str, transition: str) -> bool:
         updated, count = STATUS.subn(lambda m: m.group(1) + value, current, count=1)
         if count != 1:
             raise OSError("no Status value found")
-        tmp.write_text(updated, encoding="utf-8")
-        os.replace(tmp, spec)
+        atomic_write(spec, updated)
     except OSError as error:
-        tmp.unlink(missing_ok=True)
         print(f"error: {name(r)}: {error}", file=sys.stderr)
         return False
     logged = subprocess.run([sys.executable, str(LOG_PROGRESS), str(r.task), transition],

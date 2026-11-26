@@ -8,7 +8,6 @@ which is what makes it safe to run from a session-start hook or by hand.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -18,6 +17,7 @@ if str(_TOOLS_ROOT) not in sys.path:
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from lib.files import atomic_write  # noqa: E402
 from task_status import STATUS, StatusError, canonical, read_status  # noqa: E402
 
 
@@ -75,12 +75,9 @@ def normalize_all(tasks_dir: Path, apply: bool, out=None) -> int:
             continue
         before = read_status(spec) or ""
         if apply:
-            temporary = spec.with_name("SPEC.md.tmp")
             try:
-                temporary.write_text(updated, encoding="utf-8")
-                os.replace(temporary, spec)
+                atomic_write(spec, updated)
             except OSError as error:
-                temporary.unlink(missing_ok=True)
                 failed += 1
                 print(f"error: {spec}: {error}", file=sys.stderr)
                 continue

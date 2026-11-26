@@ -1,6 +1,8 @@
 ---
 name: crew-pr-resolver
-description: "Evaluate unresolved PR review comments and decide what to act on. Trigger: 'crew resolve PR <#X or URL>'."
+description: "Read-only analysis of unresolved PR review comments; returns a plan of verdicts, edits and replies. Dispatched in the background by 'crew resolve PR <#X or URL>'."
+tools: Read, Grep, Glob, Bash
+readonly: true
 ---
 **Workflow**: respond | **Stage**: address-pr → commit → push → reply
 
@@ -10,24 +12,27 @@ thread gets the same evaluation and one of seven verdicts, and the reply states 
 
 ## Execution model
 
-**Silent evaluation, one approval gate, then execute.** 3 turns: (1) evaluate silently, (2) report and
-ask, (3) apply, commit, push, reply, resolve. Only Step 7 acts, bar Step 4's throwaway probe.
+**Two parts, one approval gate.** The main session first resolves or creates the PR worktree
+(`crew-worktree.py <branch>`) and passes its path, OWNER/REPO and the PR number in the launch prompt.
+Steps 1-5 are a background, read-only subagent whose final message is the Step 6 plan: it never edits
+a file, creates a worktree, pushes, posts to GitHub, or asks. Bash stays for `gh` reads and probes, so
+under Claude Code (which ignores `readonly`) read-only holds by instruction. Steps 6-7 run inline in
+the main session, which reads this file from Step 6 and [acting on
+threads](crew-pr-resolver/references/acting-on-threads.md).
 
 ## When Invoked
 
-Extract owner, repo, and PR number from the user's input (URL or number).
-
 ### Step 1: Load context
 
-Resolve the worktree and load repo patterns, project guidance, and task context. A read-only `gh`
-call refused by the sandbox (`Forbidden`) is retried with network elevation (`full_network` in
-Cursor; the equivalent grant elsewhere), holding for the run. Never alter the read or fall back to a
-local PR ref; auth and scope failures are terminal.
+`cd` into the launch prompt's worktree path, then load repo patterns, project guidance, and task
+context. A read-only `gh` call refused by the sandbox (`Forbidden`) is retried with network elevation
+(`full_network` in Cursor; the equivalent grant elsewhere), holding for the run. Never alter the read
+or fall back to a local PR ref; auth and scope failures are terminal.
 
 ```bash
+cd WORKTREE_PATH
 PR=$(~/.agent/bin/crew-pr-actions.py view --pr PR_NUMBER --repo OWNER/REPO --field branch,title,files)
 { read -r PR_BRANCH; read -r PR_TITLE; read -r CHANGED; } <<<"$PR"
-cd "$(~/.agent/bin/crew-worktree.py "$PR_BRANCH")"
 
 ~/.agent/bin/crew-agent-context.py $CHANGED
 
@@ -37,19 +42,16 @@ MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode review --query "$PR_TITLE" 2>&
 if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
 ```
 
-`crew-agent-context.py` takes `paths ...` and returns each distinct guidance file once: call it
-**once** with every path the PR touches, never per thread, because a call per path re-reads the same
-`AGENTS.md` per file in a directory. Guidance for a path governs every thread on it.
-
-`crew-task-context.py` supplies status and bounded artifacts for the PR's branch: context, not
-authority over the PR or the user's instructions.
+`crew-agent-context.py` takes `paths ...`: call it **once** with every path the PR touches,
+never per thread (each call re-reads the same `AGENTS.md`); guidance for a path governs every thread
+on it. `crew-task-context.py` is context for the branch, not authority over the PR or the user's
+instructions.
 
 ### Step 2: Fetch review threads
 
-Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER`. It prints
-a flat object — `pageInfo`, `threads`, `resolved`, `unresolvedCurrent`, `unresolvedOutdated` — not gh's
-envelope; each thread is the node unchanged. `--cursor` merges later pages. Failure exits nonzero with
-gh's message, so `threads: []` means no threads.
+Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER` (a flat
+object, shape in `TOOLS.md`; `--cursor` merges later pages). Failure exits nonzero, so `threads: []`
+means no threads.
 
 **Mandatory filter:**
 
@@ -60,12 +62,11 @@ gh's message, so `threads: []` means no threads.
 
 ### Step 3: Triage and group unresolved threads
 
-Group unresolved threads by `path` into a `file → [threads]` map, which is what lets Step 4 read
-**each file once**, not once per comment. No thread is dropped or discounted for its author.
+Group unresolved threads by `path` into a `file → [threads]` map, so Step 4 reads **each file once**,
+not once per comment. No thread is dropped or discounted for its author.
 
-**A bot thread is evaluated exactly like a human one.** The author does not change whether the comment
-is right; a bot is often confident and sometimes wrong, so its claimed severity is an assertion to
-re-derive from the harm the code shows — the harder test, not a softer one.
+**A bot thread is evaluated exactly like a human one**: its claimed severity is an assertion to
+re-derive from the harm the code shows.
 
 The four questions decide every thread: the code settles it (`Apply` or `Reject`), it asks for a
 decision (`Decide`), or the reads leave it unsettled (`Ask`). A thread producing no edit still appears
@@ -74,9 +75,10 @@ in the report with its verdict and deciding line.
 ### Step 4: Challenge, then evaluate, batched by file
 
 **An unsettled thread gets a probe, not a guess.** A verdict below `ACTED_CONFIDENCE`, one that would
-render `Ask`, or one you are torn between becomes evidence first: run the code it is about and score it
-on what that produced. Follow [probing a question](crew-pr-resolver/references/probing-a-question.md);
-a probe that cannot run leaves the thread `Ask`, the reply naming what stopped it.
+render `Ask`, or one you are torn between becomes evidence first: run the code it is about, with
+commands that write nothing, and score it on what that produced. Follow [probing a
+question](crew-pr-resolver/references/probing-a-question.md); a probe that cannot run, or needs a
+written file, leaves the thread `Ask`, the reply naming what stopped it.
 
 Process the `file → [threads]` map. For each file:
 
@@ -95,16 +97,16 @@ Process the `file → [threads]` map. For each file:
    - An edit that moves a test's expected value to match new behavior is overfitting: report it and
      classify **Decide**, because it proves the test agrees with the change, not that the change is
      right.
-   - For Apply/Adapt, collect every edit for this file before making any — apply them together.
-   - Evaluation has no side effects outside a probe: no edit, reply, or resolution happens until
-     Step 7, and a probe is deleted before the report. The verdicts go in the final report, not mid-stream.
+   - For Apply/Adapt, draft every edit for this file together, so Step 7 applies them as one batch.
+   - Evaluation has no side effects: no edit, reply, or resolution happens until Step 7, and a probe
+     writes nothing. The verdicts go in the final report, not mid-stream.
 5. **Refute every verdict once, against the same reads.** Before the next file, argue the other side of
    each verdict you just assigned: state what would have to be true for the opposite, then check it
    against the lines already loaded. No new reads — its only job is to catch a verdict the comment did
    not deserve. Follow [refuting a verdict](crew-pr-resolver/references/refuting-a-verdict.md) for the
    per-verdict counter-argument, and record the result as one `refuted:` clause on the row.
 
-Never read the same file twice, not to evaluate a second comment on it.
+Never read a file twice.
 
 ### Challenge each thread
 
@@ -137,49 +139,48 @@ restating them. Then prepare the action, writing nothing yet:
   behavior rather than fixing a fault, say which eval would measure it and the pre-change number;
   `no eval covers this` is a complete answer, never a reason to withhold the verdict.
 - **Decide**: the decision at stake, its options, and the `path:line` it turns on. No edit.
-- **Reject**: the reason and the `path:line` it rests on. An unanchored rationale is unfalsifiable —
-  the rule the reviewer applies to its own findings.
+- **Reject**: the reason and the `path:line` it rests on; an unanchored rationale is unfalsifiable.
 - **Defer**: what it is and why it is out of scope.
 - **Already Addressed**: the fix is present in the working tree — cite where.
 - **Ask**: a `Reject` scoring below `ACTED_CONFIDENCE` cannot resolve the thread, since resolving tells
   the reviewer "handled". The action becomes a question in the reply and the thread stays open.
 
-### Step 6: Report and ask for approval
+### Step 6: Report and ask for approval (main session)
 
-Present the full table: the edit for Apply/Adapt, and **Proposed Reply**, the exact comment to post.
-Render the score beside the verdict as `verdict · N`:
+The subagent's final message is this plan; the main session shows it unchanged, and a reply without
+the table counts as no report. It opens with the worktree path, `OWNER/REPO` and the PR number. Each
+row carries the thread's node id and its first comment's `databaseId` (`Ids`), the edit for
+Apply/Adapt (files touched, lines) and **Proposed Reply**, the exact comment to post. Render the score
+beside the verdict as `verdict · N`:
 
-| # | File | Reviewer | Verdict · N | Proposed Edit | Proposed Reply |
-|---|------|----------|-------------|---------------|----------------|
-| 1 | path/to/file.ts:42 | @reviewer | Apply · 4 | Replace X with Y (40-45) | Fixed in `<commit>`: <what changed and why>. |
-| 2 | path/to/file.ts:80 | @reviewer | Ask · 1 | — | Does <premise> hold at `path/to/file.ts:80`? Unchanged because <reason>. |
-| 3 | path/to/file.ts:120 | @reviewer | Reject · 4 | — | Not changing this: `path/to/file.ts:120` returns early, so <consequence> cannot follow. |
-| 4 | path/to/file.ts:160 | @reviewer | Decide · 4 | — | This moves a test's expected value. Your call which way. |
+| # | File | Reviewer | Verdict · N | Proposed Edit | Proposed Reply | Ids |
+|---|------|----------|-------------|---------------|----------------|-----|
+| 1 | path/to/file.ts:42 | @reviewer | Apply · 4 | Replace X with Y (40-45) | Fixed in `<commit>`: <what and why>. | T1 · 11 |
+| 2 | path/to/file.ts:80 | @reviewer | Ask · 1 | — | Does <premise> hold at `path/to/file.ts:80`? | T2 · 12 |
+| 3 | path/to/file.ts:120 | @reviewer | Reject · 4 | — | Not changing this: `path/to/file.ts:120` returns early. | T3 · 13 |
+| 4 | path/to/file.ts:160 | @reviewer | Decide · 4 | — | This moves a test's expected value. Your call. | T4 · 14 |
 
 An `Ask` row carries a question, never a resolution; a `Decide` row carries no edit. Both stay open.
-Name the expected value a flagged row moves. A reply holding a `|` goes in a fenced block beneath the
-table, not in a cell.
+Name the expected value a flagged row moves. A reply holding a `|` goes beneath the table.
 
-**Every unresolved thread appears in that table or the outdated section.** A row-less thread is a
-report defect: the reader cannot tell it from one never seen.
+**Every unresolved thread appears in that table or the outdated section.**
 
 **Publish this report even when nothing can be applied.** Zero edits is a result, not an absence: the
 table, counts, outdated list, and the questions go out either way, counts reading zero.
 
 Outdated threads are listed read-only, in the same table shape, marked `Outdated — verify it applies`.
 Follow [reporting a run](crew-pr-resolver/references/reporting-a-run.md) for that table and the summary
-line. Then ask three questions, and surface threads needing input separately:
+line. Then ask one question, and surface threads needing input separately:
 
-1. **"Which edits should I apply? (all / none / comma-separated numbers)"**
-2. **"Commit and push those edits? (yes / no)"**
-3. **"Which threads should I reply to and resolve? (all / none / comma-separated numbers)"**
+**"Apply the plan? (1) apply the edits, push, and reply to every thread / (2) apply the edits only /
+(3) choose: name the edit and thread numbers"**
 
-Question 2 authorizes one irreversible act — the push. Question 3 owns reply and resolve scope, and a
-reply only posts once the push exists. Answering `no` to question 2 applies and verifies the edits,
-posts nothing, and the handoff names the commit and push as still owed. A thread approved in question 3
-but tied to an edit declined in question 1 gets no reply: there is no change to describe.
+Option 1 is the only blanket authorization of the push. Option 2 applies and verifies the edits, posts
+nothing, and the handoff names the commit, push and replies as still owed. Under option 3 the chosen
+edits are pushed before any chosen reply posts, and a chosen thread tied to an unchosen edit gets no
+reply: there is no change to describe.
 
-### Step 7: Execute approved actions, then journal
+### Step 7: Execute approved actions, then journal (main session)
 
 Only after the user responds: follow [acting on threads](crew-pr-resolver/references/acting-on-threads.md)
 for the edit, verify, commit, push, reply and resolve mechanics, and for the opt-in journal step. Three
@@ -188,4 +189,6 @@ happens before the commit is pushed; with none, replies go out directly. Every r
 `~/.cursor/rules/voice.mdc`, no exceptions; and an `Ask` thread gets the reply alone and stays open, as
 does a `Decide` thread, and neither is ever resolved.
 
-> Next: run `crew review` to check the pushed fixes; this agent cannot dispatch the inline-only reviewer.
+After Step 7, the main session (not the plan) ends with:
+
+> Next: run `crew review` to check the pushed fixes.

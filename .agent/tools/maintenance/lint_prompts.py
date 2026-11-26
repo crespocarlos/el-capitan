@@ -22,9 +22,15 @@ MODEL_INVOCABLE_SKILLS = {"crew-diagnose", "crew-evals", "crew-recall", "crew-te
 # Agents that write by definition, so `readonly` cannot apply to them. `reviewer-probe` is here
 # because a probe is a throwaway artifact and the rule that keeps it honest is deletion, not
 # `readonly`: a read-only worker could not run the artifact that is the whole point.
-WRITE_CAPABLE_AGENTS = {"crew-builder", "crew-pr-resolver", "reviewer-probe"}
+WRITE_CAPABLE_AGENTS = {"crew-builder", "reviewer-probe"}
 # Orchestrators the router refuses to dispatch, so `readonly` — a subagent-only field — never applies.
 INLINE_ONLY_AGENTS = {"crew-reviewer", "crew-specwriter"}
+# The exact `disallowedTools` of a read-only agent with no `tools:` line, which inherits every session
+# tool in Claude Code: the native writers, Agent, and by pattern the MCP servers whose tools write.
+# Read-only search servers (sourcerer, elastic-*docs, semantic-code-search) stay available; a server
+# not listed is denied only by the agent's instructions (.agent/tools/AGENTS.md).
+READONLY_AGENT_DENY = ("Write", "Edit", "NotebookEdit", "Bash", "Agent", "mcp__github__*", "mcp__gitlab__*", "mcp__slack__*", "mcp__linear__*",
+                       "mcp__jira__*", "mcp__atlassian__*", "mcp__notion__*", "mcp__filesystem__*", "mcp__claude_ai_Claude_Docs__*")
 MANIFEST = ".agent/tools/tools.json"
 MCP_REFERENCE = re.compile(r"mcp__([a-z0-9-]+)__([a-z0-9_]+)")
 TOOLS_LINE = re.compile(r"^tools:\s*(.+)$", re.MULTILINE)
@@ -93,14 +99,9 @@ def lint_skill_setup(root: Path) -> Findings:
 
 
 def lint_agent_readonly(root: Path) -> Findings:
-    """A read-only agent must declare `readonly: true`; a writing agent must not.
-
-    Cursor inherits every parent tool into a subagent and honours no `tools:` line, so `readonly` is
-    the only thing stopping a persona from editing the tree mid-review — and the only thing silently
-    stopping a worker from writing. Both directions are checked: the flag copied out of a persona into
-    `crew-builder` fails the run at dispatch otherwise. The two exemption sets keep the decision a
-    reviewed edit rather than an omission nobody notices.
-    """
+    """A read-only agent declares `readonly: true` (Cursor) and, when it has no `tools:` line and so
+    inherits every tool, `disallowedTools` equal to READONLY_AGENT_DENY (Claude Code); a writing agent
+    declares neither. The two exemption sets keep each exception a reviewed edit."""
     findings: Findings = []
     agent_dir = root / ".cursor/agents"
     if not agent_dir.is_dir():
@@ -121,6 +122,10 @@ def lint_agent_readonly(root: Path) -> Findings:
             findings.append((rel(root, path), 1, "missing-readonly",
                              "set readonly: true, or add the agent to WRITE_CAPABLE_AGENTS / "
                              "INLINE_ONLY_AGENTS in lint_prompts.py with a reason"))
+        elif not re.search(r"^tools:", frontmatter_text, re.MULTILINE) and {item.strip() for item in (
+                re.search(r"^disallowedTools:(.*)$", frontmatter_text, re.MULTILINE) or [None, ""])[1].split(",")} - {""} != set(READONLY_AGENT_DENY):
+            findings.append((rel(root, path), 1, "inherited-tools-can-write", "no tools: line inherits every tool in Claude Code; "
+                             f"set disallowedTools: {', '.join(READONLY_AGENT_DENY)} (READONLY_AGENT_DENY)"))
     return findings
 
 
@@ -132,13 +137,9 @@ def load_tool_surface(root: Path) -> tuple[dict[str, list[str]], set[str], Findi
         return {}, set(), [(MANIFEST, 1, "invalid-tool-catalog", str(error))]
     findings: Findings = []
     servers = data.get("mcp_servers")
-    if not isinstance(servers, dict) or not all(
-        isinstance(server, str) and isinstance(tools, list)
-        and all(isinstance(tool, str) for tool in tools)
-        for server, tools in (servers or {}).items()
-    ):
-        findings.append((MANIFEST, 1, "invalid-tool-catalog",
-                         "mcp_servers must map server names to lists of tool names"))
+    # JSON object keys are always strings, so only the values need checking.
+    if not isinstance(servers, dict) or not all(isinstance(tools, list) and all(isinstance(tool, str) for tool in tools) for tools in servers.values()):
+        findings.append((MANIFEST, 1, "invalid-tool-catalog", "mcp_servers must map server names to lists of tool names"))
         servers = {}
     native = data.get("native_tools")
     if not isinstance(native, list) or not all(isinstance(tool, str) for tool in native):
@@ -165,7 +166,11 @@ def lint_mcp_references(root: Path, paths: list[Path], servers: dict[str, list[s
 
 
 def lint_native_tool_ids(root: Path, paths: list[Path], native: set[str]) -> Findings:
-    """Resolve each bare tool name in an agent's `tools:` line against native_tools."""
+    """Resolve each bare tool name in an agent's `tools:` line against native_tools.
+
+    `mcp-grant-policy`: no `tools:` line names an `mcp__` id, because a granted id fails the whole
+    dispatch on a project without that server; vendor tools stay optional prose.
+    """
     findings: Findings = []
     agent_dir = root / ".cursor/agents"
     for path in paths:
@@ -175,9 +180,10 @@ def lint_native_tool_ids(root: Path, paths: list[Path], native: set[str]) -> Fin
         for match in TOOLS_LINE.finditer(text):
             for entry in match.group(1).split(","):
                 tool = entry.strip()
-                if not tool or tool.startswith("mcp__"):
-                    continue
-                if tool not in native:
+                if tool.startswith("mcp__"):
+                    findings.append((rel(root, path), line_no(text, match.start()), "mcp-grant-policy",
+                                     f"{tool}: grant no MCP id; name it in prose as optional"))
+                elif tool and tool not in native:
                     findings.append((rel(root, path), line_no(text, match.start()),
                                      "tool-id-unknown", f"{tool} is not in native_tools"))
     return findings

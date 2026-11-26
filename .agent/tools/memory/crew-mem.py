@@ -28,7 +28,7 @@ from memory_maintenance import (  # noqa: E402
     stats,
 )
 from memory_recall import context, journal_add, journal_import, search  # noqa: E402
-from memory_store import STATUSES, TYPES, MemoryError  # noqa: E402
+from memory_store import STATUSES, TYPES, MemoryStoreError  # noqa: E402
 from memory_units import add, archive, cite, listing, show, supersede  # noqa: E402
 from lib.output import DEFAULT_MAX_CHARS  # noqa: E402
 
@@ -150,7 +150,7 @@ def main() -> int:
         if args.command == "journal":
             return journal_add(args) if args.journal_command == "add" else journal_import(args)
         return handlers[args.command](args)
-    except MemoryError as error:
+    except MemoryStoreError as error:
         print(str(error), file=sys.stderr)
         return 2
     except PermissionError as error:

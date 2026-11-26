@@ -20,7 +20,7 @@ from typing import Iterator
 from lib.git import GitError, remotes, remote_url, toplevel
 
 
-class MemoryError(Exception):
+class MemoryStoreError(Exception):
     """Expected unavailable/corrupt-store error."""
 
 

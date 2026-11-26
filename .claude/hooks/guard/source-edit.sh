@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Python snippets that rewrite a tracked file. The intent is snippets, not normal Python tools: an
-# artifact write is fine unless it names a tracked file, and a snippet that rewrites tracked source
-# loses the edit log, so the native Edit or Write tool is the only way through.
+# Inline snippets that rewrite a tracked file: `python -c`, `node -e`/`-p`, `perl -e` and a heredoc or
+# here-string fed to one of them. The intent is snippets, not normal tools: a write is fine unless a
+# path literal in the snippet names a tracked file, and a snippet that rewrites tracked source loses
+# the edit log, so the native Edit or Write tool is the only way through. The snippet body comes from
+# the normaliser in lib/hook.sh, so both quoting styles read the same, and each path is checked
+# against the index of the tree its segment runs in (after any `cd`).
 set -euo pipefail
 HOOK_NAME=source-edit
 # shellcheck source=lib/hook.sh
@@ -9,27 +12,35 @@ HOOK_NAME=source-edit
 hook_input
 hook_event
 cmd=$(hook_field command)
-cwd=$HOOK_CWD
 [ -n "$cmd" ] || hook_allow
 
-# The `/?` before `python` also matches an absolute or venv-relative interpreter
-# (`/usr/bin/python3`, `.venv/bin/python3`), which has no word boundary to rely on otherwise;
-# `([[:space:]]|$)` lets a bare `python3<<PY` (no space before the heredoc) still match.
-snippet='(^|[;&|[:space:]]|/)python([0-9.]*)?([[:space:]]|$).*(<<|-[[:space:]]*c)'
-write='write_(text|bytes)[[:space:]]*\(|open[[:space:]]*\(.*["'\'']([wax+]+|r\+)["'\'']|os\.replace[[:space:]]*\(|shutil\.(copy|move)'
-grep -Eq "$snippet" <<<"$cmd" && grep -Eq "$write" <<<"$cmd" || hook_allow
-
-root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || root=""
-[ -n "$root" ] || hook_allow
-# Each path literal is checked against the index individually instead of enumerating every tracked
-# file: no full `git ls-files` scan per matching command, and resolving each candidate against `$cwd`
-# catches a write issued after `cd`-ing into a subdirectory.
-while IFS= read -r candidate; do
-  [ -n "$candidate" ] || continue
-  resolved=$(cd "$cwd" 2>/dev/null && realpath "$candidate" 2>/dev/null) || continue
-  case "$resolved" in "$root"/*) rel=${resolved#"$root"/} ;; *) continue ;; esac
-  if git -C "$root" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
-    hook_deny "Shell rewrite blocked: Python snippets must not rewrite tracked file '$rel'. Use the Edit or Write tool."
-  fi
-done < <(grep -oE '"[^"]+"|'"'"'[^'"'"']+'"'"'' <<<"$cmd" | sed -e 's/^.//' -e 's/.$//')
+q="[\"']"
+WRITE="write_(text|bytes)[[:space:]]*\(|open[[:space:]]*\(.*$q([wax+]+b?|r\+b?)$q|os\.(replace|rename)[[:space:]]*\(|shutil\.(copy|move)"
+WRITE+="|(writeFile|appendFile|copyFile|rename)(Sync)?[[:space:]]*\(|createWriteStream|open[^;]*$q[[:space:]]*\+?>"
+hook_segments "$cmd"
+i=0
+while [ "$i" -lt "${#HOOK_SEGS[@]}" ]; do
+  hook_seg "$i"
+  i=$((i + 1))
+  case "${SEG_WORDS[0]##*/}" in python | python[0-9]* | node | nodejs | perl) ;; *) continue ;; esac
+  snippet=$SEG_BODY
+  j=1
+  while [ "$j" -lt "${#SEG_WORDS[@]}" ]; do
+    case "${SEG_WORDS[$j]}" in
+      -c | -e | -E | -p | --eval | --print | -[A-Za-z]*[ce]) snippet+=$'\n'"${SEG_WORDS[$((j + 1))]:-}" ;;
+    esac
+    j=$((j + 1))
+  done
+  if [ -z "$snippet" ] || ! grep -Eq -- "$WRITE" <<<"$snippet"; then continue; fi
+  while IFS= read -r candidate; do
+    candidate=${candidate#"${candidate%%[!+<> ]*}"}
+    [ -n "$candidate" ] || continue
+    # Only a tracked regular file counts: `.` and a directory name match tracked files below them.
+    hook_path "$candidate" "$SEG_DIR"
+    [ -f "$HOOK_PATH" ] || continue
+    if git --literal-pathspecs -C "$SEG_DIR" ls-files --error-unmatch -- "$candidate" >/dev/null 2>&1; then
+      hook_deny "Shell rewrite blocked: an inline snippet must not rewrite tracked file '$candidate'. Use the Edit or Write tool."
+    fi
+  done < <(grep -oE "\"[^\"]+\"|'[^']+'" <<<"$snippet" | sed -e 's/^.//' -e 's/.$//')
+done
 hook_allow

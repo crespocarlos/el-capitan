@@ -10,8 +10,9 @@ Three outcomes, each with exactly one observable shape:
 - no objection: exit 0 with empty stdout and empty stderr, so the harness's own permission flow
   decides. A `permission: allow` payload would skip interactive approval.
 - cannot judge: one line on stderr and exit 0, so a missing parser or an unreadable payload never
-  becomes a blocked tool call. The credential rule is the sole exception: it is registered
-  `onFailure: "block"` / `failClosed: true` and blocks here too.
+  becomes a blocked tool call. The credential rule, registered `onFailure: "block"` /
+  `failClosed: true`, blocks only on a failure once its secret scan has started; unreadable input
+  is not one, so it reports a line here too (answering Cursor with `{}`).
 
 Every hook file must be classified in `BLOCKING` or `SILENT`, so a new hook cannot skip the matrix.
 """
@@ -297,19 +298,21 @@ def allow_failures(name: str, spec: dict, home: Path, repos: dict[str, Path]) ->
 
 
 def unreadable_failures(name: str, spec: dict, home: Path, bare: str) -> list[str]:
-    """A hook that cannot read its input reports one line and gets out of the way."""
+    """A hook that cannot read its input reports one line and gets out of the way. A fail-closed hook
+    blocks only once its scan has started, so it too lets unreadable input through; it may answer
+    `{}`, the empty decision Cursor's `failClosed: true` needs to read as no objection."""
     failures: list[str] = []
-    expected = 2 if spec.get("fail_closed") else 0
+    quiet = ("", "{}") if spec.get("fail_closed") else ("",)
     for payload, label in FAILURE_INPUTS:
         code, out, err = run(name, payload, home)
-        if (code, out) != (expected, "") or len(err.strip().splitlines()) != STDERR_LINES:
-            failures.append(f"{name}: {label} expected exit {expected}, empty stdout, one stderr "
+        if code != 0 or out.strip() not in quiet or len(err.strip().splitlines()) != STDERR_LINES:
+            failures.append(f"{name}: {label} expected exit 0, stdout in {quiet}, one stderr "
                             f"line; got exit {code} stdout={out!r} stderr={err!r}")
     probe = json.dumps({"hook_event_name": "PreToolUse", "cwd": str(home),
                         "tool_input": spec["deny"][0]})
     code, out, err = run(name, probe, home, path=bare)
-    if (code, out) != (expected, "") or len(err.strip().splitlines()) != STDERR_LINES:
-        failures.append(f"{name}: missing jq expected exit {expected}, empty stdout, one stderr "
+    if (code, out) != (0, "") or len(err.strip().splitlines()) != STDERR_LINES:
+        failures.append(f"{name}: missing jq expected exit 0, empty stdout, one stderr "
                         f"line; got exit {code} stdout={out!r} stderr={err!r}")
     return failures
 

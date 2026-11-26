@@ -42,7 +42,7 @@ from memory_index import (
     write_indexes_for_scopes,
 )
 from memory_paths import (
-    MemoryError,
+    MemoryStoreError,
     canonical_scope,
     database_path,
     journal_root,

@@ -7,6 +7,7 @@ directly: no allow rule's command prefix may be a prefix of any ask rule's comma
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -104,6 +105,18 @@ def main() -> int:
                  if "VAR=$(~/.agent/bin" in p.read_text(errors="replace")
                  or "REVIEW_ROOT=$(~/.agent/bin" in p.read_text(errors="replace")]
     check("no prompt snippet leads with an assignment", not offenders, offenders)
+    # A prompt that says the harness will ask must name only commands the ask list holds; otherwise
+    # the model is told an approval prompt exists when none will appear.
+    asked = " ".join(permissions.get("ask", []))
+    claims = [(str(p.relative_to(prompts)), name) for p in [*prompts.glob(".cursor/**/*.md"), *prompts.glob("rules/*.mdc")]
+              for paragraph in p.read_text(errors="replace").split("\n\n") if "permissions.ask" in paragraph
+              for name in re.findall(r"`([\w.-]+\.(?:py|sh))`", paragraph) if name not in asked]
+    check("no prompt claims an ask rule for a command the ask list does not hold", not claims, claims)
+    # The review-address gate is the user's answer in the skill; no doc may call it an ask rule.
+    gate = [doc for doc in ("README.md", ".agent/tools/TOOLS.md")
+            for paragraph in (prompts / doc).read_text(errors="replace").split("\n\n")
+            if "review-address gate" in paragraph and "permissions.ask" in paragraph]
+    check("no doc calls the review-address gate a permissions.ask rule", not gate, gate)
 
     merge_cases()
     print("all permission checks passed" if not FAILED else f"permissions: {len(FAILED)} failed")

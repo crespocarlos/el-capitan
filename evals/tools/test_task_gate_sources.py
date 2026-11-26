@@ -218,12 +218,13 @@ def triggers(tmp: Path) -> None:
         gates, skipped = workflow_gates({"a.yml": wf(trigger)})
         check(f"on:{trigger!r} {'is' if mirrored else 'is not'} mirrored", bool(gates) == mirrored, gates)
         if not mirrored:
-            check(f"on:{trigger!r} is recorded in skipped", any(s.startswith("a.yml: workflow not mirrored (on: ") for s in skipped), skipped)
+            check(f"on:{trigger!r} is recorded in skipped", any(s.startswith(("a.yml: workflow not mirrored (on: ", "a.yml: not CI (on: "))
+                                                                for s in skipped), skipped)
     gates, skipped = workflow_gates({"evals.yml": EVALS_SHAPE + "jobs:\n  j:\n    steps:\n      - name: Gate\n        run: make gate\n"})
     check("this repo's evals.yml shape (pull_request + workflow_dispatch) is mirrored", [g["command"] for g in gates] == ["make gate"]
           and not skipped, (gates, skipped))
     gates, skipped = workflow_gates({"nightly.yml": wf(" schedule")})
-    check("an unmirrored workflow names its file and triggers", skipped == ["nightly.yml: workflow not mirrored (on: schedule)"], skipped)
+    check("a workflow with no push or pull_request names its file and triggers as not CI", skipped == ["nightly.yml: not CI (on: schedule)"], skipped)
     gates, skipped = workflow_gates({"a.yml": wf(" push", "    environment: production\n")})
     check("a job with environment: is skipped and says why", not gates and any("environment" in s for s in skipped), skipped)
     gates, _ = workflow_gates({"a.yml": "on:\n  pull_request_target:\njobs:\n  j:\n    steps:\n      - run: npm publish\n"})
@@ -318,11 +319,43 @@ def partial_mirror_is_not_verified(tmp: Path) -> None:
     check("a failed gate still exits 1 on a partial mirror", code == 1, (code, out))
 
 
+NOT_CI = {  # cebola-fit's workflow shapes: one CI file, the rest scheduled or dispatched by hand
+    "ci.yml": "on:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n"
+              "      - run: npm ci\n      - name: Unit\n        run: echo unit\n",
+    "generate-workout.yml": "on:\n  schedule:\n    - cron: '0 8 * * *'\n  workflow_dispatch:\n    inputs:\n      dry_run:\n        type: boolean\n",
+    "smoke.yml": "on:\n  schedule:\n    - cron: '15 6 * * *'\n",
+    "migrate.yml": "on:\n  workflow_dispatch:\n",
+    "backup.yml": "on:\n  schedule:\n    - cron: '0 3 * * 0'\n  workflow_dispatch:\n",
+    "hook.yml": "on:\n  repository_dispatch:\n    types: [deploy]\n",
+}
+
+
+def non_ci_workflows_are_not_partial(tmp: Path) -> None:
+    """Workflows without push or pull_request are listed as not CI; the run reads verified when the CI steps pass."""
+    root, home = fixture(tmp / "nc", workflow=False), tmp / "home-nc"
+    home.mkdir(parents=True)
+    for name, trigger in NOT_CI.items():
+        body = "" if name == "ci.yml" else "jobs:\n  run:\n    steps:\n      - name: Deploy\n        run: make deploy\n"
+        write(root, f".github/workflows/{name}", trigger + body)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "workflows")
+    code, out, data = verify(root, home)
+    check("passing CI steps beside schedule- and dispatch-only workflows are verified, exit 0",
+          code == 0 and data.get("verified") is True and data.get("partial") is False, (code, out, data.get("partial")))
+    check("only the CI workflow's step is a gate", [g.get("command") for g in data.get("gates", [])] == ["echo unit"], data.get("gates"))
+    check("each workflow that is not CI is named as such", all(f".github/workflows/{name}: not CI (on: " in out for name in NOT_CI if name != "ci.yml")
+          and "NOT VERIFIED" not in out, out)
+    write(root, ".github/workflows/ci.yml", NOT_CI["ci.yml"] + "      - name: Cond\n        if: github.ref == 'x'\n        run: make it\n")
+    git(root, "commit", "-qam", "conditional step")
+    code, out, data = verify(root, home)
+    check("a skipped step inside the CI workflow still makes the run partial", code == 3 and data.get("partial") is True, (code, out))
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         for case in (node_pin_order, python_only, kibana_shape, prose_only_repo, workflows_win, triggers, publish_paths,
-                     setup_steps, partial_mirror_is_not_verified):
+                     setup_steps, partial_mirror_is_not_verified, non_ci_workflows_are_not_partial):
             try:
                 case(tmp / case.__name__)
             except (RuntimeError, KeyError, IndexError, OSError, ValueError, TypeError) as error:

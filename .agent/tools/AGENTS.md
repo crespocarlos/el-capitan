@@ -213,10 +213,20 @@ that failed to look.
   Do not set `model:`.
 - **`readonly: true` is enforced, not copied.** `crew-lint`'s `missing-readonly` rule fails any agent
   under `.cursor/agents/` that omits it, except the workers named in `WRITE_CAPABLE_AGENTS` and the
-  inline-only orchestrators named in `INLINE_ONLY_AGENTS`, both in `lint_prompts.py`. There are three
-  workers: `crew-builder` and `crew-pr-resolver` write the change they were dispatched to make, and
-  `reviewer-probe` writes one throwaway artifact, runs it, and deletes it. Add an exemption there when
+  inline-only orchestrators named in `INLINE_ONLY_AGENTS`, both in `lint_prompts.py`. There are two
+  workers: `crew-builder` writes the change it was dispatched to make, and `reviewer-probe` writes one
+  throwaway artifact, runs it, and deletes it. `crew-pr-resolver` is a read-only analysis subagent; the
+  main session creates its worktree before dispatch and applies the plan it returns as its final
+  message. It keeps Bash for `gh` reads and probes, so in Claude Code, which ignores `readonly`, its
+  read-only promise holds by instruction only. Add an exemption there when
   an agent must write, so the reason is reviewable rather than implied by an omission.
+- **An inheriting read-only agent denies the writers by list.** A read-only agent with no `tools:`
+  line inherits every session tool in Claude Code, MCP servers included, so its `disallowedTools`
+  must equal `READONLY_AGENT_DENY` in `lint_prompts.py` (`crew-lint`'s `inherited-tools-can-write`):
+  the native writers, `Agent`, and `mcp__<server>__*` for the MCP servers whose tools write (GitHub,
+  GitLab, Slack, Linear, Jira/Atlassian, Notion, filesystem, Claude Docs). Read-only search servers stay
+  available. An MCP server not on that list is denied only by the agent's instructions, so a new
+  write-capable server is added there, and the five agents' lines updated, in the same change.
 - **Backgrounding is a call-site field.** Set `run_in_background: true` on the dispatch that needs it;
   do not put `is_background` in frontmatter, which would state the same fact twice with no check that
   the copies agree.

@@ -21,7 +21,7 @@ from typing import Iterator
 from lib.files import atomic_write
 from memory_frontmatter import parse_unit
 from memory_paths import (
-    MemoryError,
+    MemoryStoreError,
     canonical_scope,
     database_path,
     memory_root,
@@ -35,7 +35,7 @@ SCHEMA_VERSION = 1
 
 def ensure_store() -> None:
     if not database_path().exists():
-        raise MemoryError("memory store missing; run crew-mem.py init")
+        raise MemoryStoreError("memory store missing; run crew-mem.py init")
 
 
 def connection() -> sqlite3.Connection:
@@ -45,7 +45,7 @@ def connection() -> sqlite3.Connection:
         conn.execute("SELECT count(*) FROM units")
         return conn
     except sqlite3.Error as error:
-        raise MemoryError(f"memory store unreadable or corrupt: {error}") from error
+        raise MemoryStoreError(f"memory store unreadable or corrupt: {error}") from error
 
 
 def initialize_database() -> None:

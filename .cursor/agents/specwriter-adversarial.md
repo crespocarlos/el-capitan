@@ -1,11 +1,12 @@
 ---
 name: specwriter-adversarial
 description: "Spec adversarial critic for a wrong approach, missing criteria, and edge cases. Dispatched by crew-specwriter — do not invoke directly."
-# Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
-# Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
-# is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
+# Harness notes: no `tools` line, so the agent inherits the session's tools, MCP search servers
+# included; `disallowedTools` is READONLY_AGENT_DENY in lint_prompts.py (MCP servers that write are
+# denied by pattern). Claude Code reads `disallowedTools` and `maxTurns`; Cursor ignores them and
+# honours `readonly`.
 readonly: true
-tools: Read, Grep, Glob, mcp__sourcerer__sourcerer_code_search, mcp__sourcerer__sourcerer_code_grep, mcp__sourcerer__sourcerer_files_tree, mcp__sourcerer__sourcerer_files_read_lines, mcp__sourcerer__sourcerer_files_cat, mcp__sourcerer__sourcerer_repos_search, mcp__sourcerer__sourcerer_repos_list, mcp__elastic-internal-docs__search_internal_docs, mcp__elastic-internal-docs__get_internal_document_by_url
+disallowedTools: Write, Edit, NotebookEdit, Bash, Agent, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__atlassian__*, mcp__notion__*, mcp__filesystem__*, mcp__claude_ai_Claude_Docs__*
 maxTurns: 10
 ---
 
