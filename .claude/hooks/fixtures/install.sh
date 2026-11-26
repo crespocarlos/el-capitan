@@ -22,7 +22,9 @@ test -L "$home/.cursor/agents/crew-builder.md"             # stale managed copy 
 test -f "$home/.cursor/skills/my-skill/SKILL.md"           # user skill stays loadable
 test -L "$home/.claude/agents"                             # managed dir is a symlink
 test -d "$root/rules" && test ! -L "$root/rules"           # repo not linked into itself
-test "$(stat -f '%OLp' "$home/.claude/CLAUDE.md" 2>/dev/null || stat -c '%a' "$home/.claude/CLAUDE.md")" = 644
+# GNU first: GNU `stat -f` is a valid filesystem query that prints a block and exits 0, so the BSD
+# spelling cannot go first. BSD stat rejects `-c` and falls through to `-f '%OLp'`.
+test "$(stat -c '%a' "$home/.claude/CLAUDE.md" 2>/dev/null || stat -f '%OLp' "$home/.claude/CLAUDE.md")" = 644
 ls -d "$home"/.claude/agents.bak.* >/dev/null              # originals retained
 
 # A dangling symlink the installer did not create must survive: pruning is limited to links whose

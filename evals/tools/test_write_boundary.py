@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -88,7 +89,35 @@ def allow_cases() -> None:
     check("arbitrary temp files are denied", state == "deny", detail)
 
 
+def separate_temp_root() -> Path | None:
+    """A `$TMPDIR` apart from /tmp, so the temp-root cases mean the same on Linux as on macOS.
+
+    The hook allows /tmp wholesale but only `crew-review-*` under `$TMPDIR`. On Linux the default
+    `$TMPDIR` is /tmp, where "arbitrary temp files are denied" can never hold; pointing `$TMPDIR`
+    (inherited by the hook and the review tool) at a directory outside every permitted root keeps
+    the case meaningful, as macOS's `/var/folders/…/T` does.
+    """
+    current = Path(tempfile.gettempdir()).resolve()
+    if current != Path("/tmp").resolve() and Path("/tmp").resolve() not in current.parents:
+        return None
+    base = Path.home() / ".cache" / "el-capitan-fixtures"
+    base.mkdir(parents=True, exist_ok=True)
+    chosen = Path(tempfile.mkdtemp(prefix="tmpdir-", dir=base)).resolve()
+    os.environ["TMPDIR"] = str(chosen)
+    tempfile.tempdir = None
+    return chosen
+
+
 def main() -> int:
+    separate = separate_temp_root()
+    try:
+        return run_cases()
+    finally:
+        if separate is not None:
+            shutil.rmtree(separate, ignore_errors=True)
+
+
+def run_cases() -> int:
     temp_cases()
     repo_cases()
     deny_cases()

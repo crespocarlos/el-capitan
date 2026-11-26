@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "FAIL run.sh line $LINENO: $BASH_COMMAND" >&2' ERR
 root=$(cd "$(dirname "$0")/../../.." && pwd)
-home=$(mktemp -d)
-trap 'rm -rf "$home"' EXIT
+# The fixture repos live outside every root the write-boundary hook permits ($HOME/.agent,
+# $HOME/.claude, $HOME/.cursor, /tmp). A bare `mktemp -d` lands under /tmp on Linux, where
+# `<repo>/../outside.md` is allowed by the /tmp rule and the escape cases stop meaning anything.
+# The ceiling keeps git from finding a repository above the fixtures (a dotfiles repo at $HOME).
+fixtures_root="$HOME/.cache/el-capitan-fixtures"
+mkdir -p "$fixtures_root"
+fixtures_root=$(cd "$fixtures_root" && pwd -P)
+export GIT_CEILING_DIRECTORIES="$fixtures_root"
+home=$(mktemp -d "$fixtures_root/run.XXXXXX")
+trap 'rm -rf "$home"; rmdir "$fixtures_root" 2>/dev/null || true' EXIT
+case "$home/" in /tmp/* | /private/tmp/* | "$HOME"/.agent/* | "$HOME"/.claude/* | "$HOME"/.cursor/*)
+  echo "FAIL run.sh: fixture root $home is inside a path the write boundary permits" >&2; exit 1 ;;
+esac
 # Isolate from the caller's real memory store; otherwise a CREW_MEMORY_DIR in the
 # environment redirects telemetry away from $home and every check below sees nothing.
 unset CREW_MEMORY_DIR CREW_JOURNAL_DIR CREW_TASK_DIR

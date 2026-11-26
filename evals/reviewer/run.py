@@ -27,10 +27,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
+# Only a live run needs the client. The scorer and persona tests import this module in CI, where
+# openai is not installed, so a missing package is reported when a run starts, not on import.
 try:
     import openai
 except ImportError:
-    sys.exit("openai not installed — run: uv sync")
+    openai = None
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -674,6 +676,8 @@ def main() -> None:
     if not api_key:
         sys.exit("OPENROUTER_API_KEY not set")
 
+    if openai is None:
+        sys.exit("openai not installed — run: uv sync")
     model = args.model
     client = openai.OpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
     client._model = model  # type: ignore[attr-defined]

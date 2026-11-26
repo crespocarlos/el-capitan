@@ -208,7 +208,7 @@
       "help": "argparse",
       "smoke": "--help",
       "output": "json",
-      "json_smoke": ["--json"]
+      "json_smoke": ["--remote", "https://example.invalid/smoke.git", "--branch", "smoke", "--json"]
     },
     {
       "name": "crew-task-context.py",

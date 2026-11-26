@@ -51,7 +51,7 @@ probe=$(dirname "$path")
 while [ ! -d "$probe" ] && [ "$probe" != "/" ] && [ "$probe" != "." ]; do
   probe=$(dirname "$probe")
 done
-repo=$(~/.agent/bin/crew-repo-info.py --root "$probe" --field root 2>/dev/null || true)  # crew-lint: allow-swallow
+repo=$(git -C "$probe" rev-parse --show-toplevel 2>/dev/null || true)  # crew-lint: allow-swallow
 [ -n "$repo" ] && repo=$(cd "$repo" && pwd -P)
 
 [ -n "$repo" ] || hook_deny "Write blocked: $path is outside permitted worktrees."

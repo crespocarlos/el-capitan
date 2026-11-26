@@ -31,7 +31,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS = os.environ.get("UPGRADE_FROM_REF", "origin/main")
 # Bare programs in the allow-list that el-capitan does not install; each needs a reason.
-EXTERNAL = {"agent-builder": "a user tool the allow-list pre-approves; not shipped here"}
+EXTERNAL = {"agent-builder": "a user tool the allow-list pre-approves; not shipped here",
+            "uuidgen": "optional (absent on ubuntu-latest); crew-specwriter falls back to python3 uuid"}
 # Glob-scoped rules the always-on block must not charge every request for (prompt-engineering.mdc
 # joins in Phase D, when it becomes a skill).
 FORBIDDEN_IMPORTS: tuple[str, ...] = ("typescript.mdc",)
