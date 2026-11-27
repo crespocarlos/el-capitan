@@ -126,47 +126,9 @@ permission escalation from the start, and skip that step on a harness that does 
 On exit 2 or any persistence failure, print the error and state `review not persisted`; state it only
 when no `REVIEW.md` was written.
 
-## Pipeline Integration (self-review mode only)
+## Pipeline integration
 
-`crew review` (self-review) is the verification between implementation and commit. After outputting
-the consolidated report, log the pipeline transition and provide a commit-ready conclusion.
-
-**Resolve TASK_DIR:**
-
-```bash
-if [ -n "${CREW_TASK_DIR:-}" ]; then
-  TASK_DIR="$CREW_TASK_DIR"; CREW_TASK_STATE=ok
-elif [ -n "${CREW_TASK_STATE:-}" ]; then
-  TASK_DIR=""   # already resolved this session; task-env.sh owns the tri-state
-else
-  source ~/.agent/bin/task-env.sh
-fi
-```
-
-**Verdict and transition** (based on consolidated findings):
-
-Determine verdict first:
-
-- **PASS** — zero findings, or only `[nit]` / `[needs more info]`
-- **WARN** — `[attention]` or `[concern]` findings only, no `[blocking]`
-- **BLOCK** — any `[blocking]` finding present. The footer states it in every mode, plan reviews
-  included.
-
-For **self-review and changes review only** (skip for PR review and spec review): run pipeline
-logging.
-
-```bash
-# If PASS or WARN:
-if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/crew-metric.py "$TASK_DIR" review verdict=pass
-fi
-# If BLOCK:
-if [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/crew-metric.py "$TASK_DIR" review verdict=block
-fi
-```
-
-_(Next-step handoff is emitted in Step 8 above for all modes.)_
+The verdict and its metric line: [pipeline integration](pipeline-integration.md).
 
 ## Rules
 

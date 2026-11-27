@@ -11,7 +11,6 @@ Owns the pipeline state machine, session-start awareness, and autopilot. Routing
 ## Workflows
 
 - **build** — `crew spec <issue>` → spec → implement → review → open-pr (`ship`); ends at a draft PR.
-  `crew-specwriter` infers the template (standard or bug) from the request.
 - **respond** — `crew resolve PR <PR>` → address-pr → commit → push → reply; ends when every
   approved thread is replied to and pushed. Reviewer approval is external.
 
@@ -30,12 +29,9 @@ A gate is a user approval. Gate 1 is the user approving SPEC.md (`crew-task.py m
 Gate 2 is the user approving the PR title, description, base and target in `crew-open-pr`, which
 then runs `crew-task.py ship` (it never asks).
 
-Transitions are data in `.agent/tools/task/transitions.json`, applied by `crew-task.py reconcile
---apply`. Idle DRAFTING/APPROVED go `ON-HOLD` with the prior state in the status; resume by editing
-Status back to the `was` value. Reconcile records the PR it finds for each IMPLEMENTING task's
-branch and reports those specs, never rewriting them. `DONE` is written only by `crew-task.py mark-done` and means a PR for the
-task is open; a task can hold several PRs. PROGRESS.md and METRIC lines are audit records, never
-inputs to a gate (`.agent/tools/TOOLS.md`).
+`DONE` is written only by `crew-task.py mark-done` and means a PR is open; PROGRESS.md and METRIC
+lines are audit records, never gate inputs. Transitions, resuming `ON-HOLD`, and what reconcile
+records: `~/.cursor/agents/references/task-transitions.md`.
 
 ## Session-start awareness
 

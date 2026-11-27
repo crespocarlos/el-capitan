@@ -485,6 +485,24 @@
       "smoke": "imported by crew-lint.py"
     },
     {
+      "name": "git_config.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by doctor_mcp.py: the repository root, its git directory and the origin URL, read from files without running git",
+      "smoke": "imported by doctor_mcp.py"
+    },
+    {
+      "name": "claude_plugins.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by doctor_mcp.py: Claude Code plugin installs, their manifests' MCP servers and enabledPlugins",
+      "smoke": "imported by doctor_mcp.py"
+    },
+    {
       "name": "clock.py",
       "dir": "lib",
       "kind": "module",

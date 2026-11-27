@@ -31,6 +31,8 @@ than a missing file: the guard fails closed, so a deleted script would deny
 every command it used to inspect. The list and the match live in
 `hooks_retirement.py`, shared with the Cursor merger.
 """
+from __future__ import annotations
+
 import json
 import os
 import sys
@@ -354,54 +356,52 @@ def read_template(src_path: str, auto_memory_off: bool) -> dict:
     return expand_dirs(src, os.path.expanduser("~"))
 
 
-def main() -> int:
-    arguments = sys.argv[1:]
-    auto_memory_off = "--auto-memory-off" in arguments
-    arguments = [argument for argument in arguments if argument != "--auto-memory-off"]
+class MergeError(Exception):
+    """A merge that cannot proceed; its message is the one stderr line, and the exit is 2."""
+
+
+def parse_arguments(argv: list[str]) -> tuple[str, str, str | None, bool]:
+    """(src, dest, manifest home or None, auto-memory-off) from the command line, or MergeError with the usage."""
+    auto_memory_off = "--auto-memory-off" in argv
+    arguments = [argument for argument in argv if argument != "--auto-memory-off"]
     manifest_home = None
     if arguments[2:3] == ["--manifest"] and len(arguments) == 4:
         manifest_home, arguments = arguments[3], arguments[:2]
     if len(arguments) != 2:
-        print("usage: merge_claude_settings.py <src> <dest> [--manifest <home>] [--auto-memory-off]", file=sys.stderr)
-        return 2
-    src_path, dest_path = arguments
+        raise MergeError("usage: merge_claude_settings.py <src> <dest> [--manifest <home>] [--auto-memory-off]")
+    return arguments[0], arguments[1], manifest_home, auto_memory_off
+
+
+def read_destination(dest_path: str) -> tuple[dict, str]:
+    """The destination object and its original text, ({}, "") when the file does not exist."""
+    if not os.path.exists(dest_path):
+        return {}, ""
     try:
-        src = read_template(src_path, auto_memory_off)
+        with open(dest_path, encoding="utf-8") as f:
+            original = f.read()
+        dest = json.loads(original)
     except (OSError, json.JSONDecodeError) as error:
-        print(f"merge_claude_settings: cannot read template: {error}", file=sys.stderr)
-        return 2
-
-    original = ""
-    if os.path.exists(dest_path):
-        try:
-            with open(dest_path, encoding="utf-8") as f:
-                original = f.read()
-            dest = json.loads(original)
-        except (OSError, json.JSONDecodeError) as error:
-            print(f"merge_claude_settings: cannot read {dest_path}: {error}", file=sys.stderr)
-            return 2
-    else:
-        dest = {}
+        raise MergeError(f"merge_claude_settings: cannot read {dest_path}: {error}") from error
     if not isinstance(dest, dict):
-        print(f"merge_claude_settings: {dest_path} is not a JSON object", file=sys.stderr)
-        return 2
-    record, present = added(json.loads(original) if original else {}, src, not os.path.exists(dest_path))
+        raise MergeError(f"merge_claude_settings: {dest_path} is not a JSON object")
+    return dest, original
 
+
+def merge_hooks(dest: dict, src: dict) -> None:
+    """Merge each template event into `dest`. An event the template dropped can still hold a retired registration,
+    so it is merged against nothing; one left empty goes."""
     dest_hooks = dest.setdefault("hooks", {})
     for event_type, entries in src.get("hooks", {}).items():
         dest_hooks[event_type] = merge_event(dest_hooks.get(event_type, []), entries)
-    # An event the template dropped can still hold a retired registration; one left empty goes.
     for event_type in [e for e in dest_hooks if e not in src.get("hooks", {})]:
         dest_hooks[event_type] = merge_event(dest_hooks[event_type], [])
         if not dest_hooks[event_type]:
             del dest_hooks[event_type]
 
-    merge_permissions(dest, src)
 
-    for key, value in src.items():
-        if key not in ("hooks", "permissions") and key not in dest:
-            dest[key] = value
-
+def write_merged(dest: dict, src: dict, dest_path: str, original: str, manifest_home: str | None,
+                 recorded: tuple[dict, dict]) -> None:
+    """Back up and write the merged file, then record in the install manifest what the merge added."""
     try:
         # Before anything is written: an unreadable manifest stops the merge with the file unchanged.
         section, dropped = retire_recorded(manifest_home, dest_path, dest, src)
@@ -410,9 +410,34 @@ def main() -> int:
         write_json(dest, Path(dest_path))
         if section:
             forget(Path(manifest_home), section, dropped)
-            install_blocks.record(Path(manifest_home), section, record, present)
+            install_blocks.record(Path(manifest_home), section, *recorded)
     except (OSError, install_blocks.ManifestError) as error:
-        print(f"merge_claude_settings: cannot write {dest_path} or its install record: {error}", file=sys.stderr)
+        raise MergeError(f"merge_claude_settings: cannot write {dest_path} or its install record: {error}") from error
+
+
+def merge(argv: list[str]) -> str:
+    """Run one merge from its command line; the destination path, or MergeError."""
+    src_path, dest_path, manifest_home, auto_memory_off = parse_arguments(argv)
+    try:
+        src = read_template(src_path, auto_memory_off)
+    except (OSError, json.JSONDecodeError) as error:
+        raise MergeError(f"merge_claude_settings: cannot read template: {error}") from error
+    dest, original = read_destination(dest_path)
+    recorded = added(json.loads(original) if original else {}, src, not os.path.exists(dest_path))
+    merge_hooks(dest, src)
+    merge_permissions(dest, src)
+    for key, value in src.items():
+        if key not in ("hooks", "permissions") and key not in dest:
+            dest[key] = value
+    write_merged(dest, src, dest_path, original, manifest_home, recorded)
+    return dest_path
+
+
+def main() -> int:
+    try:
+        dest_path = merge(sys.argv[1:])
+    except MergeError as error:
+        print(error, file=sys.stderr)
         return 2
     print(f"  Merged {dest_path}")
     return 0

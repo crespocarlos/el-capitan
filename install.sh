@@ -347,7 +347,9 @@ for agent in "$SCRIPT_DIR"/.cursor/agents/*.md; do
   fi
   run ln -sf "$agent" ~/.cursor/agents/"$name"
 done
-for agent_dir in crew-reviewer references; do
+# Each agent with a references/ directory gets it linked beside it, so its relative links resolve from
+# ~/.cursor/agents, where the agent itself is linked or rendered.
+for agent_dir in crew-reviewer crew-pr-resolver references; do
   if [ -d "$SCRIPT_DIR/.cursor/agents/$agent_dir" ]; then
     run ln -sfn "$SCRIPT_DIR/.cursor/agents/$agent_dir" ~/.cursor/agents/$agent_dir
   fi

@@ -91,7 +91,9 @@ RULES: dict[str, tuple[str, str]] = {
     "unregistered-hook": ("writing", "every hook script is registered in both harnesses"),
     "tracked-local-state": ("writing", "local state under .agent is not tracked"),
     # lint_prompts (--budget)
-    "prompt-budget": ("prompts", "the always-on set and each prompt file fit their ceilings"),
+    "budget": ("prompts", "the always-on set fits its token ceiling and an agent or skill file its line cap"),
+    "prompt-budget": ("prompts", "each prompt file fits its byte ceiling"),
+    "prompt-headroom": ("prompts", "a prompt file stays within 90% of its ceiling, the always-on set within 95%"),
     # lint_python: repository rules for .agent/tools (Ruff, configured in ruff.toml, owns the generic ones)
     "module-size": ("python", "no module over 400 lines, entry points included, in .agent/tools and tui/"),
     "package-direction": ("python", "an import crosses packages only along an edge TOOLS.md declares"),

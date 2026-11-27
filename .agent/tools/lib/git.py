@@ -153,6 +153,18 @@ def blob_at(root: Path | None, ref_and_path: str) -> str:
     return output(root, ["show", ref_and_path])
 
 
+def tree_sizes(root: Path | None, ref: str, paths: list[str]) -> dict[str, int]:
+    """Byte size of every blob under `paths` at `ref` (`ls-tree -r -l -z`, so no path is quoted); raises when `ref`
+    does not resolve."""
+    sizes: dict[str, int] = {}
+    for record in output(root, ["ls-tree", "-r", "-l", "-z", ref, "--", *paths]).split("\0"):
+        meta, _, path = record.partition("\t")
+        fields = meta.split()
+        if len(fields) == 4 and fields[1] == "blob" and fields[3].isdigit():
+            sizes[path] = int(fields[3])
+    return sizes
+
+
 def commit_time(root: Path | None, ref: str = "HEAD") -> int:
     """`ref`'s committer date as a Unix timestamp, for comparing a build against its source."""
     text = output(root, ["log", "-1", "--format=%ct", ref]).strip()
@@ -175,6 +187,14 @@ def is_ancestor(root: Path | None, older: str, newer: str) -> bool:
     if result.returncode in (0, 1):
         return result.returncode == 0
     raise GitError(result.stderr.strip() or f"git exit {result.returncode}")
+
+
+def merge_base(root: Path | None, base: str, ref: str = "HEAD") -> str:
+    """The best common ancestor of `base` and `ref` (`git merge-base`); raises when there is none."""
+    found = output(root, ["merge-base", base, ref]).strip()
+    if not found:
+        raise GitError(f"no merge base between {base} and {ref}")
+    return found
 
 
 def fork_point(root: Path | None, base: str, ref: str = "HEAD") -> str:

@@ -7,8 +7,8 @@ alwaysApply: true
 
 Persistent memory improves repeated work; it is not a transcript archive.
 
-Crew memory is the only store: never write Claude Code auto-memory (`<config dir>/projects/*/memory/`).
-Its off switch is `autoMemoryEnabled: false` (install sets it) or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`.
+Crew memory is the only store: never write Claude Code auto-memory (`<config dir>/projects/*/memory/`;
+install turns it off).
 
 ## What qualifies
 

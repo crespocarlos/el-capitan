@@ -124,38 +124,6 @@ and stamps the run in `manifest.json`. Spec and idea packages append them by han
 refuses a stamped package without the section, or with other than 2 to 5 unindented list items under
 its last copy; an unstamped directory passes with a note.
 
-## The PR-head excerpt pass
-
-`mode_kind: "pr"` refuses `consumers` and `prompt_files`, and it is right to: both come from the local
-git index, which PR mode forbids. But something has to replace them, or a PR persona receives a diff
-with three context lines and no way to ground a claim about a function's scope, a consumer, or an
-absence. Nothing did, and the refusal's own message — "fetch those excerpts at the PR head" — named a
-step no file specified.
-
-After `crew-assemble-packages.py "$REVIEW_ROOT"` succeeds, **append the PR-head excerpts to each
-`<persona>.in.md` before `check-packages`**, under a heading that says where they came from:
-
-```bash
-mkdir -p "$REVIEW_ROOT/head"
-gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>" --jq .content \
-  | base64 --decode > "$REVIEW_ROOT/head/<slug>.txt"
-```
-
-Create the directory first, once, before the first fetch: the redirect does not create it, and a
-missing directory turns one setup omission into a failed network read per excerpt.
-
-Read at the head SHA the run resolved once, never at the local checkout, and label every excerpt
-`path:line@headSHA7` as the PR-mode evidence rule requires. What to fetch is the same material the
-refused extras would have supplied, scoped to the files the diff touches: Tier 1's surrounding lines
-and signatures, Tier 2's enclosing function, Tier 3's consumers, and any file a finding's claim turns
-on. Fetching is per claim, not per file set — a diff-only review of a 54-hunk PR does not need every
-file opened, and a review whose findings are all nits needs almost none.
-
-Write the appended block with the edit or write tool, then run `check-packages`. An excerpt pass that
-fails leaves the package exactly as assembled, which is weaker evidence but not a broken package: say
-so in `### Reviewers` as a gap, since a persona that returns `[needs more info]` naming an unfetched
-path is reporting this pass, not a defect in the PR.
-
 ## Why the tool, not the hand
 
 The tool writes the shared contract, `lookups.md`, mode block, hunk reference and memory first, then
@@ -171,7 +139,8 @@ that two reviewers read the same evidence. `evals/tools/test_assemble_packages.p
 package opens with the same contract and hunk reference.
 
 In spec and idea reviews there is no diff, so the tool does not apply: compose by hand in the same
-order, contract and `lookups.md` first.
+order, the contract (`reviewer-contract.md`, one blank line, `reviewer-reads.md`) and `lookups.md`
+first. A PR review appends the head excerpts ([PR review mode](pr-mode.md)).
 
 ## The reply marker (Claude Code)
 

@@ -72,9 +72,10 @@ def command(claude: str, case: Case) -> list[str]:
     return [claude, "-p", *ISOLATION, "--agents", json.dumps(agent_definition(case.lens)), "--agent", AGENTS[case.lens]]
 
 
-def contract(name: str) -> str:
-    """A shared contract with its lookups paragraph replaced by `NO_LOOKUPS`: the eval has no index or docs server."""
-    text = (REFERENCES / name).read_text(encoding="utf-8")
+def contract(*names: str) -> str:
+    """A shared contract (its parts joined as `assemble_inputs.contract_text` joins them) with its lookups paragraph
+    replaced by `NO_LOOKUPS`: the eval has no index or docs server."""
+    text = "\n".join((REFERENCES / name).read_text(encoding="utf-8") for name in names)
     return re.sub(r"^Lookups: follow .*?(?=\n\n|\Z)", NO_LOOKUPS.strip(), text, flags=re.M | re.S)
 
 
@@ -86,7 +87,8 @@ def package(case: Case) -> str:
                 "Produce your critique now, in the shape the contract and your persona define.\n")
     unchanged = ", ".join(f"`{path}`" for path in case.context) or "none"
     return "".join([
-        contract("reviewer-contract.md"), "\n---\n\n", MODE, "\n---\n\n## The change\n\n", case.summary,
+        contract("reviewer-contract.md", "reviewer-reads.md"), "\n---\n\n", MODE,
+        "\n---\n\n## The change\n\n", case.summary,
         "\n\nThe working directory holds the changed files after the change and these files the diff leaves "
         f"unchanged: {unchanged}.\n\n# Diff\n\n```diff\n", case.text(), "```\n",
     ])

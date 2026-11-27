@@ -1,9 +1,8 @@
 # Shared rules
 
 Canonical rules live in `rules/` and are shared with Cursor. Claude Code reads no `alwaysApply` and
-no globs, so an always-on rule is imported here; a scoped rule or skill gets a one-line pointer.
-`crew-explorer-conventions.mdc` applies to code research, `voice.mdc` to text published under
-Carlos's name.
+no globs, so an always-on rule is imported here; a scoped rule or skill gets a one-line pointer
+(here, or in `personal.mdc` "Scoped rules and skills").
 
 Read ~/.cursor/rules/typescript.mdc before writing a .ts or .tsx file.
 Read ~/.cursor/skills/prompt-authoring/SKILL.md before the work its description names.
@@ -33,8 +32,6 @@ For an explicit `crew <command>`, do not call Claude's `Skill` tool: read the ro
 **Personas** are dispatched by the orchestrator from the main session, each with its own context
 window. Without the Agent tool, fall back to file-based `claude -p` dispatch, then to inline
 sequential runs (degraded: ordering bias).
-
-Task state: resolve with `~/.agent/bin/crew-resolve-task-dir.py`.
 
 <!-- el-capitan:memory -->
 Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/crew-mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
