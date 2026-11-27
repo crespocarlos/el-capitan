@@ -23,6 +23,7 @@ Each blocking hook honours an off switch read from the environment of the harnes
 names are in [Hooks](docs/hooks.md#turning-a-guard-off)). A prefix on the agent's command does not
 reach the hook, so an agent cannot turn a guard off for the command it is running. Turn one off for a
 session when you need to, not as a standing setting, and every denial names both switches.
+`EL_CAPITAN_NOTIFY=off` silences the idle banner; it is not a guard and changes no decision.
 
 Nothing in el-capitan stops an agent from setting a switch for a later session: the write-boundary
 guard allows writes under `~/.claude` and `~/.cursor`, so an agent can add `EL_CAPITAN_GUARDS=off`

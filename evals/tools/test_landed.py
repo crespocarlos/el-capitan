@@ -361,11 +361,16 @@ def test_the_watch_command(tmp: Path) -> None:
     tasks = make_tasks(tmp)
     before = digest(tasks)
     command = [sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks)]
-    child = subprocess.Popen([*command, "--watch", "--interval", "0.05"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # A temp HOME: the real ~/.agent/config.json is not this test's input, and a key it rejects ends the child at once.
+    env = {**os.environ, "HOME": str(tmp)}
+    child = subprocess.Popen([*command, "--watch", "--interval", "0.05"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     drawn, selector = b"", selectors.DefaultSelector()
     selector.register(child.stdout, selectors.EVENT_READ)
     while drawn.count(CLEAR.encode()) < 2 and selector.select(timeout=20):
-        drawn += os.read(child.stdout.fileno(), 65536)
+        chunk = os.read(child.stdout.fileno(), 65536)
+        if not chunk:  # the child closed its output: stop waiting for a draw that cannot come
+            break
+        drawn += chunk
     child.send_signal(signal.SIGINT)
     try:
         out, err = child.communicate(timeout=20)
@@ -377,13 +382,14 @@ def test_the_watch_command(tmp: Path) -> None:
           child.returncode == 0 and b"Traceback" not in err and text.count(CLEAR) >= 2 and "building" in text and "BLOCKED: waiting" in text,
           (child.returncode, err[-300:], text[:300]))
     check("watching is read-only", digest(tasks) == before)
-    plain = subprocess.run(command, capture_output=True, text=True)
+    plain = subprocess.run(command, capture_output=True, text=True, env=env)
     check("without --watch nothing is cleared", "\x1b[2J" not in plain.stdout and "building" in plain.stdout, plain.stdout)
-    missing = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--cost", "--tasks-dir", str(tmp / "nowhere")], capture_output=True, text=True)
+    missing = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--cost", "--tasks-dir", str(tmp / "nowhere")],
+                             capture_output=True, text=True, env=env)
     check("--cost with no tasks directory prints the error on stderr, exit 2",
           missing.returncode == 2 and missing.stdout == "" and "no tasks directory" in missing.stderr, missing)
     for bad in (["--watch", "--interval", "0"], ["--watch", "--json"], ["--interval", "5"]):
-        check(f"{' '.join(bad)} is refused", subprocess.run([*command, *bad], capture_output=True, text=True).returncode == 2)
+        check(f"{' '.join(bad)} is refused", subprocess.run([*command, *bad], capture_output=True, text=True, env=env).returncode == 2)
 
 
 def ago(days: float) -> str:
