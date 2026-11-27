@@ -16,7 +16,11 @@ text `read_status` sees, on both the file and what the write would leave, and `s
 write that leaves more than one `## Status` heading is refused. The tool decides which fields are read
 (Write: `content`; Edit: `old_string`, `new_string`, `replace_all`; MultiEdit: `edits`); a payload with
 another tool's fields, an unknown tool, or an edit that does not apply exactly once is refused.
-`.task-id` and a review's `*.expect`, `*.provenance.json` and `*.out.md` are written only by crew tools.
+`.task-id`, PROGRESS.md and a review's `*.expect`, `*.provenance.json` and `*.out.md` are written only by crew tools.
+
+`spec_guard.py --shell <tasks root>` is the path half of `guard/task-files.sh`: NUL-separated `kind` (`w` a write
+target, `d` a copy destination), `cwd`, `path` triples on stdin (the literal targets a shell command writes), one
+`deny <message>` line for the first protected one (`shell_verdict`), nothing otherwise.
 """
 from __future__ import annotations
 
@@ -100,8 +104,10 @@ def written(tool: str, fields: dict, disk: str) -> tuple[str | None, str]:
 
 
 def evidence(names: list[str]) -> bool:
-    """`<task>/.task-id`, or `<task>/review/**/<name>` with an evidence suffix (lowercased names)."""
-    return names[1:] == [".task-id"] or (len(names) > 2 and names[1] == "review" and names[-1].endswith(EVIDENCE))
+    """`<task>/.task-id`, `<task>/PROGRESS.md` (its gate-stamped transitions are the recorded status), or
+    `<task>/review/**/<name>` with an evidence suffix (lowercased names)."""
+    return names[1:] in ([".task-id"], ["progress.md"]) or (
+        len(names) > 2 and names[1] == "review" and names[-1].endswith(EVIDENCE))
 
 
 def spec_verdict(path: str, tool: str, fields: dict) -> str:
@@ -149,7 +155,55 @@ def verdict(payload: dict, tasks_root: str) -> str:
     return spec_verdict(path, tool, fields)
 
 
+def shell_verdict(kind: str, path: str, cwd: str, tasks_root: str) -> str:
+    """`guard/task-files.sh`: "" or `deny <message>` for one literal path a shell command writes, run in `cwd`.
+
+    The path is decided as for a file write, `$HOME` and `${HOME}` read as the hook's HOME. An existing task SPEC.md
+    or `.task-id`, PROGRESS.md and any review evidence file are refused; a SPEC.md or `.task-id` not there yet passes
+    only as a task's first write, in a directory with neither a PROGRESS.md nor a `.task-id`. A `cp`/`mv`/`rsync`
+    destination (`kind` "d") anywhere inside a task directory is refused, so a whole task folder is never copied over
+    another. A removal (`kind` "r": `rm`, `unlink`, `find -delete`) of a protected file, a task directory, the tasks
+    root or a directory above it is refused.
+    """
+    home = os.environ.get("HOME", "")
+    for spelled in ("${HOME}", "$HOME"):
+        path = path.replace(spelled, home) if home else path
+    full = os.path.realpath(os.path.join(cwd, os.path.expanduser(path)))
+    root = os.path.realpath(tasks_root)
+    if kind == "r" and (full == root or root.startswith(full.rstrip(os.sep) + os.sep)):
+        return f"deny Task file guard: this shell command removes {full}, which holds every task's records."
+    if not full.startswith(root + os.sep):
+        return ""
+    names = [part.lower() for part in os.path.relpath(full, root).split(os.sep)]
+    if kind == "d":
+        return (f"deny Task file guard: this shell command copies or moves into {full}, inside a task directory that "
+                "only crew tools write.")
+    if kind == "r" and len(names) == 1:
+        return f"deny Task file guard: this shell command removes the task directory {full}."
+    if kind == "r" and (names[1:] == ["spec.md"] or evidence(names)):
+        return f"deny Task file guard: this shell command removes {full}, a task record only crew tools change."
+    task = os.path.join(root, os.path.relpath(full, root).split(os.sep)[0])
+    first = not any(os.path.exists(os.path.join(task, name)) for name in ("PROGRESS.md", ".task-id"))
+    if names[1:] in (["spec.md"], [".task-id"]) and not os.path.exists(full) and first:
+        return ""
+    if names[1:] == ["spec.md"]:
+        return (f"deny Task file guard: this shell command writes {full}. Edit the spec with the Edit tool; the "
+                f"Status moves only through {MOVES}.")
+    if evidence(names):
+        return f"deny Task file guard: this shell command writes {full}, evidence that only crew tools write."
+    return ""
+
+
 def main() -> int:
+    if sys.argv[1:2] == ["--shell"]:
+        # NUL-separated `kind`, `cwd`, `path` triples on stdin; the first refusal is printed, else nothing.
+        fields = sys.stdin.read().split("\0")
+        for kind, cwd, path in zip(fields[0::3], fields[1::3], fields[2::3]):
+            found = shell_verdict(kind, path, cwd, sys.argv[2])
+            if found:
+                print(found)
+                break
+        return 0
     payload = json.loads(sys.stdin.read() or "{}")
     print(verdict(payload if isinstance(payload, dict) else {}, sys.argv[1]))
     return 0

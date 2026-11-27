@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from cli_runner import load
+from task_fixture import record_status
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "tui" / "crew_tui.py"
@@ -66,6 +67,7 @@ def seed(home: Path) -> Path:
         (task / "SPEC.md").write_text(f"# {slug}\n\n## Status\n{status}\n\n{body}")
         (task / ".task-id").write_text(json.dumps({"slug": slug, "repo_remote_url": f"git@github.com:{repo}.git"}))
         (task / "PROGRESS.md").write_text("".join(f"[{stamp(h)}] {line}\n" for h, line in progress))
+        record_status(task, status)
         old = NOW - max(h for h, _ in progress) * HOUR
         for path in task.iterdir():
             os.utime(path, (old, old))
@@ -318,6 +320,22 @@ def test_a_move_runs_crew_task_for_real(home: Path) -> None:
     meta = json.loads((task / ".task-id").read_text())
     assert "## Status\nIMPLEMENTING" in (task / "SPEC.md").read_text()
     assert meta["branch"] == "feat/gadgets" and "worktree" not in meta, meta
+
+
+def test_a_tampered_task_offers_only_restore_moves(home: Path) -> None:
+    """A Status written outside crew-task shows as TAMPERED in STATE, and the only moves are restore-status and its
+    `--accept` with a note; the restore move, run for real, writes the recorded status back."""
+    from tui_app import run_command
+
+    spec = home / ".agent" / "tasks" / "T2" / "SPEC.md"
+    spec.write_text(spec.read_text().replace("## Status\nAPPROVED", "## Status\nIMPLEMENTING"))
+    view = views(home, Filters(repo="all"))["tasks"]
+    row = next(i for i, cells in enumerate(view.rows) if cells[1].startswith("blocked"))
+    assert view.rows[row][0] == "TAMPERED (spec says IMPLEMENTING, crew-task recorded APPROVED)", view.rows[row]
+    assert [(move.args[0], *move.args[2:], move.ask) for move in view.moves[row]] == [
+        ("restore-status", ""), ("restore-status", "--accept", "note")], view.moves[row]
+    code, _, err = run_command(view.moves[row][0].argv())
+    assert code == 0 and "## Status\nAPPROVED" in spec.read_text(), err
 
 
 @pytest.mark.parametrize("spec_line", ["", "## Branch: [type/short-description — e.g. feat/x]\n\n"])

@@ -404,7 +404,8 @@ def seeded(tasks: Path, slug: str, state: str, repo: str | None, days: float, li
     (task / "SPEC.md").write_text(f"# {slug}\n\n## Status\n{state}\n\n- [ ] a\n", encoding="utf-8")
     meta = {"slug": slug, "branch": f"feat/{slug}", "created_at": ago(days + 1)}
     (task / ".task-id").write_text(json.dumps({**meta, **({"repo_remote_url": f"git@github.com:{repo}.git"} if repo else {})}), encoding="utf-8")
-    entries = [*((days + 1, "TRANSITION: DRAFTING → APPROVED"),), *lines, (days, "METRIC: probe=1")]
+    # The status crew-task recorded matches the spec's; a DONE task's own `→ DONE` line is in `lines`.
+    entries = [*((days + 1, f"TRANSITION: DRAFTING → {'APPROVED' if state == 'DONE' else state}"),), *lines, (days, "METRIC: probe=1")]
     (task / "PROGRESS.md").write_text("".join(f"[{ago(at)}] {text}\n" for at, text in entries), encoding="utf-8")
     if review:
         (task / "REVIEW.md").write_text(f"Verdict: {review}\n", encoding="utf-8")

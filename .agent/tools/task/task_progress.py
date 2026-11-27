@@ -236,9 +236,9 @@ def read_entries(task_dir: Path) -> list[Entry]:
     return [parse_entry(line) for line in read_text(task_dir).splitlines() if line.strip()]
 
 
-def latest(task_dir: Path) -> datetime | None:
-    """The newest stamped entry's time, legacy and UTC lines compared on one clock."""
-    times = [entry.at for entry in read_entries(task_dir) if entry.at]
+def latest(task_dir: Path, entries: list[Entry] | None = None) -> datetime | None:
+    """The newest stamped entry's time, legacy and UTC lines compared on one clock; `entries` when already read."""
+    times = [entry.at for entry in (read_entries(task_dir) if entries is None else entries) if entry.at]
     return max(times) if times else None
 
 
@@ -277,16 +277,16 @@ def append_blocked(task_dir: Path, reason: str) -> None:
     append_entry(task_dir, "BLOCKED", " ".join(reason.split()))
 
 
-def pr_urls(task_dir: Path) -> list[str]:
+def pr_urls(task_dir: Path, entries: list[Entry] | None = None) -> list[str]:
     """The task's PR list, oldest first: every PR URL in a `PR:` entry or after `PR opened:`, once each.
 
     One store, two writers through `append_pr` and the DONE transition: `mark-done` writes `PR opened:
     <url>` in that transition and a `PR:` entry for a later PR, reconcile a `PR:` entry for a PR it
     found on the task's branch. `PR opened:` counts only in a transition or an untyped legacy line, so
-    a BLOCKED reason that quotes one adds nothing.
+    a BLOCKED reason that quotes one adds nothing. `entries` are the task's entries when the caller already read them.
     """
     found: list[str] = []
-    for entry in read_entries(task_dir):
+    for entry in read_entries(task_dir) if entries is None else entries:
         if entry.kind == "PR":
             text = entry.body
         elif entry.kind in ("TRANSITION", ""):

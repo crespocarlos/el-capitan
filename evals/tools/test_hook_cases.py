@@ -310,7 +310,7 @@ def judge(job: tuple[str, str, dict], env: dict, home: Path) -> str:
     return f"{bash}: {found}" if found else ""
 
 
-RECORDS = 'HOOK_NAME=records; . "$1"; HOOK_CWD=$2; hook_deny() { printf "deny: %s\\n" "$1"; exit 0; }; hook_segments "$3"; printf "%s\\n" ${HOOK_SEGS[@]+"${HOOK_SEGS[@]}"}'
+RECORDS = 'HOOK_NAME=records; . "$1"; HOOK_CWD=$2; hook_deny() { printf "deny: %s\\n" "$1"; exit 0; }; hook_segments "$3"; printf "%s\\n" ${HOOK_SEGS[@]+"${HOOK_SEGS[@]}"} ${HOOK_REDIRS[@]+"${HOOK_REDIRS[@]}"}'
 
 
 def records(bash: str, row: dict, env: dict, home: Path, parser: str) -> tuple:
@@ -479,6 +479,43 @@ def test_a_status_denial_names_crew_task(world: tuple) -> None:
     fields = {"file_path": str(places["tasks"] / "DDD-status" / "SPEC.md"), "old_string": "DRAFTING", "new_string": "APPROVED"}
     done = run("bash", HOOKS / "check-task-spec-owner.sh", json.dumps(file_shapes(fields, places["clean"])[0]), env, places["clean"])
     assert done.returncode == 2 and "crew-task.py mark-approved | mark-implementing | mark-done" in done.stderr, done
+
+
+def test_the_task_file_tripwire_answers_cursor(world: tuple) -> None:
+    """Cursor's `beforeShellExecution` payload (the command at the top level): a redirect onto a task SPEC.md gets the
+    JSON deny, a `crew-task.py` call gets `{}` (an empty decision: the entry is `failClosed: true`, and Cursor reads
+    silence from such a hook as a crash). The table rows run in this shape too; this names it."""
+    env, places, _ = world
+    guard = HOOKS / "guard" / "task-files.sh"
+    spec = places["tasks"] / "DDD-status" / "SPEC.md"
+    denied = run("bash", guard, json.dumps(shapes(f"echo x > {spec}", places["clean"])[1]), env, places["clean"])
+    allowed = run("bash", guard, json.dumps(shapes(f"~/.agent/bin/crew-task.py mark-approved {spec.parent}", places["clean"])[1]),
+                  env, places["clean"])
+    assert denied.returncode == 0 and json.loads(denied.stdout)["permission"] == "deny", denied
+    assert (allowed.returncode, allowed.stdout, allowed.stderr) == (0, "{}\n", ""), allowed
+
+
+def test_every_cursor_security_guard_fails_closed_and_answers() -> None:
+    """In Cursor a hook that crashes, times out or prints invalid JSON fails open unless `failClosed: true`: every
+    security guard has it, the advisory zsh-equals and every observer do not, and each fail-closed guard answers a
+    Cursor event it has no objection to with `{}` rather than silence (which Cursor reads as a crash)."""
+    template = json.loads((ROOT / ".cursor" / "hooks.template.json").read_text(encoding="utf-8"))["hooks"]
+
+    def script(entry: dict) -> str:
+        return entry["command"].split('"')[1].split("/.claude/hooks/", 1)[1]
+
+    closed = {script(entry) for entries in template.values() for entry in entries if entry.get("failClosed") is True}
+    guards = {f"guard/{path.name}" for path in GUARDS} - {"guard/zsh-equals.sh"}
+    assert closed == guards | {"check-write-boundary.sh", "check-task-spec-owner.sh"}, closed
+    for event in ("beforeShellExecution", "preToolUse"):
+        for entry in template[event]:
+            if script(entry) not in closed:
+                continue
+            payload = ({"hook_event_name": event, "command": "git status", "cwd": str(ROOT)} if event == "beforeShellExecution"
+                       else {"hook_event_name": event, "tool_name": "Write", "file_path": "/tmp/hook-case-x", "content": "x",
+                             "cwd": str(ROOT)})
+            done = run("bash", HOOKS / script(entry), json.dumps(payload), {**os.environ, "CREW_WORKER_TASK": ""}, ROOT)
+            assert (done.returncode, done.stdout) == (0, "{}\n"), (script(entry), done)
 
 
 def test_only_a_task_spec_needs_the_status_reader(world: tuple) -> None:

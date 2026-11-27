@@ -4,7 +4,8 @@
 # $qn (payloads counted so far, the root included) and $max (HOOK_MAX_PAYLOADS).
 # Output lines: one record per simple command (dir US body US quoted-bits US words), every field
 # escaped by `enc` (hook.sh undoes it), `US payload US dir US text` for each string the caller must
-# parse again (`sh -c`, `eval`, a shell's stdin), `US overflow` and `US stdin` as in the awk path, and
+# parse again (`sh -c`, `eval`, a shell's stdin), `US redir US dir US target` for each output redirection,
+# `US overflow` and `US stdin` as in the awk path, and
 # `US qn US N` last.
 # What awk reads as text and the tree reads as structure: `$(...)`, backticks and process
 # substitutions anywhere (also an unquoted heredoc's body, which bash expands) come straight from the
@@ -86,6 +87,10 @@
     | (if $base == "echo" then first(range(0; $r | length) as $k | select($r[$k] | test("^-[neE]+$") | not) | $k) // ($r | length) else 0 end) as $k
     | $r[$k:] | join(" ") | gsub("\\\\n"; "\n");
   def bits($ws): $ws | map(if .q then "1" else "0" end) | join("");
+  # The target of each output redirection (`>`, `>>`, `>|`, `&>`, `&>>`), as the awk path keeps it.
+  def redirs($rs): .dir as $d
+    | .redirs += [($rs // [])[] | select(.Op == ">" or .Op == ">>" or .Op == ">|" or .Op == "&>" or .Op == "&>>")
+                  | {dir: $d, t: (.Word | word.t)}];
   # One simple command: its words, its here-string and heredoc text, and what it does to the scan.
   # When an expansion that may be empty sits in a word, a second record follows with those expansions
   # removed (and a word left empty and unquoted dropped, as bash drops it), so `${X}git` reads as git.
@@ -95,7 +100,7 @@
        + [$rs[] | select((.Op == "<<" or .Op == "<<-") and .Hdoc != null) | .Hdoc | raw | sub("[^\n]*$"; "")]
        | add // "") as $body
     | any($rs[]; .Op == "<" and any((.Word.Parts // [])[]; .Type == "ProcSubst")) as $psin
-    | enq_substs($nodes) | enq_substs([$rs[] | .Word, .Hdoc])
+    | enq_substs($nodes) | enq_substs([$rs[] | .Word, .Hdoc]) | redirs($rs)
     | ($ws | map(.t)) as $a
     | lead($a) as $i
     | if $i >= ($a | length) then .last = 0
@@ -131,7 +136,7 @@
       elif $t == "BinaryCmd" and ($c.Op == "|" or $c.Op == "|&") then stmt($c.X) | .pipein = (if .last > 0 then .last else -1 end) | stmt($c.Y)
       elif $t == "BinaryCmd" and $c.Op == "||" then stmt($c.X) | .pipein = 0 | stmt($c.Y)
       elif $t == "BinaryCmd" then stmt($c.X) | stmt($c.Y)
-      elif $t == "TimeClause" or $t == "CoprocClause" then (if $c.Stmt != null then stmt($c.Stmt) else . end) | enq_substs($st.Redirs)
+      elif $t == "TimeClause" or $t == "CoprocClause" then (if $c.Stmt != null then stmt($c.Stmt) else . end) | enq_substs($st.Redirs) | redirs($st.Redirs)
       else (if $t == "Subshell" or $t == "Block" then stmts($c.Stmts)
             elif $t == "IfClause" then ifc($c)
             elif $t == "WhileClause" then stmts($c.Cond) | stmts($c.Do)
@@ -139,7 +144,7 @@
             elif $t == "CaseClause" then enq_substs($c.Word) | reduce ($c.Items // [])[] as $it (.; enq_substs($it.Patterns) | stmts($it.Stmts))
             elif $t == "FuncDecl" then stmt($c.Body)
             else enq_substs($c) end)
-        | enq_substs($st.Redirs) | .last = 0
+        | enq_substs($st.Redirs) | redirs($st.Redirs) | .last = 0
       end;
   # After a scan, a shell that reads stdin gets its own heredoc or here-string, or what an `echo`,
   # `printf` or heredoc `cat` pipes into it; any other producer is opaque, and so is the stdin of a
@@ -159,9 +164,10 @@
         end);
   def scan($item): (.segs | length) as $first | .dir = $item.dir | .pipein = 0 | .last = 0
     | reduce $item.stmts[] as $s (.; stmt($s)) | stdins($first; $item.procsubst == true);
-  {dir: $dir, segs: [], pipein: 0, last: 0, queue: [{stmts: (.Stmts // []), dir: $dir}], next: 0, count: $qn, overflow: false, opaque: false}
+  {dir: $dir, segs: [], redirs: [], pipein: 0, last: 0, queue: [{stmts: (.Stmts // []), dir: $dir}], next: 0, count: $qn, overflow: false, opaque: false}
   | until(.next >= (.queue | length); .queue[.next] as $it | .next += 1 | if $it.text != null then . else scan($it) end)
   | (.segs[] | [(.dir | enc), (.body | enc), .quoted] + (.words | map(enc)) | join(us)),
+    (.redirs[] | us + "redir" + us + (.dir | enc) + us + (.t | enc)),
     (.queue[] | select(.text != null) | us + "payload" + us + (.dir | enc) + us + (.text | enc)),
     (if .overflow then us + "overflow" else empty end),
     (if .opaque then us + "stdin" else empty end),

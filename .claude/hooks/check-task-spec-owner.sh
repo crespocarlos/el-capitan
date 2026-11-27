@@ -19,8 +19,9 @@
 # existing task SPEC.md (read with the one reader, `task_status`), creates one with a Status other
 # than DRAFTING, leaves a second Status heading, carries another tool's fields, or cannot be applied
 # exactly; and any write to `.task-id` or a review's `*.expect`, `*.provenance.json` and `*.out.md`.
-# It decides on the path first and fails closed: no verdict is a denial. A Bash
-# command that rewrites SPEC.md is not seen here; the harness's Bash prompt is the only check on it.
+# It decides on the path first and fails closed: no verdict is a denial. A Bash command never reaches
+# this hook: `guard/task-files.sh` refuses its literal writes, and crew-task's Status integrity check
+# (TAMPERED) catches the rest.
 set -euo pipefail
 HOOK_NAME=check-task-spec-owner
 # shellcheck source=lib/hook.sh

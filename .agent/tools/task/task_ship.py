@@ -21,7 +21,7 @@ from task_gates import ancestry_problem, done_problems, mark_done, task_checkout
 from task_progress import GITHUB_PR_URL, append_entry, append_pr, read_entries
 from task_prs import branch_urls, gh_read
 from task_ship_checks import index_refusals, leaks, untracked, untracked_refusals
-from task_state import TaskState, head, load, name
+from task_state import TaskState, head, load, name, tampered
 from task_status import review_file, reviewed_at, typed_test_commands
 
 from lib.git import (
@@ -276,13 +276,15 @@ def refusal(task: TaskState, tree: Path, phase: bool) -> str:
 
 
 def checkout(task_dir: Path | None) -> tuple[TaskState | None, Path] | str:
-    """The task and the checkout ship runs in, or why it cannot start: no spec, a state other than IMPLEMENTING or
-    DONE, a missing worktree, another branch, or another repository."""
+    """The task and the checkout ship runs in, or why it cannot start: no spec, a TAMPERED status, a state other than
+    IMPLEMENTING or DONE, a missing worktree, another branch, or another repository."""
     if task_dir is None:
         return None, toplevel(Path.cwd())
     if not (task_dir / "SPEC.md").is_file():
         return f"no SPEC.md in {task_dir}"
     task = load(task_dir)
+    if tampered(task):
+        return f"{name(task)}: {tampered(task)} (crew-task.py restore-status {task.task} [--accept <note>] clears it)"
     if head(task) not in ("IMPLEMENTING", "DONE"):
         return f"{name(task)} is {head(task) or 'unset'}, not IMPLEMENTING"
     branch, recorded = task.meta.get("branch") or "", task.meta.get("worktree") or ""

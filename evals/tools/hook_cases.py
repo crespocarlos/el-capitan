@@ -142,6 +142,58 @@ DENY = [
     ("git commit -m x", "corrupt", "credentials"),
     ("gh pr create --draft", "clean", "credentials"),
     ("git add -A && git commit -m all", "loose", "credentials"),
+    # A literal shell write to a task's SPEC.md, `.task-id` or review evidence: a redirect, `tee`, `sed -i`, `perl -i`,
+    # a Python heredoc, `cp` onto it or into its directory, `mv` away, a `cd` first, and a resolved or linked path.
+    ("echo x > {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("echo x >> {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("printf 'x\\n' | tee -a {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("sed -i '' 's/DRAFTING/APPROVED/' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("cd {tasks}/DDD-status && sed -i.bak s/DRAFTING/APPROVED/ SPEC.md", "clean", "task-files"),
+    ("perl -pi -e 's/DRAFTING/APPROVED/' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("python3 - <<'PY'\nfrom pathlib import Path\np = Path('{tasks}/DDD-status/SPEC.md')\n"
+     "p.write_text(p.read_text().replace('DRAFTING', 'APPROVED'))\nPY", "clean", "task-files"),
+    ("cp /tmp/hook-case-spec.md {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("cp /tmp/SPEC.md {tasks}/DDD-status/", "clean", "task-files"),
+    ("mv {tasks}/DDD-status/SPEC.md /tmp/hook-case-spec.md", "clean", "task-files"),
+    ("cd {tasks}/DDD-status && cat > SPEC.md <<'EOF'\n## Status\nAPPROVED\nEOF", "clean", "task-files"),
+    ("echo x > {tasks}/DDD-status/../DDD-status/SPEC.md", "clean", "task-files"),
+    ("echo x > {home}/linked-task/SPEC.md", "clean", "task-files"),
+    ("echo '{}' > {tasks}/DDD-status/.task-id", "clean", "task-files"),
+    ("echo n > {tasks}/DDD-status/review/1/adversarial.expect", "clean", "task-files"),
+    # PROGRESS.md holds the gate-stamped status; dd, truncate, rsync, ln, awk -i inplace and ruby -i; a cp, mv or rsync
+    # destination anywhere inside a task directory, a whole task folder included, and from a cwd inside one.
+    ("echo 'TRANSITION: DRAFTING → APPROVED [gate]' >> {tasks}/DDD-status/PROGRESS.md", "clean", "task-files"),
+    ("dd if=/tmp/hook-case-x of={tasks}/DDD-status/review/1/a.out.md", "clean", "task-files"),
+    ("truncate -s0 {tasks}/DDD-status/.task-id", "clean", "task-files"),
+    ("rsync /tmp/a.out.md {tasks}/DDD-status/review/1/", "clean", "task-files"),
+    ("ln -sf /tmp/forged {tasks}/DDD-status/.task-id", "clean", "task-files"),
+    ("awk -i inplace '{print}' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("ruby -pi -e 'gsub(/DRAFTING/, \"APPROVED\")' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("cp /tmp/hook-case-notes.md {tasks}/DDD-status/", "clean", "task-files"),
+    ("cp -r /tmp/DDD-status {tasks}/", "clean", "task-files"),
+    ("mv /tmp/hook-case-x {tasks}/DDD-status/notes.md", "clean", "task-files"),
+    ("cd {tasks}/DDD-status && cp /tmp/hook-case-x .", "clean", "task-files"),
+    # `$HOME` spelled out; a removal of a record, a task directory or by `find -delete`; a SPEC.md written by shell into
+    # a task that already has a `.task-id` (no longer a first write); inline Python that imports the task modules.
+    ('echo "TRANSITION: DRAFTING → APPROVED [gate]" >> "$HOME/.agent/tasks/DDD-status/PROGRESS.md"', "clean",
+     "task-files"),
+    ("echo x > ${HOME}/.agent/tasks/DDD-status/SPEC.md", "clean", "task-files"),
+    ("rm {tasks}/DDD-status/PROGRESS.md", "clean", "task-files"),
+    ("rm -f {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
+    ("rm -rf {tasks}/DDD-status", "clean", "task-files"),
+    ("rm -rf ~/.agent/tasks", "clean", "task-files"),
+    ("unlink {tasks}/DDD-status/.task-id", "clean", "task-files"),
+    ("find {tasks}/DDD-status -name PROGRESS.md -delete", "clean", "task-files"),
+    ("cat > {tasks}/CCC-fresh/SPEC.md <<'EOF'\n## Status\nDONE\nEOF", "clean", "task-files"),
+    ("python3 -c \"from pathlib import Path; from task_state import load, record_transition; "
+     "record_transition(load(Path('{tasks}/DDD-status')), 'DRAFTING → APPROVED')\"", "clean", "task-files"),
+    ("cd {tasks}/DDD-status && python3 - <<'PY'\nimport task_gates\ntask_gates.restore_status('.', 'ok')\nPY", "clean",
+     "task-files"),
+    # Only the owner, in their own terminal, keeps a Status written outside the gates; an abbreviation is the same word.
+    ("~/.agent/bin/crew-task.py restore-status {tasks}/DDD-status --acc 'owner ok'", "clean", "owner-only"),
+    ("~/.agent/bin/crew-task.py restore-status {tasks}/DDD-status --accept 'owner approved'", "clean", "owner-only"),
+    ("python3 ~/.agent/bin/crew-task.py restore-status {tasks}/DDD-status --accept=ok", "clean", "owner-only"),
+    ("bash -c '~/.agent/bin/crew-task.py restore-status /x --accept ok'", "clean", "owner-only"),
     # zsh reads an unquoted word starting with `=` as a command lookup that aborts the line.
     ("echo =====", "clean", "zsh-equals"),
     ("echo ==", "clean", "zsh-equals"),
@@ -254,6 +306,26 @@ ALLOW = [
     ("grep -n x a\n# ===== next =====\nwc -l b", "clean"),
     ("python3 - <<'PY'\nprint(\"x == y\")\nPY", "clean"),
     ("cat <<-EOF\n\tbody == data\n\tEOF\nrm -f /tmp/hook-case-x", "clean"),
+    # A task file read, copied elsewhere or moved by crew-task.py, and a task's first SPEC.md; a scratch file beside it.
+    ("~/.agent/bin/crew-task.py mark-approved {tasks}/DDD-status", "clean"),
+    ("cat {tasks}/DDD-status/SPEC.md", "clean"),
+    ("sed -n 1,5p {tasks}/DDD-status/SPEC.md", "clean"),
+    ("perl -Ilib -ne 'print' {tasks}/DDD-status/SPEC.md", "clean"),
+    ("grep -n Status {tasks}/DDD-status/SPEC.md > /tmp/hook-case-status.txt", "clean"),
+    ("cp {tasks}/DDD-status/SPEC.md /tmp/hook-case-spec.md", "clean"),
+    ("python3 -c \"print(open('{tasks}/DDD-status/SPEC.md').read())\"", "clean"),
+    ("cat > {tasks}/BBB-new/SPEC.md <<'EOF'\n# Spec: x\nEOF", "clean"),
+    ("echo brief > {tasks}/DDD-status/review/1/adversarial.in.md", "clean"),
+    ("rsync -a {tasks}/DDD-status/ /tmp/hook-case-backup/", "clean"),
+    ("dd if={tasks}/DDD-status/SPEC.md of=/tmp/hook-case-spec.md", "clean"),
+    ("cat {tasks}/DDD-status/PROGRESS.md | tail -3", "clean"),
+    ("~/.agent/bin/crew-task.py restore-status {tasks}/DDD-status", "clean"),
+    ("~/.agent/bin/crew-task.py mark-done {tasks}/DDD-status --force --pr-url 'closed: stale'", "clean"),
+    ("grep -n -- --accept README.md", "clean"),
+    ("rm -f /tmp/hook-case-x ~/.agent/state/hook-case.log", "clean"),
+    ("rm -rf {tasks}/DDD-status/artifacts/old", "clean"),
+    ("python3 -c \"import json; print(json.load(open('{tasks}/DDD-status/.task-id')))\"", "clean"),
+    ("python3 -c \"import task_state; print(task_state.BORN)\"", "clean"),
 ]
 
 # Every row above runs through both parsers of `hook_segments` (shfmt on PATH, and PATH without it)
@@ -296,6 +368,8 @@ ENV = [
     ("python3 -c \"open('tracked.txt','w')\"", "source", {"EL_CAPITAN_GUARD_SOURCE_EDIT": "off"}, None),
     ("git add leak.txt && git commit -m add", "leaky", {"EL_CAPITAN_GUARD_CREDENTIALS": "off"}, None),
     ("echo =====", "clean", {"EL_CAPITAN_GUARD_ZSH_EQUALS": "off"}, None),
+    ("echo x > {tasks}/DDD-status/SPEC.md", "clean", {"EL_CAPITAN_GUARD_TASK_FILES": "off"}, None),
+    ("~/.agent/bin/crew-task.py restore-status /x --accept ok", "clean", {"EL_CAPITAN_GUARD_OWNER_ONLY": "off"}, None),
     ("echo =====", "clean", {"EL_CAPITAN_GUARDS": "off"}, None),
     ("git checkout main", "locked", {"CREW_WORKER_TASK": "T-1"}, None),
     ("git -C {locked} checkout main", "clean", {"CREW_WORKER_TASK": "T-1"}, None),
@@ -308,6 +382,8 @@ MESSAGES = {
     # The denied agent cannot tell a live worker from a crashed one: no task id, no removal command.
     # The age grows while the suite runs (slow runners pass a minute), so only its presence is checked.
     "worker-tree": (("ask the user before removing the lock", " min old)"), ("T-1", "lock remove")),
+    "task-files": (("Task file guard: this shell command",), ()),
+    "owner-only": (("Owner only", "own terminal"), ()),
 }
 
 # The SPEC.md on disk in the fixture's `DDD-status` task.
@@ -396,6 +472,8 @@ FILES = [
     ({"file_path": "{tasks}/DDD-status/review/1/adversarial.out.md", "content": "reply"},
      "clean", "check-task-spec-owner"),
     ({"file_path": "{tasks}/DDD-status/review/1/adversarial.in.md", "content": "brief"}, "clean", None),
+    ({"file_path": "{tasks}/DDD-status/PROGRESS.md", "content": "TRANSITION: DRAFTING → APPROVED [gate]\n"},
+     "clean", "check-task-spec-owner"),
 ]
 
 # Raw envelopes `(label, claude payload, cursor payload)` with no usable command.

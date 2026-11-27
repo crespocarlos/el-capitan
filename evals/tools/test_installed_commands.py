@@ -46,7 +46,7 @@ READS = {
     "crew-evals-compare.py": (["runs", "--help"], {0}),
     "crew-evals-inspect.py": (["latest"], {2}),
     "crew-metric.py": (["{task}", "probe=1"], {0}),
-    "crew-progress.py": (["{task}", "APPROVED → IMPLEMENTING"], {0}),
+    "crew-progress.py": (["{task}", "IMPLEMENTING → REVIEW"], {0}),
     "crew-verify.py": (["report-check", "{task}/REPORT.md"], {0, 1}),
     "crew-task.py": (["normalize-status", "--tasks-dir", "{tasks}"], {0}),
     "crew-mem.py": (["list", "--json", "--limit", "1"], {0}),

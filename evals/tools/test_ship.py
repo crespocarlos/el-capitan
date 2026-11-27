@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from cli_runner import load
 from cli_runner import run as cli
+from task_fixture import record_status
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK = ROOT / ".agent" / "tools" / "task" / "crew-task.py"
@@ -74,6 +75,7 @@ def world(tmp: Path, *commands: str, boxes: str = "- [x] a") -> tuple[Path, Path
     layers = "".join(f"### {layer}\n- **Command**: `{command}`\n"
                      for layer, command in zip(("Unit", "Integration"), commands))
     (task / "SPEC.md").write_text(f"# T\n\n## Status\nIMPLEMENTING\n\n{boxes}\n\n## Tests\n{layers}", encoding="utf-8")
+    record_status(task, "IMPLEMENTING")
     meta = {"slug": "t1", "branch": "feat/x", "worktree": str(tree), "repo_remote_url": URL}
     (task / ".task-id").write_text(json.dumps(meta), encoding="utf-8")
     (tmp / "body.md").write_text("The body.\n", encoding="utf-8")
@@ -126,9 +128,13 @@ def test_happy_path_rerun_and_a_closed_pr(tmp: Path) -> None:
 @pytest.mark.parametrize("label,base,branch,words", [
     ("a base other than the approved one", "develop", "feat/x", "--base develop disagrees with the default branch"),
     ("another branch", "main", "other", "not the task's branch feat/x"),
+    ("a Status written outside crew-task", "main", "feat/x",
+     "TAMPERED (spec says IMPLEMENTING, crew-task recorded DRAFTING)"),
 ])
 def test_refuses_before_staging(tmp: Path, label: str, base: str, branch: str, words: str) -> None:
     task, tree, env = world(tmp, "true")
+    if "TAMPERED" in words:
+        (task / "PROGRESS.md").unlink()
     if branch != "feat/x":
         git(tree, "checkout", "-q", "-b", branch, env=env)
     result = ship(tmp, env, str(task), base=base)

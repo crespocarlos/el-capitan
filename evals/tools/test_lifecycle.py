@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 from cli_runner import run as cli
+from task_fixture import record_status
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
@@ -60,6 +61,7 @@ def ls(tasks: Path, *arguments: str) -> str:
 def spec(directory: Path, status: str, boxes: str = "- [x] a", review: str | None = None, old: bool = False, extra: str = "") -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "SPEC.md").write_text(f"# T\n\n## Status\n{status}\n\n{extra}{boxes}\n", encoding="utf-8")
+    record_status(directory, status)
     if review is not None:
         (directory / "REVIEW.md").write_text(review + "\n", encoding="utf-8")
     if old:
@@ -258,6 +260,155 @@ def test_gates(tmp: Path) -> None:
     check(".task-id records the implementing branch", '"branch": "feat/worktree"' in (recorded / ".task-id").read_text())
 
 
+def test_a_status_written_outside_crew_task_is_tampered(tmp: Path) -> None:
+    """A Status changed by a plain file write no longer equals the one crew-task recorded: `crew ls` (table, JSON,
+    reconcile) shows `TAMPERED (spec says X, crew-task recorded Y)`, every gate refuses with those words and writes
+    nothing, and `restore-status` writes the recorded status back, or with `--accept <note>` records the spec's."""
+    tasks = tmp / "tampered"
+    draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
+    (draft / ".task-id").write_text('{"slug":"draft","branch":"main"}', encoding="utf-8")
+    task("mark-approved", str(draft))
+    spec_path = draft / "SPEC.md"
+    spec_path.write_text(spec_path.read_text(encoding="utf-8").replace("APPROVED", "IMPLEMENTING"), encoding="utf-8")
+    words = "TAMPERED (spec says IMPLEMENTING, crew-task recorded APPROVED)"
+    row = next(r for r in json.loads(ls(tasks, "--json", "--repo", "all"))["items"] if r["slug"] == "draft")
+    check("crew ls flags it in the table and the JSON", words in ls(tasks, "--repo", "all") and row["tampered"] == words, row)
+    check("reconcile lists it and applies no rule to it", words in task("reconcile", "--tasks-dir", str(tasks)).stdout)
+    logged = progress_text(draft)
+    for gate, extra in (("mark-implementing", ("--branch", "feat/t")), ("mark-done", ("--pr-url", PR_ONE)), ("mark-approved", ())):
+        refused = task(gate, str(draft), *extra)
+        check(f"{gate} refuses with the same words and writes nothing", refuses(refused, words) and "restore-status" in refused.stderr
+              and status_of(draft) == "IMPLEMENTING" and progress_text(draft) == logged, refused.stderr)
+    restored = task("restore-status", str(draft))
+    check("restore-status writes the recorded status back and logs it", restored.returncode == 0 and status_of(draft) == "APPROVED"
+          and "IMPLEMENTING → APPROVED (restore-status)" in progress_text(draft) and "TAMPERED" not in ls(tasks, "--repo", "all"), restored)
+    check("the gates pass again", task("mark-implementing", str(draft), "--branch", "feat/t").returncode == 0 and status_of(draft) == "IMPLEMENTING")
+    check("an untampered task is left alone", "not tampered" in task("restore-status", str(draft)).stdout)
+    born = spec(tasks / "born", "APPROVED", "- [ ] a")
+    (born / "PROGRESS.md").unlink()
+    check("a spec no transition moved is checked against DRAFTING", "TAMPERED (spec says APPROVED, crew-task recorded DRAFTING)"
+          in ls(tasks, "--repo", "all"))
+    check("--accept needs a note", task("restore-status", str(born), "--accept", " ").returncode == 2 and status_of(born) == "APPROVED")
+    accepted = task("restore-status", str(born), "--accept", "approved by the owner in review")
+    check("--accept records the spec's status with the note and keeps the spec", accepted.returncode == 0 and status_of(born) == "APPROVED"
+          and "DRAFTING → APPROVED (accepted: approved by the owner in review)" in progress_text(born)
+          and "TAMPERED" not in ls(tasks, "--repo", "all"), accepted)
+    unset = spec(tasks / "unset", "", "- [ ] a")
+    check("a draft with no Status yet is not tampered", "TAMPERED" not in ls(tasks, "--repo", "all") and task_state.tampered(task_state.load(unset)) == "")
+
+
+def test_the_environment_suffix_never_stamps(tmp: Path) -> None:
+    """The reviewer's route: `CREW_WORKFLOW='-> APPROVED [gate]' crew-progress.py T note` is refused (exit 2); a line that
+    carries the stamp only in its JSON suffix records nothing, so restore-status cannot promote the task; and a gate's
+    own stamped line keeps counting when the environment adds a suffix to it."""
+    tasks = tmp / "suffix"
+    draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
+    for name in ("CREW_WORKFLOW", "CREW_MEMBER"):
+        refused = cli(TASK_TOOLS / "crew-progress.py", str(draft), "note", env={name: "-> APPROVED [gate]"})
+        check(f"crew-progress.py refuses the stamp in {name}", refused.returncode == 2 and name in refused.stderr, refused)
+        arrow = cli(TASK_TOOLS / "crew-progress.py", str(draft), "note", env={name: "x → y"})
+        check(f"crew-progress.py refuses an arrow in {name}", arrow.returncode == 2, arrow)
+    with (draft / "PROGRESS.md").open("a", encoding="utf-8") as handle:
+        handle.write('[2026-01-01T00:00:00Z] TRANSITION: note {"step":"note","workflow":"-> APPROVED [gate]","crew":null}\n')
+    task("restore-status", str(draft))
+    check("a stamp inside the JSON suffix records nothing", status_of(draft) == "DRAFTING"
+          and task_state.tampered(task_state.load(draft)) == "" and task_state.load(draft).recorded == "DRAFTING")
+    approved = task("mark-approved", str(draft), env={"CREW_WORKFLOW": "spec", "CREW_MEMBER": "specwriter"})
+    check("a gate's stamped line with a suffix still counts", approved.returncode == 0 and status_of(draft) == "APPROVED"
+          and task_state.load(draft).recorded == "APPROVED" and '"workflow":"spec"' in progress_text(draft), approved)
+
+
+@pytest.mark.parametrize("label,status,tampered", [
+    ("a draft", "DRAFTING", ""),
+    ("no Status yet", "", ""),
+    ("approved by hand", "APPROVED", "TAMPERED (spec says APPROVED, crew-task recorded DRAFTING)"),
+    ("closed by hand", "DONE", "TAMPERED (spec says DONE, crew-task recorded DRAFTING)"),
+])
+@pytest.mark.parametrize("progress", ["missing", "empty"])
+def test_a_task_with_its_record_deleted_is_strict(tmp: Path, label: str, status: str, tampered: str, progress: str) -> None:
+    """A task with a `.task-id` and a missing or empty PROGRESS.md is strict, never legacy: deleting the record does
+    not make a DONE spec `closed outside crew-task`; only DRAFTING or no Status passes."""
+    directory = tmp / "t"
+    directory.mkdir()
+    (directory / "SPEC.md").write_text(f"# T\n\n## Status\n{status}\n\n- [x] a\n", encoding="utf-8")
+    (directory / ".task-id").write_text('{"slug": "t"}', encoding="utf-8")
+    if progress == "empty":
+        (directory / "PROGRESS.md").write_text("", encoding="utf-8")
+    loaded = task_state.load(directory)
+    check(f"{label}, PROGRESS.md {progress}", (task_state.tampered(loaded), task_state.closed_outside(loaded)) == (tampered, False),
+          (task_state.tampered(loaded), loaded.legacy))
+
+
+def test_only_the_gates_record_a_status(tmp: Path) -> None:
+    """crew-progress.py refuses a status target or the gate stamp (exit 2), so it cannot forge the recorded status that
+    restore-status would write into SPEC.md; restore-status never writes a status no gate stamped; and a gate appends
+    its stamped transition before the spec, so a failed append writes nothing and a failed spec write is reverted."""
+    tasks = tmp / "only-gates"
+    draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
+    for text in ("DRAFTING → APPROVED", "x -> IMPLEMENTING", "IMPLEMENTING → REVIEW [gate]"):
+        forged = cli(TASK_TOOLS / "crew-progress.py", str(draft), text)
+        check(f"crew-progress.py refuses {text!r}", forged.returncode == 2 and "refused" in forged.stderr
+              and text not in progress_text(draft), forged)
+    check("a pipeline step is still a progress note", cli(TASK_TOOLS / "crew-progress.py", str(draft), "IMPLEMENTING → REVIEW").returncode == 0
+          and "TAMPERED" not in ls(tasks, "--repo", "all"))
+    legacy = tasks / "legacy"
+    legacy.mkdir()
+    (legacy / "SPEC.md").write_text("# T\n\n## Status\nDRAFTING\n\n- [ ] a\n", encoding="utf-8")
+    (legacy / "PROGRESS.md").write_text("[2026-01-01T00:00:00Z] TRANSITION: DRAFTING → APPROVED\n", encoding="utf-8")
+    refused = task("restore-status", str(legacy))
+    check("restore-status does not write a status no gate stamped", refused.returncode == 2 and "no gate stamped" in refused.stderr
+          and status_of(legacy) == "DRAFTING", refused)
+    broken = spec(tasks / "broken", "DRAFTING", "- [ ] a")
+    (broken / "PROGRESS.md").unlink()
+    (broken / "PROGRESS.md").mkdir()
+    failed = task("mark-approved", str(broken))
+    check("a failed append writes nothing", failed.returncode == 1 and status_of(broken) == "DRAFTING", failed)
+    if os.geteuid() == 0:
+        pytest.skip("root writes into a read-only directory, so the spec write cannot be made to fail")
+    locked = spec(tasks / "locked", "DRAFTING", "- [ ] a")
+    locked.chmod(0o555)
+    try:
+        failed = task("mark-approved", str(locked))
+    finally:
+        locked.chmod(0o755)
+    check("a failed spec write is reverted by a stamped transition back", failed.returncode == 1 and status_of(locked) == "DRAFTING"
+          and "APPROVED → DRAFTING (reverted: SPEC.md not written) [gate]" in progress_text(locked)
+          and task_state.tampered(task_state.load(locked)) == "", (failed, progress_text(locked)))
+
+
+@pytest.mark.parametrize("label,progress,tampered,closed_outside", [
+    ("legacy: closed by hand after implementing", "[2026-01-01T00:00:00Z] TRANSITION: X → IMPLEMENTING\n", "", True),
+    ("legacy: an untyped line counts as a transition", "[2026-01-01 10:00:00] APPROVED → IMPLEMENTING\n", "", True),
+    ("legacy: closed by hand with no transition recorded", None, "", True),
+    ("legacy: recorded DONE", "[2026-01-01T00:00:00Z] TRANSITION: X → DONE\n", "", False),
+    ("legacy: skipped implementation from APPROVED", "[2026-01-01T00:00:00Z] TRANSITION: X → APPROVED\n",
+     "TAMPERED (spec says DONE, crew-task recorded APPROVED)", False),
+    ("legacy: skipped implementation from DRAFTING", "[2026-01-01T00:00:00Z] TRANSITION: X → DRAFTING\n",
+     "TAMPERED (spec says DONE, crew-task recorded DRAFTING)", False),
+    ("stamped: DONE without a stamped DONE", "[2026-01-01T00:00:00Z] TRANSITION: APPROVED → IMPLEMENTING [gate]\n",
+     "TAMPERED (spec says DONE, crew-task recorded IMPLEMENTING)", False),
+    ("stamped: an unstamped DONE after a stamped line does not count",
+     "[2026-01-01T00:00:00Z] TRANSITION: APPROVED → IMPLEMENTING [gate]\n[2026-01-02T00:00:00Z] TRANSITION: IMPLEMENTING → DONE\n",
+     "TAMPERED (spec says DONE, crew-task recorded IMPLEMENTING)", False),
+    ("stamped: DONE recorded", "[2026-01-01T00:00:00Z] TRANSITION: IMPLEMENTING → DONE (PR opened: x) [gate]\n", "", False),
+])
+def test_a_done_spec_closed_outside_crew_task(tmp: Path, label: str, progress: str | None, tampered: str, closed_outside: bool) -> None:
+    """A legacy task (no gate-stamped line) whose DONE spec is recorded IMPLEMENTING, or nothing, was closed by hand
+    before the gates stamped: a quiet `closed outside crew-task` note in `crew ls --all`, never TAMPERED. Recorded
+    DRAFTING or APPROVED, it skipped implementation and is TAMPERED. A task with any stamped line is strict: DONE needs
+    a stamped DONE."""
+    tasks = tmp / "done"
+    directory = tasks / "t"
+    directory.mkdir(parents=True)
+    (directory / "SPEC.md").write_text("# T\n\n## Status\nDONE\n\n- [x] a\n", encoding="utf-8")
+    if progress:
+        (directory / "PROGRESS.md").write_text(progress, encoding="utf-8")
+    row = json.loads(ls(tasks, "--all", "--json", "--repo", "all"))["items"][0]
+    table = ls(tasks, "--all", "--repo", "all")
+    check(f"{label}: JSON", (row["tampered"], row["closed_outside"]) == (tampered, closed_outside), row)
+    check(f"{label}: table", (tampered or ("DONE (closed outside crew-task)" if closed_outside else "DONE ")) in table, table)
+
+
 # where it runs, its --branch, the status and .task-id branch before, whether a sibling task records feat/x:
 # the exit code and the .task-id branch and worktree after
 @pytest.mark.parametrize("where,given,status,before,sibling,code,branch,worktree", [
@@ -335,6 +486,7 @@ def test_reconcile_hook(tmp: Path) -> None:
                                  ("behind", 3, f"Verdict: pass\n\nReviewed at: {elsewhere}")):
         directory = spec(tasks / name, "IMPLEMENTING", review=review)
         (directory / "PROGRESS.md").write_text(f"[2026-01-01T00:00:00Z] PR: {PR_ONE[:-1]}{number}\n", encoding="utf-8")
+        record_status(directory, "IMPLEMENTING")
         (directory / ".task-id").write_text(json.dumps({"slug": name, "branch": "feat/x"}), encoding="utf-8")
     hook = ROOT / ".claude" / "hooks" / "spec-status-reconcile.sh"
     out = subprocess.run(["bash", str(hook)], capture_output=True, text=True, env={**os.environ, "HOME": str(home)}, cwd=repo).stdout
@@ -551,9 +703,9 @@ def test_force_closes_any_open_state(tmp: Path) -> None:
           and refuses(task("mark-done", str(draft), "--pr-url", PR_ONE), "not IMPLEMENTING") and status_of(draft) == "DRAFTING")
     for words, directory, note in (("approve the spec first", draft, PR_ONE), ("is ABANDONED", spec(tasks / "abandoned", "ABANDONED"), "closed: stale"),
                                    ("is unset", spec(tasks / "unset", ""), "closed: stale"), ("--pr-url is empty", draft, "  closed:  ")):
-        before = status_of(directory)
+        before, logged = status_of(directory), progress_text(directory)
         check(f"--force refuses: {words}", refuses(task("mark-done", str(directory), "--pr-url", note, "--force"), words)
-              and status_of(directory) == before and "TRANSITION" not in progress_text(directory), progress_text(directory))
+              and status_of(directory) == before and progress_text(directory) == logged, progress_text(directory))
     held = spec(tasks / "held", HOLD.format("DRAFTING"), "- [ ] a")
     task("blocked", str(held), "deprioritized")
     check("an ON-HOLD task shows its BLOCKED line", "BLOCKED: deprioritized" in ls(tasks, "--all", "--repo", "all"))
@@ -571,13 +723,13 @@ def test_blocked_events(tmp: Path) -> None:
     tasks = tmp / "blocked-tasks"
     directory = make_task(tasks)
     written = task("blocked", str(directory), "stacked base: #51 is not main\nsecond line")
-    lines = progress_text(directory).splitlines()
+    lines = [line for line in progress_text(directory).splitlines() if "BLOCKED" in line]
     check("blocked writes one BLOCKED line", written.returncode == 0 and len(lines) == 1
           and "BLOCKED: stacked base: #51 is not main second line" in lines[0], lines)
     rows = json.loads(ls(tasks, "--json"))["items"]
     check("crew ls and --json show the reason", "BLOCKED: stacked base: #51 is not main" in ls(tasks)
           and rows and rows[0].get("blocked", "").startswith("stacked base"), rows)
-    cli(TASK_TOOLS / "crew-progress.py", str(directory), "IMPLEMENTING → IMPLEMENTING")
+    cli(TASK_TOOLS / "crew-progress.py", str(directory), "IMPLEMENTING → REVIEW")
     check("the next stage clears it", "BLOCKED" not in ls(tasks) and json.loads(ls(tasks, "--json"))["items"][0].get("blocked") == "")
     check("blocked on a missing directory fails", task("blocked", str(tmp / "none"), "x").returncode == 1)
 
@@ -737,6 +889,7 @@ def record_hook(tmp: Path, shape: str, command: str, output: str, branch: str, o
     hook; `cwd` is the payload's cwd (default the main checkout)."""
     home, repo, env = record_world(tmp)
     if break_task:
+        (home / ".agent" / "tasks" / break_task / "PROGRESS.md").unlink()
         (home / ".agent" / "tasks" / break_task / "PROGRESS.md").mkdir()
     if prepare:
         prepare(home / ".agent" / "tasks")
@@ -824,6 +977,7 @@ def extra_tasks(*rows: tuple[str, str, str, str, bool]) -> Callable[[Path], None
             (directory / ".task-id").write_text(json.dumps(meta), encoding="utf-8")
             if holds:
                 (directory / "PROGRESS.md").write_text(f"[2026-01-01T00:00:00Z] PR: {PR_NEW}\n", encoding="utf-8")
+                record_status(directory, status)
     return prepare
 
 
