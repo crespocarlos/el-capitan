@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from ls_data import landed_lines, landed_rows, snapshot
+from ls_data import STALE_DAYS, landed_lines, landed_rows, snapshot, stale
 from task_progress import blocked_reason
 from task_state import TaskState, decide, head, load_rules, name, set_status
 from task_status import STATUS, StatusError, token
@@ -34,22 +34,27 @@ def table_rows(rows: list[TaskState], show_done: bool, markdown: bool) -> list[t
     def cut(text: str, width: int) -> str:
         return text if len(text) <= width else text[:width - 1] + "…"
 
-    open_rows = sorted([r for r in rows if head(r) != "DONE"], key=lambda r: (rank(r), r.age))
-    done_rows = sorted([r for r in rows if head(r) == "DONE"], key=lambda r: r.age)
+    open_rows = sorted([r for r in rows if head(r) != "DONE"], key=lambda r: (rank(r), r.activity))
+    done_rows = sorted([r for r in rows if head(r) == "DONE"], key=lambda r: r.activity)
     shown = open_rows + (done_rows if show_done else [])
-    return [("STATE", "TASK", "BRANCH", "REVIEW", "AGE")] + [
+    return [("STATE", "TASK", "REPO", "BRANCH", "REVIEW", "AGE")] + [
         (state_label(r),
          name(r) if markdown else cut(name(r), 50),
+         r.repo or "-" if markdown else cut(r.repo or "-", 28),
          r.branch if markdown else cut(r.branch, 32),
          r.verdict.upper() if r.verdict != "?" else "-",
-         "today" if r.age == 0 else f"{r.age}d")
+         "today" if r.activity == 0 else f"{r.activity}d")
         for r in shown]
 
 
 def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
-                limit: int | None) -> list[str]:
-    """The rendered table, bounded to `limit` data rows with a marker line when rows were dropped."""
-    table = table_rows(rows, show_done, markdown)
+                limit: int | None, folded: list[TaskState] | None = None) -> list[str]:
+    """The rendered table, bounded to `limit` data rows with a marker line when rows were dropped.
+
+    `folded` rows (stale IMPLEMENTING) are counted in the footer and shown as one line, not as rows.
+    """
+    folded = folded or []
+    table = table_rows([r for r in rows if r not in folded], show_done, markdown)
     header, body = table[0], table[1:]
     shown, marker = rows_limit(body, limit)
     rendered: list[str] = []
@@ -57,11 +62,16 @@ def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
         for index, row in enumerate([header, *shown]):
             rendered.append("| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |")
             if index == 0:
-                rendered.append("|" + "|".join(["---"] * 5) + "|")
+                rendered.append("|" + "|".join(["---"] * len(header)) + "|")
     else:
-        widths = [max(len(row[i]) for row in [header, *shown]) for i in range(5)]
+        widths = [max(len(row[i]) for row in [header, *shown]) for i in range(len(header))]
         for row in [header, *shown]:
             rendered.append("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
+    if folded:
+        if markdown:
+            rendered.append("")  # a Markdown table ends only at a blank line
+        rendered.append(f"stale: {len(folded)} IMPLEMENTING with no activity for {STALE_DAYS}+ days "
+                        "(`--status implementing` lists them; `crew-task.py reconcile` reports them)")
     open_count = sum(1 for r in rows if head(r) != "DONE")
     done_rows = [r for r in rows if head(r) == "DONE"]
     unreviewed = sum(1 for r in done_rows if r.verdict.lower() not in ("pass", "warn"))
@@ -77,8 +87,9 @@ def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
 def json_row(r: TaskState) -> dict:
     """One task as machine-readable state: the fields an agent branches on, no display text."""
     return {"slug": name(r), "directory": str(r.task), "status": r.status or "",
-            "state": head(r) or "", "branch": r.branch_name(""), "verdict": r.verdict,
-            "age_days": r.age, "open": r.open, "done": r.done, "blocked": blocked_reason(r.task)}
+            "state": head(r) or "", "repo": r.repo, "branch": r.branch_name(""), "verdict": r.verdict,
+            "age_days": r.age, "activity_days": r.activity, "stale": stale(r),
+            "open": r.open, "done": r.done, "blocked": blocked_reason(r.task)}
 
 
 def landed_section(landed: list[str]) -> list[str]:
@@ -88,10 +99,11 @@ def landed_section(landed: list[str]) -> list[str]:
     return ["", "landed (DONE means a PR was opened, not that it reached the default branch):", *landed]
 
 
-def print_listing(rows: list[TaskState], args, landed=None) -> None:
+def print_listing(rows: list[TaskState], args, landed=None, scope: str = "") -> None:
     """The listing in whichever shape the flags select, bounded by `--limit` and `--max-chars`.
 
-    `landed` replaces the `landed:` line reader (a `--watch` loop passes its cache).
+    `landed` replaces the `landed:` line reader (a `--watch` loop passes its cache); `scope` is the
+    repository line printed under the table (never in `--json`).
     """
     if getattr(args, "json", False):
         records = [json_row(r) for r in rows]
@@ -101,9 +113,12 @@ def print_listing(rows: list[TaskState], args, landed=None) -> None:
                 record.update(found)
         print(json_payload(records, args.limit, args.max_chars, what="tasks"))
         return
-    data = snapshot(rows, args.all, landed or landed_lines, args.limit)
-    print_lines(table_lines(rows, args.all, args.md, args.limit) + data.blocked + landed_section(data.landed),
-                args.max_chars, what="task table", flag="--max-chars")
+    states = [state.upper() for state in getattr(args, "status", None) or []]
+    show_done = args.all or "DONE" in states
+    folded = [] if states else [r for r in rows if stale(r)]
+    data = snapshot(rows, show_done, landed or landed_lines, args.limit)
+    print_lines(table_lines(rows, show_done, args.md, args.limit, folded) + ([f"scope: {scope}"] if scope else [])
+                + data.blocked + landed_section(data.landed), args.max_chars, what="task table", flag="--max-chars")
 
 
 def print_status_file(path: str) -> int:

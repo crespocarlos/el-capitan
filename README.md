@@ -41,10 +41,17 @@ guard, a write-boundary check, a shell-expansion guard, and a worker-tree guard.
 [Claude Code hooks](#claude-code-hooks), and each is one small file you can read first. Each has an
 off switch (`EL_CAPITAN_GUARDS=off` for all of them), described in the same section.
 
-**There is no uninstaller.** To reverse an install, remove the symlinks under `~/.cursor`, `~/.claude`,
-and `~/.agent/bin`, delete the `el-capitan` hook entries from `~/.claude/settings.json` and
-`~/.cursor/hooks.json`, and delete the managed block in `~/.codex/AGENTS.md`. Your `~/.agent/memory`
-data is untouched by those steps, so delete it separately if you want it gone.
+**To reverse an install**, run `bash ~/el-capitan/install.sh --uninstall` (add `--dry-run` to print
+each step and change nothing; `install.sh --dry-run` does the same for an install). It first removes
+the managed blocks and the hook registrations and permission rules install added to
+`~/.claude/settings.json` and `~/.cursor/hooks.json` (recorded in `~/.agent/install-manifest.json`;
+an entry you had before install stays), then the links into the checkout and the directories install
+created. For an install from before the manifest, the oldest settings backup decides what was yours;
+with no backup, or with no install since the manifest, it lists the entries to review by hand. It
+exits 1 and names each link it left, for example one a remaining hook registration still runs. Your
+`~/.agent` data (tasks, journal, memory) and the settings backups install made stay; delete them
+yourself if you want them gone. `crew doctor` checks an install, and `crew gc` prunes old task state
+(see [Utilities](#utilities)).
 
 ## Compatibility
 
@@ -320,6 +327,10 @@ branch and whether it merged, `~/.agent/bin/crew-worktree.py fetch` refreshes th
 |---|---|
 | `crew create issue: <description>` | Structure a rough idea into a GitHub issue and file it |
 | `crew handoff` / `crew handoff resume` | Save or resume working state across a context reset |
+| `crew ls` [`--all`] [`--repo R`] [`--status S`] | Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line |
+| `crew report` [`--since 30d`] [`--repo R`] | Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures |
+| `crew doctor` | One screen of install health: links, hook registrations, managed blocks, tool versions, `gh` sign-in, state sizes; exit 1 on a problem |
+| `crew gc` [`--apply`] | Retention from `~/.agent/config.json`: artifacts of DONE tasks after 14 days, DONE tasks archived after 90, session files after 30, the legacy `~/.agent/telemetry`; a dry run unless `--apply` |
 
 ### Standalone
 
@@ -428,13 +439,14 @@ el-capitan/
 ~/.agent/
 ├── bin/                     # Flat installed command surface (links from every .agent/tools subdirectory); see TOOLS.md
 ├── journal/                 # Legacy monthly journal files (import-only)
-├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox
-├── telemetry/               # Local hook telemetry JSONL
+├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox; .sessions/ holds hook telemetry
+├── archive/                 # tasks-<stamp>.tar.gz: DONE tasks `crew gc --apply` archived
+├── config.json              # Optional: {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30}, "doctor": {"tasks_mb": 500, "sessions_mb": 100}}
 └── tasks/<uuid>/            # Per-task state: SPEC.md, PROGRESS.md, REPORT.md, REVIEW.md, DEFERRED.md, HANDOFF.md
     └── .task-id             # JSON: uuid, repo_remote_url, branch, slug, created_at
 ```
 
-Task state is keyed by UUID and resolved via `.task-id` lookup against the current `git remote + branch`. Multiple specs can coexist per branch. Completed tasks are never deleted automatically.
+Task state is keyed by UUID and resolved via `.task-id` lookup against the current `git remote + branch`. Multiple specs can coexist per branch. Nothing is deleted automatically: `crew gc` lists what the retention policy selects and `crew gc --apply` removes it. An older install may hold `~/.agent/telemetry/`, which logged raw shell commands; `crew-task.py gc --only telemetry --apply` removes only it.
 
 ### Context budget
 

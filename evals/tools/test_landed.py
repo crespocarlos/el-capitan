@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""`crew ls`: `landed` from the PR record, and `--watch` redrawing the table read-only.
+"""`crew ls`: `landed` from the PR record, `--watch` redrawing the table read-only, the filters, `--report`.
 
 `ls_data` (shared with a TUI) is driven with stubbed readers, an injected sleep and clock; a real
 `crew-ls.py --watch` is read until it has drawn twice, then interrupted. A DONE task is `yes`, `no`,
 or `unknown`, from the PR record (base, state, merge commit), not from branch ancestry, which is false
 for squash merges. No test calls the real GitHub: the decision functions take a stubbed reader, and
-the end-to-end cases put a fake `gh` first on PATH.
+the end-to-end cases put a fake `gh` first on PATH. The repo and state filters, the PROGRESS-based age,
+the stale fold and the report run in process on seeded tasks.
 """
 from __future__ import annotations
 
@@ -14,9 +15,11 @@ import os
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
+from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
@@ -377,3 +380,104 @@ def test_the_watch_command(tmp: Path) -> None:
           missing.returncode == 2 and missing.stdout == "" and "no tasks directory" in missing.stderr, missing)
     for bad in (["--watch", "--interval", "0"], ["--watch", "--json"], ["--interval", "5"]):
         check(f"{' '.join(bad)} is refused", subprocess.run([*command, *bad], capture_output=True, text=True).returncode == 2)
+
+
+def ago(days: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - days * 86400))
+
+
+def seeded(tasks: Path, slug: str, state: str, repo: str | None, days: float, lines: tuple = (), mtime_days: float = 0,
+           review: str = "", outcomes: tuple = ()) -> None:
+    """A task whose last PROGRESS entry is `days` old and whose files are `mtime_days` old."""
+    task = tasks / slug
+    (task / "review").mkdir(parents=True)
+    (task / "SPEC.md").write_text(f"# {slug}\n\n## Status\n{state}\n\n- [ ] a\n", encoding="utf-8")
+    meta = {"slug": slug, "branch": f"feat/{slug}", "created_at": ago(days + 1)}
+    (task / ".task-id").write_text(json.dumps({**meta, **({"repo_remote_url": f"git@github.com:{repo}.git"} if repo else {})}), encoding="utf-8")
+    entries = [*((days + 1, "TRANSITION: DRAFTING → APPROVED"),), *lines, (days, "METRIC: probe=1")]
+    (task / "PROGRESS.md").write_text("".join(f"[{ago(at)}] {text}\n" for at, text in entries), encoding="utf-8")
+    if review:
+        (task / "REVIEW.md").write_text(f"Verdict: {review}\n", encoding="utf-8")
+    (task / "review" / "outcomes.jsonl").write_text("".join(
+        json.dumps({"fingerprint": f"f{i}", "label": label, "outcome": outcome, "ts": ago(days)}) + "\n"
+        for i, (label, outcome) in enumerate(outcomes)), encoding="utf-8")
+    for path in task.iterdir():
+        os.utime(path, (time.time() - mtime_days * 86400,) * 2)
+
+
+def listing_home(tmp: Path) -> tuple[Path, Path]:
+    """Four tasks and a checkout whose origin is acme/widgets: the cwd a default `--repo` reads."""
+    tasks, repo = tmp / "tasks", tmp / "checkout"
+    seeded(tasks, "active", "IMPLEMENTING", "acme/widgets", 2, mtime_days=40)
+    seeded(tasks, "quiet", "IMPLEMENTING", "acme/widgets", 20)
+    seeded(tasks, "other", "DRAFTING", "acme/gadgets", 1)
+    seeded(tasks, "local", "DRAFTING", None, 1)
+    git(repo.parent, "init", "-q", str(repo))
+    git(repo, "remote", "add", "origin", "git@github.com:acme/widgets.git")
+    return tasks, repo
+
+
+@pytest.mark.parametrize("arguments, shown, folded, scope", [
+    ((), {"active", "local"}, True, "scope: repo acme/widgets"),
+    (("--repo", "all"), {"active", "local", "other"}, True, "scope: every repo"),
+    (("--repo", "gadgets"), {"local", "other"}, False, "scope: repo gadgets"),
+    (("--status", "implementing"), {"active", "quiet"}, False, "scope: repo acme/widgets"),
+])
+def test_crew_ls_repo_and_status_filters(tmp: Path, arguments: tuple, shown: set, folded: bool, scope: str) -> None:
+    """The current repo by default (a task with no repository is in every one), named under the table; `--status` unfolds stale work."""
+    tasks, repo = listing_home(tmp)
+    table = cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), *arguments, cwd=repo).stdout
+    rows = {line.split()[1] for line in table.splitlines() if line.split()[:1] in (["IMPLEMENTING"], ["DRAFTING"])}
+    check("the filters keep the expected rows, and only unfiltered state folds the stale task into one line",
+          rows == shown and ("stale: 1 IMPLEMENTING" in table) == folded and "REPO" in table.splitlines()[0]
+          and any(line.startswith(scope) for line in table.splitlines()), table)
+
+
+def test_crew_ls_age_comes_from_progress(tmp: Path) -> None:
+    """AGE is the last PROGRESS entry, not the file times: fresh files with an old entry are stale, and back."""
+    tasks, repo = listing_home(tmp)
+
+    def ls(*arguments: str) -> subprocess.CompletedProcess:
+        return cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), *arguments, cwd=repo)
+
+    records = {r["slug"]: r for r in json.loads(ls("--json").stdout)}
+    check("activity and stale follow PROGRESS; the repo is recorded",
+          (records["active"]["activity_days"], records["active"]["stale"], records["quiet"]["activity_days"], records["quiet"]["stale"])
+          == (2, False, 20, True) and records["quiet"]["repo"] == "acme/widgets" and records["local"]["repo"] == "", records)
+    check("--md ends the table with a blank line before the stale line", "|\n\nstale: 1 IMPLEMENTING" in ls("--md").stdout)
+    typo = ls("--status", "implmenting")
+    check("an unknown --status exits 2 naming the allowed states", typo.returncode == 2 and "IMPLEMENTING" in typo.stderr, typo)
+    check("an unmatched --repo says --repo all lists every task", "--repo all" in ls("--repo", "nowhere").stderr)
+
+
+def test_crew_ls_report(tmp: Path) -> None:
+    """`--report`: opened, closed, verdicts, findings with the fixed rate, stage cost and time, tool failures."""
+    tasks, memory = tmp / "tasks", tmp / "memory"
+    seeded(tasks, "built", "IMPLEMENTING", "acme/widgets", 1, review="pass",
+           lines=((2.5, "METRIC: stage_start stage=implement"), (1.5, "METRIC: stage_end stage=implement workers=2 tokens_reported=4000")),
+           outcomes=(("blocking", "fixed"), ("nit", "deferred"), ("blocking", "fixed")))
+    seeded(tasks, "shipped", "DONE", "acme/gadgets", 5, review="warn", lines=((5, "TRANSITION: IMPLEMENTING → DONE"),),
+           outcomes=(("blocking", "rejected"),))
+    seeded(tasks, "ancient", "DONE", "acme/widgets", 60, lines=((60, "TRANSITION: IMPLEMENTING → DONE"),), outcomes=(("nit", "fixed"),))
+    (memory / ".sessions").mkdir(parents=True)
+    (memory / ".sessions" / "s.jsonl").write_text("".join(json.dumps({"ts": ago(d), "tool": tool, "failure": failed}) + "\n"
+                                                         for d, tool, failed in ((1, "Bash", True), (1, "Read", False), (90, "Bash", True))))
+
+    def report(*arguments: str) -> subprocess.CompletedProcess:
+        return cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), "--report", *arguments,
+                   env={"CREW_MEMORY_DIR": str(memory), "HOME": str(tmp)}, cwd=tmp)
+
+    data = json.loads(report("--json").stdout)
+    check("the 30-day report counts what happened in the window and nothing older",
+          (data["opened"], data["closed"], data["verdicts"], data["findings"]) == (2, 1, {"pass": 1, "warn": 1},
+                                                                                     {"blocking": {"fixed": 2, "rejected": 1}, "nit": {"deferred": 1}})
+          and data["stages"]["implement"]["tokens"] == 4000 and abs(data["stages"]["implement"]["median_seconds"] - 86400) <= 2
+          and data["tools"] == {"calls": 2, "failures": 1, "by_tool": {"Bash": 1}}, data)
+    narrowed = json.loads(report("--json", "--repo", "acme/widgets", "--since", "3d").stdout)
+    check("--repo and --since narrow it", (narrowed["opened"], narrowed["closed"], narrowed["findings"])
+          == (1, 0, {"blocking": {"fixed": 2}, "nit": {"deferred": 1}}), narrowed)
+    text = report()
+    check("the text report renders one line per section", text.returncode == 0 and len(text.stdout.splitlines()) >= 7, text)
+    check("a window past the retention policy says what it cannot count",
+          json.loads(report("--json", "--since", "200d").stdout)["retention_note"] and not data["retention_note"])
+    check("a bad --since is refused with exit 2", report("--since", "a month").returncode == 2)

@@ -138,10 +138,170 @@ before=$(find "$home" -type f | wc -l | tr -d ' ')
 HOME="$home" bash "$root/install.sh" --dry-run >/dev/null
 test "$before" = "$(find "$home" -type f | wc -l | tr -d ' ')"
 
+# Uninstall round trip: a HOME holding the user's own CLAUDE.md, settings, Cursor hooks and agent is
+# installed into and uninstalled from, and equals its snapshot again, except ~/.agent (data that stays)
+# and the settings backup the merge wrote. `--uninstall --dry-run` changes nothing. The user's rule
+# `Bash(git *)` and SessionStart hook equal template entries, and survive: uninstall removes only what
+# install recorded as added.
+round=$(mktemp -d)
+trap 'rm -rf "$home" "$round"' EXIT
+mkdir -p "$round/.claude" "$round/.cursor/agents"
+printf '# Mine\n\n@AGENTS.md\n' > "$round/.claude/CLAUDE.md"
+printf -- '---\nname: mine\n---\n' > "$round/.cursor/agents/mine.md"
+ln -s "$round/unmounted/hook.sh" "$round/.cursor/agents/dangling.md"
+python3 - "$round" <<'PY'
+import json, sys
+home = sys.argv[1]
+reconcile = {"type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/spec-status-reconcile.sh\"; exit 0"}
+for path, data in ((f"{home}/.claude/settings.json", {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash mine.sh"}]}],
+                                                                 "SessionStart": [{"hooks": [reconcile]}]},
+                                                       "permissions": {"allow": ["Bash(my-own *)", "Bash(git *)"]}}),
+                   (f"{home}/.cursor/hooks.json", {"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}})):
+    with open(path, "w") as handle:
+        handle.write(json.dumps(data, indent=2) + "\n")
+PY
+tree_state() {
+  (cd "$1" && find . ! -path './Library*' ! -path './.agent' ! -path './.agent/*' ! -name '*.json.bak.*' | sort | while IFS= read -r p; do
+    if [ -L "$p" ]; then echo "$p -> $(readlink "$p")"; elif [ -f "$p" ]; then echo "$p $(cksum < "$p")"; else echo "$p/"; fi
+  done)
+}
+pristine=$(tree_state "$round")
+mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%OLp' "$1"; }
+settings_mode=$(mode "$round/.claude/settings.json")
+HOME="$round" bash "$root/install.sh" >/dev/null
+installed=$(tree_state "$round")
+HOME="$round" bash "$root/install.sh" --uninstall --dry-run >/dev/null
+test "$installed" = "$(tree_state "$round")"
+HOME="$round" bash "$root/install.sh" --uninstall >/dev/null
+test "$pristine" = "$(tree_state "$round")"
+test "$settings_mode" = "$(mode "$round/.claude/settings.json")"   # the file keeps its mode
+test -d "$round/.agent/memory"                              # data stays
+
+# Uninstall unregisters before it deletes. An unreadable settings file stops it before any change; odd but
+# valid shapes are skipped with a warning, and no remaining registration runs a script that is gone.
+odd=$(mktemp -d)
+trap 'rm -rf "$home" "$round" "$odd"' EXIT
+HOME="$odd" bash "$root/install.sh" >/dev/null
+links=$(find "$odd" -type l | wc -l | tr -d ' ')
+cp "$odd/.cursor/hooks.json" "$odd/hooks.good" && cp "$odd/.claude/settings.json" "$odd/settings.good"
+printf '{bad' > "$odd/.cursor/hooks.json"
+if HOME="$odd" bash "$root/install.sh" --uninstall >/dev/null 2>&1; then exit 1; fi
+test "$links" = "$(find "$odd" -type l | wc -l | tr -d ' ')"
+cmp -s "$odd/settings.good" "$odd/.claude/settings.json"
+python3 - "$odd" <<'PY'
+import json, sys
+home = sys.argv[1]
+claude, cursor = json.load(open(f"{home}/settings.good")), json.load(open(f"{home}/hooks.good"))
+claude["hooks"]["Stop"] = {"x": 1}
+claude["hooks"]["PreToolUse"].append("a string")
+cursor["hooks"]["stop"] = "x"
+cursor["hooks"]["beforeShellExecution"].append(7)
+json.dump(claude, open(f"{home}/.claude/settings.json", "w"))
+json.dump(cursor, open(f"{home}/.cursor/hooks.json", "w"))
+PY
+HOME="$odd" bash "$root/install.sh" --uninstall > "$odd/out"
+grep -q 'warning: ~/.claude/settings.json: hooks.Stop is not a list' "$odd/out"
+python3 - "$odd" <<'PY'
+import json, os, re, sys
+home = sys.argv[1]
+for path in (f"{home}/.claude/settings.json", f"{home}/.cursor/hooks.json"):
+    text = open(path).read()
+    for script in re.findall(r'\$HOME/(\.claude/hooks/[^"\s;]+)', text):
+        assert os.path.exists(os.path.join(home, script)), f"{path} registers {script}, which is gone"
+assert json.load(open(f"{home}/.claude/settings.json"))["hooks"]["Stop"] == {"x": 1}
+PY
+
+# A registration uninstall keeps keeps its script, whatever form names it: `~/` in settings.json, an
+# absolute path in a failClosed Cursor entry. The user's own credentials.sh hook loses only the
+# `onFailure` install added to it.
+kept=$(mktemp -d)
+trap 'rm -rf "$home" "$round" "$odd" "$kept"' EXIT
+mkdir -p "$kept/.claude"
+printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\""}]}]}}' > "$kept/.claude/settings.json"
+HOME="$kept" bash "$root/install.sh" >/dev/null
+python3 - "$kept" <<'PY'
+import json, sys
+home = sys.argv[1]
+claude, cursor = f"{home}/.claude/settings.json", f"{home}/.cursor/hooks.json"
+data = json.load(open(claude))
+data["hooks"]["PreToolUse"].append({"matcher": "Write", "hooks": [{"type": "command", "command": "bash ~/.claude/hooks/check-write-boundary.sh"}]})
+json.dump(data, open(claude, "w"))
+data = json.load(open(cursor))
+data["hooks"]["beforeShellExecution"].append({"command": f'bash "{home}/.claude/hooks/notify-idle.sh"', "failClosed": True})
+json.dump(data, open(cursor, "w"))
+PY
+if HOME="$kept" bash "$root/install.sh" --uninstall > "$kept/out" 2>&1; then exit 1; fi
+grep -q 'check-write-boundary.sh' "$kept/out" && grep -q 'notify-idle.sh' "$kept/out" && grep -q 'guard/credentials.sh' "$kept/out"
+test -e "$kept/.claude/hooks/check-write-boundary.sh" && test -e "$kept/.claude/hooks/notify-idle.sh"
+test -e "$kept/.claude/hooks/guard/credentials.sh" && test -e "$kept/.claude/hooks/lib/hook.sh"
+python3 - "$kept/.claude/settings.json" <<'PY'
+import json, sys
+hooks = [h for e in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"] for h in e["hooks"]]
+assert [h for h in hooks if "credentials" in h["command"]] == [{"type": "command", "command": 'bash "$HOME/.claude/hooks/guard/credentials.sh"'}], hooks
+PY
+
+# A settings.json that is a link (dotfiles) keeps its link; a rule install added that the template has
+# since dropped is named when it goes.
+linked=$(mktemp -d)
+trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked"' EXIT
+mkdir -p "$linked/.claude" "$linked/dotfiles"
+ln -s "$linked/dotfiles/settings.json" "$linked/.claude/settings.json"
+HOME="$linked" bash "$root/install.sh" >/dev/null
+python3 - "$linked" <<'PY'
+import json, sys
+home = sys.argv[1]
+for path, change in ((f"{home}/.agent/install-manifest.json", lambda d: d["claude_settings"]["rules"]["allow"].append("Bash(retired-tool *)")),
+                     (f"{home}/.claude/settings.json", lambda d: d["permissions"]["allow"].append("Bash(retired-tool *)"))):
+    data = json.load(open(path))
+    change(data)
+    json.dump(data, open(path, "w"))
+PY
+HOME="$linked" bash "$root/install.sh" --uninstall > "$linked/out"
+grep -q 'no longer has: Bash(retired-tool \*)' "$linked/out"
+test -L "$linked/.claude/settings.json" && test "$(cat "$linked/dotfiles/settings.json")" = '{}'
+
+# An install from before the manifest: the template entries it left are removed unless the oldest
+# backup already held them, so the user's `Bash(git *)` stays and every el-capitan entry goes.
+legacy=$(mktemp -d)
+trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked" "$legacy"' EXIT
+mkdir -p "$legacy/.claude" "$legacy/.cursor"
+printf '%s\n' '{"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"]}}' > "$legacy/.claude/settings.json"
+printf '%s\n' '{"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}}' > "$legacy/.cursor/hooks.json"
+HOME="$legacy" bash "$root/install.sh" >/dev/null
+rm "$legacy/.agent/install-manifest.json"
+HOME="$legacy" bash "$root/install.sh" >/dev/null
+grep -q '"legacy"' "$legacy/.agent/install-manifest.json"
+HOME="$legacy" bash "$root/install.sh" --uninstall >/dev/null
+python3 - "$legacy" <<'PY'
+import json, sys
+home = sys.argv[1]
+claude, cursor = json.load(open(f"{home}/.claude/settings.json")), json.load(open(f"{home}/.cursor/hooks.json"))
+assert claude == {"permissions": {"allow": ["Bash(my-own *)", "Bash(git *)"]}}, claude
+assert cursor == {"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}}, cursor
+PY
+# The same, when the first install created hooks.json, so its only backup is the one the upgrading
+# install wrote: that backup is no evidence, and a hook whose script is an install link is the install's.
+fresh=$(mktemp -d)
+trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked" "$legacy" "$fresh"' EXIT
+mkdir -p "$fresh/.claude"
+printf '%s\n' '{"permissions": {"allow": ["Bash(mine *)"]}}' > "$fresh/.claude/settings.json"
+HOME="$fresh" bash "$root/install.sh" >/dev/null
+rm "$fresh/.agent/install-manifest.json"
+HOME="$fresh" bash "$root/install.sh" >/dev/null
+HOME="$fresh" bash "$root/install.sh" --uninstall >/dev/null
+test -z "$(find "$fresh" -type l)"
+python3 - "$fresh" <<'PY'
+import json, os, sys
+home = sys.argv[1]
+assert json.load(open(f"{home}/.claude/settings.json")) == {"permissions": {"allow": ["Bash(mine *)"]}}
+cursor = f"{home}/.cursor/hooks.json"
+assert not os.path.exists(cursor) or ".claude/hooks/" not in open(cursor).read(), open(cursor).read()
+PY
+
 # Preflight and the README `bash -c "$(curl ...)"` form: an empty cwd, a fake HOME, no checkout next
 # to the script, and no network (the clone reads a local copy of this tree).
 bare=$(mktemp -d)
-trap 'rm -rf "$home" "$bare"' EXIT
+trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked" "$legacy" "$fresh" "$bare"' EXIT
 bash_bin=$(command -v bash)
 script=$(cat "$root/install.sh")
 mkdir -p "$bare/cwd" "$bare/nogh" "$bare/oldpy"
@@ -196,6 +356,30 @@ test -z "$(ls -A "$bare/cwd")"
 # A second curl-mode run reuses the checkout instead of cloning over it, and says it was not updated.
 (cd "$bare/cwd" && HOME="$bare/h6" EL_CAPITAN_REPO_URL="file://$bare/missing" "$bash_bin" -c "$script" > "$bare/out")
 grep -qF "Using the existing checkout at $bare/h6/el-capitan (not updated; run git -C $bare/h6/el-capitan pull to upgrade)" "$bare/out"
+
+# Uninstall from a moved checkout: the manifest names the install's checkout, so its dangling links go.
+cp -R "$bare/src" "$bare/a"
+HOME="$bare/h7" bash "$bare/a/install.sh" >/dev/null
+mv "$bare/a" "$bare/a-moved"
+HOME="$bare/h7" bash "$bare/a-moved/install.sh" --uninstall >/dev/null
+test ! -e "$bare/h7/.claude" && test -z "$(find "$bare/h7/.agent" -maxdepth 2 -type l)"
+# Installed from A, then from B, which lacks one of A's skills: uninstall from either removes every link.
+cp -R "$bare/src" "$bare/c1" && cp -R "$bare/src" "$bare/c2"
+rm -rf "$bare/c2/.cursor/skills/$(ls "$bare/c2/.cursor/skills" | head -1)"
+for from in c1 c2; do
+  HOME="$bare/h9-$from" bash "$bare/c1/install.sh" >/dev/null
+  HOME="$bare/h9-$from" bash "$bare/c2/install.sh" >/dev/null
+  HOME="$bare/h9-$from" bash "$bare/$from/install.sh" --uninstall >/dev/null
+  test ! -e "$bare/h9-$from/.claude" && test ! -e "$bare/h9-$from/.cursor"
+  test -z "$(find "$bare/h9-$from/.agent" -maxdepth 2 -type l)"
+done
+# Without a manifest, links into another checkout that exists stop the run, and nothing is removed.
+cp -R "$bare/src" "$bare/b"
+HOME="$bare/h8" bash "$bare/b/install.sh" >/dev/null
+rm "$bare/h8/.agent/install-manifest.json"
+if HOME="$bare/h8" bash "$root/install.sh" --uninstall > "$bare/out" 2>&1; then exit 1; fi
+grep -qF "installed from $(cd "$bare/b" && pwd -P); run $(cd "$bare/b" && pwd -P)/install.sh --uninstall" "$bare/out"
+test -L "$bare/h8/.agent/bin/crew-ls.py" && grep -q 'guard/credentials.sh' "$bare/h8/.cursor/hooks.json"
 
 # The summary prints only after every step: a failing step ends the run without it.
 if [ "$(id -u)" = 0 ]; then

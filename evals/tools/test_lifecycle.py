@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A task's life through `crew-task.py`: the status contract, the gates, reconcile, the close-out, the lock.
+"""A task's life through `crew-task.py`: the status contract, the gates, reconcile, the close-out, the lock, gc.
 
 `## Status` holds one token per state and the migration settles legacy spellings once. Gate 1
 (`mark-approved`) and Gate 2 (`mark-done`) refuse what they must and write one PROGRESS line when they
@@ -17,6 +17,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
+import time
 from pathlib import Path
 
 from cli_runner import run as cli
@@ -138,8 +140,9 @@ def test_reconcile(tmp: Path) -> None:
     check("an empty status keeps the next section", "## Summary\n" in (tasks / "empty-status" / "SPEC.md").read_text())
     check("a hold writes its PROGRESS transition", "DRAFTING → ON-HOLD" in progress_text(tasks / "drafting-old"))
     table = ls(tasks).splitlines()
-    check("crew ls prints the STATE TASK BRANCH REVIEW AGE table", table[:1] and table[0].split() == ["STATE", "TASK", "BRANCH", "REVIEW", "AGE"], table[:1])
-    check("--md prints the same columns as a table", "| STATE | TASK | BRANCH | REVIEW | AGE |\n|---|---|---|---|---|" in ls(tasks, "--md"))
+    check("crew ls prints the STATE TASK REPO BRANCH REVIEW AGE table",
+          table[:1] and table[0].split() == ["STATE", "TASK", "REPO", "BRANCH", "REVIEW", "AGE"], table[:1])
+    check("--md prints the same columns as a table", "| STATE | TASK | REPO | BRANCH | REVIEW | AGE |\n|---|---|---|---|---|---|" in ls(tasks, "--md"))
     report = ls(tasks, "--reconcile")
 
     def section(heading: str) -> str:
@@ -466,3 +469,66 @@ def test_crew_resolve_task_dir_prefers_the_open_task(tmp: Path) -> None:
     check("--all lists every match with its status",
           sorted(m["status"] for m in every["matches"]) == ["DONE", "IMPLEMENTING"], every)
     check("no match prints an empty line", resolve("other").stdout == "\n")
+
+
+def tree(root: Path) -> set[str]:
+    return {path.relative_to(root).as_posix() for path in root.rglob("*")}
+
+
+def test_gc_dry_run_then_apply(tmp: Path) -> None:
+    """`crew-task.py gc` selects by the policy (config.json overrides a default), a dry run changes nothing,
+    and `--apply` removes exactly the selected paths, archiving the old DONE task into a tarball. A task a
+    worker holds, one with a file newer than its PROGRESS, and a `.sessions` that is a link are left alone."""
+    agent, now = tmp / ".agent", time.time()
+    for name, status, days, extra in (("ancient", "DONE", 100, None), ("recent", "DONE", 12, None), ("fresh", "DONE", 5, None),
+                                      ("stalled", "IMPLEMENTING", 200, None), ("locked", "DONE", 100, ".crew-worker.lock"),
+                                      ("reviewed", "DONE", 100, "REVIEW.md")):
+        directory = spec(agent / "tasks" / name, status)
+        (directory / "artifacts").mkdir()
+        (directory / "artifacts" / "log.txt").write_text("x", encoding="utf-8")
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - days * 86400))
+        (directory / "PROGRESS.md").write_text(f"[{stamp}] TRANSITION: IMPLEMENTING → {status}\n", encoding="utf-8")
+        for path in [*directory.rglob("*"), directory]:
+            os.utime(path, (now - days * 86400,) * 2)
+        if extra:
+            (directory / extra).write_text("task=x\n", encoding="utf-8")
+    sessions = agent / "memory" / ".sessions"
+    sessions.mkdir(parents=True)
+    for name in ("old.jsonl", "new.jsonl", "review-queue.jsonl"):
+        (sessions / name).write_text("{}\n", encoding="utf-8")
+        if name != "new.jsonl":
+            os.utime(sessions / name, (now - 40 * 86400,) * 2)
+    (agent / "telemetry").mkdir()
+    (agent / "telemetry" / "raw.jsonl").write_text('{"command": "x"}\n', encoding="utf-8")
+    (agent / "config.json").write_text(json.dumps({"gc": {"artifacts_days": 10}}), encoding="utf-8")
+    env = {"HOME": str(tmp), "CREW_MEMORY_DIR": None}
+    before = tree(agent)
+    planned = cli(TASK, "gc", "--json", env=env)
+    selected = {(a["verb"], Path(a["path"]).relative_to(agent).as_posix()) for a in json.loads(planned.stdout)}
+    check("the dry run selects old DONE artifacts (config: 10 days), the 90-day DONE task, old session files and telemetry",
+          selected == {("remove", "tasks/ancient/artifacts"), ("remove", "tasks/recent/artifacts"), ("archive", "tasks/ancient"),
+                       ("remove", "memory/.sessions/old.jsonl"), ("remove", "telemetry")} and tree(agent) == before, planned)
+    only = json.loads(cli(TASK, "gc", "--only", "telemetry", "--json", env=env).stdout)
+    check("--only telemetry selects the telemetry alone", [a["path"] for a in only] == [str(agent / "telemetry")], only)
+    applied = cli(TASK, "gc", "--apply", "--json", env=env)
+
+    def outermost(paths: set[str]) -> set[str]:
+        return {path for path in paths if not any(path.startswith(top + "/") for top in paths)}
+
+    gone, archive = outermost(before - tree(agent)), list((agent / "archive").glob("tasks-*.tar.gz"))
+    archived = [a.get("archive") for a in json.loads(applied.stdout) if a["verb"] == "archive"]
+    check("--apply removes exactly the selected paths and archives the old task; --json names the tarball",
+          applied.returncode == 0 and gone == outermost({p for _, p in selected}) and len(archive) == 1
+          and "ancient/SPEC.md" in tarfile.open(archive[0]).getnames() and archived == [str(archive[0])],
+          (applied.stdout, applied.stderr, gone))
+    outside = tmp / "outside"
+    outside.mkdir()
+    (outside / "notes.txt").write_text("mine\n", encoding="utf-8")
+    os.utime(outside / "notes.txt", (now - 400 * 86400,) * 2)
+    shutil.rmtree(sessions)
+    sessions.symlink_to(outside)
+    linked = cli(TASK, "gc", "--apply", env=env)
+    check("a .sessions that is a link is skipped with a note, its files kept",
+          (outside / "notes.txt").exists() and "skipped ~/.agent/memory/.sessions" in linked.stdout, linked.stdout)
+    (agent / "config.json").write_text(json.dumps({"gc": {"artifact_days": 1}}), encoding="utf-8")
+    check("an unknown setting refuses with exit 2", cli(TASK, "gc", env=env).returncode == 2)

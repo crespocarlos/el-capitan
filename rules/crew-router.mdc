@@ -31,7 +31,10 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew evals` | crew-evals skill |
 | `crew e2e` [PR\|status\|setup] | crew-e2e skill |
 | `crew handoff` [resume] | crew-handoff skill |
-| `crew ls` [--all] | `~/.agent/bin/crew-ls.py --md [--all]` |
+| `crew ls` [--all] [--repo R] [--status S] | `~/.agent/bin/crew-ls.py --md [flags]` |
+| `crew report` [--since 30d] [--repo R] | `~/.agent/bin/crew-ls.py --report [flags]` |
+| `crew doctor` | `~/.agent/bin/crew-doctor.py` |
+| `crew gc` [--apply] | `~/.agent/bin/crew-task.py gc [--apply]`; dry run by default |
 | `crew prune` | `~/.agent/bin/crew-prune.py` |
 | `crew idp` | crew-idp skill (quarterly, not a stage) |
 

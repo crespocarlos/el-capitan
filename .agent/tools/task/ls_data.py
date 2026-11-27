@@ -1,4 +1,4 @@
-"""What `crew ls` shows, gathered once (rows, BLOCKED and `landed` lines), and the `--watch` loop.
+"""What `crew ls` and `crew report` read: rows, the repo and state filters, stale, BLOCKED and `landed`, `--watch`.
 
 `landed`: did a DONE task's change reach the default branch (`yes`, `no`, `unknown`), from the PR
 record, not branch ancestry. `landing_bases` (`AGENTS.md`) adds branches where work may land; a match
@@ -256,6 +256,34 @@ def load_rows(tasks_dir: Path) -> list[TaskState]:
         except (OSError, ValueError, AttributeError) as error:
             print(f"warning: skipping {task.name}: {error}", file=sys.stderr)
     return rows
+
+
+STALE_DAYS = 14
+
+
+def repo_filter(given: str | None, here: Local = local_remotes) -> set[str] | None:
+    """The `owner/repo` names `--repo` keeps (lower case), or None for every repository.
+
+    No flag means the repository around the cwd (its `origin` and `upstream`), or every repository
+    outside one; `all` means every repository; a bare name matches any owner.
+    """
+    if given is None:
+        return set(here()) or None
+    return None if given.lower() == "all" else {given.lower()}
+
+
+def select(rows: list[TaskState], repos: set[str] | None, states: list[str] | None = None) -> list[TaskState]:
+    """The rows in `repos` (a task with no recorded repository is in every one) and in `states`."""
+    def in_repo(r: TaskState) -> bool:
+        return repos is None or not r.repo or r.repo.lower() in repos or r.repo.lower().split("/")[-1] in repos
+
+    wanted = {state.upper() for state in states or []}
+    return [r for r in rows if in_repo(r) and (not wanted or head(r) in wanted)]
+
+
+def stale(r: TaskState) -> bool:
+    """IMPLEMENTING with no PROGRESS activity for `STALE_DAYS`: `crew ls` folds these into one line."""
+    return head(r) == "IMPLEMENTING" and r.activity >= STALE_DAYS
 
 
 def shown_done(rows: list[TaskState], limit: int | None) -> list[TaskState]:

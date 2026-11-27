@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Change a task's state: the transition gates, reconcile, status migration, BLOCKED, lock, worktree.
+"""Change a task's state: the transition gates, reconcile, status migration, BLOCKED, lock, worktree, gc.
 
 `crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every
-other write goes through here. `lock`, `blocked` and `worktree` parse their own arguments
-(`task_lock.py`, `task_worktrees.py`); see each one's `--help`.
+other write goes through here (`gc`: retention, `task_gc.py`). `lock`, `blocked` and `worktree`
+parse their own arguments (`task_lock.py`, `task_worktrees.py`); see each one's `--help`.
 """
 from __future__ import annotations
 
@@ -69,6 +69,13 @@ def normalize(args: argparse.Namespace) -> int:
     return 0 if normalize_all(args.tasks_dir, args.apply) >= 0 else 1
 
 
+def collect_garbage(args: argparse.Namespace) -> int:
+    """Old DONE artifacts and tasks, memory session files and the legacy telemetry (`task_gc.py`)."""
+    from task_gc import main as gc
+
+    return gc(args)
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="crew-task.py", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -88,6 +95,14 @@ def make_parser() -> argparse.ArgumentParser:
         sub.add_argument("--apply", action="store_true", help="write the changes (default: report only)")
         sub.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
         sub.set_defaults(run=run)
+    collect = commands.add_parser("gc", help="retention: old DONE artifacts and tasks, session files, legacy telemetry "
+                                  "(policy: ~/.agent/config.json)")
+    collect.add_argument("--apply", action="store_true", help="remove and archive (default: list what would go)")
+    collect.add_argument("--json", action="store_true",
+                         help="the selected paths as a JSON array (with --apply, an archived task names its tarball)")
+    collect.add_argument("--only", choices=["telemetry"], help="select only the legacy ~/.agent/telemetry")
+    collect.add_argument("--tasks-dir", type=Path, default=None, help="default ~/.agent/tasks")
+    collect.set_defaults(run=collect_garbage)
     for name, text in DELEGATED.items():
         commands.add_parser(name, help=text, add_help=False)
     return parser

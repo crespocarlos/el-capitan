@@ -42,12 +42,12 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
-| `maintenance/` | `crew-lint.py`, `crew-prune.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `prune_callers.py` | — | Repository validation and the caller report, one module per lint family |
+| `maintenance/` | `crew-doctor.py`, `crew-lint.py`, `crew-prune.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `prune_callers.py`, `doctor_checks.py` | — | Repository validation, the caller report, one module per lint family, and the install health check |
 | `lib/` | — | `files.py`, `git.py`, `gh_reads.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
@@ -74,7 +74,8 @@ reaching into a private module.
 
 **Packages import along these edges only** (crew-lint `package-direction`; a module's package is the
 directory it lives in, `lib` imports nothing from a package). `review` may read task state (PROGRESS
-METRIC lines, the report check) and `maintenance` reads PROGRESS records for the prune report; `task`
+METRIC lines, the report check) and `maintenance` reads PROGRESS records for the prune report and the
+retention policy and sizes (`task_gc.py`) for `crew-doctor.py`; `task`
 never imports `review`, and nothing imports `maintenance`, `memory` or `evals` across packages:
 
 ```package-edges
@@ -104,7 +105,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_gates.py`: the transition gates: approve, implement, close out
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`
 - `task_report.py`: rendering task state for `crew-ls.py`, and `reconcile`
-- `ls_data.py`: what `crew ls` shows: rows, the `landed` lines, landing bases, `--watch`
+- `ls_data.py`: what `crew ls` and `--report` read: rows, the repo and state filters, stale, the `landed` lines, landing bases, `--watch`
+- `ls_report.py`: `crew-ls.py --report`: opened and closed, verdicts, findings and fixed rate, stage costs and durations, tool failures
+- `task_gc.py`: the retention policy (`~/.agent/config.json`), `crew-task.py gc`, the state sizes `crew-doctor.py` checks
 - `task_lock.py`: the worker lock and the `crew-task.py lock|blocked` commands
 - `task_artifacts.py`: bounded task artifacts: read one, render the resolved task
 - `task_repo_facts.py`: the repository record a prompt reads: root, branch, head, remotes, files
@@ -181,6 +184,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `lint_style.py`: the writing standard for prompt files (emphasis, emoji, narration, shared
   passages, glossary, vendor scope, placeholders, the closing confirmation)
 - `prune_callers.py`: the caller set for a catalog command (`crew-prune.py`)
+- `doctor_checks.py`: the `crew-doctor.py` checks: links, hook registrations, managed blocks (`.claude/install_blocks.py`), tools, state sizes
 
 ## Contracts
 
@@ -201,7 +205,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 | `crew-agent-context.py` | JSON always | — |
 | `crew-lint.py` | findings, or JSON with `--json` | — |
 | `crew-prune.py` | table of caller counts, or JSON with `--json` | — |
-| `crew-ls.py` | table, `--md`, or JSON with `--json` | `--limit`, `--max-chars` |
+| `crew-ls.py` | table, `--md`, or JSON with `--json`; `--report` text or JSON | `--limit`, `--max-chars` |
+| `crew-doctor.py` | one screen of `ok`, `note` and `FAIL` lines; exit 1 on a `FAIL` | — |
 | `crew-mem.py` | text; JSON for `search`, `context`, `list` with `--json` | `--limit`, `--max-chars` |
 | `crew-review-findings.py` | text; JSON for `select`, `coverage`, `normalize` | `--max-chars` |
 | `crew-review-hunks.py` | JSON summary | `--max-chars` |
@@ -213,7 +218,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 | `crew-worktree.py` | the path, or JSON with `--json` | `--max-chars` |
 | `crew-resolve-task-dir.py` | the path, or JSON with `--json` | — |
 | `crew-pr-actions.py` | a plan or record as JSON; `--field` prints bare lines | — |
-| `crew-assemble-packages.py`, `crew-metric.py`, `crew-progress.py`, `crew-task.py`, `crew-verify.py` | human text (`crew-verify.py` also writes a JSON result) | — |
+| `crew-assemble-packages.py`, `crew-metric.py`, `crew-progress.py`, `crew-task.py`, `crew-verify.py` | human text (`crew-verify.py` also writes a JSON result; `crew-task.py gc --json` lists the selected paths, each archived one with its tarball under `--apply`) | — |
 
 - **Truncation is never silent.** `--max-chars` and `--limit` print one `[truncated: …]` marker naming
   what was dropped and which flag raises the bound; `--json` output becomes

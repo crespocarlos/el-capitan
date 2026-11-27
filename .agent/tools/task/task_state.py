@@ -15,11 +15,12 @@ from pathlib import Path
 
 import task_bootstrap  # noqa: F401
 
-from task_progress import PROGRESS_FILE, append_transition
+from task_progress import PROGRESS_FILE, append_transition, latest
 from task_status import STATUS, StatusError, canonical, read_status, review_file
 from task_status import head as state_head
 
 from lib.files import atomic_write
+from lib.git import slug_from_url
 
 
 @dataclass
@@ -39,6 +40,7 @@ class TaskState:
     age: int
     open: int
     done: int
+    activity: int = 0  # days since `last_activity`: the AGE `crew ls` shows
 
     @property
     def uuid(self) -> str:
@@ -58,6 +60,12 @@ class TaskState:
     def branch_name(self, default: str) -> str:
         """The recorded branch, falling back to `default` when `.task-id` did not record one."""
         return self.meta.get("branch", default)
+
+    @property
+    def repo(self) -> str:
+        """`owner/repo` of the recorded remote, or "" when `.task-id` records none."""
+        url = self.meta.get("repo_remote_url")
+        return (slug_from_url(url) or "") if isinstance(url, str) else ""
 
     def to_json(self) -> dict:
         """The record as JSON, in the key order the loader has always produced."""
@@ -131,8 +139,23 @@ def name(r: TaskState) -> str:
     return r.slug
 
 
+def newest_mtime(task: Path) -> float:
+    """The newest modification time of the task's activity files (0 when it has none)."""
+    return max([(task / f).stat().st_mtime for f in ACTIVITY_FILES if (task / f).exists()] or [0.0])
+
+
+def last_activity(task: Path) -> float:
+    """When the task last moved, as a POSIX time: its newest PROGRESS entry, else `newest_mtime`."""
+    stamped = latest(task)
+    return stamped.timestamp() if stamped else newest_mtime(task)
+
+
+def days_since(moment: float) -> int:
+    return int((datetime.now(timezone.utc).timestamp() - moment) / 86400)
+
+
 def load(task: Path) -> TaskState:
-    """The record every consumer reads: identity, status, verdict, age, and checkbox counts."""
+    """The record every consumer reads: identity, status, verdict, age, activity, and checkbox counts."""
     spec = task / "SPEC.md"
     text = spec.read_text(encoding="utf-8")
     metadata = task / ".task-id"
@@ -142,12 +165,11 @@ def load(task: Path) -> TaskState:
     status = STATUS.search(text)
     review = review_file(task)
     verdicts = VERDICT.findall(review.read_text(encoding="utf-8")) if review else []
-    newest = max((task / f).stat().st_mtime for f in ACTIVITY_FILES if (task / f).exists())
     return TaskState(
         task=task, text=text, meta=meta, status=status.group(2).strip() if status else None,
-        verdict=verdicts[-1] if verdicts else "?",
-        age=int((datetime.now(timezone.utc).timestamp() - newest) / 86400),
+        verdict=verdicts[-1] if verdicts else "?", age=days_since(newest_mtime(task)),
         open=len(OPEN_ITEM.findall(text)), done=len(DONE_ITEM.findall(text)),
+        activity=days_since(last_activity(task)),
     )
 
 
