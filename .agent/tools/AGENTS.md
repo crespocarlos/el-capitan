@@ -86,10 +86,15 @@ command (a command costs always-on router budget). What the hardening work added
   `reconcile [--apply]`, `normalize-status [--apply]`, `blocked`, `lock write|remove` (the
   `.crew-worker.lock` `guard/worker-tree.sh` reads; the builder is exempt through `CREW_WORKER_TASK`),
   `worktree pref|record` (`task_worktrees.py`) and `worktree check <tree>`
-  (`task_worktrees.py`: `ok`, `on-feature-branch` exit 4, `dirty` exit 5). `crew-ls.py` only reads.
-- `crew-ls.py` shows `landed: yes|no|unknown` (`ls_data.py`), the `BLOCKED:` line,
-  `--cost` and `--watch [--interval N]` (`ls_data.py`: the gathering a future TUI imports too);
-  `crew-metric.py` validates `stage_start`, `stage_end` and `tokens_reported` (`task_progress.py`).
+  (`task_worktrees.py`: `ok`, `on-feature-branch` exit 4, `dirty` exit 5), and `gc [--only telemetry]
+  [--apply]` (`task_gc.py`: the retention policy of `~/.agent/config.json`). `crew-ls.py` only reads.
+- `crew-ls.py` shows the REPO column, AGE from the last PROGRESS entry, `landed: yes|no|unknown`, the
+  `BLOCKED:` line and one `stale:` line; `--repo`, `--status`, `--cost`, `--watch [--interval N]`
+  and `--report [--since 30d]` (`ls_report.py`), all over `ls_data.py`, the gathering a future TUI
+  imports too; `crew-metric.py` validates `stage_start`, `stage_end` and `tokens_reported`
+  (`task_progress.py`).
+- `crew-doctor.py` (`doctor_checks.py`) is a command of its own because install health fits no
+  existing command.
 - `crew-review-findings.py save-out|consolidate` and `normalize --repo` (`review_render.py`,
   `review_consolidate.py`,
   `review_findings.py`); `crew-assemble-packages.py` records skips and optional slices

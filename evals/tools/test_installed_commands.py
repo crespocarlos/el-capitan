@@ -32,6 +32,7 @@ READS = {
     "crew-lint.py": (["--json", "--root", "{root}"], {0, 1}),
     "crew-prune.py": (["--json", "--root", "{root}"], {0}),
     "crew-ls.py": (["--json", "--tasks-dir", "{tasks}"], {0}),
+    "crew-doctor.py": (["--offline"], {1}),  # the throwaway HOME has no install: problems, exit 1
     # Plans only: a reply mutates GitHub solely with --execute.
     "crew-pr-actions.py": (["reply", "--repo", "o/r", "--pr", "1", "--thread-id", "T",
                             "--comment-id", "C", "--body", "b"], {0}),

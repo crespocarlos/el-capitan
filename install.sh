@@ -1,10 +1,15 @@
 #!/bin/bash
 set -e
 
+# Usage: install.sh [--dry-run]            install or upgrade from this checkout
+#        install.sh --uninstall [--dry-run] remove what install created; ~/.agent data stays
+# --dry-run prints every action and changes nothing.
 DRY_RUN=0
+UNINSTALL=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
+    --uninstall) UNINSTALL=1 ;;
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
@@ -13,6 +18,8 @@ done
 # interpreter would turn a finished install into a blocked shell.
 preflight() {
   local dep missing=""
+  # Uninstalling needs only the interpreter that reverses the settings merges.
+  [ "$UNINSTALL" -eq 1 ] && command -v python3 >/dev/null 2>&1 && return 0
   for dep in python3 git gh jq; do
     command -v "$dep" >/dev/null 2>&1 || missing="$missing $dep"
   done
@@ -35,6 +42,9 @@ if [ -z "$source_file" ] || [ ! -f "$source_file" ] \
   checkout="${EL_CAPITAN_HOME:-$HOME/el-capitan}"
   if [ -f "$checkout/install.sh" ] && [ -f "$checkout/.agent/tools/tools.json" ]; then
     echo "Using the existing checkout at $checkout (not updated; run git -C $checkout pull to upgrade)"
+  elif [ "$UNINSTALL" -eq 1 ]; then
+    echo "error: no el-capitan checkout at $checkout to uninstall from; run its install.sh --uninstall. Nothing was changed." >&2
+    exit 1
   elif [ -e "$checkout" ]; then
     echo "error: $checkout exists and is not an el-capitan checkout; set EL_CAPITAN_HOME to another path. Nothing was installed." >&2
     exit 1
@@ -62,6 +72,29 @@ run() {
     "$@"
   fi
 }
+
+# `--uninstall` (`.claude/uninstall.py`): the settings entries install recorded as added and the managed
+# blocks first, then the links into the recorded checkout and the directories install created.
+# ~/.agent data and backups stay.
+if [ "$UNINSTALL" -eq 1 ]; then
+  if [ "$DRY_RUN" -eq 1 ]; then echo "Dry-run: el-capitan uninstall (no changes will be made)"; else echo "Uninstalling el-capitan"; fi
+  echo "  Source: $SCRIPT_DIR"
+  dry=()
+  [ "$DRY_RUN" -eq 1 ] && dry=(--dry-run)
+  status=0
+  python3 "$SCRIPT_DIR/.claude/uninstall.py" "$HOME" "$SCRIPT_DIR" "${dry[@]}" || status=$?
+  for backup in "$HOME"/.claude/*.bak.* "$HOME"/.cursor/hooks.json.bak.*; do
+    if [ -e "$backup" ]; then echo "  Kept a backup install made: $backup"; fi
+  done
+  COMPLETED=1
+  if [ "$status" -ne 0 ]; then
+    echo "Uninstall INCOMPLETE (exit $status) — see the lines above." >&2
+    exit "$status"
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then echo "Dry-run finished; nothing was changed."; exit 0; fi
+  echo "Uninstalled. ~/.agent (tasks, journal, memory) stays; delete it yourself if you want it gone."
+  exit 0
+fi
 
 # Symlink regular files from $1 into $2 (creates dest). $3 is the walk depth, for the flat
 # directories (rules, agents, hooks, skill references). A duplicate basename aborts before any link
@@ -194,7 +227,14 @@ if [ -d "$legacy_rules" ] && [[ "$(cd "$legacy_rules" && pwd -P)" == "$SCRIPT_DI
   exit 1
 fi
 
-run mkdir -p ~/.claude ~/.cursor/rules ~/.cursor/skills ~/.cursor/agents ~/.agent/tasks ~/.agent/journal ~/.agent/bin
+run mkdir -p ~/.agent/tasks ~/.agent/journal ~/.agent/bin
+# The directories install links into (`install_blocks.LINKS`), and the record of which it created and
+# from which checkout, in ~/.agent/install-manifest.json: `--uninstall` removes only those.
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "  [dry-run] create the install directories and record them in ~/.agent/install-manifest.json"
+else
+  python3 "$SCRIPT_DIR/.claude/install_blocks.py" prepare "$HOME" "$SCRIPT_DIR"
+fi
 
 # ~/.claude/agents and ~/.claude/skills are directory symlinks to their ~/.cursor equivalents.
 # Both Cursor and Claude Code consumers are satisfied from a single set of files in ~/.cursor/.
@@ -317,92 +357,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "  [dry-run] upsert memory adapters and global rule imports"
 else
   mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.agent"
-  python3 - "$HOME" "$SCRIPT_DIR" <<'PY'
-from pathlib import Path
-import os
-import re
-import sys
-import tempfile
-
-home = Path(sys.argv[1])
-source = Path(sys.argv[2])
-block = """<!-- el-capitan:memory -->
-Claude Code and Cursor inject session memory at session start; other harnesses run `~/.agent/bin/crew-mem.py context --mode session` at task start. Follow `~/.cursor/skills/crew-memory/references/contract.md`.
-<!-- /el-capitan:memory -->"""
-
-
-def global_rule_imports() -> str:
-    """The `@` imports this repo needs in the global CLAUDE.md, in a managed fenced block.
-
-    `.claude/CLAUDE.md` is project-scoped, so in any other checkout Claude Code loads only
-    `~/.claude/CLAUDE.md`, and an `alwaysApply: true` rule is invisible there unless the global file
-    imports it. The block is derived from the project file, so there is one source of truth and the
-    user's own prose is left alone. A glob-scoped rule or an on-demand skill is not imported (it
-    would charge every request); its one-line `Read ~/.cursor/rules/<name>.mdc before ...` or
-    `Read ~/.cursor/skills/<name>/SKILL.md before ...` pointer is copied instead, so other repos
-    still learn when to read it.
-    """
-    project = source / ".claude" / "CLAUDE.md"
-    if not project.is_file():
-        return ""
-    text = project.read_text(errors="replace")
-    targets = []
-    for target in re.findall(r"@(\S+\.mdc)", text):
-        if target not in targets:
-            targets.append(target)
-    pointers = re.findall(r"^Read ~/\.cursor/(?:rules/\S+\.mdc|skills/[\w-]+/SKILL\.md) before .+$", text, re.M)
-    if not targets and not pointers:
-        return ""
-    lines = ["<!-- el-capitan:imports -->",
-             "<!-- Generated by install.sh from .claude/CLAUDE.md; edits here are overwritten. -->"]
-    lines += [f"@{target}" for target in targets]
-    lines += pointers
-    lines.append("<!-- /el-capitan:imports -->")
-    return "\n".join(lines)
-
-
-def upsert(text: str, name: str, body: str) -> str:
-    """Replace the fenced block in place, or append it; idempotent on every run.
-
-    `body` carries no trailing newline, so both paths normalize to exactly one newline after the
-    closing marker and collapse any run of blank lines that follows it. Preserving a blank
-    separator is not worth the extra path: the two branches then disagree and repeated installs
-    grow or eat blank lines.
-    """
-    start_marker, end_marker = f"<!-- el-capitan:{name} -->", f"<!-- /el-capitan:{name} -->"
-    start, end = text.find(start_marker), text.find(end_marker)
-    if start >= 0 and end >= start:
-        rest = text[end + len(end_marker):].lstrip("\n")
-        return text[:start] + body + ("\n" + rest if rest else "\n")
-    return text.rstrip() + "\n\n" + body + "\n"
-
-
-def write_atomically(target, text):
-    # Preserve the existing file's mode (mkstemp creates 0600) and follow a symlink so a
-    # dotfiles-managed CLAUDE.md keeps its link instead of being replaced by a file.
-    target = target.resolve() if target.is_symlink() else target
-    mode = target.stat().st_mode & 0o777 if target.exists() else 0o644
-    descriptor, temporary = tempfile.mkstemp(prefix=".install-", dir=target.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.chmod(temporary, mode)
-        os.replace(temporary, target)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-
-
-imports = global_rule_imports()
-
-for target in (home / ".claude" / "CLAUDE.md", home / ".codex" / "AGENTS.md"):
-    text = target.read_text() if target.exists() else ""
-    text = upsert(text, "memory", block)
-    # Only the Claude Code file consumes `@` imports; Codex reads AGENTS.md directly.
-    if imports and target.name == "CLAUDE.md":
-        text = upsert(text, "imports", imports)
-    write_atomically(target, text.rstrip() + "\n")
-PY
+  python3 "$SCRIPT_DIR/.claude/install_blocks.py" upsert "$HOME" "$SCRIPT_DIR"
 fi
 
 # Claude Code hooks (settings + hook scripts)
@@ -411,15 +366,13 @@ if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
   # This is a managed copy — re-run install.sh to pick up upstream changes.
   SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.json"
   SETTINGS_DEST="$HOME/.claude/settings.json"
+  # What the merge adds (absent before) is recorded in the install manifest; uninstall removes only that.
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "  [dry-run] merge settings.json → $SETTINGS_DEST"
-  elif [ ! -f "$SETTINGS_DEST" ]; then
-    cp "$SETTINGS_SRC" "$SETTINGS_DEST"
-    echo "  Created ~/.claude/settings.json"
   else
-    if ! python3 "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST"; then
+    if ! python3 "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST" --manifest "$HOME"; then
       echo "  ERROR: settings.json merge failed — hooks may not be registered" >&2
-      echo "  Run manually: python3 $SCRIPT_DIR/.claude/merge_claude_settings.py $SETTINGS_SRC $SETTINGS_DEST" >&2
+      echo "  Run manually: python3 $SCRIPT_DIR/.claude/merge_claude_settings.py $SETTINGS_SRC $SETTINGS_DEST --manifest $HOME" >&2
       FAILED=1
     fi
   fi
@@ -443,7 +396,7 @@ done
 prune_broken_symlinks ~/.claude/hooks
 if [ "$DRY_RUN" -eq 0 ]; then
   mkdir -p "$HOME/.cursor"
-  if ! python3 "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json"; then
+  if ! python3 "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json" --manifest "$HOME"; then
     echo "  ERROR: ~/.cursor/hooks.json merge failed — Cursor guards are not registered" >&2
     FAILED=1
   fi

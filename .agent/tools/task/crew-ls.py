@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
 """List crew task state (read only) without failing on malformed task metadata.
 
-Modes: the table, `--md`, `--json`, `--watch [--interval N]`; `--all` adds done specs with
-`landed: yes | no | unknown`; `--limit`/`--max-chars` bound it; `--status-file SPEC.md` prints one
-status; `--reconcile` reports ready, stalled and idle specs (`transitions.json`). Writes: `crew-task.py`.
+Modes: the table, `--md`, `--json`, `--watch [--interval N]`, `--report [--since Nd]`; `--repo` and
+`--status` filter; `--all` adds done specs with `landed: yes | no | unknown`; `--limit`/`--max-chars`
+bound it; `--status-file SPEC.md` prints one status; `--reconcile` reports ready, stalled and idle
+specs (`transitions.json`). Writes: `crew-task.py`.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import signal
 import sys
 from pathlib import Path
 
 import task_bootstrap  # noqa: F401
 
-from ls_data import DEFAULT_INTERVAL, LandedCache, load_rows, watch
+from ls_data import DEFAULT_INTERVAL, LandedCache, load_rows, repo_filter, select, watch
 from task_report import print_listing, print_status_file, reconcile
 from task_state import RulesError
+from task_status import StatusError, token
 
 from lib.output import DEFAULT_MAX_CHARS
 
-SUMMARY = "List task state: table, --md, or --json; --reconcile reports. Writes: crew-task.py."
+SUMMARY = "List task state: table, --md, --json or --report; --reconcile reports. Writes: crew-task.py."
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -30,6 +33,13 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true",
                         help="machine-readable JSON array on stdout, diagnostics on stderr")
     parser.add_argument("--all", action="store_true", help="list done specs too")
+    parser.add_argument("--repo", metavar="OWNER/NAME|all",
+                        help="one repository's tasks (default: the current repo inside one; all: every repo)")
+    parser.add_argument("--status", action="append", metavar="STATE",
+                        help="only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded")
+    parser.add_argument("--report", action="store_true",
+                        help="tasks opened and closed, verdicts, findings, stage costs, tool failures")
+    parser.add_argument("--since", default="30d", metavar="Nd", help="the --report window (30d)")
     parser.add_argument("--cost", action="store_true",
                         help="print each task's recorded stage cost lines")
     parser.add_argument("--watch", action="store_true", help="redraw the table until Ctrl-C")
@@ -42,6 +52,21 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--status-file", metavar="SPEC.md",
                         help="print the Status value of one spec (single reader for hooks)")
     return parser
+
+
+def report(args: argparse.Namespace, repos: set[str] | None) -> int:
+    """`--report`: one screen, or `--json`, over the filtered rows."""
+    from ls_report import gather, render, since_days
+
+    try:
+        days = since_days(args.since)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    data = gather(select(load_rows(args.tasks_dir), repos, args.status), days)
+    scope = "repo " + ", ".join(sorted(repos)) if repos else "every repo"
+    print(json.dumps(data) if args.json else "\n".join(render(data, scope)))
+    return 0
 
 
 def main() -> int:
@@ -59,16 +84,28 @@ def main() -> int:
         return print_cost(args.tasks_dir)
     if args.interval is not None and not args.watch:
         parser.error("--interval requires --watch")
-    if args.watch and (args.json or args.reconcile or (args.interval is not None and args.interval <= 0)):
-        parser.error("--watch redraws the table: no --json or --reconcile, and --interval must be positive")
+    if args.watch and (args.json or args.reconcile or args.report or (args.interval is not None and args.interval <= 0)):
+        parser.error("--watch redraws the table: no --json, --report or --reconcile, and --interval must be positive")
+    for state in args.status or []:
+        try:
+            token(state)
+        except StatusError as error:
+            parser.error(f"--status: {error}")
+    repos = repo_filter(args.repo)
+    if args.report:
+        return report(args, repos)
+    scope = f"repo {', '.join(sorted(repos))} (--repo all lists every repo)" if repos else "every repo"
     try:
         if args.watch:
             signal.signal(signal.SIGINT, signal.default_int_handler)
             cache = LandedCache()  # `--watch --all` reads each DONE task's PR at most once a minute
-            return watch(lambda: print_listing(load_rows(args.tasks_dir), args, cache.lines), args.interval or DEFAULT_INTERVAL)
+            return watch(lambda: print_listing(select(load_rows(args.tasks_dir), repos, args.status), args, cache.lines, scope),
+                         args.interval or DEFAULT_INTERVAL)
         rows = load_rows(args.tasks_dir)
         if not args.reconcile:
-            print_listing(rows, args)
+            if args.repo and repos and not any(r.repo for r in select(rows, repos)):
+                print(f"no task recorded for {args.repo}; --repo all lists every one", file=sys.stderr)
+            print_listing(select(rows, repos, args.status), args, scope=scope)
             return 0
         return reconcile(rows, False)
     except RulesError as error:

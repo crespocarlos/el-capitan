@@ -32,6 +32,7 @@
       "Bash(dirname *)",
       "Bash(realpath *)",
       "Bash(~/.agent/bin/crew-ls.py *)",
+      "Bash(~/.agent/bin/crew-doctor.py *)",
       "Bash(~/.agent/bin/crew-task.py mark-implementing *)",
       "Bash(~/.agent/bin/crew-task.py reconcile *)",
       "Bash(~/.agent/bin/crew-task.py normalize-status *)",

@@ -35,6 +35,16 @@
       "json_smoke": ["--json", "--root", "."]
     },
     {
+      "name": "crew-doctor.py",
+      "dir": "maintenance",
+      "kind": "command",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "argparse",
+      "smoke": "--offline",
+      "output": "human"
+    },
+    {
       "name": "crew-ls.py",
       "dir": "task",
       "kind": "command",
@@ -388,6 +398,15 @@
       "smoke": "imported by crew-prune.py"
     },
     {
+      "name": "doctor_checks.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-doctor.py: the install checks: links, hook registrations, managed blocks, tools, state sizes",
+      "smoke": "imported by crew-doctor.py"
+    },
+    {
       "name": "lint_python.py",
       "dir": "maintenance",
       "kind": "module",
@@ -564,8 +583,26 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py and crew-task.py: what `crew ls` shows: rows, BLOCKED and `landed` lines, landing bases, `--watch`",
+      "help": "imported by crew-ls.py and crew-task.py: what `crew ls` and `--report` read: rows, the repo and state filters, stale, BLOCKED and `landed` lines, landing bases, `--watch`",
       "smoke": "imported by crew-ls.py and crew-task.py"
+    },
+    {
+      "name": "ls_report.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py: `--report`: tasks opened and closed, verdicts, findings and fixed rate, stage costs and durations, tool failures",
+      "smoke": "imported by crew-ls.py"
+    },
+    {
+      "name": "task_gc.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-task.py and crew-doctor.py: the retention policy of ~/.agent/config.json, `crew-task.py gc`, state sizes",
+      "smoke": "imported by crew-task.py"
     },
     {
       "name": "task_gates.py",
