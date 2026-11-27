@@ -42,7 +42,8 @@ REMOVED_FORMS = (
     (re.compile(r"crew-review-findings(?:\.py)?\s+validate-map\b|`validate-map`"),
      "`crew-review-findings.py coverage`"),
     (re.compile(r"evals/prompts/|evals/reviewer/(?:run|replay|mutate)\.py|evals/reviewer/fixtures\.json"), None),
-    (re.compile(r"crew-prune(?:\.py)?" + _ARGS + r"--tasks-dir\b"), None),
+    (re.compile(r"crew-prune(?:\.py)?\b|\bprune_callers(?:\.py)?\b|\bcrew prune\b"), "`crew-lint.py --dead-code`"),
+    (re.compile(r"\bcrew remember\b"), "`crew memory add`"),
     (re.compile(r"\.claude/hooks/fixtures/run\.sh\b|\btest_hooks_contract\.py\b"), "`evals/tools/test_hook_cases.py`"),
 )
 MAX_MODULE_DOCSTRING_LINES = 6
@@ -58,7 +59,8 @@ NARRATION = re.compile(
     r"|\bthe (?:defect|bug|incident|mistake) (?:this|behind|that)\b|\bwas the (?:defect|bug|mistake)\b"
     r"|\bfor days\b|\bonce shipped\b")
 SCANNED = ("rules/*.mdc", ".cursor/**/*.md", ".claude/**/*.sh", ".claude/**/*.md", ".agent/tools/**/*.py",
-           ".agent/tools/**/*.md", ".agent/tools/**/*.json", "README.md", "AGENTS.md", "install.sh",
+           ".agent/tools/**/*.md", ".agent/tools/**/*.json", "README.md", "AGENTS.md", "install.sh", "docs/*.md",
+           "CONTRIBUTING.md", "SECURITY.md",
            "evals/tasks.json", "evals/*.md", ".github/workflows/*.yml", ".claude/settings.json",
            ".cursor/hooks.template.json")
 

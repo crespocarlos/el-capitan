@@ -76,6 +76,13 @@ def rule_command(rule):
     return body[:-2] if body.endswith(" *") else body.rstrip(":*")
 
 
+def same_rule(rule):
+    """A rule in one spelling: the legacy `Bash(X:*)` is the template's `Bash(X *)`."""
+    if isinstance(rule, str) and rule.startswith("Bash(") and rule.endswith(":*)"):
+        return f"{rule[:-3]} *)"
+    return rule
+
+
 def rule_scope(rule):
     """(tool, glob) for a path-scoped rule such as `Write(~/.agent/tasks/**)`, else None."""
     if not isinstance(rule, str) or "(" not in rule or not rule.endswith(")"):
@@ -118,9 +125,14 @@ def merge_permissions(dest, src):
     src_perm = src.get("permissions", {})
     changed = []
     for name in ("allow", "ask"):
-        incoming = src_perm.get(name, [])
-        owned = {rule_command(rule) for rule in incoming} - {None}
-        existing = [rule for rule in dest_perm.get(name, []) if rule_command(rule) not in owned]
+        template = src_perm.get(name, [])
+        spelled = {same_rule(rule) for rule in template}
+        held = {same_rule(rule) for rule in dest_perm.get(name, [])}
+        # A rule the user already holds in another spelling keeps the user's spelling, and is not added twice.
+        incoming = [rule for rule in template if same_rule(rule) not in held]
+        owned = {rule_command(rule) for rule in template} - {None}
+        existing = [rule for rule in dest_perm.get(name, [])
+                    if rule_command(rule) not in owned or same_rule(rule) in spelled]
         narrowed = [rule for rule in existing if any(superseded(rule, new) for new in incoming)]
         if narrowed:
             existing = [rule for rule in existing if rule not in narrowed]
@@ -178,7 +190,7 @@ def added(before, src, created):
     the template's copy of such a hook adds (`onFailure`) is recorded in `hook_keys` and taken back.
     """
     permissions = before.get("permissions") if isinstance(before.get("permissions"), dict) else {}
-    held = held_rules(before)
+    held = {same_rule(rule) for rule in held_rules(before)}
     template_rules = src.get("permissions", {})
     hooks, theirs, ours = before.get("hooks"), hook_dicts(before.get("hooks")), hook_dicts(src.get("hooks", {}))
     keys = [[event, command, key] for (event, command), hook in ours.items()
@@ -187,12 +199,12 @@ def added(before, src, created):
               "keys": [key for key in src if key not in before],
               "lists": [name for name in template_rules if name not in permissions],
               "events": [event for event in src.get("hooks", {}) if not isinstance(hooks, dict) or event not in hooks],
-              "rules": {name: [r for r in rules if r not in held] for name, rules in template_rules.items()
-                        if any(r not in held for r in rules)},
+              "rules": {name: [r for r in rules if same_rule(r) not in held] for name, rules in template_rules.items()
+                        if any(same_rule(r) not in held for r in rules)},
               "hooks": sorted([list(pair) for pair in set(ours) - set(theirs)]),
               "hook_keys": sorted(keys)}
-    present = {"rules": {name: [r for r in rules if r in held] for name, rules in template_rules.items()
-                         if any(r in held for r in rules)},
+    present = {"rules": {name: [r for r in rules if same_rule(r) in held] for name, rules in template_rules.items()
+                         if any(same_rule(r) in held for r in rules)},
                "hooks": sorted([list(pair) for pair in set(ours) & set(theirs)])}
     return record, present
 

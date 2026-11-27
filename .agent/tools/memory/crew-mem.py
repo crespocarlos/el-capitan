@@ -17,6 +17,7 @@ from memory_journal import journal_add, journal_import
 from memory_maintenance import consolidate, init_store
 from memory_paths import MemoryStoreError
 from memory_search import context, search
+from memory_transfer import export_units, import_units
 
 from lib.output import DEFAULT_MAX_CHARS
 
@@ -81,7 +82,7 @@ def add_write_parsers(commands) -> None:
 
 
 def add_maintenance_parsers(commands) -> None:
-    """Bulk operations: consolidate and import-inbox."""
+    """Bulk operations: consolidate, import-inbox, and the units' export and import between machines."""
     consolidate_parser = commands.add_parser("consolidate")
     consolidate_parser.add_argument("--dry-run", action="store_true")
     inbox_parser = commands.add_parser("import-inbox")
@@ -89,6 +90,11 @@ def add_maintenance_parsers(commands) -> None:
                               help="take every draft; a bare call refuses, because the inbox may "
                                    "hold drafts from earlier sessions")
     inbox_parser.add_argument("files", nargs="*")
+    export_parser = commands.add_parser("export", help="write every unit (no index, inbox, sessions) to a new .tar.gz")
+    export_parser.add_argument("file")
+    import_parser = commands.add_parser("import", help="add an export's units; a differing stored one is kept (exit 1)")
+    import_parser.add_argument("file")
+    import_parser.add_argument("--dry-run", action="store_true")
 
 
 def add_journal_parsers(commands) -> None:
@@ -131,7 +137,7 @@ def main() -> int:
     handlers = {
         "init": lambda _: init_store(), "add": add, "search": search, "context": context,
         "show": show, "list": listing, "supersede": supersede, "cite": cite,
-        "import-inbox": import_inbox, "consolidate": consolidate,
+        "import-inbox": import_inbox, "consolidate": consolidate, "export": export_units, "import": import_units,
     }
     try:
         if args.command == "journal":

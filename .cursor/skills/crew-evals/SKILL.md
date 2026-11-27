@@ -1,6 +1,6 @@
 ---
 name: crew-evals
-description: "Use when the user asks to inspect, compare, or explain Kibana evaluation experiments or scores (this skill targets Kibana's evals suites), including after an eval run. Alias: 'crew evals'."
+description: "Inspect, compare and explain evaluation experiments and scores (Kibana repositories only). Use when the user asks to inspect, compare, or explain Kibana evaluation experiments or scores, including after an eval run. Alias: 'crew evals'."
 ---
 
 # Evals

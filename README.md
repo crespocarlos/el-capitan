@@ -1,189 +1,8 @@
-# 🏴‍☠️ El Capitan
+# El Capitan
 
-**A spec-driven AI engineering crew for Cursor and Claude Code.**
-
-El Capitan gives you a team of coordinated AI agents that follow a structured pipeline — from drafting
-a spec to opening a pull request. You stay in control at two gates: you approve the spec before any
-code is written, and you approve the PR before anything is pushed. Everything in between is automated.
-
-Gate 1 is recorded on approval: `crew-specwriter` stops until the user approves, then runs
-`crew-task.py mark-approved "$TASK_DIR"` to move the spec to `APPROVED`. Gate 2 is the push and PR
-creation in `crew-open-pr`, which shows the title, description, base, and target repo first.
-Autopilot chains between gates, never through them.
-
-Works in any git repository. All state lives outside your repos. No cloud sync, no vendor lock-in.
-
-## Who this is for
-
-You will get value from it if you already use an AI coding agent daily and want the pipeline around it
-to be reproducible: a written spec, a review with several lenses, a commit gate. It assumes you are
-comfortable with git branches, worktrees, and reading shell.
-
-It is **not** a plugin you install and forget. It registers hooks in your editor, blocks some shell
-commands, and expects you to work in its vocabulary (`spec`, `gate`, `review`, `handoff`). If you want
-an autocomplete-style assistant, this is the wrong tool.
-
-## What it changes on your machine
-
-`install.sh` writes outside this repository. Knowing this before running it matters more than any
-feature list below.
-
-| Path | What lands there |
-|---|---|
-| `~/.cursor/rules/`, `~/.cursor/agents/`, `~/.cursor/skills/` | Symlinks into this repo; `~/.cursor/hooks.json` is merged, not replaced |
-| `~/.claude/CLAUDE.md`, `~/.claude/agents/`, `~/.claude/skills/`, `~/.claude/hooks/` | Symlinks, plus hook registrations merged into `~/.claude/settings.json` |
-| `~/.codex/AGENTS.md` | Managed instruction block, same content as the Claude Code one |
-| `~/.agent/bin/` | One symlink per command in the catalog |
-| `~/.agent/memory/`, `~/.agent/tasks/`, `~/.agent/journal/` | Your data: memory units, task state, telemetry. Created once, never overwritten |
-
-**It registers hooks that can block your commands**: a destructive-git guard, a secret-scanning commit
-guard, a write-boundary check, a shell-expansion guard, and a worker-tree guard. They are described in
-[Claude Code hooks](#claude-code-hooks), and each is one small file you can read first. Each has an
-off switch (`EL_CAPITAN_GUARDS=off` for all of them), described in the same section.
-
-**To reverse an install**, run `bash ~/el-capitan/install.sh --uninstall` (add `--dry-run` to print
-each step and change nothing; `install.sh --dry-run` does the same for an install). It first removes
-the managed blocks and the hook registrations and permission rules install added to
-`~/.claude/settings.json` and `~/.cursor/hooks.json` (recorded in `~/.agent/install-manifest.json`;
-an entry you had before install stays), then the links into the checkout and the directories install
-created. For an install from before the manifest, the oldest settings backup decides what was yours;
-with no backup, or with no install since the manifest, it lists the entries to review by hand. It
-exits 1 and names each link it left, for example one a remaining hook registration still runs. Your
-`~/.agent` data (tasks, journal, memory) and the settings backups install made stay; delete them
-yourself if you want them gone. `crew doctor` checks an install, and `crew gc` prunes old task state
-(see [Utilities](#utilities)).
-
-## Compatibility
-
-| Requirement | Version |
-|---|---|
-| Python | 3.9 or newer (CI runs 3.9.6) |
-| Cursor or Claude Code | Current release. Both harnesses are supported; each has small differences that [Agent behavior](#the-crew) files and `rules/` document in place |
-| Git, `gh`, `jq` | Any recent version |
-
-There is no tagged release yet: `install.sh` symlinks to your clone, so updating is `git pull`. Treat
-this as pre-1.0 — the command surface is stable, internal module layout is not.
-
----
-
-
-## Contents
-
-- [Who this is for](#who-this-is-for)
-- [What it changes on your machine](#what-it-changes-on-your-machine)
-- [Compatibility](#compatibility)
-- [How it works](#how-it-works)
-- [Workflows](#workflows)
-- [Quick start](#quick-start)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Command reference](#command-reference)
-- [The crew](#the-crew)
-- [Architecture](#architecture)
-- [Configuration](#configuration)
-- [Extending el-capitan](#extending-el-capitan)
-- [License](#license)
-
----
-
-## Glossary
-
-Terms used throughout this README, and in what the agents say to you.
-
-| Term | Meaning |
-|---|---|
-| **Spec** | A `SPEC.md` in a task directory: problem, acceptance criteria, tests, tasks. The artifact the implementer works from. |
-| **Gate** | A point where the pipeline stops for your approval. Gate 1 approves the spec; Gate 2 approves the PR. |
-| **Task directory** | `~/.agent/tasks/<uuid>/`, outside any repo. Holds the spec, progress log, review, and report. |
-| **Autopilot** | Working through the next pipeline step without re-prompting, between gates only. |
-| **Persona** | One reviewer lens (adversarial, architecture, code quality, product flow, prompt quality) that reads a package and returns findings. |
-| **Hunk** | One contiguous changed block in a diff. Numbered `h1`, `h2`, … so a finding and a gate can cite the same change. |
-| **Layer map** | The diff grouped into ordered layers (`layers.json`) so each persona reads in a sensible order. Every hunk sits in exactly one layer. |
-| **Package** | The context one persona receives: contract, mode, hunk reference, guidance, memory, spec, and the diff. |
-| **Finding** | One reported issue, with a severity label, a `file:line` anchor, evidence, and a verdict. |
-| **Crew member** | The agent that owns a stage: specwriter, builder, reviewer, PR resolver. |
-
----
-
-## How it works
-
-```mermaid
-flowchart TB
-    subgraph build["build"]
-        direction LR
-        issue["📝 create-issue"] -.->|"crew spec"| spec["📋 specwriter"]
-        spec -->|"Gate 1: approve"| impl["🔨 builder"]
-        impl -->|"auto"| review["🔍 review"]
-        review -->|"auto"| bcommit["commit"]
-        bcommit -->|"Gate 2: approve"| openpr["open-pr"]
-        openpr --> done(["PR opened"])
-    end
-
-    subgraph respond["respond"]
-        direction LR
-        resolver["🧩 pr-resolver"] --> rcommit["commit"]
-        rcommit --> rpush(["pushed"])
-        rpush --> rreply["reply + resolve"]
-    end
-
-    memory[("🧠 memory")]
-    spec -.->|"recall"| memory
-    review -.->|"recall"| memory
-    resolver -.->|"recall"| memory
-    done -.->|"crew resolve PR"| resolver
-    reviewer["🔍 reviewer"] -.->|"standalone"| impl
-    reviewer -.->|"recall"| memory
-```
-
-**Two workflows. Two explicit gates in `build`.** Drive each step manually — `crew implement` → `crew review` → `crew commit` → `crew open pr` — or let the pipeline guide you.
-
-El Capitan has three layers:
-
-| Layer | File | Job |
-|---|---|---|
-| **Router** | `rules/crew-router.mdc` | Maps `crew <command>` to the right handler |
-| **Orchestrator** | `rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
-| **Crew agents** | `~/.claude/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build, etc.) |
-| **Runtime** | hooks, `crew-mem.py` | Execution engines |
-
----
-
-## Workflows
-
-### `build` — build anything
-
-Feature, bug fix, refactor, chore — the pipeline is the same. Crew-specwriter infers whether to use the standard or bug template from the content of your request.
-
-```
-crew spec https://github.com/org/repo/issues/123  # spec from an issue
-crew spec <plain description>                      # or from a description
-```
-
-Stages: **spec → implement → review → commit → open-pr**  
-Terminal: PR opened as draft, and `crew open pr` moves the spec to `DONE`
-
-A task closes on evidence, not on the PR alone: `crew-task.py mark-done` refuses an unchecked criterion, a
-review whose verdict is not `pass` or `warn`, a mismatched branch, and a review of a commit that no
-longer covers `HEAD`. It reads the review from the task directory when `REVIEW.md` is there, and
-otherwise from the review directory the run recorded in the task's `run.json`, so a review persisted
-to a temp directory still closes its task. `--force` skips those checks and is a user decision.
-
-A spec's status is one of `DRAFTING`, `APPROVED`, `IMPLEMENTING`, `ON-HOLD`, or `DONE`; the reader
-normalizes a legacy lowercase `done` to `DONE`, and `crew-task.py normalize-status --apply` rewrites
-stored files once so a person reading a spec sees the canonical token.
-
-### `respond` — respond to review comments
-
-Fetches all unresolved review threads on an open PR, evaluates each one, proposes edits and replies, and resolves threads after your approval — in a single batch.
-
-```
-crew resolve PR #456
-```
-
-Stages: **address-pr → commit → push → reply**  
-Terminal: every approved thread replied to, and pushed
-
----
+A spec-driven engineering pipeline for Cursor and Claude Code: a written spec, a multi-lens review and a commit gate around the AI agent you already use.
+You approve the spec before any code is written (Gate 1) and the pull request before anything is pushed (Gate 2); the steps between run on their own.
+It works in any git repository, keeps its state in `~/.agent` outside your repositories, and syncs nothing to a cloud service.
 
 ## Quick start
 
@@ -192,421 +11,151 @@ git clone https://github.com/crespocarlos/el-capitan.git ~/el-capitan
 bash ~/el-capitan/install.sh
 ```
 
-Then open any repository in Cursor or Claude Code and type:
-
-```
-crew spec <issue URL or description>
-```
-
-> All `crew` commands are typed into the AI chat, not the terminal.
-
----
-
-## Prerequisites
-
-### Required
-
-| Dependency | Purpose | Install |
-|---|---|---|
-| [Cursor](https://cursor.com) or [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | The AI runtime | — |
-| Git | Version control | `brew install git` |
-| [GitHub CLI (`gh`)](https://cli.github.com) | Issues, PRs, GraphQL queries | `brew install gh && gh auth login` |
-| `jq` | JSON processing in shell scripts | `brew install jq` |
-
-### Optional — recommended
-
-| Dependency | Purpose | Install |
-|---|---|---|
-| [`shfmt`](https://github.com/mvdan/sh) | A real bash parser for the guard hooks (preferred over the awk fallback when present) | `brew install shfmt` |
-| [Sourcerer](https://github.com/elastic/sourcerer) | Ranked code search and file reads over git repos indexed in Elasticsearch (lexical bm25, not embeddings). Tools appear as `mcp__sourcerer__*` | `uv tool install "git+https://github.com/elastic/sourcerer.git@v3.0.3"` |
-
-> **Sourcerer is self-hosted.** It needs Elasticsearch and Kibana v9.5.0+, a `.env` with
-> `ELASTICSEARCH_URL`, `KIBANA_URL`, and `ELASTICSEARCH_API_KEY`, and a `sourcerer.yml` naming the
-> sources to index; then `sourcerer setup --config sourcerer.yml` and `sourcerer index --config
-> sourcerer.yml`. Claude Code can use its plugin instead of an MCP entry: `claude plugin marketplace
-> add elastic/sourcerer`, then `claude plugin install sourcerer`. Setup details live in the
-> [repo's README](https://github.com/elastic/sourcerer#quickstart).
->
-> **Without Sourcerer** the explorer agents fall back to file reads and grep, and say so in their
-> report. Two properties of the index matter when reading their output: it is lexical, so query with
-> the words the code contains, and it holds *snapshots of refs* — a review of a branch should pass
-> `git_ref` and confirm that ref's `status` is `complete` via `sourcerer_refs_list`, or results may
-> come from another revision or one that is still indexing.
-
-### macOS note
-
-The notification hook (`osascript`, iTerm2 focus) is macOS-only. On other systems it exits silently — no configuration needed.
-
----
-
-## Installation
+Or let the installer clone for you:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/crespocarlos/el-capitan/main/install.sh)"
 ```
 
-Run this way, the installer clones to `${EL_CAPITAN_HOME:-~/el-capitan}` and re-runs from there. An
-existing checkout there is reused as it is, not updated: run `git -C ~/el-capitan pull` first to
-upgrade. Before writing anything it checks for `python3` 3.9 or newer,
+Run this way, it clones to `${EL_CAPITAN_HOME:-~/el-capitan}` and re-runs from there; an existing
+checkout there is reused as it is. Before writing anything it checks for `python3` 3.9 or newer,
 `git`, `gh` and `jq`, and refuses with one line when one is missing.
 
-Or clone first if you prefer to review before running:
+Then open any repository in Cursor or Claude Code and type, in the AI chat (not the terminal):
 
-```bash
-git clone https://github.com/crespocarlos/el-capitan.git ~/el-capitan
-bash ~/el-capitan/install.sh
+```
+crew spec <issue URL or description>
 ```
 
-`install.sh` creates symlinks from `~/.cursor/`, `~/.claude/`, and `~/.agent/bin/` back to `~/el-capitan`. `~/.agent/bin/` receives a flat link per cataloged command — every `kind: command` entry in `.agent/tools/tools.json`, wherever its responsibility subdirectory puts the file. Modules are imported, never linked. No files are copied — updates to the repo are reflected immediately.
+## Everyday commands
 
-**To update:**
+Every command is typed into the AI chat. `crew help` prints these tables.
 
-```bash
-cd ~/el-capitan && git pull
-bash install.sh
-```
-
-**To reinstall on a new machine:**
-
-```bash
-git clone https://github.com/crespocarlos/el-capitan.git ~/el-capitan
-bash ~/el-capitan/install.sh
-```
-
-Task state and memory are not tracked by git — they live in `~/.agent/tasks/` and `~/.agent/memory/` and persist locally.
-
----
-
-## Command reference
-
-All commands start with `crew`. Type them in the AI chat — not your terminal.
-
-### Build workflow
-
+<!-- generated:commands (crew-lint.py --write-readme) -->
 | Command | What it does |
 |---|---|
-| `crew spec <issue URL or #N>` | Draft a SPEC.md from a GitHub issue |
-| `crew spec <plain description>` | Draft a SPEC.md from a description |
-| `crew implement` | Select spec, branch off the default branch here (a worktree only on request or `worktree: true` in `AGENTS.md`), build |
-| `crew review` | Multi-lens review of your changes |
-| `crew review address` | Work through last review findings inline |
-| `crew commit` | Propose and apply a semantic commit message |
-| `crew open pr` | Push the branch and open a draft PR |
+| `crew spec` issue/URL/description | Draft a SPEC.md, then stop at Gate 1 for approval. |
+| `crew implement` | Orchestrate implementation of an approved SPEC.md. |
+| `crew commit` | Generate a semantic commit message and commit. |
+| `crew open pr` | Push the current branch and open a PR with a generated description. |
+| `crew review address` | Work through findings from the most recent crew review inline. |
+| `crew review` [PR #X \| spec \| idea \| changes \| (self)] | Multi-lens review of code, a PR, a spec or an idea. |
+| `crew pr` view\|diff\|repo\|issue | Read a PR, its diff, the repository or an issue through one read-only tool; writes stay `gh`. |
+| `crew resolve PR` #X or URL | Read-only analysis of unresolved PR review comments; returns a plan of verdicts, edits and replies. |
+| `crew log` | Log an agentic engineering session to the journal. |
+| `crew memory` add text\|seed\|consolidate\|journal | Add a durable lesson to memory, draft candidates from the journal, consolidate the inbox, or import legacy journals. |
+| `crew create issue` description | Structure a rough idea into a well-formed GitHub issue and file it. |
+| `crew evals` | Inspect, compare and explain evaluation experiments and scores (Kibana repositories only). |
+| `crew e2e` [PR\|status\|setup] | Start and read a nightshift e2e run for a PR on demand: real browser/API tests of a deployed Kibana PR. |
+| `crew handoff` [resume] | Save or resume working state across a context reset or a new session. |
+| `crew ls` [--all] [--repo R] [--status S] | Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line. |
+| `crew report` [--since 30d] [--repo R] | Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures. |
+| `crew doctor` | One screen of install health: links, hook registrations, managed blocks, tool versions, `gh` sign-in, state sizes; exit 1 on a problem. |
+| `crew gc` [--apply] | Retention from `~/.agent/config.json`: artifacts of DONE tasks after 14 days, DONE tasks archived after 90, session files after 30, the legacy telemetry; a dry run unless `--apply`. |
+| `crew help` | List every crew command and what it does, generated from the router and tools.json. |
+<!-- /generated:commands -->
 
-Worktrees are plain commands, not crew verbs: `~/.agent/bin/crew-worktree.py --list` shows each one with its
-branch and whether it merged, `~/.agent/bin/crew-worktree.py fetch` refreshes the remote's refs, and
-`~/.agent/bin/crew-worktree.py --remove <worktree path> --branch <branch>` removes a finished worktree and its branch.
-
-### Respond workflow
-
-| Command | What it does |
-|---|---|
-| `crew resolve PR #456` | Fetch and action all unresolved review threads |
-
-### Review & quality
-
-| Command | What it does |
-|---|---|
-| `crew review` | Multi-lens self-review of your branch diff vs main |
-| `crew review changes` | Multi-lens review of staged changes (pre-commit) |
-| `crew review PR #456` | Multi-lens review of someone else's PR |
-| `crew review spec` | Multi-lens review of the active SPEC.md |
-| `crew review idea` | Multi-lens review of the current session discussion |
-| `crew review idea: <text>` | Multi-lens review of a pasted idea or proposal |
-| `crew review address` | Work through last review findings inline |
-
-### Memory
-
-| Command | What it does |
-|---|---|
-| `crew log` | Record the session as a memory observation |
-
-### Utilities
-
-| Command | What it does |
-|---|---|
-| `crew create issue: <description>` | Structure a rough idea into a GitHub issue and file it |
-| `crew handoff` / `crew handoff resume` | Save or resume working state across a context reset |
-| `crew ls` [`--all`] [`--repo R`] [`--status S`] | Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line |
-| `crew report` [`--since 30d`] [`--repo R`] | Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures |
-| `crew doctor` | One screen of install health: links, hook registrations, managed blocks, tool versions, `gh` sign-in, state sizes; exit 1 on a problem |
-| `crew gc` [`--apply`] | Retention from `~/.agent/config.json`: artifacts of DONE tasks after 14 days, DONE tasks archived after 90, session files after 30, the legacy `~/.agent/telemetry`; a dry run unless `--apply` |
+The build workflow is `crew spec`, `crew implement`, `crew review`, `crew commit`, `crew open pr`;
+the respond workflow is `crew resolve PR #456`. [Architecture](docs/architecture.md) walks through
+both.
 
 ### Standalone
 
 Not a pipeline stage; run it when you need it.
 
+<!-- generated:standalone (crew-lint.py --write-readme) -->
 | Command | What it does |
 |---|---|
-| `crew idp` | Quarterly: draft Impact Connection / IDP answers from time-bounded GitHub and Slack activity |
+| `crew idp` | Quarterly: draft concise, evidence-based Impact Connection / IDP responses from time-bounded GitHub and Slack activity. |
+<!-- /generated:standalone -->
 
----
+<!-- generated:counts (crew-lint.py --write-readme) -->
+4 crew agents (orchestrators and workers), 11 personas, 13 skills, 20 `crew` commands and 24 installed commands.
+<!-- /generated:counts -->
 
-## The crew
+## What install changes
 
-4 orchestrator agents, 11 personas, 13 skills (including the portable `spec-writing` and `prompt-authoring` skills, usable without crew).
+`install.sh` writes outside this repository. Knowing this before running it matters more than any
+feature list.
 
-**Orchestrators** dispatch personas in parallel for multi-lens analysis. **Skills** run inline for interactive pipeline steps. All agents are markdown files — readable, editable, version-controlled.
+| Path | What lands there |
+|---|---|
+| `~/.cursor/rules/`, `~/.cursor/agents/`, `~/.cursor/skills/` | Symlinks into this repository; `~/.cursor/hooks.json` is merged, not replaced |
+| `~/.claude/CLAUDE.md`, `~/.claude/agents/`, `~/.claude/skills/`, `~/.claude/hooks/` | Symlinks and a managed block, plus hook registrations and permission rules merged into `~/.claude/settings.json` (backed up first) |
+| `~/.codex/AGENTS.md` | A managed instruction block, the same content as the Claude Code one |
+| `~/.agent/bin/` | One symlink per command in `.agent/tools/tools.json` |
+| `~/.agent/install-manifest.json` | What install added to your settings files, so uninstall removes exactly that |
+| `~/.agent/memory/`, `~/.agent/tasks/`, `~/.agent/journal/` | Your data: memory units, task state, journal. Created once, never overwritten |
 
-### 📋 crew-specwriter
+No file is copied: the links point into your clone, so `git pull` updates everything. Run
+`bash install.sh` again after a pull so new commands are linked and removed ones unlinked.
 
-Drafts a `SPEC.md` from a GitHub issue or plain description. Sends the explorer research questions instead of the ticket so it describes the code as it is, asks up to three multiple-choice clarifying questions, drafts `WHEN … THEN` acceptance criteria tight enough for autonomous implementation, then runs a silent critique (scope and adversarial personas) before presenting the result. The drafting rules live in the portable `spec-writing` skill, which also works outside crew (default output `docs/specs/<slug>.md`).
+**It registers hooks that can block your commands**: a destructive-git guard, a secret-scanning
+commit guard, a write-boundary check, a shell-expansion guard, and a worker-tree guard.
+[Hooks](docs/hooks.md) describes each one and its off switch (`EL_CAPITAN_GUARDS=off` for all of
+them); each is one small file you can read first.
 
-- Automatically selects the standard or bug spec template based on the content of your request — no flag needed
-- Unresolved assumptions stay as `[NEEDS CLARIFICATION]` markers; a spec with open markers cannot be approved
-- Critiques cover: scope creep, missing edge cases in AC, implementation ambiguity
-- Stops at Gate 1 — waits for your approval before any code is written
+**To reverse an install**, run `bash ~/el-capitan/install.sh --uninstall` (add `--dry-run` to print
+each step and change nothing; `install.sh --dry-run` does the same for an install). It removes the
+managed blocks, the hook registrations and permission rules the manifest records (an entry you had
+before install stays), then the links into the checkout and the directories install created. For an
+install from before the manifest, the oldest settings backup decides what was yours; with no backup
+it lists the entries to review by hand. It exits 1 and names each link it left. Your `~/.agent` data
+and the settings backups stay; delete them yourself if you want them gone.
 
-**Personas:** `specwriter-scope`, `specwriter-adversarial`, `specwriter-explorer`
+`crew doctor` checks an install on one screen, and `crew gc` prunes old task state.
 
-**Skills:** `crew-implement`, `crew-commit`, `crew-open-pr`, `crew-create-issue`, `crew-address-review`
+## Platform and requirements
 
-### 🔨 crew-builder
+| Requirement | Version |
+|---|---|
+| Platform | macOS and Linux, both tested in CI (Python 3.9 and 3.12); Windows is not supported |
+| Cursor or Claude Code | The current release of either |
+| Python | 3.9 or newer |
+| Git, [`gh`](https://cli.github.com) (signed in), `jq` | Any recent version |
+| [`shfmt`](https://github.com/mvdan/sh) | Optional: a real bash parser for the guards |
+| [`uv`](https://docs.astral.sh/uv/) | Optional: runs the pinned test and lint tools when you work on el-capitan itself |
 
-The implementation engine. Reads a SPEC.md, works through each task in order, runs per-task acceptance checks, and writes a REPORT.md. Launched by `crew implement`, which handles branch (or opt-in worktree) setup, spec selection, and pattern auto-recall.
+## Moving to a new machine
 
-- Runs as a subagent launched by `crew implement`
-- Per-task acceptance checks and a spec-compliance check run before marking each task done
-- Specs with more than 8 tasks run in batches of up to 6, with a fresh worker per batch
-- Runs the spec's `## Tests` commands plus lint and type-check as verification before completion
-- Hands back a REPORT.md — pass/fail results, decisions made, verification results, changed files
-
-### 🔍 crew-reviewer
-
-Multi-lens review of a branch diff, a PR, a SPEC.md, staged changes, or an idea/proposal. Dispatches reviewer personas in parallel and consolidates findings into a single flat numbered list — each finding labeled inline with `[blocking]`, `[attention]`, `[needs more info]`, or `[nit]`.
-
-For idea and spec reviews, the output is evaluative: a verdict (`proceed / revisit / blocked`) followed by findings using `[blocking]` and `[concern]` labels, focused on whether the plan holds up.
-
-Every `[blocking]` and `[attention]` finding is verified against the repository before it is shown; pre-existing, linter-catchable, and previously rejected issues are deferred to `DEFERRED.md` instead of reported. Each review is persisted to the task's `REVIEW.md`, with an optional `kind` beside each label (the values are listed in `TOOLS.md`), and the verifier's own one-sentence conclusion.
-
-**Personas:** Code Quality (always; includes naming and user-facing strings), Adversarial, Architecture, Product Flow, Prompt Quality  
-**Modes:** `crew review` (self), `crew review changes` (staged), `crew review PR #N`, `crew review spec`, `crew review idea`, `crew review address`
-
-### 🧩 crew-pr-resolver
-
-Processes all unresolved review threads on a PR in a single batch: loads the project guidance for the touched paths once, challenges each thread against the code and against intent, scores it, proposes edits and reply text, and applies only what you approve. Handles Apply, Adapt, Decide, Reject, Defer, Already Addressed, and Ask verdicts — a low-confidence Reject becomes an `Ask`, which replies with a question and leaves the thread open, and `Decide` replies naming the design decision the author has to make. Never touches resolved or outdated threads.
-
----
-
-## Architecture
-
-### File layout
-
-```
-el-capitan/
-├── AGENTS.md                # Agent guide — bootstrap, conventions, file layout
-├── CLAUDE.md                # Claude Code project context for editing el-capitan itself
-├── rules/                   # Canonical rules (.mdc), symlinked to ~/.cursor/rules/
-│   ├── crew-orchestrator.mdc          # Pipeline state machine (always loaded)
-│   ├── crew-router.mdc                # Routing table (always loaded)
-│   ├── crew-explorer-conventions.mdc  # Shared tool protocol for explorer subagents
-│   ├── agent-output.mdc               # Output format for agent replies
-│   ├── memory-capture.mdc             # When to propose durable memory
-│   ├── personal.mdc                   # Personal engineering preferences (always loaded)
-│   ├── voice.mdc                      # Writing voice for authored text
-│   └── typescript.mdc                 # TypeScript/React guidance (loaded for *.ts, *.tsx)
-├── .cursor/
-│   ├── agents/              # Agent protocols (.md) — canonical source
-│   │   ├── crew-*.md               # Orchestrator agents
-│   │   ├── reviewer-*.md           # Reviewer personas
-│   │   └── specwriter-*.md         # Specwriter personas
-│   └── skills/              # Inline skill protocols — canonical source
-│       ├── crew-<name>/SKILL.md
-│       └── spec-writing/        # Portable spec skill + references/ spec templates
-├── .claude/
-│   ├── CLAUDE.md            # Claude Code project context and command routing
-│   ├── hooks/               # Guard, telemetry, session, and memory-context hooks
-│   └── settings.json        # Hook configuration
-├── .agent/
-│   ├── tools/               # CLIs grouped by responsibility: task/, review/, memory/, evals/, maintenance/
-│   │   ├── task/            # Task state, guidance context, worktrees, status contract
-│   │   ├── review/          # Hunks, layer maps, findings, packages, PR threads, e2e
-│   │   ├── memory/          # crew-mem.py entry point plus its store/units/recall/maintenance modules
-│   │   ├── evals/           # Evaluation inspection and comparison
-│   │   ├── maintenance/     # crew-lint.py repository validation
-│   │   └── tools.json, TOOLS.md, requirements.txt  # The catalog and the dependency note
-│   ├── _SPEC_TEMPLATE.md    # Symlink → spec-writing/references/spec-template.md
-│   ├── _BUG_SPEC_TEMPLATE.md  # Symlink → spec-writing/references/bug-spec-template.md
-│   ├── _MEMORY_TEMPLATE.md  # Typed durable-memory unit template
-│   └── _JOURNAL_TEMPLATE.md   # Legacy journal entry template
-├── evals/                   # Deterministic memory and reviewer evaluation fixtures
-└── install.sh               # Symlink installer
-```
-
-### State layout (outside the repo)
-
-```
-~/.agent/
-├── bin/                     # Flat installed command surface (links from every .agent/tools subdirectory); see TOOLS.md
-├── journal/                 # Legacy monthly journal files (import-only)
-├── memory/                  # Typed units, immutable observations/, SQLite FTS5 index, inbox; .sessions/ holds hook telemetry
-├── archive/                 # tasks-<stamp>.tar.gz: DONE tasks `crew gc --apply` archived
-├── config.json              # Optional: {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30}, "doctor": {"tasks_mb": 500, "sessions_mb": 100}}
-└── tasks/<uuid>/            # Per-task state: SPEC.md, PROGRESS.md, REPORT.md, REVIEW.md, DEFERRED.md, HANDOFF.md
-    └── .task-id             # JSON: uuid, repo_remote_url, branch, slug, created_at
-```
-
-Task state is keyed by UUID and resolved via `.task-id` lookup against the current `git remote + branch`. Multiple specs can coexist per branch. Nothing is deleted automatically: `crew gc` lists what the retention policy selects and `crew gc --apply` removes it. An older install may hold `~/.agent/telemetry/`, which logged raw shell commands; `crew-task.py gc --only telemetry --apply` removes only it.
-
-### Context budget
-
-Always-loaded context is kept minimal on purpose:
-
-| File | Lines | Loaded |
-|---|---|---|
-| `agent-output.mdc` | 56 | Every session |
-| `crew-orchestrator.mdc` | 62 | Every session |
-| `crew-router.mdc` | 62 | Every session |
-| `personal.mdc` | 106 | Every session |
-| `memory-capture.mdc` | 35 | Every session |
-| `typescript.mdc` | 68 | When editing `.ts` / `.tsx` files |
-| `prompt-authoring` skill | 136 | When its description applies (prompt edits, LLM workflows) |
-| `.claude/CLAUDE.md` | 41 | Every session (Claude Code) |
-
-`crew-lint.py --budget` prints the always-on set's estimated tokens (chars ÷ 4) and fails when it
-exceeds `MAX_ALWAYS_RULE_TOKENS` in `lint_prompts.py`, the measured total plus 300 tokens of
-headroom. Load conditions are for Cursor; for Claude Code, `typescript.mdc` and the
-`prompt-authoring` skill each get a one-line `Read ... before ...` pointer that `install.sh` copies
-into the managed block of `~/.claude/CLAUDE.md`, so neither is charged to every request.
-
-Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` — not in agent files.
-
----
-
-## Configuration
-
-### Personal preferences
-
-`rules/personal.mdc` is installed as an always-loaded personal preferences file. It's read every Cursor and Claude Code session — no crew command needed.
-
-Edit it directly to set engineering philosophy, agent expectations, TypeScript rules, or any context that should always be in scope.
-
-### Claude Code hooks
-
-`.claude/settings.json` registers Claude Code hooks, while
-`.cursor/hooks.template.json` is merged into the user Cursor hooks file at
-install time:
-
-| Hook | Trigger | What it does |
-|---|---|---|
-| `PreToolUse` / Cursor `beforeShellExecution` | Bash | Five rules, one per file under `guard/`: `destructive-git.sh` (destructive git: `git reset --hard`, `git clean` with force, force pushes including `-f`, `--force` next to `--force-with-lease`, `--force-if-includes` without a lease, and `+ref`); `local-pr-ref.sh` (`gh pr checkout` and local `refs/pull/...`, `pull/<n>` or `pull/*` refs, never a path such as `src/pull/x.ts`); `source-edit.sh` (`python -c`, `node -e`, `perl -e` snippets and heredocs that rewrite a tracked file); `zsh-equals.sh` (a bare unquoted `=word` that zsh expands as a command path and which aborts the rest of the line — `echo ====` and longer, while a quoted separator and a lone `=` pass); `worker-tree.sh` (`git checkout`, `switch`, `restore` and `reset --hard` in a tree that holds a fresh `.crew-worker.lock`; advisory defence for the tree a worker holds, main checkout included; the builder is exempt through `CREW_WORKER_TASK`). A sixth, `credentials.sh`, blocks commits whose staged lines, or the files a `git add` / `git commit -a` in the same command stages, match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists. |
-| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-write-boundary.sh` blocks writes outside the active worktree. |
-| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-task-spec-owner.sh` blocks a `SPEC.md` whose slug does not match the task directory's recorded slug. |
-| `UserPromptSubmit` | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |
-| `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
-| `SessionStart` | Session begins | Loads bounded memory context, applies the spec status policy, and refreshes the anchor (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
-
-Every hook follows one contract: blocking is exit `2` with one line on stderr (Cursor's shell events
-get their own JSON deny), no objection is exit `0` and no output, and a hook that cannot read its
-input reports one line and exits `0`. Failures are non-blocking except for `guard/credentials.sh`,
-which alone is registered `onFailure: "block"` / `failClosed: true`; an unexpected error once its
-secret scan has started blocks the commit, while one before it (unreadable input, a missing `jq`, a
-normaliser failure) reports a line and lets the command through. An off switch releases either.
-Because Cursor reads *silence* from a fail-closed hook as a failure, that one rule also prints an
-allow payload when it has no objection. The shared preamble is `.claude/hooks/lib/hook.sh`.
-
-The shell guards read a command the way the shell runs it, through one normaliser in
-`.claude/hooks/lib/hook.sh`: quotes are removed with their content kept, `sh|bash|zsh -c` payloads,
-`eval` and `$(...)` are read as commands of their own, the command is split on `;`, `&&`, `||` and
-`|`, each segment is judged in its own tree (`cd`, `git -C`), and git's global options (`--no-pager`,
-`-c k=v`, `-C`) are skipped. `git` behind a runner (`timeout`, `xargs`, `find -exec`, `nice -n 5`,
-`sudo -u me`) is still git; a quoted `"git"` argument of another command is not. A quoted commit
-message or a heredoc body stays data, except a heredoc, here-string or `echo`/`printf` text fed to a
-shell with no `-c`, which is read as its script; a shell fed by any other pipe (`curl ... | bash`)
-is denied, and so is a command nesting more payloads than the normaliser reads.
-
-The normaliser has two parsers. [`shfmt`](https://github.com/mvdan/sh) is optional and preferred:
-when it is on PATH, the command is parsed into a real bash syntax tree (`shfmt --to-json`, read by
-`lib/segments.jq`), which reads `$(...)` inside double quotes and in unquoted heredoc bodies
-correctly. Without it, when it cannot parse the command, or when the command is over 16 KiB or
-nests too deeply for the tree to stay small, an awk tokenizer reads it instead, so a parse failure
-never lets through what awk would block. Install it with `brew install shfmt` (CI pins v3.14.1).
-
-**Turning a guard off.** Every blocking hook honours an off switch read from the harness's own
-environment (export it in the shell that starts Claude Code or Cursor; a prefix on the agent's
-command does not reach the hook): `EL_CAPITAN_GUARDS=off` turns them all off, and
-`EL_CAPITAN_GUARD_<NAME>=off` turns off one, where `<NAME>` is the file name upper-cased with `-` as
-`_` (`EL_CAPITAN_GUARD_DESTRUCTIVE_GIT`, `..._LOCAL_PR_REF`, `..._SOURCE_EDIT`, `..._ZSH_EQUALS`,
-`..._WORKER_TREE`, `..._CREDENTIALS`, `..._CHECK_WRITE_BOUNDARY`, `..._CHECK_TASK_SPEC_OWNER`). Every
-denial names both switches on its one line. The guards are a safety boundary, so turn one off for a
-session, not as a standing setting.
-
-The review-address gate is the user's answer in `crew-address-review` Step 3; no hook or permission
-rule records it.
-
-
-### Persistent memory
-
-Agents retrieve typed memory units through the SQLite FTS5 index (`crew-mem.py search` and
-`context`). Journal entries are indexed as `observation` evidence and included in `search`
-and ranked `context` retrieval. Use `crew memory seed` to turn durable lessons into approval-gated
-memory candidates.
-
----
-
-## Extending el-capitan
-
-### Add a custom skill
-
-1. Create `~/.cursor/skills/<name>/SKILL.md` with a `## Protocol` section
-2. Add a routing entry to `~/el-capitan/rules/crew-router.mdc`
-3. Regular files (not symlinks) are treated as add-ons and never overwritten by `install.sh`
-
-### Add a custom agent
-
-1. Create `~/.cursor/agents/<name>.md` with YAML frontmatter:
-   ```yaml
-   ---
-   name: my-agent
-   description: "What it does and when to trigger it."
-   ---
-   ```
-2. Add a routing entry to `~/el-capitan/rules/crew-router.mdc`
-
-### Identify add-ons vs core
+On the old machine, export your memory units (task state stays local):
 
 ```bash
-# Symlinks = core (managed by el-capitan), regular files = your add-ons
-find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -name '*.md' ! -type l
+~/.agent/bin/crew-mem.py export ~/el-capitan-memory.tar.gz
 ```
 
-### Update routing
+On the new one, install, then import:
 
-`crew-router.mdc` is the single source of truth for the routing table. `.claude/CLAUDE.md` delegates to it — do not duplicate routing entries there.
+```bash
+git clone https://github.com/crespocarlos/el-capitan.git ~/el-capitan
+bash ~/el-capitan/install.sh
+~/.agent/bin/crew-mem.py import ~/el-capitan-memory.tar.gz
+```
 
----
+The import adds every unit and rebuilds the index; it never overwrites a unit already there.
+[Memory](docs/memory.md) has the details.
+
+Two things the export does not carry. Your personal preferences live in your clone
+(`rules/personal.mdc`): push them to a fork and clone that, or copy the file. Your add-ons are the
+regular files under `~/.cursor/agents` and `~/.cursor/skills`; list them with
+`find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -name '*.md' ! -type l` and copy them too.
+
+## Versions
+
+`VERSION` holds the current version and [CHANGELOG.md](CHANGELOG.md) what changed in each release.
+Both are written by [release-please](https://github.com/googleapis/release-please) from the
+conventional commits merged to `main`; it opens a release pull request, and merging it tags the
+release. The project is pre-1.0: the command surface is stable, the internal module layout is not.
+
+## Documentation
+
+- [Architecture](docs/architecture.md): the pipeline, the crew, file and state layout, the context
+  budget, configuration, and extending el-capitan
+- [Hooks](docs/hooks.md): every hook, the guard contract, and the off switches
+- [Memory](docs/memory.md): how memory is written, recalled, and moved between machines
+- [Glossary](docs/glossary.md): spec, gate, persona, hunk, and the rest
+- [Contributing](CONTRIBUTING.md), [Security](SECURITY.md), [Changelog](CHANGELOG.md)
 
 ## License
 
 [MIT](LICENSE)
-
-## Memory and validation
-
-Run `bash install.sh` once after updating el-capitan. It creates the shared
-`~/.agent/memory` store, installs the `crew-mem.py` command, and adds read
-instructions for Cursor, Claude Code, and Codex.
-
-After that, no routine setup is needed: agents retrieve relevant memory at task
-start. Use `crew remember: <lesson>` only for a durable fact that is not
-derivable from code or project rules. Use `crew memory seed` to draft
-user-approved candidates from the journal.
-
-Implementation completion, review-address completion, and `crew log` draft up
-to three evidence-backed candidates into the inbox automatically. Lightweight
-session telemetry records only tool categories and outcomes; after substantive
-work or repeated failures, the stop hook asks for one user-approved candidate
-review. Candidates are never imported automatically: review the batch and
-approve it with `crew memory seed` or `crew-mem.py import-inbox`. Bare
-`import-inbox` takes the whole inbox, including drafts left by earlier
-sessions, so pass the approved files by name.
-
-`crew-mem.py` stores typed Markdown units under `~/.agent/memory` and uses SQLite
-FTS5 only as a rebuildable search index. Verify with `python3
-evals/memory/run.py` and `python3 .agent/tools/maintenance/crew-lint.py`. Rules live in
-`rules/`.
-
-The same store also holds immutable journal observations. They are indexed as
-evidence and included in `search` and ranked `context` retrieval (the
-`--mode session` listing excludes them unless `--include-observations` is
-passed); import legacy journals with `crew-mem.py journal import --dry-run` before
-`crew-mem.py journal import`.

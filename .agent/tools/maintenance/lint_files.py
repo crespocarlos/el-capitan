@@ -104,6 +104,10 @@ RULES: dict[str, tuple[str, str]] = {
     "removed-command-form": ("writing", "no prompt, doc, hook or tool names a removed command form"),
     "docstring-length": ("writing", "a module docstring under .agent/tools is at most 6 lines"),
     "no-incident-narration": ("writing", "no docstring, comment or prompt narrates history (used to, N of M measured)"),
+    # lint_docs: the README's generated blocks and the release files
+    "readme-commands-current": ("docs", "the README command table equals `crew-lint.py --commands`; rows described"),
+    "readme-counts-current": ("docs", "the README counts of agents, personas, skills and commands match the tree"),
+    "release-files": ("docs", "release, security, contributing and template files exist; VERSION = manifest"),
     # lint_style: the repo-specific writing standard for prompt files (Vale, .vale.ini, owns the generic prose rules)
     "duplicate-passages": ("style", "no 12-word passage shared by two prompt files outside the allow-list"),
     "glossary-terms": ("style", "one glossary in .agent/tools/AGENTS.md defining the core terms"),

@@ -142,7 +142,8 @@ test "$before" = "$(find "$home" -type f | wc -l | tr -d ' ')"
 # installed into and uninstalled from, and equals its snapshot again, except ~/.agent (data that stays)
 # and the settings backup the merge wrote. `--uninstall --dry-run` changes nothing. The user's rule
 # `Bash(git *)` and SessionStart hook equal template entries, and survive: uninstall removes only what
-# install recorded as added.
+# install recorded as added. `Bash(ls:*)` is the legacy spelling of the template's `Bash(ls *)`: install
+# keeps the user's spelling, adds no second rule, and records nothing for it.
 round=$(mktemp -d)
 trap 'rm -rf "$home" "$round"' EXIT
 mkdir -p "$round/.claude" "$round/.cursor/agents"
@@ -155,7 +156,7 @@ home = sys.argv[1]
 reconcile = {"type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/spec-status-reconcile.sh\"; exit 0"}
 for path, data in ((f"{home}/.claude/settings.json", {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash mine.sh"}]}],
                                                                  "SessionStart": [{"hooks": [reconcile]}]},
-                                                       "permissions": {"allow": ["Bash(my-own *)", "Bash(git *)"]}}),
+                                                       "permissions": {"allow": ["Bash(my-own *)", "Bash(git *)", "Bash(ls:*)"]}}),
                    (f"{home}/.cursor/hooks.json", {"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}})):
     with open(path, "w") as handle:
         handle.write(json.dumps(data, indent=2) + "\n")
@@ -169,6 +170,8 @@ pristine=$(tree_state "$round")
 mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%OLp' "$1"; }
 settings_mode=$(mode "$round/.claude/settings.json")
 HOME="$round" bash "$root/install.sh" >/dev/null
+grep -q '"Bash(ls:\*)"' "$round/.claude/settings.json"
+if grep -q '"Bash(ls \*)"' "$round/.claude/settings.json"; then exit 1; fi
 installed=$(tree_state "$round")
 HOME="$round" bash "$root/install.sh" --uninstall --dry-run >/dev/null
 test "$installed" = "$(tree_state "$round")"
@@ -276,7 +279,7 @@ python3 - "$legacy" <<'PY'
 import json, sys
 home = sys.argv[1]
 claude, cursor = json.load(open(f"{home}/.claude/settings.json")), json.load(open(f"{home}/.cursor/hooks.json"))
-assert claude == {"permissions": {"allow": ["Bash(my-own *)", "Bash(git *)"]}}, claude
+assert claude == {"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"]}}, claude   # the user's order, too
 assert cursor == {"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}}, cursor
 PY
 # The same, when the first install created hooks.json, so its only backup is the one the upgrading

@@ -25,8 +25,7 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew pr` view\|diff\|repo\|issue | `~/.agent/bin/crew-pr-actions.py`; writes stay `gh` |
 | `crew resolve PR` #X or URL | crew-pr-resolver |
 | `crew log` | crew-log |
-| `crew remember` text | crew-memory skill |
-| `crew memory` seed\|consolidate\|journal | crew-memory skill |
+| `crew memory` add text\|seed\|consolidate\|journal | crew-memory skill |
 | `crew create issue` description | crew-create-issue |
 | `crew evals` | crew-evals skill |
 | `crew e2e` [PR\|status\|setup] | crew-e2e skill |
@@ -35,7 +34,7 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew report` [--since 30d] [--repo R] | `~/.agent/bin/crew-ls.py --report [flags]` |
 | `crew doctor` | `~/.agent/bin/crew-doctor.py` |
 | `crew gc` [--apply] | `~/.agent/bin/crew-task.py gc [--apply]`; dry run by default |
-| `crew prune` | `~/.agent/bin/crew-prune.py` |
+| `crew help` | `~/.agent/bin/crew-lint.py --commands`; print its table |
 | `crew idp` | crew-idp skill (quarterly, not a stage) |
 
 **This table is authoritative**: no judgment-call overrides.
