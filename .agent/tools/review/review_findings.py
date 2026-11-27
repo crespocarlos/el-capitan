@@ -179,7 +179,9 @@ def tracked_at(repo: Path, head: str) -> set[str]:
     try:
         return set(output(repo, ["ls-tree", "-r", "--name-only", head or "HEAD"]).splitlines())
     except GitError as error:
-        raise ValueError(f"cannot list tracked files at {head or 'HEAD'}: {error}") from error
+        raise ValueError(f"cannot list tracked files at {head or 'HEAD'} ({error}); a PR head is not in the "
+                         "local checkout, so in PR mode leave out --repo and --head and anchor every finding "
+                         "in the diff") from error
 
 
 def mark_outside(findings: list[Finding], files: list[str], repo: Path, head: str) -> list[str]:
