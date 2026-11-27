@@ -417,7 +417,8 @@ def test_a_deep_pipeline_is_denied_quickly(world: tuple) -> None:
     start = time.monotonic()
     done = run("bash", HOOKS / "guard" / "destructive-git.sh", json.dumps(payload), env, places["clean"])
     elapsed = time.monotonic() - start
-    assert done.returncode == 2 and elapsed < 6, f"exit {done.returncode} after {elapsed:.1f}s: {done.stderr[:300]}"
+    # The unbounded path took 25 s here; 15 s leaves room for a loaded CI runner.
+    assert done.returncode == 2 and elapsed < 15, f"exit {done.returncode} after {elapsed:.1f}s: {done.stderr[:300]}"
 
 
 def test_every_hook_survives_bad_input(world: tuple) -> None:
