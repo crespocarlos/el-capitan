@@ -132,6 +132,15 @@ def unresolved(spec_text: str) -> bool:
     return bool(UNRESOLVED.search(FENCED.sub("", spec_text)))
 
 
+SPEC_BRANCH = re.compile(r"^## Branch:[ \t]*`?([^`\s]+)`?[ \t\r]*$", re.M)
+
+
+def spec_branch(spec_text: str) -> str:
+    """The SPEC.md `## Branch:` value, or "" when there is none or it is still the template's `[...]` placeholder."""
+    found = SPEC_BRANCH.search(spec_text)
+    return found.group(1) if found and not found.group(1).startswith("[") else ""
+
+
 ISSUE_URL = re.compile(r"https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)")  # no `[` or `]`: a TUI link carries it
 ISSUE_LINE = re.compile(r"^[#>*\s-]*Issue\**:\**[ \t]*(.*)$", re.M)
 ISSUE_REF = re.compile(r"(?<![\w/])(?:([\w.-]+/[\w.-]+))?#(\d+)\b")

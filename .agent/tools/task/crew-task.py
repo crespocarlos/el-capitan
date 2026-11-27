@@ -42,7 +42,7 @@ def gate(args: argparse.Namespace) -> int:
     if args.command == "mark-approved":
         return mark_approved(args.task_dir)
     if args.command == "mark-implementing":
-        return mark_implementing(args.task_dir, args.branch or "")
+        return mark_implementing(args.task_dir, args.branch or "", args.root)
     return mark_done(args.task_dir, args.pr_url, args.force)
 
 
@@ -99,7 +99,10 @@ def make_parser() -> argparse.ArgumentParser:
     for sub in (approved, implementing, done):
         sub.add_argument("task_dir", metavar="TASK_DIR")
         sub.set_defaults(run=gate)
-    implementing.add_argument("--branch", help="the branch being implemented, recorded in .task-id")
+    implementing.add_argument("--branch", help="the branch being implemented, recorded in .task-id "
+                              "(default: the --root checkout's branch, never the default branch)")
+    implementing.add_argument("--root", type=Path, default=None,
+                              help="the implementation checkout, recorded as .task-id worktree (default: the cwd)")
     done.add_argument("--pr-url", required=True,
                       help="the GitHub PR URL to add to the task's PR list (with --force, any note)")
     done.add_argument("--force", action="store_true", help="skip the evidence checks (user-invoked only)")

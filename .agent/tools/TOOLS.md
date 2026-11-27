@@ -306,7 +306,18 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   (no review: skipped), but not a review verdict or a branch other than the task's. A refusal exits
   non-zero with the reason and still records the PR; `crew open pr` stops on it. On a DONE task it
   only appends the PR. The `record-pr.sh` hook runs the same gate the moment `gh pr create` prints a
-  URL (`crew-task.py record-pr`, `task_record_pr.py`). `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
+  URL (`crew-task.py record-pr`, `task_record_pr.py`). The hook's match is, in order: a task of the
+  PR's repositories whose PR list already holds the URL (an IMPLEMENTING one runs the gate, any
+  other only reports "already has"); the head branch in `.task-id` `branch`; the single
+  IMPLEMENTING task whose SPEC.md `## Branch:` names it and whose `branch` is still the drafting
+  one (empty, its `spec_branch`, `main` or `master`; it is then updated). It runs the gate from the
+  task's `.task-id` `worktree` (the absolute checkout `mark-implementing` records when its `origin`
+  or `upstream` remote is the task's and it holds the recorded branch) when that checkout is still
+  the task's repository and holds the branch, else from a worktree of that repository, else from
+  one of the payload `cwd`'s. `mark-implementing` without `--branch` takes that checkout's branch
+  and refuses with exit 2 on the default branch, on a branch another task records, in another
+  repository or outside a checkout; on an IMPLEMENTING task already off the default branch it
+  changes nothing. `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
   read-only, for each IMPLEMENTING task with no PR recorded and a branch off its repository's default
   branch, on 8 threads. When the task's repository is a fork and lists no PR, it asks the parent too
   and keeps the PRs whose head repository belongs to the fork's owner (`gh pr list --head` takes no

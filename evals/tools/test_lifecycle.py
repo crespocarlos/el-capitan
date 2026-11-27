@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tarfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -199,9 +200,10 @@ def test_gates(tmp: Path) -> None:
     check("mark-implementing and mark-done refuse a missing spec",
           refuses(task("mark-implementing", str(tasks / "missing")), "no SPEC.md") and refuses(task("mark-done", str(tasks / "missing"), "--pr-url", PR_ONE), "no SPEC.md"))
     approved = spec(tasks / "approved", "APPROVED", review="Verdict: warn")
-    task("mark-implementing", str(approved))
+    (approved / ".task-id").write_text('{"slug":"approved","branch":"main"}', encoding="utf-8")
+    task("mark-implementing", str(approved), "--branch", "feat/a")
     check("APPROVED → IMPLEMENTING is written and logged", status_of(approved) == "IMPLEMENTING" and "APPROVED → IMPLEMENTING" in progress_text(approved))
-    check("a second mark-implementing says already implementing", "already implementing" in task("mark-implementing", str(approved)).stdout)
+    check("a second mark-implementing says already implementing", "already implementing" in task("mark-implementing", str(approved), "--branch", "feat/a").stdout)
     branch = spec(tasks / "branch", "IMPLEMENTING", review="Verdict: BLOCK", extra="Issue: #12\n\n")
     (branch / ".task-id").write_text('{"slug":"branch","branch":"feature/x","repo_remote_url":"git@github.com:acme/widgets.git"}', encoding="utf-8")
     first = task("mark-done", str(branch), "--pr-url", PR_ONE, cwd=ROOT)
@@ -254,6 +256,56 @@ def test_gates(tmp: Path) -> None:
     (recorded / ".task-id").write_text('{"slug":"recorded","branch":"main"}', encoding="utf-8")
     task("mark-implementing", str(recorded), "--branch", "feat/worktree")
     check(".task-id records the implementing branch", '"branch": "feat/worktree"' in (recorded / ".task-id").read_text())
+
+
+# where it runs, its --branch, the status and .task-id branch before, whether a sibling task records feat/x:
+# the exit code and the .task-id branch and worktree after
+@pytest.mark.parametrize("where,given,status,before,sibling,code,branch,worktree", [
+    ("feature", "", "APPROVED", "main", False, 0, "feat/x", "feature"),
+    ("main", "", "APPROVED", "main", False, 2, "main", None),
+    ("other", "", "APPROVED", "main", False, 2, "main", None),
+    ("feature", "feat/x", "APPROVED", "main", False, 0, "feat/x", "feature"),
+    ("feature", "feat/z", "APPROVED", "main", False, 0, "feat/z", None),  # the checkout does not hold feat/z
+    ("other", "feat/y", "APPROVED", "main", False, 0, "feat/y", None),
+    ("feature", "", "IMPLEMENTING", "main", False, 0, "feat/x", "feature"),
+    ("feature", "", "APPROVED", "main", True, 2, "main", None),  # another task records feat/x
+    ("feature", "", "IMPLEMENTING", "feat/old", False, 0, "feat/old", None),  # already started: a bare re-run changes nothing
+    ("fork", "", "APPROVED", "main", False, 0, "feat/f", "fork"),  # origin is the fork, upstream the task's repository
+])
+def test_mark_implementing_branch(tmp: Path, where: str, given: str, status: str, before: str, sibling: bool, code: int, branch: str,
+                                  worktree: str | None) -> None:
+    """Without --branch the checkout's own branch is taken, never the default branch, another repo's or another task's,
+    and an IMPLEMENTING task's started branch stays; the checkout is recorded as `worktree` only when its `origin` or
+    `upstream` remote (ssh or https) is the task's and it holds the recorded branch."""
+    env = {**os.environ, **GIT_ID}
+    trees = {"main": tmp / "main", "feature": tmp / "feature", "other": tmp / "other", "fork": tmp / "fork"}
+    for name, remote in (("main", "git@github.com:acme/widgets.git"), ("other", "https://github.com/acme/other.git"),
+                         ("fork", "git@github.com:me/widgets.git")):
+        subprocess.run(["git", "init", "-q", "-b", "main", str(trees[name])], check=True, env=env)
+        subprocess.run(["git", "-C", str(trees[name]), "remote", "add", "origin", remote], check=True, env=env)
+        subprocess.run(["git", "-C", str(trees[name]), "commit", "-q", "--allow-empty", "-m", "base"], check=True, env=env)
+    subprocess.run(["git", "-C", str(trees["main"]), "worktree", "add", "-q", "-b", "feat/x", str(trees["feature"])], check=True, env=env,
+                   capture_output=True)
+    subprocess.run(["git", "-C", str(trees["other"]), "switch", "-q", "-c", "feat/x"], check=True, env=env)
+    subprocess.run(["git", "-C", str(trees["fork"]), "remote", "add", "upstream", "https://github.com/acme/widgets.git"], check=True, env=env)
+    subprocess.run(["git", "-C", str(trees["fork"]), "switch", "-q", "-c", "feat/f"], check=True, env=env)
+    if sibling:
+        other = spec(tmp / "tasks" / "s", "IMPLEMENTING", "- [ ] a")
+        (other / ".task-id").write_text(json.dumps({"slug": "s", "branch": "feat/x", "repo_remote_url": "git@github.com:acme/widgets.git"}),
+                                        encoding="utf-8")
+    directory = spec(tmp / "tasks" / "t", status, "- [ ] a")
+    (directory / ".task-id").write_text(json.dumps({"slug": "t", "branch": before, "repo_remote_url": "https://github.com/Acme/widgets"}),
+                                        encoding="utf-8")
+    result = task("mark-implementing", str(directory), *(("--branch", given) if given else ()), cwd=trees[where])
+    meta = json.loads((directory / ".task-id").read_text(encoding="utf-8"))
+    expected_tree = str(trees[worktree].resolve()) if worktree else None
+    check("exit code, branch and worktree", (result.returncode, meta["branch"], meta.get("worktree")) == (code, branch, expected_tree),
+          (result.stdout, result.stderr, meta))
+    if code:
+        check("a refusal names --branch and writes nothing", "--branch" in result.stderr and status_of(directory) == status, result.stderr)
+    else:
+        check("the drafting branch is kept and the status is IMPLEMENTING",
+              meta.get("spec_branch", before) == before and status_of(directory) == "IMPLEMENTING", meta)
 
 
 def test_reconcile_hook(tmp: Path) -> None:
@@ -633,6 +685,7 @@ def record_world(tmp: Path) -> tuple[Path, Path, dict]:
     (home / ".agent" / "bin").mkdir(parents=True)
     (home / ".agent" / "bin" / "crew-task.py").symlink_to(TASK)
     subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, env=env)
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", "git@github.com:acme/widgets.git"], check=True, env=env)
     subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "base"], check=True, env=env)
     subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "feat/wt", str(tmp / "wt")], check=True, env=env, capture_output=True)
     subprocess.run(["git", "-C", str(tmp / "wt"), "commit", "-q", "--allow-empty", "-m", "work"], check=True, env=env)
@@ -653,17 +706,21 @@ def record_world(tmp: Path) -> tuple[Path, Path, dict]:
 
 
 def record_hook(tmp: Path, shape: str, command: str, output: str, branch: str, owner: str = "acme",
-                break_task: str = "") -> subprocess.CompletedProcess:
+                break_task: str = "", prepare: Callable[[Path], None] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run record-pr.sh on one payload of the given harness shape, the PR's `gh pr view` answer being `branch` and `owner`;
-    `break_task` turns that task's PROGRESS.md into a directory, so writing the PR fails."""
+    `break_task` turns that task's PROGRESS.md into a directory, so writing the PR fails; `prepare(tasks)` runs before the
+    hook; `cwd` is the payload's cwd (default the main checkout)."""
     home, repo, env = record_world(tmp)
     if break_task:
         (home / ".agent" / "tasks" / break_task / "PROGRESS.md").mkdir()
+    if prepare:
+        prepare(home / ".agent" / "tasks")
     view = {"headRefName": branch, "headRepositoryOwner": {"login": owner}, "headRepository": {"name": "widgets"}, "title": "Fix: the Widget's edge"}
     (tmp / "views" / "21").write_text(json.dumps(view), encoding="utf-8")
-    payload = ({"hook_event_name": "PostToolUse", "tool_name": "Bash", "cwd": str(repo), "tool_input": {"command": command},
+    where = str(cwd or repo)
+    payload = ({"hook_event_name": "PostToolUse", "tool_name": "Bash", "cwd": where, "tool_input": {"command": command},
                 "tool_response": {"stdout": output, "stderr": ""}} if shape == "claude"
-               else {"hook_event_name": "afterShellExecution", "cwd": str(repo), "command": command, "output": output})
+               else {"hook_event_name": "afterShellExecution", "cwd": where, "command": command, "output": output})
     hook = ROOT / ".claude" / "hooks" / "record-pr.sh"
     return subprocess.run(["bash", str(hook)], input=json.dumps(payload), capture_output=True, text=True, env=env, cwd=repo)
 
@@ -730,6 +787,77 @@ def test_record_pr_reports_a_failure_in_one_line(tmp: Path) -> None:
     done = record_hook(tmp, "cursor", "gh pr create --fill", PR_NEW, "feat/h", break_task="head")
     check("one record-pr line names the failure", done.returncode == 0 and "record-pr: nothing recorded:" in done.stdout
           and "Traceback" not in done.stdout and status_of(tmp / "home" / ".agent" / "tasks" / "head") == "IMPLEMENTING", (done.stdout, done.stderr))
+
+
+def extra_tasks(*rows: tuple[str, str, str, str, bool]) -> Callable[[Path], None]:
+    """A `prepare` that adds tasks of acme/widgets: (name, status, `.task-id` branch, SPEC.md `## Branch:` with a CRLF ending,
+    whether PR_NEW is already in its PR list)."""
+    def prepare(tasks: Path) -> None:
+        for name, status, branch, spec_branch, holds in rows:
+            directory = spec(tasks / name, status, extra=f"## Branch: {spec_branch}\r\n\n")
+            meta = {"slug": name, "branch": branch, "repo_remote_url": "git@github.com:acme/widgets.git"}
+            (directory / ".task-id").write_text(json.dumps(meta), encoding="utf-8")
+            if holds:
+                (directory / "PROGRESS.md").write_text(f"[2026-01-01T00:00:00Z] PR: {PR_NEW}\n", encoding="utf-8")
+    return prepare
+
+
+# label, extra tasks, head branch, the status and .task-id branch each extra task ends with, words, new directories
+@pytest.mark.parametrize("label,rows,branch,after,words,created", [
+    ("a task already holds the PR", [("holder", "DONE", "feat/other", "feat/other", True)], "feat/new", {"holder": ("DONE", "feat/other")},
+     "holder (DONE): already has", 0),
+    ("an IMPLEMENTING holder runs the gate", [("holder", "IMPLEMENTING", "feat/other", "feat/other", True)], "feat/new",
+     {"holder": ("DONE", "feat/other")}, "applied: holder -> DONE", 0),
+    ("the #35 order, hook first: the spec names the branch", [("late", "IMPLEMENTING", "main", "feat/late", False)], "feat/late",
+     {"late": ("DONE", "feat/late")}, "applied: late -> DONE", 0),
+    ("two specs name it", [("late-a", "IMPLEMENTING", "main", "feat/late", False), ("late-b", "IMPLEMENTING", "main", "feat/late", False)],
+     "feat/late", {"late-a": ("IMPLEMENTING", "main"), "late-b": ("IMPLEMENTING", "main")}, "2 tasks name feat/late in their spec", 0),
+    ("a draft and an approved spec are never matched",
+     [("draft", "DRAFTING", "main", "feat/late", False), ("ok", "APPROVED", "main", "feat/late", False)],
+     "feat/late", {"draft": ("DRAFTING", "main"), "ok": ("APPROVED", "main")}, "no task for feat/late", 1),
+    ("a task started on another branch is never matched by its spec", [("moved", "IMPLEMENTING", "feat/real", "feat/late", False)],
+     "feat/late", {"moved": ("IMPLEMENTING", "feat/real")}, "no task for feat/late", 1),
+])
+def test_record_pr_without_a_branch_match(tmp: Path, label: str, rows: list, branch: str, after: dict, words: str, created: int) -> None:
+    """A task holding the URL is the match; else the single IMPLEMENTING task whose SPEC.md `## Branch:` is the head branch,
+    its `.task-id` branch updated; DRAFTING and APPROVED specs are never matched that way."""
+    done = record_hook(tmp, "cursor", "gh pr create --fill", PR_NEW, branch, prepare=extra_tasks(*rows))
+    tasks = tmp / "home" / ".agent" / "tasks"
+    got = {name: (status_of(tasks / name), json.loads((tasks / name / ".task-id").read_text())["branch"]) for name in after}
+    new = {path.name for path in tasks.iterdir()} - set(RECORD_TASKS) - set(after)
+    check(f"{label}: statuses, branches, output and new directories", (got, words in done.stdout, len(new)) == (after, True, created),
+          (got, done.stdout, new))
+    if label.startswith("the #35"):
+        meta = json.loads((tasks / "late" / ".task-id").read_text())
+        check("the drafting branch is kept and the PR recorded once", meta["spec_branch"] == "main" and task_state.load(tasks / "late").prs == [PR_NEW],
+              meta)
+
+
+# the recorded worktree ("" for none), the payload cwd, and whether the DONE gate passes
+@pytest.mark.parametrize("label,recorded,cwd,passes", [
+    ("the task's worktree, the hook in another repository", "wt", "unrelated", True),
+    ("a stale worktree on another branch: its repository's worktrees", "checkout", "unrelated", True),
+    ("a deleted path falls through to the cwd", "gone", "checkout", True),
+    ("nothing found", "", "unrelated", False),
+    ("a reused path: another repository on the branch is not trusted", "foreign", "checkout", True),
+])
+def test_record_pr_runs_the_gate_from_the_task_checkout(tmp: Path, label: str, recorded: str, cwd: str, passes: bool) -> None:
+    """`branch_tree`: the task's `worktree` when it is still the task's repository and holds the branch, else that
+    repository's worktrees, else the cwd's; when none has it, the gate's error and the retry line."""
+    env = {**os.environ, **GIT_ID}
+    for name, branch in (("unrelated", "main"), ("foreign", "feat/wt")):
+        subprocess.run(["git", "init", "-q", "-b", branch, str(tmp / name)], check=True, env=env)
+        subprocess.run(["git", "-C", str(tmp / name), "commit", "-q", "--allow-empty", "-m", "x"], check=True, env=env)
+
+    def prepare(tasks: Path) -> None:
+        if recorded:
+            meta = json.loads((tasks / "wt" / ".task-id").read_text())
+            (tasks / "wt" / ".task-id").write_text(json.dumps({**meta, "worktree": str(tmp / recorded)}), encoding="utf-8")
+
+    done = record_hook(tmp, "cursor", "gh pr create --fill", PR_NEW, "feat/wt", prepare=prepare, cwd=tmp / cwd)
+    status = status_of(tmp / "home" / ".agent" / "tasks" / "wt")
+    expected = ("DONE", "applied: wt -> DONE") if passes else ("IMPLEMENTING", "stays IMPLEMENTING; after fixing it run:")
+    check(label, (status, expected[1] in done.stdout) == (expected[0], True), done.stdout)
 
 
 USAGE_ONE = {"input_tokens": 1000, "output_tokens": 500, "cache_read_input_tokens": 20000, "cache_creation_input_tokens": 3000}

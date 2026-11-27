@@ -44,10 +44,10 @@ def gh(*arguments: str, timeout: float = NETWORK_TIMEOUT) -> subprocess.Complete
     return subprocess.run(["gh", *arguments], text=True, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, env=_env(), timeout=timeout)
 
-def output(root: Path | None, arguments: list[str]) -> str:
-    """Stdout of a git command that must succeed, or GitError carrying git's own stderr."""
+def output(root: Path | None, arguments: list[str], timeout: float | None = None) -> str:
+    """Stdout of a git command that must succeed, or GitError carrying git's own stderr (or the timeout)."""
     try:
-        result = run_git(root, arguments, check=False)
+        result = run_git(root, arguments, check=False, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as error:
         raise GitError(f"git unavailable: {error}") from error
     if result.returncode:

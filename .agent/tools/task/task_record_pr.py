@@ -1,9 +1,9 @@
 """`crew-task.py record-pr`: record a PR that `gh pr create` just opened on the task it belongs to.
 
-One hook payload on stdin; exactly one distinct PR URL in the output, else nothing is written. The task comes from
-`gh pr view`: repo (base, or the fork its head owner names) and head `branch`, the single open match first. IMPLEMENTING
-goes through `mark_done`, any other match only gains the PR; several, or a task whose `spec_branch` it is: nothing;
-none, in a repo with tasks: a minimal DONE task holds it. Every outcome, failures included, is a `record-pr:` line.
+One payload on stdin; exactly one distinct PR URL in the output, else nothing is written. A task of the PR's repos
+(`gh pr view`: base, or the fork its head owner names) already holding the URL is the match; else head `branch`, the
+open match first; else the one IMPLEMENTING task whose SPEC.md `## Branch:` names it. IMPLEMENTING goes through
+`mark_done`, any other match gains the PR; several, or a `spec_branch`: nothing; none: a minimal DONE task.
 """
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from task_gates import mark_done
+from task_gates import mark_done, on_branch, task_checkout, update_task_branch
 from task_progress import GITHUB_PR_URL, append_pr
 from task_prs import Reader, gh_read, parsed
-from task_state import TaskState, head, load
+from task_state import TaskState, head, load, spec_branch
 from task_worktrees import worktrees
 
 from lib.clock import utc_stamp
@@ -32,6 +32,7 @@ VIEW_FIELDS = "headRefName,headRepositoryOwner,headRepository,title"
 VIEW_TIMEOUT = 8.0
 CLOSED = ("DONE", "ABANDONED")
 MARK_DONE = "~/.agent/bin/crew-task.py mark-done {dir} --pr-url {url}"
+DEFAULT_NAMES = ("main", "master")  # the hook has no checkout of the task to read its default branch from
 
 
 @dataclass
@@ -84,20 +85,33 @@ def tasks_in(tasks_dir: Path, repos: list[str]) -> list[TaskState]:
     return found
 
 
-def branch_tree(branch: str) -> Path | None:
-    """The worktree that has `branch` checked out, so `mark_done` checks the review against that branch's HEAD."""
+def holding(tree: Path | None, branch: str) -> Path | None:
+    """The worktree of `tree`'s repository (of the cwd when None) that has `branch` checked out, or None."""
     try:
-        return next((path for path, name in worktrees() if name == branch), None)
+        return next((path for path, name in worktrees(tree) if name == branch), None)
     except GitError:
         return None
 
 
+def branch_tree(r: TaskState, branch: str) -> Path | None:
+    """Where `mark_done` checks the review against `branch`'s HEAD: the task's recorded `worktree` when it holds the
+    branch, else a worktree of that checkout's repository, else one of the cwd's (the hook payload's `cwd`)."""
+    recorded = r.meta.get("worktree")
+    tree = Path(recorded) if isinstance(recorded, str) and recorded and Path(recorded).is_dir() else None
+    if tree is not None and task_checkout(r, tree)[0] is not None:  # a reused path in another repo is not the task's
+        if on_branch(tree, branch):
+            return tree
+        found = holding(tree, branch)
+        if found is not None:
+            return found
+    return holding(None, branch)
+
+
 def close(r: TaskState, url: str, branch: str) -> list[str]:
     """Append the PR, then run the DONE gate from the branch's worktree when one exists; its words are the output."""
-    append_pr(r.task, url)
-    lines = [f"record-pr: {r.slug}: recorded PR {url}"]
+    lines = [f"record-pr: {r.slug}: {'recorded PR' if append_pr(r.task, url) else 'already has'} {url}"]
     out, saved = io.StringIO(), os.getcwd()
-    tree = branch_tree(branch)
+    tree = branch_tree(r, branch)
     try:
         if tree is not None:
             os.chdir(tree)
@@ -141,9 +155,23 @@ def candidates(what: str, tasks: list[TaskState], url: str) -> list[str]:
         f"  {MARK_DONE.format(dir=r.task, url=url)}" for r in tasks]
 
 
+def unmoved(r: TaskState) -> bool:
+    """True while `.task-id` `branch` is still the drafting branch: empty, equal to `spec_branch`, or a default name."""
+    branch = r.meta.get("branch") or ""
+    return branch in ("", r.meta.get("spec_branch") or "", *DEFAULT_NAMES)
+
+
 def place(found: Pull, tasks_dir: Path) -> list[str]:
-    """Record the PR on its task: the single open `branch` match, else the single match; never on a spec branch."""
+    """Record the PR on its task: one that already holds it, else the single open `branch` match, else the single match,
+    else the single IMPLEMENTING task whose SPEC.md names the branch; never on a spec branch."""
     scoped = tasks_in(tasks_dir, found.repos)
+    held = [r for r in scoped if found.url in r.prs]
+    if held:  # an IMPLEMENTING holder still runs the gate; `close` does not append the URL twice
+        lines = []
+        for r in held:
+            lines += (close(r, found.url, found.branch) if head(r) == "IMPLEMENTING"
+                      else [f"record-pr: {r.slug} ({head(r) or 'no status'}): already has {found.url}"])
+        return lines
     matches = [r for r in scoped if r.meta.get("branch") == found.branch]
     chosen = [r for r in matches if head(r) not in CLOSED] or matches
     if len(chosen) > 1:
@@ -158,6 +186,13 @@ def place(found: Pull, tasks_dir: Path) -> list[str]:
     if drafted:
         names = ", ".join(r.slug for r in drafted)
         return candidates(f"{found.branch} is the spec branch of {names}", drafted, found.url)
+    specced = [r for r in scoped if head(r) == "IMPLEMENTING" and spec_branch(r.text) == found.branch and unmoved(r)]
+    if len(specced) > 1:
+        return candidates(f"{len(specced)} tasks name {found.branch} in their spec", specced, found.url)
+    if specced:
+        if not update_task_branch(specced[0], found.branch):
+            return [f"record-pr: {specced[0].slug}: .task-id not updated to {found.branch}; nothing recorded"]
+        return close(specced[0], found.url, found.branch)
     return [minimal_task(tasks_dir, found, scoped)] if scoped else []
 
 
