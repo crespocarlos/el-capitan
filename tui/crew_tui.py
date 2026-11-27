@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only dashboard over crew task state: tasks, workers and locks, and the report.
+"""Dashboard over crew task state: tasks, workers and locks, and the report.
 
 `--once` prints every view as plain text (ISSUE and PR as `#n`) with no Textual import; without it the
 Textual app runs (pinned in `tui/requirements.txt`), the cells as terminal links. Filters match `crew ls`.
-It never writes or calls a model; GitHub is read only for `--landed` or the app's `g` key.
+It never calls a model or writes a file itself: the app's `s` key runs `crew-task.py` after a confirm dialog.
+GitHub is read only for `--landed` or the app's `g` key.
 """
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ RUN = "uv run --no-project --with-requirements tui/requirements.txt python3 tui/
 
 
 def make_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Read-only crew dashboard: tasks, workers and locks, report.")
+    parser = argparse.ArgumentParser(description="Crew dashboard: tasks, workers and locks, report; "
+                                                 "s runs a confirmed crew-task.py move.")
     parser.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
     parser.add_argument("--repo", metavar="OWNER/NAME|here|all",
                         help="one repository's tasks (default: ls.repo of ~/.agent/config.json, else here: "

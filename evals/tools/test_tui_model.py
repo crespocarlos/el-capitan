@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""The crew TUI (`tui/`): its view model over seeded task directories, `--once` without Textual, one pilot smoke.
+"""The crew TUI (`tui/`): its view model over seeded task directories, `--once` without Textual, one pilot smoke,
+and one status move run for real against a temp task.
 
 A file of its own because `tui/` sits outside `.agent/tools` and no other suite loads it. The pilot
 smoke runs when Textual is importable (`evals/test.sh` adds the pin in `tui/requirements.txt`).
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "tui" / "crew_tui.py"
 load(ENTRY)
 import tui_model  # noqa: E402
-from tui_model import Filters, collect, landed_for, parse_filter  # noqa: E402
+from tui_model import CREW_TASK, FORCE_NOTE, Filters, collect, landed_for, moves, parse_filter  # noqa: E402
 
 NOW = time.time()
 HOUR = 3600
@@ -133,6 +134,36 @@ def test_workers_view_lists_running_stages_and_locks(home: Path) -> None:
     assert f"\nSTALE_SECONDS={tui_model.LOCK_STALE_SECONDS}\n" in hook, "the lock threshold follows worker-tree.sh"
 
 
+@pytest.mark.parametrize("state,prs,expected", [
+    ("DRAFTING", [], [("mark-approved", "{t}")]),
+    ("APPROVED", [], [("mark-implementing", "{t}")]),
+    ("IMPLEMENTING", [PR.format(7), PR.format(8)], [("mark-done", "{t}", "--pr-url", PR.format(8))]),
+    ("IMPLEMENTING", [], [("mark-done", "{t}", "--force", "--pr-url", FORCE_NOTE)]),
+    ("ON-HOLD", [], []),
+    ("DONE", [PR.format(8)], None),
+])
+def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[tuple] | None) -> None:
+    """The gate the state allows (mark done with the newest PR, else --force and the default note), then
+    `blocked` for every task not DONE; every move is a subcommand crew-task.py has."""
+    found = moves(state, tmp, prs)
+    gates = [tuple(arg.format(t=tmp) for arg in args) for args in expected or []]
+    wanted = [] if expected is None else [*gates, ("blocked", str(tmp), "why")]
+    assert [move.argv(move.default or "why")[1:] for move in found] == [list(args) for args in wanted]
+    choices = load(CREW_TASK).make_parser()._subparsers._group_actions[0].choices
+    assert all(move.args[0] in choices for move in found)
+
+
+def test_a_move_runs_crew_task_for_real(home: Path) -> None:
+    """The app's default runner on a temp task: APPROVED to IMPLEMENTING in SPEC.md, through crew-task.py."""
+    from tui_app import run_command
+
+    task = home / ".agent" / "tasks" / "T2"
+    start = moves("APPROVED", task, [])[0]
+    code, _, err = run_command(start.argv())
+    assert code == 0, err
+    assert "## Status\nIMPLEMENTING" in (task / "SPEC.md").read_text()
+
+
 @pytest.mark.parametrize("text,base,expected", [
     ("repo:acme/w status:implementing status:done done", None, Filters("acme/w", ("IMPLEMENTING", "DONE"), True)),
     ("status:approved", Filters("all", ("DONE",), True, 7), Filters("all", ("APPROVED",), True, 7)),
@@ -157,17 +188,24 @@ def test_once_prints_every_view_without_textual(home: Path) -> None:
     assert " #12 " in done.stdout and "[link" not in done.stdout, "--once prints the issue as plain text"
 
 
-def test_app_switches_views_filters_and_never_writes(home: Path) -> None:
-    """Textual is in the `evals/test.sh` environment, so a missing one fails here rather than skipping."""
+def test_app_switches_views_filters_moves_and_never_writes(home: Path) -> None:
+    """Textual is in the `evals/test.sh` environment, so a missing one fails here rather than skipping.
+    `s` on the one APPROVED task: cancel runs nothing; confirm runs the exact argv and shows the refusal;
+    `blocked` asks for its reason first."""
     from tui_app import CrewApp
 
     tasks = home / ".agent" / "tasks"
     before = {path: path.stat().st_mtime for path in tasks.rglob("*")}
 
     opened: list[str] = []
+    ran: list[list[str]] = []
 
-    async def drive() -> tuple[list[tuple[str, int]], dict | None, str]:
-        app = CrewApp(tasks, Filters(repo="all"), interval=60, reader=reader, opener=opened.append)
+    def runner(argv: list[str]) -> tuple[int, str, str]:
+        ran.append(argv)
+        return 1, "", "error: blocked is APPROVED, not DRAFTING; nothing written"
+
+    async def drive() -> tuple[list[tuple[str, int]], dict | None, str, list]:
+        app = CrewApp(tasks, Filters(repo="all"), interval=60, reader=reader, opener=opened.append, runner=runner)
         seen = []
         async with app.run_test() as pilot:
             await pilot.press("o", "O")
@@ -180,9 +218,18 @@ def test_app_switches_views_filters_and_never_writes(home: Path) -> None:
                     landed = app.landed
                     continue
                 seen.append((app.view_name, app.query_one("#table").row_count))
-        return seen, landed, cell
+            await pilot.press("s", "enter", "n")
+            cancelled = list(ran)
+            await pilot.press("s", "enter", "y")
+            await pilot.pause()
+            notes = str(app.query_one("#notes").render())
+            await pilot.press("s", "down", "enter", "enter", *"no keys", "enter", "y")  # an empty reason is refused
+        return seen, landed, cell, [cancelled, notes]
 
-    seen, landed, cell = asyncio.run(drive())
+    seen, landed, cell, (cancelled, notes) = asyncio.run(drive())
+    assert cancelled == [] and ran == [[str(CREW_TASK), "mark-implementing", str(tasks / "T2")],
+                                       [str(CREW_TASK), "blocked", str(tasks / "T2"), "no keys"]]
+    assert "not DRAFTING; nothing written" in notes and "exit 1" in notes, notes
     assert opened == [ISSUE, PR.format(9)], "o opens the selected task's issue and O its PR"
     assert cell == f"[link={ISSUE}]#12[/link]", "the issue cell is a terminal link"
     assert [name for name, _ in seen] == ["tasks", "workers", "report", "tasks", "tasks"]

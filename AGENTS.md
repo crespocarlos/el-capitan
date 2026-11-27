@@ -24,7 +24,7 @@ permission run: `.agent/tools/AGENTS.md`. The builder's Completion Protocol runs
 | `.agent/tools/` | Every command and module; catalog in `tools.json`, prose in `TOOLS.md` |
 | `.agent/_*TEMPLATE.md` | Spec and journal templates, symlinked from skill `references/` |
 | `evals/` | Hermetic suites, one file per tool or family |
-| `tui/` | Read-only dashboard over `crew ls` data (Textual, a dev dependency); not catalogued or installed |
+| `tui/` | Dashboard over `crew ls` data (Textual, a dev dependency); `s` runs a confirmed `crew-task.py` move, nothing else writes; not catalogued or installed |
 | `install.sh` | Links `~/.cursor/`, `~/.claude/`, `~/.agent/bin/` from the catalog |
 
 Tool-tree layout, module naming, exit codes, output contracts, and the glossary:

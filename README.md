@@ -75,12 +75,17 @@ Not a pipeline stage; run it when you need it.
 
 ### Dashboard (optional)
 
-A read-only terminal dashboard of tasks, running workers and locks, and the report. Each task shows
+A terminal dashboard of tasks, running workers and locks, and the report. Each task shows
 its GitHub issue and PRs (terminal links), its progress (checked over total criteria) and its activity
 (`running <stage>`, `stuck <stage>` for a stage open past 6 hours, or days idle such as `idle 3d`). A task is DONE once a PR
 for it is open: `crew open pr` records the PR and marks it, and the merge comes later. `t`, `w` and
 `p` switch views, `r` refreshes, `g` reads `landed` from GitHub, and `o` and `O` open the selected
-task's issue and PR in the browser. It needs Textual, pinned in
+task's issue and PR in the browser. `s` lists the `crew-task.py` moves the selected task's state allows:
+approve (`mark-approved`), start (`mark-implementing`), mark done (`mark-done` with the newest recorded
+PR, or `--force` with a note, by default `none (committed to main)`, when there is none) and `blocked`
+with a reason. Each move shows the exact command in a confirm dialog, which is your approval for a gate,
+then runs it and shows its output and exit code; a refusal shows the reason. The dashboard never writes a
+file itself and never calls a model. It needs Textual, pinned in
 `tui/requirements.txt` and never installed: from the repository root, run
 `uv run --no-project --with-requirements tui/requirements.txt python3 tui/crew_tui.py`.
 `python3 tui/crew_tui.py --once` prints the same views without Textual, and `crew ls --watch` is

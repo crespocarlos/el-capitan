@@ -1,8 +1,9 @@
 """The crew TUI's view model: the tasks, workers and report views as plain rows, with no terminal.
 
 `collect` reads the task directory, the worker locks and the report through `ls_data`/`ls_report`;
-`build` turns what was read into views; `render` prints a view as text (`--once`). Nothing here
-writes, calls a model or reads GitHub, except `landed_for`, which the front end calls on a key.
+`build` turns what was read into views; `render` prints a view as text (`--once`); `moves` lists the
+`crew-task.py` calls a task's state allows. Nothing here writes, runs a command, calls a model or reads
+GitHub, except `landed_for`, which the front end calls on a key.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-import tui_bootstrap  # noqa: F401
+import tui_bootstrap
 
 from ls_data import landed_rows, load_rows, repo_filter, select, stale
 from ls_report import gather as gather_report
@@ -28,6 +29,11 @@ VIEWS = ("tasks", "workers", "report")
 STAGE_STALE_SECONDS = LOCK_STALE_SECONDS  # a stage open this long outlived any worker the guard still protects
 NOT_READ = "?"  # a DONE task's `landed` before the GitHub key is pressed
 LINKED = ("ISSUE", "PR")  # the cells that are terminal links in the app; `o` and `O` open them
+CREW_TASK = tui_bootstrap.TASK_TOOLS / "crew-task.py"  # the checkout's copy, which ~/.agent/bin links to
+FORCE_NOTE = "none (committed to main)"  # the `--pr-url` note of `mark-done --force` for a task with no PR
+# The gates of `crew-task.py` and the one state each moves from (`task_gates.py`); the CLI refuses any other.
+GATES = (("mark-approved", "DRAFTING", "approve"), ("mark-implementing", "APPROVED", "start"),
+         ("mark-done", "IMPLEMENTING", "mark done"))
 
 
 @dataclass(frozen=True)
@@ -50,6 +56,40 @@ class View:
     rows: list[tuple[str, ...]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     links: list[dict[str, str]] = field(default_factory=list)
+    moves: list[list[Move]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Move:
+    """One `crew-task.py` call the app's `s` key offers: a label, the arguments after the script and, for a
+    call that takes free text, its prompt (`ask`) and default; the text is the last argument."""
+
+    label: str
+    args: tuple[str, ...]
+    ask: str = ""
+    default: str = ""
+
+    def argv(self, text: str = "") -> list[str]:
+        return [str(CREW_TASK), *self.args, *([text] if self.ask else [])]
+
+
+def moves(state: str, task: Path, prs: list[str]) -> list[Move]:
+    """The calls `crew-task.py` accepts from `state`: its gate (mark done with the newest PR, or `--force` and a
+    note without one), and `blocked` with a reason for any task not DONE. The CLI still checks every gate."""
+    found = []
+    for command, source, label in GATES:
+        if state != source:
+            continue
+        if command != "mark-done":
+            found.append(Move(f"{label} ({command})", (command, str(task))))
+        elif prs:
+            found.append(Move(f"{label} with PR {prs[-1]} ({command})", (command, str(task), "--pr-url", prs[-1])))
+        else:
+            found.append(Move(f"{label} without a PR ({command} --force)", (command, str(task), "--force", "--pr-url"),
+                              ask="note recorded as the PR", default=FORCE_NOTE))
+    if state != "DONE":
+        found.append(Move("blocked with a reason (blocked)", ("blocked", str(task)), ask="reason"))
+    return found
 
 
 def parse_filter(text: str, base: Filters | None = None) -> Filters:
@@ -97,6 +137,7 @@ def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], s
         view.rows.append((state_label(r), name(r), r.repo or "-", *(cells[key] for key in view.header[3:7]),
                           landed.get(str(r.task), NOT_READ) if done else "-", note))
         view.links.append({key: url for key, url in (("ISSUE", r.issue), ("PR", r.prs[-1] if r.prs else "")) if url})
+        view.moves.append(moves(head(r), r.task, r.prs))
     open_count = sum(1 for r in rows if head(r) != "DONE")
     view.notes.append(f"{len(rows)} tasks: {open_count} open, {len(rows) - open_count} done; scope: {scope}")
     if show_done and any(head(r) == "DONE" and str(r.task) not in landed for r in rows):
