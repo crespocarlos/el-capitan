@@ -77,7 +77,6 @@ jobs:
 
       - name: Verify all agents have frontmatter name field
         run: |
-          ERRORS=0
           for f in .cursor/agents/*.md; do
             [ ! -f "$f" ] && continue
             # Agents with frontmatter must have a name field
