@@ -77,7 +77,11 @@ Not a pipeline stage; run it when you need it.
 
 A terminal dashboard of tasks, running workers and locks, and the report. Each task shows
 its GitHub issue and PRs (terminal links), its progress (checked over total criteria) and its activity
-(`running <stage>`, `stuck <stage>` for a stage open past 6 hours, or days idle such as `idle 3d`). A task is DONE once a PR
+(`running <stage>`, `stuck <stage>` for a stage open past 6 hours, or days idle such as `idle 3d`). TOKENS is
+what the task's agents used: **new** tokens (input, output and cache writes, summed over every call), such as `259k`,
+or `~259k` when only the orchestrator's reported figure exists; a line under the table totals new tokens and cache
+reads over the tasks shown. While an agent runs, ACTIVITY adds what it has used so far (`running review · 92k`),
+read from its transcript under `~/.claude` or `$CLAUDE_CONFIG_DIR`. A task is DONE once a PR
 for it is open: `crew open pr` records the PR and marks it, and the merge comes later. `t`, `w` and
 `p` switch views, `r` refreshes, `g` reads `landed` from GitHub, and `o` and `O` open the selected
 task's issue and PR in the browser. `s` lists the `crew-task.py` moves the selected task's state allows:

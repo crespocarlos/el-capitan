@@ -2,8 +2,8 @@
 
 Tasks opened (`created_at`, else the first PROGRESS entry) and closed (a `→ DONE` transition), verdicts
 of the tasks active in the window, findings by label with the fixed rate (`<task>/review/outcomes.jsonl`,
-the last record per fingerprint), stage runs, tokens (`agent_end` totals first) and durations, agent tokens, review
-run sizes, and tool failures from the memory `.sessions` telemetry (no repository, so never filtered).
+the last record per fingerprint), the window's tokens over every task shown, DONE included (`task_usage_totals`), stage
+runs, tokens and durations, agent tokens, review run sizes, and tool failures from the memory `.sessions` telemetry.
 """
 from __future__ import annotations
 
@@ -15,7 +15,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from task_gc import DEFAULTS, ConfigError, Places, load_config
-from task_progress import agent_ends, fields, read_entries
+from task_progress import (
+    agent_ends,
+    count_text,
+    fields,
+    new_tokens,
+    number,
+    read_entries,
+    stage_usage,
+    sum_usage,
+    usage_text,
+)
 from task_state import TaskState, head
 
 from lib.clock import parse_stamp
@@ -88,49 +98,47 @@ def stage_runs(entries: list, start: datetime) -> list[dict]:
 
 
 def agent_runs(entries: list, start: datetime) -> list[dict]:
-    """One record per agent (`task_progress.agent_ends`: latest stop, its stage) whose `agent_end` is in the window."""
+    """One record per agent (`task_progress.agent_ends`: latest stop, its stage) whose `agent_end` is in the window,
+    with its new tokens and cache reads."""
     runs = []
     for entry, given in agent_ends(entries):
         if in_window(entry.at, start):
-            output = given.get("output", "")
             runs.append({"stage": given["stage"], "agent": given.get("persona") or given.get("agent") or "?",
-                         "tokens": int(given["tokens"]), "output": int(output) if output.isdigit() else 0})
+                         "new": new_tokens(given), "cache_read": number(given.get("cache_read", 0))})
     return runs
 
 
-def stage_totals(tasks: list[tuple[list[dict], list[dict]]]) -> dict:
-    """Per stage over `(stage runs, agent runs)` per task: runs, agents, median duration, and tokens. Within each
-    task a stage with `agent_end` entries counts their total (each agent's final context) instead of its
-    `tokens_reported`, as `crew ls --cost` does; the summed output sits beside it."""
+def stage_totals(tasks: list[tuple[list[dict], dict[str, dict]]]) -> dict:
+    """Per stage over `(stage runs, task_progress.stage_usage)` per task: runs, agents, tasks with no reported tokens,
+    median duration, and the one measure (`sum_usage` of the tasks' stage usage: new tokens and cache reads)."""
     totals: dict[str, dict] = {}
-    for runs, agents in tasks:
-        for stage in {run["stage"] for run in runs} | {agent["stage"] for agent in agents}:
+    for runs, usage in tasks:
+        for stage in {run["stage"] for run in runs} | set(usage):
             mine = [run for run in runs if run["stage"] == stage]
-            spent = [agent for agent in agents if agent["stage"] == stage]
-            empty = {"runs": 0, "agents": 0, "output": 0, "tokens": 0, "unreported": 0, "seconds": []}
-            total = totals.setdefault(stage, empty)
+            used = usage.get(stage)
+            total = totals.setdefault(stage, {"runs": 0, "agents": 0, "unreported": 0, "seconds": [], "usage": []})
             total["runs"] += len(mine)
-            total["agents"] += len(spent)
-            total["output"] += sum(agent["output"] for agent in spent)
-            total["tokens"] += sum(a["tokens"] for a in spent) if spent else sum(run["tokens"] or 0 for run in mine)
-            total["unreported"] += 0 if spent else sum(1 for run in mine if run["tokens"] is None)
             total["seconds"] += [run["seconds"] for run in mine if run["seconds"] is not None]
+            total["usage"] += [used] if used else []
+            total["agents"] += used["count"] if used and used["agents"] else 0
+            total["unreported"] += 1 if mine and (used is None or used["new"] is None) else 0
     stages = {}
     for stage in sorted(totals):
-        durations = totals[stage].pop("seconds")
-        stages[stage] = {**totals[stage], "median_seconds": statistics.median(durations) if durations else None}
+        durations, usage = totals[stage].pop("seconds"), totals[stage].pop("usage")
+        stages[stage] = {**totals[stage], **sum_usage(usage),
+                         "median_seconds": statistics.median(durations) if durations else None}
     return stages
 
 
 def agent_totals(agents: list[dict]) -> dict:
-    """`{agent: {runs, tokens, output}}`, the costliest first."""
+    """`{agent: {runs, new, cache_read}}`, the costliest first."""
     totals: dict[str, dict] = {}
     for agent in agents:
-        mine = totals.setdefault(agent["agent"], {"runs": 0, "tokens": 0, "output": 0})
+        mine = totals.setdefault(agent["agent"], {"runs": 0, "new": 0, "cache_read": 0})
         mine["runs"] += 1
-        mine["tokens"] += agent["tokens"]
-        mine["output"] += agent["output"]
-    return dict(sorted(totals.items(), key=lambda item: (-item[1]["tokens"], item[0])))
+        mine["new"] += agent["new"]
+        mine["cache_read"] += agent["cache_read"]
+    return dict(sorted(totals.items(), key=lambda item: (-item[1]["new"], item[0])))
 
 
 def review_runs(entries: list, start: datetime) -> list[dict]:
@@ -187,9 +195,9 @@ def gather(rows: list[TaskState], days: int, memory: Path | None = None, now: da
     memory = memory or places.memory
     entries = {r.task: read_entries(r.task) for r in rows}
     active = [r for r in rows if r.activity <= days]
-    per_task = [(stage_runs(entries[r.task], start), agent_runs(entries[r.task], start)) for r in rows]
-    agents = [agent for _, mine in per_task for agent in mine]
-    stages = stage_totals(per_task)
+    agents = [agent for r in rows for agent in agent_runs(entries[r.task], start)]
+    usages = {r.task: stage_usage(entries[r.task], start) for r in rows}
+    stages = stage_totals([(stage_runs(entries[r.task], start), usages[r.task]) for r in rows])
     labels = findings(rows, start)
     reviews = [run for r in rows for run in review_runs(entries[r.task], start)]
     try:
@@ -206,6 +214,7 @@ def gather(rows: list[TaskState], days: int, memory: Path | None = None, now: da
         "open_now": sum(1 for r in rows if head(r) != "DONE"),
         "verdicts": dict(Counter(r.verdict.lower() if r.verdict != "?" else "none" for r in active).most_common()),
         "findings": {label: dict(counts) for label, counts in sorted(labels.items())},
+        "tokens": sum_usage([used for usage in usages.values() for used in usage.values()]),  # = task_usage_totals
         "stages": stages,
         "agents": agent_totals(agents),
         "reviews": {"runs": len(reviews), "in_bytes": sum(run.get("in_bytes", 0) for run in reviews),
@@ -236,18 +245,19 @@ def render(report: dict, scope: str) -> list[str]:
     lines.append(f"findings decided: {total}, {rate(fixed, total)}")
     for label, counts in report["findings"].items():
         lines.append(f"  {label:<16} {sum(counts.values()):>4}  {rate(counts.get('fixed', 0), sum(counts.values()))}")
+    lines.append(f"tokens (last {report['days']} days, all tasks): {usage_text(report['tokens'])}")
     for stage, data in report["stages"].items():
         unreported = f" ({data['unreported']} unreported)" if data["unreported"] else ""
-        tokens = f"{round(data['tokens'] / 1000)}k tokens{unreported}"
+        tokens = f"new {count_text(data['new'], data['approximate'])}{unreported}"
         if data.get("agents"):
-            tokens += f", {round(data['output'] / 1000)}k output, from {data['agents']} agent(s)"
+            tokens += f", cache reads {count_text(data['cache_read'])}, from {data['agents']} agent(s)"
         runs = "" if data.get("agents") and not data["runs"] else f"{data['runs']} run(s), "
         lines.append(f"stage {stage}: {runs}{tokens}, median {duration(data['median_seconds'])}")
     if not report["stages"]:
         lines.append("stages: no stage_end recorded in the window")
     for name, data in report.get("agents", {}).items():
-        lines.append(f"  agent {name}: {data['runs']} run(s), {round(data['tokens'] / 1000)}k tokens, "
-                     f"{round(data['output'] / 1000)}k output")
+        lines.append(f"  agent {name}: {data['runs']} run(s), new {count_text(data['new'])}, "
+                     f"cache reads {count_text(data['cache_read'])}")
     reviews = report["reviews"]
     sizes = f"{reviews['in_bytes'] / 1e6:.1f} MB in, {reviews['out_bytes'] / 1e6:.1f} MB out"
     lines.append(f"review runs: {reviews['runs']}, {sizes}")

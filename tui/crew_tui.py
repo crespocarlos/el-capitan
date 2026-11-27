@@ -9,6 +9,7 @@ GitHub is read only for `--landed` or the app's `g` key.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -59,7 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.once:
         landed = landed_for(args.tasks_dir, filters) if args.landed else None
         views = collect(args.tasks_dir, filters, landed)
-        print("\n\n".join("\n".join(render(views[key])) for key in VIEWS))
+        width = shutil.get_terminal_size((0, 0)).columns  # COLUMNS, else the terminal; 0 (no cut) when piped
+        print("\n\n".join("\n".join(render(views[key], width)) for key in VIEWS))
         return 0
     try:
         from tui_app import CrewApp
