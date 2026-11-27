@@ -14,10 +14,48 @@ bypass.
 | `UserPromptSubmit` | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
 | `PostToolUse` / Cursor `afterShellExecution` | Bash | `record-pr.sh` records the PR a successful `gh pr create` printed on its task (`crew-task.py record-pr`). Only a command with a real `gh … pr create` segment counts (the `lib/hook.sh` normaliser; text in an `echo` or a string does not), and only when its output holds exactly one distinct PR URL; with several it records nothing and lists them. It asks `gh pr view` for the head branch and matches the task's repo (the base, or the fork the head owner names) and `branch`. The single open match wins over DONE and ABANDONED ones; an IMPLEMENTING match gains the PR and goes through `mark-done`, any other single match only gains the PR; several record nothing and print each `mark-done` command. A head branch that is only some task's `spec_branch` records nothing and names that task; no match at all, in a repo that already has tasks, becomes a minimal DONE task with no spec. Any other command ends in shell; the outcome is Claude's additional context. Session-start reconcile still catches PRs opened any other way. |
-| `SubagentStop` (Claude Code only) | Subagent ends | `capture-reply.sh` saves a reviewer persona's reply (`crew-review-findings.py capture`) when a line of the dispatch prompt is the `crew-review-out: <review dir> <persona> <nonce>` marker that `crew-review-findings.py expect` printed. The position is not the check: the nonce is, so the reply is saved only when `<persona>.expect` holds the same nonce (or, with no `.expect`, for a resume of the agent that saved it). The reply is the `SubagentHandback` message, else the transcript's last assistant text, else the payload's `last_assistant_message`; a resume of the same agent is saved with `--resume`, another agent's reply is never overwritten, and `.expect` is removed after the save. The same hook reads the transcript's token usage (`tokens`: the last call's context, as the harness reports it; input, output and cache counts summed beside it) and appends an `agent_end` METRIC (with `agent_id`, so a resumed agent counts once) to the task a `crew-task: <TASK_DIR>` prompt line names, only when that is a directory under `~/.agent/tasks` holding `SPEC.md` (else the task above a review directory whose marker was accepted); `crew ls --cost` and `crew report` total it per task. For a `crew-builder` run, the hook also saves the same reply, from its `## Implementation Report` heading to the end, into the task its `crew-task: <TASK_DIR>` line names: `REPORT.md`, or `REPORT.part-<a>-<b>.md` when the prompt's header (the lines around `crew-task:`) has one `TASK_RANGE: <a>-<b>` line, and both when that line ends in `final`. Each is written atomically beside `<report name>.provenance.json`; a report that fails `report-check` against `gates.json` is saved with a `WARN` line in PROGRESS.md. A builder run it cannot save (no heading, no task line, two ranges in the header) prints `no report saved: <reason>`. Cursor's `subagentStop` carries only a summary and no usage, so Cursor keeps the manual `save-out` and `crew-task.py report save <TASK_DIR>` (the reply on stdin), and records no usage. |
+| `SubagentStop` (Claude Code) | Subagent ends | `capture-reply.sh` saves a reviewer persona's reply (`crew-review-findings.py capture`) when a line of the dispatch prompt is the `crew-review-out: <review dir> <persona> <nonce>` marker that `crew-review-findings.py expect` printed. The position is not the check: the nonce is, so the reply is saved only when `<persona>.expect` holds the same nonce (or, with no `.expect`, for a resume of the agent that saved it). The reply is the `SubagentHandback` message, else the transcript's last assistant text, else the payload's `last_assistant_message`; a resume of the same agent is saved with `--resume`, another agent's reply is never overwritten, and `.expect` is removed after the save. The same hook reads the transcript's token usage (`tokens`: the last call's context, as the harness reports it; input, output and cache counts summed beside it) and appends an `agent_end` METRIC (with `agent_id`, so a resumed agent counts once) to the task a `crew-task: <TASK_DIR>` prompt line names, only when that is a directory under `~/.agent/tasks` holding `SPEC.md` (else the task above a review directory whose marker was accepted); `crew ls --cost` and `crew report` total it per task. For a `crew-builder` run, the hook also saves the same reply, from its `## Implementation Report` heading to the end, into the task its `crew-task: <TASK_DIR>` line names: `REPORT.md`, or `REPORT.part-<a>-<b>.md` when the prompt's header (the lines around `crew-task:`) has one `TASK_RANGE: <a>-<b>` line, and both when that line ends in `final`. Each is written atomically beside `<report name>.provenance.json`; a report that fails `report-check` against `gates.json` is saved with a `WARN` line in PROGRESS.md. A builder run it cannot save (no heading, no task line, two ranges in the header) prints `no report saved: <reason>`. Cursor's `subagentStop` carries no reply text, only the subagent's transcript path, and its `stop` carries token counts (see [Harness facts](#harness-facts-2026-11-27)); no hook reads either yet, so Cursor keeps the manual `save-out` and `crew-task.py report save <TASK_DIR>` (the reply on stdin), and records no usage. |
 | `Notification` (Claude Code only) | `idle_prompt` | `notify-idle.sh` shows a macOS banner ("<repo> (<branch>) needs your input") and never activates or focuses an application. It stays quiet in a background job (`CLAUDE_JOB_DIR` set), shows at most one banner per session every 10 minutes (the last one's time is in `~/.agent/memory/.sessions/<session>.notified`), and `EL_CAPITAN_NOTIFY=off` turns it off. It always exits 0. |
 | `SessionStart` | Session begins | Loads bounded memory context, applies the spec status policy, and refreshes the anchor (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
-| Several, both harnesses (temporary) | Each event | `probe.sh` does nothing unless `EL_CAPITAN_PROBE=1`; then it logs payload and variable names, never values, to `~/.agent/state/probe.log`. Steps and what each result decides: [probe.md](probe.md). |
+
+## Harness facts (2026-11-27)
+
+Observed by a temporary probe hook (since removed) that logged payload and variable names, never
+values, while the owner ran one shell command, one file edit and two Task subagents in Cursor.
+
+- **Cursor edits.** `preToolUse` reports an edit as `tool_name` `Write` with `tool_input`
+  `{file_path, content}`, the whole file. `afterFileEdit` carries `file_path` and `edits[]` of
+  `{old_string, new_string}`. The Status guard reads `tool_name`, `file_path` and `content`, so its
+  Cursor mapping holds.
+- **Cursor shell.** `beforeShellExecution` carries `command`, `cwd`, `sandbox` and the common fields.
+  `preToolUse` also fires for the shell, with `tool_name` `Shell` (not `Bash`) and `tool_input`
+  `{command, cwd, timeout}`; a Cursor `preToolUse` matcher for the shell is `Shell`.
+- **Fail-closed guards.** Cursor accepts `{}` from a `failClosed` guard: the shell command, the edit
+  and both subagents ran, and nothing was blocked.
+- **Cursor subagents.** `subagentStart` carries `subagent_id`, `subagent_type`, `subagent_model`,
+  `task`, `is_parallel_worker`, `parent_agent_id`, `tool_call_id` and `transcript_path`.
+  `subagentStop` carries `agent_transcript_path`, `child_conversation_id`, `subagent_id`,
+  `subagent_type`, `status`, `task`, `duration_ms`, `message_count`, `tool_call_count`, `loop_count`
+  and `transcript_path`; it has no reply-text field, so a hook would read the reply from
+  `agent_transcript_path`. The Task tool's `tool_input` is `{description, prompt, subagent_type}`,
+  plus `resume` and `run_in_background` when used: Cursor's Task can resume a subagent.
+- **No subagent limits.** No field reports a tool or turn limit on a subagent, only counts, so a
+  persona's `tool_budget` is guidance in Cursor (`readonly` is its only restriction).
+- **Cursor usage.** `stop` carries `input_tokens`, `output_tokens`, `cache_read_tokens`,
+  `cache_write_tokens`, `model_id`, `loop_count` and `status`, once per agent loop.
+- **Cursor also runs Claude-format hooks.** Every event was logged a second time from the
+  `.claude/settings.json` registrations (`PreToolUse`, `SubagentStop`, `Stop`), usually twice, in
+  the same second as the Cursor entry. Cursor loads Claude Code hook settings (most likely
+  `~/.claude/settings.json` and the repository's `.claude/settings.json`), so el-capitan's Claude
+  hooks run in Cursor beside the template's.
+- **`CLAUDE_JOB_DIR` in hooks: an inference, not observed.** A `claude --bg` job started with
+  `EL_CAPITAN_PROBE=1` in the launching shell ran its `SessionStart` and `Stop` hooks, and the probe
+  logged nothing: background sessions are most likely started by Claude Code's background service
+  and do not inherit that shell's environment, so an environment switch such as `EL_CAPITAN_*` may
+  not reach hooks in a background job. The job's tool shell has `CLAUDE_JOB_DIR`, and hooks are
+  spawned by the same process, so it most likely reaches them; `notify-idle.sh` keeps its check.
+  Idle banners from background jobs would show it does not, and the hook would then need another
+  signal. `check-write-boundary.sh` does not depend on it.
 
 ## Status integrity
 

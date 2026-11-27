@@ -493,25 +493,7 @@ PAYLOADS = [
 # Hooks whose stdout is their product: only their failure handling is checked here.
 SILENT = ("mode-anchor.sh", "memory-context.sh", "cursor-memory-context.sh", "notify-idle.sh", "log-tool-use.sh",
           "memory-capture-prompt.sh", "spec-status-reconcile.sh", "record-pr.sh",
-          "capture-reply.sh", "agents-refresh.sh", "probe.sh")
-
-# The temporary harness probe (docs/probe.md): `(harness, event, payload, stdout)`. The log must hold none of
-# `PROBE_VALUES`; `stdout` is `{}` on the Cursor events that expect a decision.
-PROBE_VALUES = (SECRET, "/private/secret-dir/file.txt", "/private/secret-dir/agent.jsonl", "s" * 201, "sess-secret-1")
-PROBE = [
-    ("claude", "PreToolUse",
-     {"hook_event_name": "PreToolUse", "session_id": "sess-secret-1", "tool_name": "Bash",
-      "tool_input": {"command": f"echo {SECRET}", "description": "/private/secret-dir/file.txt"}}, ""),
-    ("cursor", "preToolUse",
-     {"hook_event_name": "preToolUse", "conversation_id": "sess-secret-1", "tool_name": "Write",
-      "tool_input": {"file_path": "/private/secret-dir/file.txt", "content": SECRET}}, "{}"),
-    ("cursor", "afterFileEdit",
-     {"hook_event_name": "afterFileEdit", "file_path": "/private/secret-dir/file.txt",
-      "edits": [{"old_string": SECRET, "new_string": "s" * 201}]}, ""),
-    ("cursor", "subagentStop",
-     {"hook_event_name": "subagentStop", "transcript_path": "/private/secret-dir/agent.jsonl", "summary": "s" * 201,
-      "status": "completed"}, ""),
-]
+          "capture-reply.sh", "agents-refresh.sh")
 
 # `notify-idle.sh` under a stub `osascript`: `(label, env, seconds since this session's last banner or None, calls)`.
 NOTIFY = [
