@@ -3,7 +3,7 @@
 
 `module-size` (`tui/` too), `package-direction` (the edges in TOOLS.md `package-edges`), `direct-git` (git argv only
 in `lib/git.py`), `single-owner`, `bootstrap-identical`, `no-sibling-subprocess` and `no-systemexit-str`
-(exit messages through `lib.cli.fail`); `sys.path` is Ruff's (TID251). Names and summaries: `lint_files.RULES`.
+(exit messages through `lib.cli.fail`), `pipe-read-eof` (`evals/` too); `sys.path` is Ruff's (TID251).
 """
 from __future__ import annotations
 
@@ -230,12 +230,62 @@ def check_cli(name: str, tree: ast.AST) -> list[Finding]:
     return found
 
 
+def reads_a_pipe(node: ast.AST) -> bool:
+    """`os.read(<...stdout...>)`, or `.read()`/`.readline()` on something named stdout or stderr."""
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return False
+    func, streams = node.func, ("stdout", "stderr")
+    if func.attr == "read" and isinstance(func.value, ast.Name) and func.value.id == "os":
+        return bool(node.args) and any(stream in ast.unparse(node.args[0]) for stream in streams)
+    return func.attr in ("read", "readline") and any(stream in ast.unparse(func.value) for stream in streams)
+
+
+def stops_at_eof(test: ast.expr, chunks: set[str]) -> bool:
+    """`not <chunk>`, or `<chunk> == b""` / `""`, for a name a pipe read was assigned to."""
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        return isinstance(test.operand, ast.Name) and test.operand.id in chunks
+    return (isinstance(test, ast.Compare) and isinstance(test.left, ast.Name) and test.left.id in chunks
+            and isinstance(test.ops[0], (ast.Eq, ast.Is))
+            and any(isinstance(side, ast.Constant) and side.value in (b"", "") for side in test.comparators))
+
+
+def check_pipe_reads(name: str, tree: ast.AST) -> list[Finding]:
+    """A `while` loop that reads a subprocess's stdout or stderr leaves at end of file: an `if` on the variable the
+    read was assigned to breaks or returns. A read of a closed pipe returns empty forever, so the loop would spin."""
+    found: list[Finding] = []
+    for loop in (node for node in ast.walk(tree) if isinstance(node, ast.While)):
+        if not any(reads_a_pipe(node) for node in ast.walk(loop)):
+            continue
+        chunks = {target.id for node in ast.walk(loop) if isinstance(node, ast.Assign)
+                  and any(reads_a_pipe(inner) for inner in ast.walk(node.value))
+                  for target in node.targets if isinstance(target, ast.Name)}
+        exits = (isinstance(node, ast.If) and stops_at_eof(node.test, chunks)
+                 and any(isinstance(item, (ast.Break, ast.Return)) for item in node.body) for node in ast.walk(loop))
+        if not any(exits):
+            found.append((name, loop.lineno, "pipe-read-eof",
+                          "assign the pipe read to a name and leave the loop on `if not <name>: break`"))
+    return found
+
+
+def pipe_read_files(root: Path) -> list[Path]:
+    """The Python of the tools, the TUI and the tests: the tests are where subprocess output is read in a loop."""
+    bases = [root / base for base in (".agent/tools", "tui", "evals") if (root / base).is_dir()]
+    return sorted(path for base in bases for path in base.rglob("*.py")
+                  if "__pycache__" not in path.parts and ".venv" not in path.parts)
+
+
 def lint_python(root: Path) -> list[Finding]:
     """The repository rules over every module; a tree with no Python has nothing to judge."""
+    found: list[Finding] = []
+    for path in pipe_read_files(root):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        found.extend(check_pipe_reads(rel(root, path), tree))
     parsed = parse_modules(root)
     if not parsed:
-        return []
-    found: list[Finding] = []
+        return found
     for path, (source, tree) in parsed.items():
         name, relative = rel(root, path), path.relative_to(root / ".agent/tools")
         found.extend(check_module_size(name, source))

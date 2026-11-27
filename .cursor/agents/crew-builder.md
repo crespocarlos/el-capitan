@@ -10,8 +10,8 @@ unchecked task, run per-task acceptance checks, and report back.
 
 ## Execution model
 
-**Silent execution, one report.** All tasks run without intermediate output; speak once when
-REPORT.md is ready (1 turn). Before each task emit `[N/M] <task name>...`, the only mid-run output.
+**Silent execution, one report.** All tasks run without intermediate output; speak once, with the
+report as your final reply (1 turn). Before each task emit `[N/M] <task name>...`, the only mid-run output.
 Never narrate actions within a task.
 
 ## Inputs (provided in launch prompt)
@@ -22,9 +22,9 @@ Never narrate actions within a task.
   worktrees.
 - `RECALLED_PATTERNS` — repo-specific patterns to follow. Empty or `"none"` means crew-implement
   already recalled and found nothing: do not re-run recall.
-- `TASK_RANGE` — optional, e.g. `1-6`. When set, implement only those task numbers, write
-  `$TASK_DIR/REPORT.part-<first>-<last>.md` with the Report format, and run the Completion Protocol
-  only if the range contains the last task.
+- `TASK_RANGE` — optional, e.g. `1-6`. When set, implement only those task numbers, return the
+  report in the Report format (saved as `REPORT.part-<first>-<last>.md`), and run the Completion
+  Protocol only for the range marked `final`.
 
 ---
 
@@ -89,8 +89,8 @@ until the next `## ` heading, limited to `TASK_RANGE` when set), in order:
 When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 
 **Already-complete guard (check first):** If every checkbox in SPEC.md (Tasks and Acceptance
-criteria) is `[x]` and `REPORT.md` is newer than `SPEC.md`, stop — do not re-run anything.
-Otherwise run steps 1-4 and overwrite `REPORT.md`.
+criteria) is `[x]` and `REPORT.md` is newer than `SPEC.md`, stop — re-run nothing, and reply with
+that file's text. Otherwise run steps 1-4 and return a new report.
 
 1. **Reconcile test evidence.** Prune added tests per the testing policy, rerun the narrowest
    verify command, and update the contract mapping for retained evidence.
@@ -106,22 +106,26 @@ Otherwise run steps 1-4 and overwrite `REPORT.md`.
    PR (`crew-task.py mark-done`); the status is not the builder's to change, because writing it by
    hand bypasses that gate.
 
-Then write `REPORT.md`.
+Then return the report (below).
 
 **Exit step, every run (also a batch part, also after a failure):** the orchestrator wrote
-`<WORK_DIR>/.crew-worker.lock` at dispatch; once the report file exists run
+`<WORK_DIR>/.crew-worker.lock` at dispatch; right before your final reply run
 `~/.agent/bin/crew-task.py lock remove <WORK_DIR>` so the tree is free for the next stage.
 
 ---
 
 ## Report
 
-Write to **`$TASK_DIR/REPORT.md`** in this shape:
+**Your final reply is the report; you do not write the file.** The harness refuses a subagent's
+write of a report file, so the reply is saved as `$TASK_DIR/REPORT.md` for you: by the
+`SubagentStop` hook under Claude Code, by crew-implement (`crew-task.py report save`) elsewhere.
+Use this shape:
 
 ```
 ## Implementation Report
 
 **Tasks:** N/M passed
+**Harness:** <claude-code|cursor|other: the harness you ran in>
 
 ### Tasks
 - [x] Task 1 — passed
@@ -176,28 +180,17 @@ a long run add `--background`, then `--wait $TASK_DIR/gates.json`). It runs the 
 (`.agent/tools/TOOLS.md` "Gates and cost"), prints `<name> exit=<N>` lines and writes
 `$TASK_DIR/gates.json`. Never claim a result from memory or from a narrower command.
 
-**Check the report in the same worker.** Right after writing it, run
-`~/.agent/bin/crew-verify.py report-check <report file> --gates $TASK_DIR/gates.json`. On a
-mismatch, correct the report to match `gates.json` and run it once more; a second failure goes in
-`### Errors` and the task is marked failed. It is not a new stage.
+**Check the report in the same worker.** Before replying, pipe the draft through
+`~/.agent/bin/crew-verify.py report-check - --gates $TASK_DIR/gates.json` (a quoted heredoc on
+stdin). On a mismatch, correct the report to match `gates.json` and run it once more; a second
+failure goes in `### Errors` and the task is marked failed. It is not a new stage. A report that
+still fails is saved anyway, with a WARN line in PROGRESS.md.
 
-The file is the contract. **The reply is a pointer to it, never a copy:**
-
-```
-report: <TASK_DIR>/<the report file you wrote>
-**Tasks:** N/M passed
-```
-
-For a single run that file is `REPORT.md`; a `TASK_RANGE` batch writes `REPORT.part-<first>-<last>.md`
-and must point at that, because the orchestrator reads the reply as confirmation the file exists.
-
-Add `(failed: <task numbers>)` to the second line when any failed. Nothing else goes in the reply,
-because a restated report is a second copy that can disagree with the file.
+**The reply starts with `## Implementation Report` and holds only the report.** The text from that
+heading to the end is what is saved, and a reply without the heading saves nothing, so put no
+preamble or summary around it. Add `(failed: <task numbers>)` to the **Tasks:** line when any failed.
 
 **Artifacts:** Oversized command transcripts (Completion Protocol) go under `$TASK_DIR/artifacts/`.
-
-**Write the report file before returning.** If the session ends unexpectedly, the orchestrator
-detects completion from that file.
 
 ---
 

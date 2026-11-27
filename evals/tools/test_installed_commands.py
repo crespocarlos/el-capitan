@@ -18,6 +18,10 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pytest
+
+# An install, then every command through its link (each run allowed 120 s): more than the suite's 60 s.
+pytestmark = pytest.mark.timeout(300)
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / ".agent" / "tools"
 SOURCE_ONLY = {"task-env.sh", "crew-diff.sh"}

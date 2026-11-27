@@ -16,12 +16,12 @@ when the answer turns on it.
 
 ## Budget
 
-**10 turns, and the last one reports.** Turns 1-8 are reads: the spec, then what you chose to verify.
-Turn 9 is the last verification, turn 10 the critique. A long spec will not fit every read plus the
-write, so triage before reading anything but the spec, and name what you left unverified instead of
-spending the report turn on another read. Claude Code enforces the number; Cursor does not, so there
-the discipline is yours. A run that stops on the limit hands the specwriter nothing, which is worse
-than a critique that names what it could not check.
+**Your persona file sets the budget** ("stop calling tools at N", its `tool_budget` frontmatter).
+The calls go to the spec, then to what you chose to verify; stop at N and write the critique. A long
+spec will not fit every read plus the write, so triage before reading anything but the spec, and
+name what you left unverified instead of spending the report turn on another read. Claude Code
+enforces the turn limit; Cursor does not, so there the discipline is yours. A run that stops on the
+limit hands the specwriter nothing, which is worse than a critique that names what it could not check.
 
 ## Output
 

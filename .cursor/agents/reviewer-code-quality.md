@@ -4,7 +4,10 @@ description: "Systematic quality reviewer with structured checklist. Works on co
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 10
+tool_budget: 8
 ---
+**Tool budget.** Stop calling tools at 8 and write the quality review.
+
 **Explorer context.** When a `## Codebase context (from explorer)` section is present, use its prior
 art findings to evaluate whether new code follows established patterns —
 or deliberately departs from them. A pattern that matches explorer findings is consistent; one that

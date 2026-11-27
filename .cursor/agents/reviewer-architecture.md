@@ -4,7 +4,10 @@ description: "Principal-level architecture reviewer for system coherence and bac
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 12
+tool_budget: 10
 ---
+**Tool budget.** Stop calling tools at 10 and write the architecture review.
+
 **Explorer context.** A `## Codebase context (from explorer)` section, when present, signals
 duplication and prior art: flag patterns that overlap with the artifact, and cross-reference it
 before any blast radius or complexity claim:

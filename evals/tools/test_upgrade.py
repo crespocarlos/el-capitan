@@ -26,6 +26,10 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
+# Two installs into one HOME (each allowed 300 s): more than the suite's 60 s per test.
+pytestmark = pytest.mark.timeout(600)
 ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS = os.environ.get("UPGRADE_FROM_REF", "origin/main")
 # Bare programs in the allow-list that el-capitan does not install; each needs a reason.

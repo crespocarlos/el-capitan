@@ -2,8 +2,8 @@
 """Change a task's state: the transition gates, reconcile, record-pr, status migration, BLOCKED, lock, worktree, gc.
 
 `crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every
-other write goes through here (`gc`: retention, `task_gc.py`). `lock`, `blocked` and `worktree`
-parse their own arguments (`task_lock.py`, `task_worktrees.py`); see each one's `--help`.
+other write goes through here (`gc`: retention, `task_gc.py`). `lock`, `blocked`, `worktree` and `report`
+parse their own arguments (`task_lock.py`, `task_worktrees.py`, `task_builder_report.py`); see each one's `--help`.
 """
 from __future__ import annotations
 
@@ -17,11 +17,16 @@ DELEGATED = {
     "lock": "write|remove <tree> [--task ID]: the worker lock the guard hook reads",
     "blocked": "<TASK_DIR> <reason>: one BLOCKED line, shown by crew ls",
     "worktree": "pref|record|check: where the worker runs, and whether a branch may be cut here",
+    "report": "save <TASK_DIR> [--range A-B] < reply: a builder's reply saved as REPORT.md, as the hook does",
 }
 
 
 def delegated(name: str, argv: list[str]) -> int:
-    """Run `lock`, `blocked` or `worktree` in the module that owns it."""
+    """Run `lock`, `blocked`, `worktree` or `report` in the module that owns it."""
+    if name == "report":
+        from task_builder_report import main as report
+
+        return report(argv)
     if name in ("lock", "blocked"):
         from task_lock import main as lock
 

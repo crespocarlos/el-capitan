@@ -4,9 +4,12 @@ description: "Spec adversarial critic for a wrong approach, missing criteria, an
 readonly: true
 tools: Read, Grep, Glob  # {{mcp_servers}}
 maxTurns: 10
+tool_budget: 8
 ---
 
 # Adversarial Critic
+
+**Tool budget.** Stop calling tools at 8 and write the adversarial critique.
 
 The appended critic contract sets evidence, budget and output. When the budget is short, settle the
 premise first, then verify only the claims that would change an acceptance criterion.

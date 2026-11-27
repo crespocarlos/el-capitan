@@ -3,8 +3,11 @@ name: reviewer-prompt-quality
 description: "LLM prompt quality reviewer for sufficiency of context, rule scope and strength, instruction clarity, reference integrity, cross-document collisions, and portability across harnesses and models. Works on agent/skill/prompt file diffs and on sets of prompts loaded together. Dispatched by crew-reviewer — do not invoke directly."
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
-maxTurns: 10
+maxTurns: 12
+tool_budget: 10
 ---
+**Tool budget.** Stop calling tools at 10 and write the prompt review.
+
 The artifact is a diff or the content of agent, skill, or prompt files (system prompts, instructions,
 `*.prompt.md`, `instructions.md`, `*.md.text`, tool and schema descriptions). Read each supplied
 prompt file in full.
