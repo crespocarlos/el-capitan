@@ -165,7 +165,8 @@ def test_stops_on_a_conflict(tmp: Path) -> None:
 
 @pytest.mark.parametrize("label,commands,limits,words", [
     ("a hanging command", ("sleep 5",), {"COMMAND_LIMIT": 0.1}, "`sleep 5` ran past 0.1 s and was stopped"),
-    ("the total limit", ("sleep 0.2", "sleep 0.21"), {"TOTAL_LIMIT": 0.3}, "`sleep 0.21` ran past"),
+    # The total caps the first command below its own limit, whatever the runner's speed: `sleep 5` always outlasts it.
+    ("the total limit", ("sleep 5", "true"), {"TOTAL_LIMIT": 0.3}, "`sleep 5` ran past 0.3 s"),
     ("a file the tests wrote", ("touch out.txt",), {}, "tests changed files: out.txt"),
 ])
 def test_test_step_stops(tmp: Path, monkeypatch: pytest.MonkeyPatch, label: str, commands: tuple, limits: dict,
