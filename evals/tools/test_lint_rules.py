@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / ".agent" / "tools"
 LINT_PATH = TOOLS / "maintenance" / "crew-lint.py"
 LINT = load(LINT_PATH)
+import lint_prompts as LINT_PROMPTS  # noqa: E402
 from lint_prompts import (  # noqa: E402
     AGENT_CLASSES,
     MCP_PLACEHOLDER,
@@ -401,3 +402,66 @@ def test_dead_code_table_and_unreadable_catalog(tmp: Path) -> None:
     check("the table has one row per command and counts the uncalled", len(rows) == 3 and "1 uncalled" in table.stdout and table.returncode == 1, table.stdout)
     broken = cli(LINT_PATH, "--root", str(tmp), "--dead-code")
     check("an unreadable catalog exits 2", broken.returncode == 2 and "cannot read the catalog" in broken.stderr, broken.stderr)
+
+
+# (case, files, the budget rules lint_budget reports): a prompt file fails above 90% of 11,500 bytes and the always-on set
+# (here AGENTS.md alone, tokens = bytes // 4) above 95% of 5,672 tokens, each before its hard ceiling does.
+HEADROOM = (
+    ("a prompt file at 90%", {SKILL.format("crew-x"): "x" * 10_350}, []),
+    ("a prompt file one byte above 90%", {SKILL.format("crew-x"): "x" * 10_351}, ["prompt-headroom"]),
+    ("a prompt file at its ceiling", {".cursor/agents/references/r.md": "x" * 11_500}, ["prompt-headroom"]),
+    ("a prompt file above its ceiling", {SKILL.format("crew-x"): "x" * 11_501}, ["prompt-budget"]),
+    ("the always-on set at 95%", {"AGENTS.md": "x" * 4 * 5_388}, []),
+    ("the always-on set above 95%", {"AGENTS.md": "x" * 4 * 5_389}, ["prompt-headroom"]),
+    ("the always-on set above its ceiling", {"AGENTS.md": "x" * 4 * 5_673}, ["budget"]),
+)
+
+
+@pytest.mark.parametrize("case,files,expected", HEADROOM, ids=[case for case, _, _ in HEADROOM])
+def test_budget_headroom(case: str, files: dict[str, str], expected: list[str], tmp: Path, registered: set[str]) -> None:
+    root = write(tmp, files)
+    found = LINT_PROMPTS.lint_budget(root, [], set())
+    assert [rule for _, _, rule, _ in found] == expected, found
+    assert all(message.startswith("headroom exceeded, fails --budget") for _, _, rule, message in found
+               if rule == "prompt-headroom"), found
+    assert {rule for _, _, rule, _ in found} <= registered
+
+
+def test_prompt_byte_delta_counts_added_changed_and_removed_prompt_files_only(tmp: Path) -> None:
+    root = write(tmp, {SKILL.format("crew-x"): "x" * 10, ".cursor/agents/references/new.md": "y" * 4, "rules/r.mdc": "z" * 3,
+                       "AGENTS.md": "a" * 5, ".cursor/skills/crew-x/tool.py": "p" * 50})
+    base = {SKILL.format("crew-x"): 12, "rules/r.mdc": 3, "AGENTS.md": 2, ".cursor/agents/references/gone.md": 7,
+            ".cursor/skills/crew-x/tool.py": 1, "README.md": 99}
+    assert LINT_PROMPTS.prompt_byte_delta(root, base) == [
+        (".cursor/agents/references/gone.md", -7), (".cursor/agents/references/new.md", 4), (SKILL.format("crew-x"), -2), ("AGENTS.md", 3)]
+
+
+def git_repo(root: Path, *arguments: str) -> None:
+    subprocess.run(["git", "-C", str(root), *arguments], check=True, capture_output=True,
+                   env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                        "GIT_COMMITTER_EMAIL": "t@t"})
+
+
+def test_the_budget_report_prints_the_delta_since_the_merge_base(tmp: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Information for the PR body, on stderr: the merge base's short SHA, the total and one row per changed prompt
+    file. A change that reached origin/main after the branch left it is not this branch's growth; no base is one note."""
+    root = write(tmp / "repo", {SKILL.format("crew-x"): "x" * 10, "AGENTS.md": "a\n"})
+    LINT.delta_report(root)
+    check("a root without origin/main says it measured nothing", "not measured" in capsys.readouterr().err)
+    git_repo(root, "init", "-q", "-b", "work")
+    git_repo(root, "add", "-A")
+    git_repo(root, "commit", "-qm", "base")
+    fork = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    git_repo(root, "checkout", "-qb", "landed")
+    (root / "AGENTS.md").write_text("a" * 40)
+    git_repo(root, "commit", "-qam", "landed on main later")
+    git_repo(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git_repo(root, "checkout", "-q", "work")
+    (root / SKILL.format("crew-x")).write_text("x" * 25)
+    LINT.delta_report(root)
+    err = capsys.readouterr().err
+    check("the delta names the merge base, the total and only this branch's file",
+          f"prompt bytes vs merge-base(origin/main, HEAD) {fork[:7]}: +15 (1 files changed)" in err
+          and f"+15  {SKILL.format('crew-x')}" in err and "AGENTS.md" not in err, err)
+    LINT.delta_report(root, "landed")
+    check("--delta-base picks another ref", "merge-base(landed, HEAD)" in capsys.readouterr().err)

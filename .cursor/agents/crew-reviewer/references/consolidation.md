@@ -66,9 +66,8 @@ Every kept finding has a traceable reason to exist; the report is not a relay.
 ### Verify against the repository
 
 In PR mode, "the repository" is the PR head read through `gh` (`~/.agent/bin/crew-pr-actions.py diff`,
-`gh api
-"repos/.../contents/<path>?ref=<headSHA>"` with the URL quoted), never the local working tree and never
-a checkout of the PR. The two targeted reads below mean up to two `gh api` reads at that head SHA. Do
+`gh api "repos/.../contents/<path>?ref=<headSHA>"` with the URL quoted), never the local working tree
+and never a checkout of the PR. The two targeted reads below mean up to two `gh api` reads at that head SHA. Do
 not validate a PR finding through the local checkout — no file reads, repository search, or other
 filesystem commands, whatever the harness calls them. When the cited path itself is uncertain, list
 the parent directory in one call rather than fetching guessed paths.
@@ -112,25 +111,8 @@ Give each kept finding a disposition: **patch** (concrete `Fix:` inside the revi
 pre-existing or outside scope — not in the numbered list; append it to the deferred file per pipeline
 persistence and mention the count in one line after the list).
 
-Three things are recorded beyond the label and anchor, each under its own condition:
-
-- **`kind`** (required) — what sort of defect, independent of severity. Every finding that reaches a
-  gate states one; a finding with none is rejected with the allowed values listed. Values are the
-  `KINDS` set in `crew-review-findings.py`; the parser rejects any other. The boundaries that matter: `correctness` produces
-  a wrong result on valid input; `reliability` fails
-  under load, timing, or an environmental condition; `testing` is missing or weak coverage of behavior
-  the change introduces; `documentation` misstates what the code does; `other` is none of these.
-- **`confidence`** (required) — the reviewer's own belief that the finding is real, 1-5, on the scale
-  in the shared contract (`5 confirmed` … `1 suspicion`), rendered beside the label as
-  `[attention · 4]`. It is not a severity: a `[blocking]` or `[attention]` needs 3 or higher, and a
-  `[concern]` or `[nit]` may carry any score. Any move carries `confidence_from` beside it plus the
-  `validation` above. Any probe records `probe: <outcome>` from `PROBE_OUTCOMES`; `probe: refuted`
-  alone lowers a score, and never beside one that rose.
-- **`validation`** (when `verified` is true) — one sentence on what you read and concluded, e.g.
-  "confirmed: `fetchRows` returns no rows when `source` is absent, and this query keeps only
-  `payload`". `verified: true` alone asserts a second read happened; this records why it passed.
-  `persist` requires it whenever `verified` is true, in every mode, including one passing no
-  `--files`.
+Record `kind`, `confidence` and `validation` beyond the label and anchor, as [finding
+formats](finding-formats.md) says under "Recorded fields".
 
 When a hunk index exists, carry each finding's hunk ids into its record and check them against the
 verified location: correct an id that names a hunk the finding does not depend on, and route a

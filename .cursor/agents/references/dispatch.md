@@ -47,16 +47,8 @@ the persona read. Name the delivery, and for a by-size delivery its byte count, 
 identify `path:line@headSHA7` and come from `gh api` at that head. A persona must not use the local
 checkout — no file reads, repository search, code-index search, or Explorer output, whatever the
 harness names those tools — to verify a PR claim. It may return `[needs more info]` only when it
-names the missing PR-head path or excerpt.
-
-One exception, and it belongs to the orchestrator rather than the persona: `crew-reviewer` may run
-`crew-agent-context.py` to collect repository guidance (`AGENTS.md`, `CLAUDE.md`) and place the result in
-the package. Guidance describes the reviewer's own conventions rather than the change, so it is
-legitimate context. It also comes from the local checkout, not the PR head, and therefore is **not
-PR-head evidence**: when the PR itself changes a guidance file, treat the collected text as
-approximate and cite a head excerpt for any conclusion that depends on the rule being added. A
-persona reads guidance from its package, never the working tree, so the evidence trail in
-`<persona>.in.md` stays complete.
+names the missing PR-head path or excerpt. The one exception, repository guidance the orchestrator
+collects, is in [PR review mode](~/.cursor/agents/crew-reviewer/references/pr-mode.md).
 
 **The reply text is the only thing the orchestrator receives.** A persona that writes findings into
 a file, a scratch artifact, or a summary block ("findings delivered above", "see next") hands back
@@ -101,8 +93,8 @@ the raw bytes and a provenance record beside them:
 ```
 
 - The source is a file the harness already holds for the persona's final message when it has one
-  (a Task or background-agent output file), so the reply is not emitted a second time; with none,
-  pass the reply on stdin. Never a digest or a hand-edited copy: `persist` refuses a condensed digest
+  (a Task or background-agent output file), so the reply is not emitted a second time. With none
+  (Cursor Task), write the reply verbatim to a scratch file first, then `save-out … < <file>`. Never a digest or a hand-edited copy: `persist` refuses a condensed digest
   and a reply whose hash no longer matches its record.
 - Record the agent id and model the harness reports; leave a flag out when it reports nothing (stored
   as `null`, never guessed). `--resume` marks the one allowed re-emission of the same persona.
@@ -125,10 +117,8 @@ The compact reference comes from `hunks.index.md` (ids, files, line ranges, size
 `hunks.md`, whose per-hunk bodies re-quote a diff the package already carries. `hunks.md` is for the
 layer-mapping pass, which sees the index only and no diff. The dispatch prompt states this.
 
-A persona with no findings ends its response with the line `### Findings: none`.
-
 A persona that judges the artifact outside its lane (no prompt files, no user-facing surface) emits
-the same line plus one sentence of reason. It does not end with a bare statement of disinterest,
+the `### Findings: none` line plus one sentence of reason. It does not end with a bare statement of disinterest,
 because the orchestrator treats a response with neither a finding nor this sentinel line as
 incomplete and relaunches it.
 
@@ -136,19 +126,8 @@ A persona may not treat an unverified absence or a claim that depends on blocked
 finding; mark it `[needs more info]` and name the blocked read. The orchestrator remains responsible
 for verifying findings against the authoritative repository before consolidation.
 
-## The handoff trailer
-
-A handoff is one line at the very end of a reply, written as `> Next: …`. It names one or more
-`crew <verb>` commands and nothing else: no summary of the work, no reassurance, no second sentence
-about what the reader might also consider. `crew-lint` reads every skill, agent, and rule file and
-fails one whose trailer is missing from the end, duplicated, or names a verb `crew-router.mdc` has no
-row for, so a handoff that survives review is one a session can act on by pasting it.
-
-A stage with several outcomes quotes one trailer per outcome in its own documentation instead of
-emitting an unquoted one — `crew-address-review` prints a different line per mode, and each of
-those sits inside backticks. A `Next:` outside a quoted trailer, or anywhere in a file that emits no
-trailer at all, is not a handoff: the lint reports it, because a reader cannot tell it from one.
-
-The single exception is a PR review, whose findings are someone else's to apply: its trailer is
-`paste the bodies from comments.md onto PR #<n>`, naming a person's action rather than a command.
-
+**The handoff trailer is one line** at the very end of a reply, `> Next: …`, naming `crew <verb>`
+commands and nothing else: no summary of the work, no reassurance, no second sentence. A PR review's
+trailer names a person's action instead ([output
+formats](~/.cursor/agents/crew-reviewer/references/output-formats.md)). Authoring rule, for editing
+this repository's prompts: the shape `crew-lint` enforces is in `.agent/tools/AGENTS.md`.

@@ -37,16 +37,15 @@ from lib.output import bounded_json
 HUNKS_FILE = "hunks.json"
 LAYERS_FILE = "layers.json"
 
-# Implementation steps in a spec. Product Flow checks them against the diff; every other lens
-# judges the change against the summary and acceptance criteria, so these sections are pure cost
-# in its package (18 KB of a measured 156 KB package, sent to every persona).
+# Implementation steps in a spec: Product Flow checks them against the diff; to every other lens they are cost.
 SPEC_BUILDER_SECTION = re.compile(r"^## (Tasks|Hints)\b")
 SPEC_FULL_PERSONAS = frozenset({"product-flow"})
-# A copied task line is long; a shorter line could match the diff by accident.
+# A copied task line is long (a shorter one could match the diff by accident), and one such line can recur in
+# guidance or memory, so two are the proof the builder sections were copied.
 SPEC_LINE_MIN = 40
-# A single qualifying line can recur legitimately in repository guidance or memory, so one match is
-# not proof the spec's builder sections were copied; two are.
 SPEC_COPIED_LINES = 2
+# reviewer-reads.md's heading: a hand-built spec or idea package without it has no tool budget or lookups pointer.
+CONTRACT_READS_HEADING = "## Finding things in the codebase"
 
 
 def check_persona_coverage(review_dir: Path, personas: list[str]) -> None:
@@ -238,6 +237,9 @@ def check_packages(args: argparse.Namespace) -> int:
     violations, report = package_violations(review_dir, args.personas, args.mode, spec,
                                             review_dir / HUNKS_FILE)
     violations += question_violations(review_dir, args.personas, report)
+    violations += [f"{name} has no `{CONTRACT_READS_HEADING}` section: append reviewer-reads.md to reviewer-contract.md"
+                   for name in report["read"] if args.mode not in CODE_MODES and CONTRACT_READS_HEADING
+                   not in (review_dir / name).read_text(encoding="utf-8", errors="replace").splitlines()]
     if not report["read"]:
         violations.append(f"no <persona>.in.md found in {review_dir} for {', '.join(args.personas)}")
     for violation in violations:

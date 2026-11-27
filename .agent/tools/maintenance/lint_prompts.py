@@ -18,8 +18,15 @@ MAX_ALWAYS_RULE_TOKENS = 5672
 # above it belongs in a references file. 11,500 keeps every file 500 bytes clear of the 12 KB mark.
 MAX_PROMPT_FILE_BYTES = 11_500
 MAX_PROMPT_FILE_LINES = 500
+# Headroom: `--budget` fails a prompt file above 90% of its ceiling and the always-on set above 95% of its own, so
+# the next change has room to add text without squeezing what is there; the fix is a cut or a move to references/.
+PROMPT_HEADROOM = 0.90
+ALWAYS_HEADROOM = 0.95
 ALWAYS_LOADED_PROJECT_FILES = ("AGENTS.md", ".claude/CLAUDE.md")
 PROMPT_ROOTS = (".cursor/agents", ".cursor/skills")
+# The default ref whose merge base with HEAD the `--budget` report measures prompt growth from (`--delta-base`
+# overrides it); information only, never a finding.
+DELTA_BASE = "origin/main"
 Findings = list[tuple[str, int, str, str]]
 
 
@@ -77,16 +84,50 @@ def prompt_files(root: Path) -> list[Path]:
     return sorted(found)
 
 
+# What `prompt_byte_delta` measures: agent and skill Markdown, the rules, and the always-loaded project files.
+DELTA_ROOTS = (*PROMPT_ROOTS, "rules", *ALWAYS_LOADED_PROJECT_FILES)
+
+
+def is_prompt_path(name: str) -> bool:
+    """A repository-relative path `prompt_byte_delta` counts."""
+    if name in ALWAYS_LOADED_PROJECT_FILES:
+        return True
+    if name.startswith("rules/"):
+        return name.count("/") == 1 and name.endswith(".mdc")
+    return name.startswith(tuple(f"{prefix}/" for prefix in PROMPT_ROOTS)) and name.endswith(".md")
+
+
+def prompt_byte_delta(root: Path, base: dict[str, int]) -> list[tuple[str, int]]:
+    """(path, bytes now minus bytes in `base`) for each prompt file that differs; an added file counts from 0 and a
+    removed one goes to 0. `base` maps paths to sizes at the base ref (`lib.git.tree_sizes` over `DELTA_ROOTS`)."""
+    paths = [rel(root, path) for path in prompt_files(root)]
+    paths += [rel(root, path) for path in (root / "rules").glob("*.mdc")] + list(ALWAYS_LOADED_PROJECT_FILES)
+    current = {name: (root / name).stat().st_size for name in paths if (root / name).is_file()}
+    measured = set(current) | {name for name in base if is_prompt_path(name)}
+    deltas = [(name, current.get(name, 0) - base.get(name, 0)) for name in sorted(measured)]
+    return [(name, delta) for name, delta in deltas if delta]
+
+
+def headroom(size: float, ceiling: int, share: float) -> bool:
+    """True when `size` is within its ceiling but above `share` of it, the band `prompt-headroom` reports."""
+    return ceiling * share < size <= ceiling
+
+
 def lint_budget(root: Path, all_files: list[Path], rules: set[str]) -> Findings:
-    """The always-on token estimate, the per-file size caps, and the duplicate-rule layout."""
+    """The always-on token estimate, the per-file size caps with their headroom, and the duplicate-rule layout."""
     findings: Findings = []
     sizes = always_on_files(root)
     always = sum(size // 4 for _, size in sizes)
+    largest, size = sizes[0] if sizes else ("rules", 0)
     if always > MAX_ALWAYS_RULE_TOKENS:
-        largest, size = sizes[0]
         findings.append((largest, 1, "budget",
                          f"always-on set estimates {always} tokens (>{MAX_ALWAYS_RULE_TOKENS}); "
                          f"largest contributor {largest} ({size} bytes)"))
+    elif headroom(always, MAX_ALWAYS_RULE_TOKENS, ALWAYS_HEADROOM):
+        findings.append((largest, 1, "prompt-headroom",
+                         f"headroom exceeded, fails --budget: always-on set estimates {always} tokens, above "
+                         f"{ALWAYS_HEADROOM:.0%} of {MAX_ALWAYS_RULE_TOKENS}; cut text or move it to a references/ file "
+                         f"(largest: {largest})"))
     for path in all_files:
         name = rel(root, path)
         lines = path.read_text(errors="replace").count("\n") + 1
@@ -98,6 +139,11 @@ def lint_budget(root: Path, all_files: list[Path], rules: set[str]) -> Findings:
             findings.append((rel(root, path), 1, "prompt-budget",
                              f"{size} bytes (>{MAX_PROMPT_FILE_BYTES}); move reference material "
                              f"into a references/ file read on demand"))
+        elif headroom(size, MAX_PROMPT_FILE_BYTES, PROMPT_HEADROOM):
+            findings.append((rel(root, path), 1, "prompt-headroom",
+                             f"headroom exceeded, fails --budget: {size} bytes, above {PROMPT_HEADROOM:.0%} of "
+                             f"{MAX_PROMPT_FILE_BYTES}; "
+                             f"cut text or move it to a references/ file"))
     for rule in rules:
         if (root / "rules" / rule).exists() and (root / ".cursor/rules" / rule).exists():
             findings.append((f"rules/{rule}", 1, "budget",

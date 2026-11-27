@@ -10,9 +10,8 @@ unchecked task, run per-task acceptance checks, and report back.
 
 ## Execution model
 
-**Silent execution, one report.** All tasks run without intermediate output; speak once, with the
-report as your final reply (1 turn). Before each task emit `[N/M] <task name>...`, the only mid-run output.
-Never narrate actions within a task.
+**Silent execution, one report.** Tasks run without narration; speak once, with the report as your
+final reply. Before each task emit `[N/M] <task name>...`, the only mid-run output.
 
 ## Inputs (provided in launch prompt)
 
@@ -26,12 +25,12 @@ Never narrate actions within a task.
   report in the Report format (saved as `REPORT.part-<first>-<last>.md`), and run the Completion
   Protocol only for the range marked `final`.
 
----
-
 ## Execution
 
-**Anchor to `WORK_DIR` first.** It is the absolute path of the worktree (created by crew-implement
-before launching the builder). Substitute the literal value everywhere — it is not a shell variable.
+**Anchor to `WORK_DIR` first.** It is the absolute path of the worktree. Substitute the literal
+value everywhere — it is not a shell variable. Then read [builder
+verification](~/.cursor/agents/references/builder-verification.md): its type-check rule governs
+every verify run.
 
 ```bash
 cd <WORK_DIR literal value> && pwd
@@ -82,8 +81,6 @@ until the next `## ` heading, limited to `TASK_RANGE` when set), in order:
    failed with the question.
 6. **Mark done** — check off `- [x]` in SPEC.md.
 
----
-
 ## Completion Protocol
 
 When every top-level `- [ ]` under `## Tasks` is `- [x]`:
@@ -111,8 +108,6 @@ Then return the report (below).
 **Exit step, every run (also a batch part, also after a failure):** the orchestrator wrote
 `<WORK_DIR>/.crew-worker.lock` at dispatch; right before your final reply run
 `~/.agent/bin/crew-task.py lock remove <WORK_DIR>` so the tree is free for the next stage.
-
----
 
 ## Report
 
@@ -175,36 +170,20 @@ Use this shape:
 <a json code block: {"schema_version": 1, "tasks": {"passed": N, "total": M}, "gates": [{"name": "<gate>", "exit": N}], "unverified_claims": [{"claim": "...", "verify": "..."}]}>
 ```
 
-**Verification run.** Run `~/.agent/bin/crew-verify.py --repo <WORK_DIR> --task-dir $TASK_DIR` (for
-a long run add `--background`, then `--wait $TASK_DIR/gates.json`). It runs the base branch's CI
-(`.agent/tools/TOOLS.md` "Gates and cost"), prints `<name> exit=<N>` lines and writes
-`$TASK_DIR/gates.json`. Never claim a result from memory or from a narrower command.
-
-**Check the report in the same worker.** Before replying, pipe the draft through
-`~/.agent/bin/crew-verify.py report-check - --gates $TASK_DIR/gates.json` (a quoted heredoc on
-stdin). On a mismatch, correct the report to match `gates.json` and run it once more; a second
-failure goes in `### Errors` and the task is marked failed. It is not a new stage. A report that
-still fails is saved anyway, with a WARN line in PROGRESS.md.
+**Before replying, run both steps of builder verification**: the verification run (`crew-verify.py`,
+which writes `gates.json`) and the report check against it.
 
 **The reply starts with `## Implementation Report` and holds only the report.** The text from that
 heading to the end is what is saved, and a reply without the heading saves nothing, so put no
 preamble or summary around it. Add `(failed: <task numbers>)` to the **Tasks:** line when any failed.
 
-**Artifacts:** Oversized command transcripts (Completion Protocol) go under `$TASK_DIR/artifacts/`.
-
----
-
 ## Rules
 
 - Never skip a task's verify check. "Looks right" is not done.
 - Never reorder tasks — SPEC.md task order may encode dependencies.
-- Keep changes focused per task. Don't batch multiple tasks into one edit pass.
+- Keep changes focused per task; never batch tasks into one edit pass.
 - **Never commit, push, or create a PR.** Those belong to crew-commit and crew-open-pr.
 - If a recalled pattern conflicts with SPEC.md instructions, SPEC.md wins.
-- **Type-check without emitting when `node_modules` is a symlink** (`test -L
-  "$WORK_DIR/node_modules"`): emitting builds (`tsc -b`, or a repo script that builds project
-  references) write `.d.ts` files into the main repo through the symlink. Run `tsc --noEmit -p
-  <nearest tsconfig>` instead. If no no-emit form exists for the repo, record the type-check as
-  skipped with that reason — never skip silently.
+- **Type-check without emitting when `node_modules` is a symlink** (builder verification).
 - **Run discipline:** after three failed verify runs for the same task, stop and report. Run the full
   repository test suite for a single task only when that task's verify line names it.

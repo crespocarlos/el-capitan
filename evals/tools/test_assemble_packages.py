@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -233,6 +234,31 @@ def test_missing_inputs_are_reported(tmp: Path) -> None:
     assert result.returncode == 2 and "package.diff" in result.stderr
 
 
+def test_guidance_that_failed_to_load_is_refused_not_a_traceback(tmp: Path) -> None:
+    """`crew-agent-context.py` prints nothing when it fails, so a redirect leaves an empty file: that is a failed
+    guidance call, refused with the fix (exit 2, no packages written), and so is a missing file."""
+    run = build(tmp)
+    for persona in ("adversarial", "code-quality"):
+        (run / f"{persona}.in.md").unlink()
+    for state, contents in (("empty", ""), ("missing", None)):
+        path = run / "agent-context.json"
+        path.write_text(contents) if contents is not None else path.unlink()
+        result = cli(TOOL, str(run))
+        assert result.returncode == 2 and "Traceback" not in result.stderr, result.stderr
+        assert f"agent-context.json is {state}: run crew-agent-context.py from the reviewed repo's checkout with --root" \
+            in result.stderr, result.stderr
+        assert not (run / "adversarial.in.md").exists(), state
+
+
+def test_the_guidance_tool_prints_nothing_outside_a_checkout(tmp: Path) -> None:
+    """Exit 2 with the --root hint on stderr and an empty stdout, the empty file the refusal above names."""
+    tool = TOOL.parents[1] / "task" / "crew-agent-context.py"
+    (tmp / "plain").mkdir()
+    result = subprocess.run([sys.executable, str(tool), "x.py"], cwd=tmp / "plain", capture_output=True, text=True,
+                            env={**os.environ, "GIT_CEILING_DIRECTORIES": str(tmp)})
+    assert result.returncode == 2 and result.stdout == "" and "--root <checkout>" in result.stderr, result.stderr
+
+
 def file_diff(path: str, body: str) -> str:
     return (f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1,1 +1,2 @@\n context\n"
             + "".join(f"+{line}\n" for line in body.splitlines()))
@@ -382,6 +408,19 @@ def test_the_layout_shares_a_byte_identical_head_and_the_whole_diff(tmp: Path) -
     code_quality = texts["code-quality"][texts["code-quality"].index(diff):]
     assert "## Testing" in code_quality and "## File layout" not in code_quality and "## File layout" in texts["architecture"]
     assert "guidance narrowed, 1 section(s) dropped" in report and "File layout" in report, report
+
+
+def test_every_package_opens_with_both_contract_parts_as_one_text(tmp: Path) -> None:
+    """The contract is two files for the prompt budget; a persona still reads them whole, in order, one blank line
+    apart, with the one lookups pointer the second part carries."""
+    review, _ = layout(tmp)
+    references = Path(__file__).resolve().parents[2] / ".cursor" / "agents" / "references"
+    first, second = ((references / name).read_text(encoding="utf-8") for name in ("reviewer-contract.md", "reviewer-reads.md"))
+    assert first.endswith("\n") and not first.endswith("\n\n") and second.startswith("## "), "the join would not leave one blank line"
+    for persona in PERSONAS:
+        text = (review / f"{persona}.in.md").read_text(encoding="utf-8")
+        assert text.startswith(first + "\n" + second + "\n---\n\n"), persona
+        assert text.count("Lookups: follow `~/.cursor/agents/references/lookups.md`") == 1, persona
 
 
 def test_a_prompt_quality_build_reads_the_diff_once(tmp: Path) -> None:

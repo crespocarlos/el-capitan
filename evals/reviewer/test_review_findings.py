@@ -848,14 +848,18 @@ def test_spec_context_keeps_builder_sections_for_product_flow_only(tmp: Path) ->
 QUESTIONS = "\n---\n\n## Questions for this lens\n\n1. Can an empty token reach parseToken?\n2. Who catches EmptyTokenError?\n"
 
 
+CONTRACT_READS = "## Finding things in the codebase\n\nStop calling tools at your budget.\n\n"
+
+
 def write_packages(tmp: Path, packages: dict[str, str], stamped: bool = True) -> Path:
-    """Packages as the current assembler leaves them: the questions section, and the stamp in manifest.json."""
+    """Packages as the current assembler leaves them: both contract parts, the questions section, and the stamp
+    in manifest.json."""
     task = tmp / "task"
     review_dir = task / "review" / "20261118150000"
     review_dir.mkdir(parents=True)
     (task / "SPEC.md").write_text(SPEC)
     for persona, text in packages.items():
-        (review_dir / f"{persona}.in.md").write_text(text + QUESTIONS)
+        (review_dir / f"{persona}.in.md").write_text(CONTRACT_READS + text + QUESTIONS)
     if stamped:
         (review_dir / "manifest.json").write_text(json.dumps({"personas": {"questions_rule": True}}))
     return review_dir
@@ -888,6 +892,18 @@ def test_check_packages_passes_an_unstamped_directory_with_a_note(tmp: Path) -> 
     result = run("check-packages", "--review-dir", str(review_dir), "--personas", "adversarial")
     assert result.returncode == 0, result.stderr
     assert "not stamped" in json.loads(result.stdout)["skipped"]["questions"]
+
+
+@pytest.mark.parametrize("mode", ["spec", "idea", "self"])
+def test_check_packages_requires_the_second_contract_part_in_hand_built_packages(tmp: Path, mode: str) -> None:
+    """Spec and idea packages are composed by hand; one missing `reviewer-reads.md` loses the tool budget and the
+    lookups pointer. Diff-mode packages come from the assembler, which always appends it."""
+    review_dir = write_packages(tmp, {"adversarial": "## Spec\nshort\n"})
+    path = review_dir / "adversarial.in.md"
+    path.write_text(path.read_text().replace(CONTRACT_READS, ""))
+    result = run("check-packages", "--review-dir", str(review_dir), "--mode", mode, "--personas", "adversarial")
+    refused = "adversarial.in.md has no `## Finding things in the codebase` section" in result.stderr
+    assert (result.returncode, refused) == ((1, True) if mode != "self" else (0, False)), result.stderr
 
 
 def test_check_packages_rejects_copied_tasks_outside_product_flow(tmp: Path) -> None:

@@ -20,6 +20,8 @@ from lint_dead_code import dead_code_rows, dead_code_table
 from lint_docs import help_text, lint_readme, lint_release_files, write_readme
 from lint_files import files, rule_table
 from lint_prompts import (
+    DELTA_BASE,
+    DELTA_ROOTS,
     MAX_ALWAYS_RULE_TOKENS,
     always_on_files,
     lint_agent_readonly,
@@ -28,6 +30,7 @@ from lint_prompts import (
     lint_skill_setup,
     lint_tool_surface,
     lint_turn_budget,
+    prompt_byte_delta,
 )
 from lint_python import lint_python
 from lint_references import lint_documents, lint_handoff, lint_repo_paths
@@ -40,6 +43,8 @@ from lint_writing import (
     lint_removed_forms,
     lint_tool_prose,
 )
+
+from lib.git import GitError, merge_base, tree_sizes
 
 Finding = tuple[str, int, str, str]
 # The documentation a stale path is most likely to hide in, checked alongside the prompts.
@@ -60,13 +65,32 @@ def router_path(root: Path) -> Path:
     return router if router.exists() else root / ".cursor/rules/crew-router.mdc"
 
 
-def budget_report(root: Path) -> None:
+def budget_report(root: Path, delta_base: str = DELTA_BASE) -> None:
     """Print the always-on measurement to stderr, so stdout stays one finding per line."""
     sizes = always_on_files(root)
     print(f"always-on: {sum(size // 4 for _, size in sizes)} tokens "
           f"(ceiling {MAX_ALWAYS_RULE_TOKENS})", file=sys.stderr)
     for name, size in sizes:
         print(f"  {size:>7} bytes  {size // 4:>6} tokens  {name}", file=sys.stderr)
+    delta_report(root, delta_base)
+
+
+def delta_report(root: Path, delta_base: str = DELTA_BASE) -> None:
+    """Print each prompt file's byte delta against the merge base of HEAD and `delta_base` to stderr: information for
+    the PR body (the growth rule in AGENTS.md), never a finding. The merge base keeps a stacked branch or a stale
+    fetch from counting other changes; an unreadable base prints one note."""
+    try:
+        commit = merge_base(root, delta_base)
+        base = tree_sizes(root, commit, list(DELTA_ROOTS))
+    except (GitError, OSError) as error:
+        reason = str(error).splitlines()[0] if str(error) else "git failed"
+        print(f"prompt bytes vs {delta_base}: not measured ({reason})", file=sys.stderr)
+        return
+    deltas = prompt_byte_delta(root, base)
+    print(f"prompt bytes vs merge-base({delta_base}, HEAD) {commit[:7]}: {sum(delta for _, delta in deltas):+d} "
+          f"({len(deltas)} files changed)", file=sys.stderr)
+    for name, delta in deltas:
+        print(f"  {delta:>+7}  {name}", file=sys.stderr)
 
 
 def lint(root: Path, budget: bool) -> list[Finding]:
@@ -115,6 +139,9 @@ def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate repository conventions; --budget adds the size gates.")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument("--budget", action="store_true", help="also check the always-on and prompt ceilings")
+    parser.add_argument("--delta-base", default=DELTA_BASE,
+                        help=f"with --budget, report prompt growth since the merge base of HEAD and this ref "
+                             f"(default {DELTA_BASE})")
     parser.add_argument("--json", action="store_true",
                         help="print findings (or --dead-code rows) as JSON on stdout; the measurement goes to stderr")
     mode = parser.add_mutually_exclusive_group()
@@ -148,7 +175,7 @@ def main() -> int:
     if args.dead_code:
         return dead_code(root, args.json)
     if args.budget:
-        budget_report(root)
+        budget_report(root, args.delta_base)
     findings = lint(root, args.budget)
     if args.json:
         print(json.dumps([{"path": path, "line": line, "rule": rule, "message": message}

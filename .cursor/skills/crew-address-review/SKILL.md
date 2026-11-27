@@ -22,8 +22,7 @@ description: "Work through findings from the most recent crew review inline. Tri
   approved. The revision edits the spec file when the artifact is one, and is emitted text when pasted.
   3 turns.
 
-Never mix modes. If the review heading contains "Idea" or "Spec" (case-insensitive), use idea mode
-throughout.
+Never mix modes: the mode Step 1 detects holds throughout.
 
 ### Step 1: Locate findings and detect mode
 
@@ -152,11 +151,8 @@ already loaded; a fix that adds or changes tests follows the
 edit is logged `skipped` with a reason starting `edit-failed:`, so failures are distinguishable from
 user decisions. Never reach the summary with a decision unrecorded.
 
-**When the edit changes what a step, mode, or skill is allowed to do, sweep the file it lives in.**
-A capability change falsifies every sentence describing the old limit, and a reader meets them before
-the corrected step. Search that file for the *specific* constraint the edit replaced — the phrase
-stating the old limit plus its close paraphrases — and report each survivor with its line. A fixed
-keyword list is too blunt: `only` and `never` sit on dozens of unrelated lines in any rule file.
+**An edit that widens or narrows a capability gets a sweep of its file**
+([capability sweep](references/capability-sweep.md)).
 **Idea mode with a file target:** the same edit hygiene applies — read the file immediately before
 writing, and log the write with the Step 3b command and `--outcome fixed`. The write happens once, at
 step 8 of [idea synthesis](references/idea-synthesis.md), after verification and self-review. Synthesis
@@ -167,21 +163,8 @@ sibling check, decisions section, and self-review.
 
 ### Summary
 
-Before the summary, prove the record is complete. Collect the fingerprints of every finding this run
-applied, adapted, or rejected, pass them to `--acted`, and let the command decide:
-
-```bash
-~/.agent/bin/crew-review-findings.py outcomes --review-dir <review-dir> --acted <id> <id> ...
-```
-
-It prints the counts and exits 1 naming any acted fingerprint with no outcome. Exit 1 fails the
-summary: a summary that omits a decision reads as a clean pass over a corpus missing the evidence.
-Findings left alone need no record and are not passed to `--acted`.
-
-Draft zero to three durable, evidence-backed memory candidates into `~/.agent/memory/.inbox/` from the
-accepted outcomes, including Step 3b's rejected-finding candidates; nothing derivable from the
-changed files or the review record, and nothing imported. Show their titles (or `none`) with the
-summary and ask nothing: they wait for the approval point `memory-capture.mdc` names.
+Before the summary, follow [outcome logging](references/outcome-logging.md), "Before the summary":
+the completeness check and the memory candidates.
 
 Code mode:
 

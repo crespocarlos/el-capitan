@@ -67,7 +67,8 @@ def main() -> int:
     try:
         root = repo_root(args.root)
     except (OSError, ValueError) as error:
-        parser.error(str(error))
+        # Nothing on stdout: a caller's redirect then holds an empty file, which `crew-assemble-packages.py` refuses.
+        parser.error(f"{str(error).strip()}; run from the reviewed repo's checkout, or pass --root <checkout>")
 
     files: dict[str, str] = {}
     targets = []

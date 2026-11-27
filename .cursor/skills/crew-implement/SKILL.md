@@ -94,17 +94,9 @@ command and run it in `WORK_DIR`. The UUID task directory (`$TASK_DIR`) is stabl
 ```
 
 When `mark-implementing` exits non-zero, stop here and report its message: no worker is
-dispatched for a task whose branch was not recorded.
-Both `--root` flags read `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
-separate shell, so a bare read reports the drafting checkout and would record
-the wrong branch and checkout. `mark-implementing` records the branch actually being implemented in
-`.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
-branch and implemented on another, and task resolution matches either: without this every
-later `crew` command in the worktree resolves no task and silently skips its gates.
-`--branch` may be omitted when the command runs from the implementation checkout (`--root`, default
-the current directory): it then takes that checkout's branch and refuses with exit 2 on the default
-branch, in another repository, or on a branch another task records. The checkout is recorded as
-`.task-id` `worktree` only when it holds the recorded branch.
+dispatched for a task whose branch was not recorded. Both `--root` flags read `WORK_DIR`, not the
+current directory; why, and when `--branch` may be omitted: [worker
+dispatch](references/worker-dispatch.md), "Recording the branch".
 
 ### Step 5b: Capture baseline diff
 
@@ -138,15 +130,8 @@ Pass these inputs:
 
 Lock, blocked line, cost line and message routing: [worker dispatch](references/worker-dispatch.md).
 
-**Batching for large specs:** when the spec has more than 8 unchecked tasks, split them into
-consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh
-worker per batch. Its prompt carries one `TASK_RANGE: <first>-<last>` line in the header, beside
-`crew-task:`; the batch containing the last task gets `TASK_RANGE: <first>-<last> final`. The save
-reads that line, and only from the header, so name earlier ranges elsewhere in other words. Launch the
-next batch only after the previous batch's `REPORT.part-*.md` is saved and reports no failed task; on
-a failure, stop and go to Step 7 with that part report. The final batch runs the Completion Protocol
-and returns the merged report (the part reports' task results, decisions, and verification
-results), which is saved as its part report and as `REPORT.md`.
+**A spec with more than 8 unchecked tasks** runs in batches of at most 6, one fresh worker each:
+[worker dispatch](references/worker-dispatch.md), "Batching for large specs".
 
 ### Step 7: Handle results
 

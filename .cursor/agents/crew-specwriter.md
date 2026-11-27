@@ -36,31 +36,9 @@ Determine the task source:
 
 **Create a new task directory; never reuse one.** The resolver's answer for the current branch may be
 unrelated work (every task on `main` shares a branch), and a spec written over it is unrecoverable:
-task directories sit outside version control. Generate a fresh UUID for every spec:
-
-```bash
-# Slug from the issue title or description: lowercase, hyphens, ~50 chars ("Add retry" -> add-retry)
-SLUG=<slug-from-title>
-
-UUID=$(uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
-TASK_DIR=~/.agent/tasks/$UUID
-mkdir -p "$TASK_DIR"
-
-# .task-id records the remote and branch; crew-repo-info exits 1 when either is unavailable.
-INFO=$(~/.agent/bin/crew-repo-info.py --remote origin --json) || exit 1
-jq --arg uuid "$UUID" --arg slug "$SLUG" \
-  '{uuid: $uuid, repo_remote_url: .remote_url, branch: .branch, slug: $slug,
-    created_at: (now | todate)}' <<<"$INFO" > "$TASK_DIR/.task-id"
-
-# Refuse to write into a directory that already holds another task's spec, before any file is touched.
-if [ -f "$TASK_DIR/SPEC.md" ]; then
-  echo "error: $TASK_DIR already holds a SPEC.md; generate a new UUID instead of reusing a task dir" >&2
-  exit 1
-fi
-
-RECALLED_PATTERNS=$(~/.agent/bin/crew-mem.py context --mode plan --query "$SLUG" --warn-unavailable)
-RECALLED_PATTERNS=${RECALLED_PATTERNS:-none}
-```
+task directories sit outside version control. Run the block in [new task
+directory](~/.cursor/agents/references/new-task-dir.md), which sets `SLUG`, `TASK_DIR`, `.task-id`
+and `RECALLED_PATTERNS`.
 
 **Template selection** — infer it, with no flag: `_BUG_SPEC_TEMPLATE.md` when the request or issue
 has reproduction steps, a "bug" label, "fix" or "bug" in the title, or words like "broken",
@@ -134,8 +112,8 @@ not write. If yes → proceed; write new spec with Status: DRAFTING.
 
 Draft `$TASK_DIR/SPEC.md` from `~/.agent/_SPEC_TEMPLATE.md` (or `~/.agent/_BUG_SPEC_TEMPLATE.md`)
 following spec-writing Step 3, then run its Step 4 self-check before dispatching critics. Populate
-`## Branch:` with a concise conventional branch name derived from the type and goal — e.g.
-`feat/sigevents-verdict-rename`, under 50 characters, lowercase, hyphen-separated. Copy the
+`## Branch:` with a conventional branch name derived from the type and goal (`<type>/<goal>`,
+e.g. `fix/<goal>` for a bug), under 50 characters, lowercase, hyphen-separated. Copy the
 explorer's validation commands into `### Validation`. The user can change the branch before approving.
 Given an issue, write `## Issue: https://github.com/<owner>/<repo>/issues/<n>` (a full URL, also for
 `#X`); otherwise delete the line. `crew ls` and the TUI read it.
@@ -200,7 +178,7 @@ Claude Code: the same prompt, through Agent by name.
 
 ### Degraded fallback (no Task tool, no Agent tool)
 
-Run the critics inline sequentially, each with the critic contract (ordering bias; last resort).
+Run the critics inline sequentially, each with the critic contract (last resort).
 
 ### Step 5: Surface open questions
 

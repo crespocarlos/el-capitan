@@ -11,8 +11,7 @@ None. Skip the bootstrap step in any worktree; there is nothing to install or bu
 
 Hermetic suites, also run in CI (`.github/workflows/validate.yml`). Verification of a change means
 those plus the **Acceptance criteria** in SPEC.md. Which suites cover what, and which need a full
-permission run: `.agent/tools/AGENTS.md`. The builder's Completion Protocol runs a spec's typed
-`## Tests` commands.
+permission run: `.agent/tools/AGENTS.md`.
 
 ## Layout
 
@@ -39,25 +38,17 @@ anchor into a silent no-op; shell heredocs are for scratch artifacts and task-di
 - **Prompt files** — load the `prompt-authoring` skill first.
   Frontmatter, the tool-id registry, the size ceiling, and the `references/` rule:
   `.agent/tools/AGENTS.md` → Authoring agent and skill files. `crew-lint` enforces all of it.
+- **Prompt growth** — a change that adds rule or prompt text names what it replaces, or justifies the
+  net growth in its PR body; `crew-lint --budget` prints the byte delta since the merge base with
+  `origin/main`, and fails a file above 90% of its ceiling.
 - **Routing and state** — `crew-router.mdc` routes; `crew-orchestrator.mdc` owns the state machine
-  and autopilot rules. Neither is duplicated in `.claude/CLAUDE.md`.
+  and autopilot rules.
 - **Templates** — edit `.cursor/skills/spec-writing/references/`; `.agent/_*SPEC_TEMPLATE.md` are
   symlinks, so a change affects every future spec.
-- **Explorer budget** — `specwriter-explorer.md` declares 12 tool calls (the protocol and lookups reads
-  included) and `maxTurns: 13` (one more for the report); update both when you add a discovery step.
 - **Guards are hooks, not prose** — a rule that must hold every time lives in `.claude/hooks/`,
   registered in both hook configs with an allow and a deny case in `evals/tools/hook_cases.py`.
 - **Reviewer personas** — the procedure is
   [persona authoring](.cursor/agents/crew-reviewer/references/persona-authoring.md).
 
-## Self-application
-
-The pipeline improves itself: `crew spec "add X to the pipeline"`, then `crew implement`, `crew
-review`, `crew open pr`.
-
-## Persistent memory
-
-`crew-mem.py` keeps typed, repo-scoped Markdown units in `~/.agent/memory` (SQLite FTS5 is a
-rebuildable index), scoped by the upstream repository's bare name so forks and worktrees share it.
-Code, docs, and user instructions win over it. Read contract:
-`~/.cursor/skills/crew-memory/references/contract.md`.
+The pipeline improves itself through its own `crew` commands. Persistent memory (`crew-mem.py`):
+`.agent/tools/AGENTS.md`.

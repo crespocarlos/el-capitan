@@ -115,6 +115,31 @@ and appends an `agent_end` METRIC to that task, which the cost line below then r
 builder's reply as that task's `REPORT.md`. A `TASK_RANGE: <first>-<last>` line right under it makes
 the reply a part report, and `TASK_RANGE: <first>-<last> final` both the part report and `REPORT.md`.
 
+## Batching for large specs
+
+When the spec has more than 8 unchecked tasks, split them into
+consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh
+worker per batch. Its prompt carries one `TASK_RANGE: <first>-<last>` line in the header, beside
+`crew-task:`; the batch containing the last task gets `TASK_RANGE: <first>-<last> final`. The save
+reads that line, and only from the header, so name earlier ranges elsewhere in other words. Launch the
+next batch only after the previous batch's `REPORT.part-*.md` is saved and reports no failed task; on
+a failure, stop and go to Step 7 with that part report. The final batch runs the Completion Protocol
+and returns the merged report (the part reports' task results, decisions, and verification
+results), which is saved as its part report and as `REPORT.md`.
+
+## Recording the branch
+
+Both `--root` flags of crew-implement Step 5 read `WORK_DIR`, not the current directory: Step 4
+selects the worktree in a separate shell, so a bare read reports the drafting checkout and would record
+the wrong branch and checkout. `mark-implementing` records the branch actually being implemented in
+`.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
+branch and implemented on another, and task resolution matches either: without this every
+later `crew` command in the worktree resolves no task and silently skips its gates.
+`--branch` may be omitted when the command runs from the implementation checkout (`--root`, default
+the current directory): it then takes that checkout's branch and refuses with exit 2 on the default
+branch, in another repository, or on a branch another task records. The checkout is recorded as
+`.task-id` `worktree` only when it holds the recorded branch.
+
 ## The stage cost line
 
 Under Claude Code the `agent_end` entries make the stage's cost line, so `tokens_reported=unknown` is

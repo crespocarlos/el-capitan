@@ -149,7 +149,7 @@ optional and the absence of each has one default.
 ```
 .agent/tools/
   tools.json  TOOLS.md  requirements.txt   catalog and its documentation
-  lib/            cli.py clock.py files.py git.py gh_reads.py next_steps.py output.py workflow_yaml.py  shared helpers (map: TOOLS.md)
+  lib/            claude_plugins.py cli.py clock.py files.py git.py git_config.py gh_reads.py next_steps.py output.py workflow_yaml.py  shared helpers (map: TOOLS.md)
   task/           Task state, worktrees, progress and metric logging
   review/         Review pipeline: findings, layers, personas, report, hunk parsing
   memory/         Typed memory store and retrieval
@@ -230,6 +230,13 @@ crew-lint `bootstrap-identical` fails a bootstrap copy that drifts), so Ruff's `
 - `crew-task.py normalize-status [--apply]` is the migration for a legacy token: it reports each
   file, and a second run reports `0 of N` because a canonical value needs no change.
 
+## Persistent memory
+
+`crew-mem.py` keeps typed, repo-scoped Markdown units in `~/.agent/memory` (SQLite FTS5 is a
+rebuildable index), scoped by the upstream repository's bare name so forks and worktrees share it.
+Code, docs, and user instructions win over it. Read contract:
+`~/.cursor/skills/crew-memory/references/contract.md`.
+
 ## Exit codes
 
 The contract is uniform, with the exceptions listed below it, and callers depend on it:
@@ -294,6 +301,8 @@ off-glossary synonyms it knows; crew-lint `glossary-terms` keeps this the one gl
   neither harness: it is a persona's tool-call budget, stated once in its text and kept two turns
   under `maxTurns` (`persona-turn-budget`). These notes live here once; an
   agent's frontmatter carries no harness comments. Do not set `model:`.
+- **Explorer budget** — `specwriter-explorer.md` declares 12 tool calls (the protocol and lookups reads
+  included) and `maxTurns: 13` (one more for the report); update both when you add a discovery step.
 - **A dispatched agent has an allowlist; the docs and code-search servers come from the config.** A
   deny list cannot keep out claude.ai connectors, plugin servers or tools the harness adds later, so
   each dispatched agent's `tools:` line names exactly its class's native tools and ends with the YAML
@@ -330,10 +339,17 @@ off-glossary synonyms it knows; crew-lint `glossary-terms` keeps this the one gl
   a new one there, never only in prose.
 - **Skill files** follow the workflow header, execution model, numbered steps shape;
   `crew-commit/SKILL.md` is the canonical example. Material a step needs only sometimes goes in
-  `references/` and is linked, not inlined. An agent or skill file stays under 11,500 bytes.
+  `references/` and is linked, not inlined. An agent or skill file stays under 11,500 bytes, and
+  `crew-lint --budget` fails (exit 1, "headroom exceeded") one above 90% of that, and the always-on set
+  above 95% of its token ceiling (`prompt-headroom`), so the next edit has room.
 - **A handoff trailer is one line.** A file that hands work on ends with `> Next: ` naming the
-  `crew <verb>` to run next — once, as the last non-empty line, resolvable in `crew-router.mdc`.
-  `crew-lint` enforces the shape; several outcomes are quoted per branch instead.
+  `crew <verb>` to run next — once, as the last non-empty line, resolvable in `crew-router.mdc`; the
+  runtime wording rule is in `.cursor/agents/references/dispatch.md`. `crew-lint` fails a trailer
+  missing from the end, duplicated, or naming a verb the router has no row for. A stage with several
+  outcomes quotes one trailer per outcome in backticks instead (`crew-address-review` prints one per
+  mode); a `Next:` outside a quoted trailer, or in a file that emits none, is reported, because a
+  reader cannot tell it from one. A PR review's trailer names a person's action; its wording is in
+  `.cursor/agents/crew-reviewer/references/output-formats.md`.
 
 ## Editing and tests
 

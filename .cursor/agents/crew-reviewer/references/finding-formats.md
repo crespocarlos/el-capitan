@@ -27,6 +27,28 @@ survive; this file decides how a surviving one reads.
    finding with no `validation`, so a missing field costs a round trip. Mark a finding unverified
    rather than guessing a validation line, and cite the location you actually read.
 
+## Recorded fields
+
+Consolidation records three things beyond the label and anchor, each under its own condition:
+
+- **`kind`** (required) — what sort of defect, independent of severity. Every finding that reaches a
+  gate states one; a finding with none is rejected with the allowed values listed. Values are the
+  `KINDS` set in `crew-review-findings.py`; the parser rejects any other. The boundaries that matter: `correctness` produces
+  a wrong result on valid input; `reliability` fails
+  under load, timing, or an environmental condition; `testing` is missing or weak coverage of behavior
+  the change introduces; `documentation` misstates what the code does; `other` is none of these.
+- **`confidence`** (required) — the reviewer's own belief that the finding is real, 1-5, on the scale
+  in the shared contract (`5 confirmed` … `1 suspicion`), rendered beside the label as
+  `[attention · 4]`. It is not a severity: a `[blocking]` or `[attention]` needs 3 or higher, and a
+  `[concern]` or `[nit]` may carry any score. Any move carries `confidence_from` beside it plus the
+  `validation` below. Any probe records `probe: <outcome>` from `PROBE_OUTCOMES`; `probe: refuted`
+  alone lowers a score, and never beside one that rose.
+- **`validation`** (when `verified` is true) — one sentence on what you read and concluded, e.g.
+  "confirmed: `fetchRows` returns no rows when `source` is absent, and this query keeps only
+  `payload`". `verified: true` alone asserts a second read happened; this records why it passed.
+  `persist` requires it whenever `verified` is true, in every mode, including one passing no
+  `--files`.
+
 ## Code review
 
 Each finding is a self-contained GitHub PR comment body, ready to paste inline without editing. One

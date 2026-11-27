@@ -2,20 +2,20 @@
 
 Server names come only from `mcp` in `~/.agent/config.json`. A rendered agent that differs from what install would
 write now is a FAIL; a missing capability is a WARN naming the server and the place, never a setup step. A Claude
-Code config dir is checked at user level, from its installed plugins, and for projects with crew work (a task's
-`repo_remote_url` is the project's origin). claude.ai connectors are not checked.
+Code config dir is checked at user level, from its plugins (`lib/claude_plugins.py`), and for projects with crew
+work (a task's `repo_remote_url` is the origin `lib/git_config.py` reads). claude.ai connectors are not checked.
 """
 from __future__ import annotations
 
-import json
 import os
-import re
 from pathlib import Path
 
 from doctor_checks import RERUN, ROOT, Line, capped, config_dirs, install_blocks
 from task_gc import shown as tilde
 
+from lib.claude_plugins import enabled_plugins, plugin_installs, provided, read_object
 from lib.git import slug_from_url
+from lib.git_config import origin_url, repo_root
 
 CAPABILITIES = (("docs", "docs server"), ("code_search", "code search"))
 MCP_HOWTO = ('no mcp section in ~/.agent/config.json, so no MCP server is checked; add '
@@ -45,26 +45,12 @@ def check_rendered_agents(home: Path, root: Path = ROOT) -> list[Line]:
     return [Line("ok", "agents", f"{len(templates)} read-only agents rendered with MCP servers: {listed}")]
 
 
-def read_object(path: Path) -> dict:
-    """A JSON object file, or {} when it is absent, unreadable or not an object."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def names_in(entry: dict, key: str) -> set[str]:
     """The names under `key`: the keys of an object (`mcpServers`) or the strings of a list (the approval lists)."""
     value = entry.get(key)
     if isinstance(value, dict):
         return set(value)
     return {name for name in value if isinstance(name, str)} if isinstance(value, list) else set()
-
-
-def repo_root(cwd: Path) -> Path | None:
-    """The nearest directory at or above `cwd` holding `.git`, without running git."""
-    return next((path for path in (cwd, *cwd.parents) if (path / ".git").exists()), None)
 
 
 def claude_files(home: Path, environ: dict[str, str]) -> list[tuple[Path, Path]]:
@@ -95,124 +81,6 @@ def repo_key(url: str) -> str:
     """One spelling per repository: `owner/repo` (lowercase) when the URL names one, so ssh, https, a `.git` suffix
     or a trailing slash compare equal; the URL itself otherwise."""
     return (slug_from_url(url) or url.strip()).lower()
-
-
-def git_config(path: Path) -> list[tuple[str, str, str]]:
-    """(section, key, value) rows of one git config file, the section as `name` or `name "sub"`; [] when unreadable."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    rows, section = [], ""
-    for line in text.splitlines():
-        if header := re.match(r'\s*\[\s*([\w.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\]', line):
-            name, sub = header.group(1).lower(), header.group(2)
-            section = f'{name} "{sub}"' if sub is not None else name
-        elif entry := re.match(r"\s*([\w-]+)\s*=\s*(.*?)\s*$", line):
-            rows.append((section, entry.group(1).lower(), entry.group(2).strip('"')))
-    return rows
-
-
-def git_dir_of(project: Path) -> Path | None:
-    """The git directory holding the config for `project` or its nearest parent with `.git`; a worktree's `.git`
-    file is followed to the main repository through its `commondir`."""
-    top = repo_root(project)
-    if top is None:
-        return None
-    dot = top / ".git"
-    if not dot.is_file():
-        return dot
-    try:
-        pointer = re.match(r"gitdir:\s*(.+)", dot.read_text(encoding="utf-8"))
-        git_dir = top / pointer.group(1).strip() if pointer else None
-        if git_dir and (git_dir / "commondir").is_file():
-            git_dir = git_dir / (git_dir / "commondir").read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    return git_dir
-
-
-def origin_url(project: Path, home: Path) -> str | None:
-    """`remote.origin.url` as git would use it, read without running git: the repository's config, with the
-    `url.<base>.insteadOf` rules of that config and the user's (`~/.gitconfig`, `~/.config/git/config`) applied."""
-    git_dir = git_dir_of(project)
-    rows = git_config(git_dir / "config") if git_dir else []
-    urls = [value for section, key, value in rows if section == 'remote "origin"' and key == "url"]
-    if not urls:
-        return None
-    rules = [(value, section[5:-1]) for config in (home / ".gitconfig", home / ".config" / "git" / "config")
-             for section, key, value in git_config(config) + rows
-             if section.startswith('url "') and key == "insteadof"]
-    matches = [(prefix, base) for prefix, base in rules if urls[-1].startswith(prefix)]
-    if not matches:
-        return urls[-1]
-    prefix, base = max(matches, key=lambda rule: len(rule[0]))
-    return base + urls[-1][len(prefix):]
-
-
-def manifest_servers(install_path: object, plugin: str) -> set[str] | None:
-    """The server names a plugin install declares: its `.mcp.json`, the `mcpServers` of its `plugin.json`, or its
-    entry in the marketplace manifest beside it; None when none of them is readable."""
-    if not isinstance(install_path, str):
-        return None
-    base = Path(install_path)
-    found, read = set(), False
-    for candidate in (base / ".mcp.json", base / ".claude-plugin" / "plugin.json"):
-        data = read_object(candidate)
-        read = read or bool(data)
-        servers = data.get("mcpServers", data if candidate.name == ".mcp.json" else {})
-        if isinstance(servers, str):
-            servers = read_object(base / servers).get("mcpServers", {})
-        found |= set(servers) if isinstance(servers, dict) else set()
-    market = read_object(base / ".claude-plugin" / "marketplace.json").get("plugins")
-    for entry in market if isinstance(market, list) else []:
-        if isinstance(entry, dict) and entry.get("name") == plugin and isinstance(entry.get("mcpServers"), dict):
-            read, found = True, found | set(entry["mcpServers"])
-    return found if read else None
-
-
-def plugin_installs(directory: Path, names: set[str]) -> list[tuple[str, str | None, set[str]]]:
-    """(plugin id, project path or None for user scope, the configured names it provides) per install in the dir's
-    `plugins/installed_plugins.json`. The names come from the install's manifest; with none readable, a configured
-    `plugin_<plugin>_<server>` goes to the installed plugin with the longest matching name."""
-    installed = read_object(directory / "plugins" / "installed_plugins.json").get("plugins")
-    pairs = [(plugin_id, install) for plugin_id, installs in (installed.items() if isinstance(installed, dict) else [])
-             if isinstance(installs, list) for install in installs if isinstance(install, dict)]
-    plugins = {plugin_id.split("@")[0] for plugin_id, _ in pairs}
-
-    def by_prefix(plugin: str) -> set[str]:
-        owners = {name: max((p for p in plugins if name.startswith(f"plugin_{p}_")), key=len, default=None)
-                  for name in names}
-        return {name for name, owner in owners.items() if owner == plugin}
-
-    found = []
-    for plugin_id, install in pairs:
-        plugin = plugin_id.split("@")[0]
-        declared = manifest_servers(install.get("installPath"), plugin)
-        served = (names & {f"plugin_{plugin}_{server}" for server in declared} if declared is not None
-                  else by_prefix(plugin))
-        scope = None if install.get("scope") == "user" else install.get("projectPath")
-        if served and (scope is None or isinstance(scope, str)):
-            found.append((plugin_id, os.path.realpath(scope) if scope else None, served))
-    return found
-
-
-def enabled_plugins(settings: dict, project: Path | None) -> dict:
-    """`enabledPlugins` for one place: the config dir's settings, overridden for a project by its
-    `.claude/settings.json`, then its `.claude/settings.local.json`. A plugin absent from every one is enabled."""
-    local = ("settings.json", "settings.local.json")
-    layers = [settings] + ([read_object(project / ".claude" / name) for name in local] if project else [])
-    merged: dict = {}
-    for layer in layers:
-        value = layer.get("enabledPlugins")
-        merged.update(value if isinstance(value, dict) else {})
-    return merged
-
-
-def provided(installs: list[tuple[str, str | None, set[str]]], enabled: dict, project: str | None) -> set[str]:
-    """The names the enabled installs provide at user level (`project` None) or in that project."""
-    return set().union(*(served for plugin_id, scope, served in installs
-                         if enabled.get(plugin_id) is not False and scope in (None, project)))
 
 
 def available(config: dict, settings: dict, repo: Path | None, installs: list[tuple[str, str | None, set[str]]],

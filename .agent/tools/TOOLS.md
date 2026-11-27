@@ -48,7 +48,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
 | `maintenance/` | `crew-doctor.py`, `crew-lint.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
-| `lib/` | — | `files.py`, `git.py`, `gh_reads.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
+| `lib/` | — | `files.py`, `git.py`, `git_config.py`, `gh_reads.py`, `claude_plugins.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
 The table is grouped by `kind`, which is what the manifest declares: a row's Commands column is
@@ -207,6 +207,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `clock.py`: the UTC stamp and the parser that also reads legacy local stamps
 - `files.py`: `atomic_write`, `read_json_object`, `agents_setting` (a repo's AGENTS.md setting)
 - `git.py`: every git argv and the gh runner, `slug_from_url`, `repo_name_from_url`, the network reads
+- `git_config.py`: the repository root, its git directory and `origin_url`, read from files without running git
+- `claude_plugins.py`: Claude Code plugin installs, the MCP servers their manifests declare, `enabledPlugins`
 - `gh_reads.py`: the gh argv of one PR, repo or issue read and its argparse verb
 - `output.py`: bounded output: the size ceiling, row limit and truncation marker
 - `next_steps.py`: the next-step table; it reads the asset `task/next-steps.json`
@@ -412,7 +414,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `crew-review-findings.py spec-context --persona <name> SPEC.md` prints the spec one persona's package
   carries (rule: "Spec in every code-mode package" in `context-tiers.md`).
   `check-packages --review-dir <task>/review/<ts> --personas <names>` rejects written `.in.md`
-  packages that break that rule or embed filename-generated hunks, and reports any check it skipped
+  packages that break that rule, embed filename-generated hunks, or (spec and idea modes, composed by hand)
+  lack the second contract part's `## Finding things in the codebase`, and reports any check it skipped
   for a missing `SPEC.md` or `hunks.json`; `persist` runs it only for a directory holding
   a `package.diff`. When the assembler stamped the run (`manifest.json` `personas.questions_rule`), it also
   refuses a package whose last `## Questions for this lens` lacks 2 to 5 unindented list items; an unstamped

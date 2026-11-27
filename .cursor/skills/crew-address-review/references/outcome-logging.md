@@ -35,8 +35,26 @@ For each finding the user did not approve (a Needs Input row left unanswered cou
 ```
 
 It appends immutable JSONL records to `<review-dir>/../outcomes.jsonl`. Log `fixed` only in Step 4,
-after the edit lands. Then run `outcomes --acted` with every fingerprint this run decided on, as the
-skill's Summary step describes, and treat exit 1 as an incomplete run.
+after the edit lands. Then run `outcomes --acted` with every fingerprint this run decided on, as
+"Before the summary" below describes, and treat exit 1 as an incomplete run.
+
+## Before the summary
+
+Before the summary, prove the record is complete. Collect the fingerprints of every finding this run
+applied, adapted, or rejected, pass them to `--acted`, and let the command decide:
+
+```bash
+~/.agent/bin/crew-review-findings.py outcomes --review-dir <review-dir> --acted <id> <id> ...
+```
+
+It prints the counts and exits 1 naming any acted fingerprint with no outcome. Exit 1 fails the
+summary: a summary that omits a decision reads as a clean pass over a corpus missing the evidence.
+Findings left alone need no record and are not passed to `--acted`.
+
+Draft zero to three durable, evidence-backed memory candidates into `~/.agent/memory/.inbox/` from the
+accepted outcomes, including the rejected-finding candidates below; nothing derivable from the
+changed files or the review record, and nothing imported. Show their titles (or `none`) with the
+summary and ask nothing: they wait for the approval point `memory-capture.mdc` names.
 
 ## Rejected-finding candidates
 

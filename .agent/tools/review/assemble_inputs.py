@@ -136,6 +136,15 @@ def contract_path() -> Path:
     return Path.home() / ".cursor" / "agents" / "references" / "reviewer-contract.md"
 
 
+# The contract is two files so each stays under the prompt budget; a persona receives them as one text.
+CONTRACT_PARTS = ("reviewer-contract.md", "reviewer-reads.md")
+
+
+def contract_text() -> str:
+    """The shared reviewer contract as a persona receives it: `CONTRACT_PARTS` joined by one blank line."""
+    return "\n".join(contract_path().with_name(name).read_text(encoding="utf-8") for name in CONTRACT_PARTS)
+
+
 CANONICAL = ("adversarial", "architecture", "code-quality", "product-flow", "prompt-quality")
 
 
@@ -272,7 +281,7 @@ def common(review_dir: Path, config: dict) -> str:
     # Drop the level-1 title: the section heading `## Hunk reference` is the package's own.
     body = hunk_index.split("\n", 1)[1] if hunk_index.startswith("#") else hunk_index
     parts = [
-        contract_path().read_text(encoding="utf-8"),
+        contract_text(),
         "\n---\n\n",
         # The contract points to lookups.md; carrying it here spares every persona a read from its budget.
         contract_path().with_name("lookups.md").read_text(encoding="utf-8"),
@@ -307,12 +316,22 @@ def questions_block(persona: str, config: dict) -> str:
 
 
 def guidance_block(review_dir: Path, persona: str, config: dict) -> tuple[str, dict]:
-    """The repository guidance one lens receives, narrowed when `guidance_keep` names it."""
+    """The repository guidance one lens receives, narrowed when `guidance_keep` names it.
+
+    A missing, empty or unparsable `agent-context.json` is a ValueError (exit 2): `crew-agent-context.py` writes
+    nothing when it fails, so an empty file means the guidance call failed, not that there was none.
+    """
     path = review_dir / "agent-context.json"
-    if path.is_file():
-        guidance = json.loads(path.read_text(encoding="utf-8")).get("files", {})
-    else:
-        guidance = {}
+    fix = "run crew-agent-context.py from the reviewed repo's checkout with --root"
+    text = path.read_text(encoding="utf-8") if path.is_file() else None
+    if text is None:
+        raise ValueError(f"agent-context.json is missing: {fix}")
+    if not text.strip():
+        raise ValueError(f"agent-context.json is empty: {fix}")
+    try:
+        guidance = json.loads(text).get("files", {})
+    except (ValueError, AttributeError) as error:
+        raise ValueError(f"agent-context.json is not a guidance object ({error}): {fix}") from error
     return narrow_guidance(persona, guidance, config)
 
 

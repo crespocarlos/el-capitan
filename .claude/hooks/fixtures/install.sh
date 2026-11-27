@@ -23,6 +23,18 @@ chmod 644 "$home/.claude/CLAUDE.md"
 HOME="$home" bash "$root/install.sh" >/dev/null
 test -f "$home/.cursor/agents/my-custom-agent.md"          # user agent stays loadable
 test -L "$home/.cursor/agents/crew-builder.md"             # stale managed copy replaced
+# Every reference an installed agent links, relative or under ~/.cursor/agents, exists once installed.
+python3 - "$home" <<'PY'
+import re, sys
+from pathlib import Path
+agents = Path(sys.argv[1]) / ".cursor" / "agents"
+for agent in ("crew-pr-resolver.md", "crew-reviewer.md"):
+    text = (agents / agent).read_text(encoding="utf-8")
+    links = re.findall(r"\]\(((?:~/\.cursor/agents/)?crew-[\w-]+/references/[\w.-]+\.md)", text)
+    assert links, f"{agent} links no reference"
+    missing = [link for link in links if not (agents / link.replace("~/.cursor/agents/", "")).is_file()]
+    assert not missing, f"{agent}: installed references missing: {missing}"
+PY
 test -f "$home/.cursor/skills/my-skill/SKILL.md"           # user skill stays loadable
 test -L "$home/.claude/agents"                             # managed dir is a symlink
 test -d "$root/rules" && test ! -L "$root/rules"           # repo not linked into itself
