@@ -1,7 +1,7 @@
 ---
 name: reviewer-prompt-quality
 description: "LLM prompt quality reviewer for sufficiency of context, rule scope and strength, instruction clarity, reference integrity, cross-document collisions, and portability across harnesses and models. Works on agent/skill/prompt file diffs and on sets of prompts loaded together. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob
+disallowedTools: Write, Edit, NotebookEdit, Bash, Agent, Artifact, ArtifactData, ArtifactComments, EnterWorktree, ExitWorktree, SendMessage, TaskStop, Skill, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__atlassian__*, mcp__notion__*, mcp__filesystem__*, mcp__claude_ai_Claude_Docs__*
 readonly: true
 maxTurns: 10
 ---

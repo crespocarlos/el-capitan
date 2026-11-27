@@ -21,6 +21,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from cli_runner import load as cli_load
 from cli_runner import run as cli
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -218,3 +219,78 @@ def test_doctor(installed: Path, tmp: Path, case: str, damage: Callable[[Path], 
     real = subprocess.run([str(home / ".agent/bin/crew-doctor.py"), "--offline"],
                           capture_output=True, text=True, env=env)
     check(f"{case}: the installed command, run as a process, exits 1", real.returncode == 1, real.stdout[-600:])
+
+
+WANTED = {"docs": ["docs-a", "docs-b"], "code_search": ["search-x"]}
+
+
+def servers(*names: str, **projects: list[str]) -> str:
+    """An MCP config: `names` at user level, and each project path's own servers."""
+    return json.dumps({"mcpServers": {name: {} for name in names},
+                       "projects": {f"/w/{key}": {"mcpServers": {name: {} for name in value}}
+                                    for key, value in projects.items()}})
+
+
+DOCS, SEARCH = "docs server (docs-a, docs-b)", "code search (search-x)"
+UNCHECKED = ("note", "servers from plugins and claude.ai connectors are not checked")
+# (case, files under the temp root, `mcp` config, CLAUDE_CONFIG_DIR under it, cwd under it,
+#  (level, text) lines that must appear, texts no line may contain). HOME is `home/`; every config file is a temp one.
+MCP_CASES = (
+    ("both servers at user level",
+     {"home/.claude.json": servers("docs-a", "search-x"), "home/.cursor/mcp.json": servers("docs-b", "search-x")},
+     WANTED, None, ".", [("ok", f"Claude Code ~/.claude: {DOCS} at user level"), ("ok", f"Cursor: {SEARCH}")],
+     ["WARN"]),
+    ("the docs server only in a projects entry",
+     {"home/.claude.json": servers("search-x", kibana=["docs-a"], other=[])}, WANTED, None, ".",
+     [("WARN", f"{DOCS} missing for 1 of 2 projects: /w/other; add it at user level"),
+      ("ok", f"{SEARCH} at user level"),
+      ("WARN", "Cursor: docs server missing: none of docs-a, docs-b in ~/.cursor/mcp.json")],
+     ["/w/kibana"]),
+    ("a server only in the repo's .mcp.json",
+     {"repo/.git/HEAD": "ref\n", "repo/.mcp.json": servers("docs-b", "search-x"),
+      "repo/.cursor/mcp.json": servers("docs-a", "search-x")}, WANTED, None, "repo",
+     [("ok", f"{DOCS} in every project (1)"), ("ok", "Cursor: docs server (docs-a)")], ["WARN"]),
+    ("the docs server missing in a second config dir",
+     {"home/.claude.json": servers("docs-a", "search-x"), "home/.claude-work/.claude.json": servers("search-x")},
+     WANTED, "home/.claude-work", ".",
+     [("ok", f"Claude Code ~/.claude: {DOCS} at user level"), ("WARN", f"Claude Code ~/.claude-work: {DOCS} missing;"),
+      ("ok", f"Claude Code ~/.claude-work: {SEARCH} at user level")],
+     [f"~/.claude: {DOCS} missing"]),
+    ("no mcp section", {"home/.claude.json": servers()}, {"docs": [], "code_search": []}, None, ".",
+     [("note", 'no MCP server is checked; add "mcp": {"docs": ["<server>"]')], ["Claude Code", "Cursor", UNCHECKED[1]]),
+)
+
+
+@pytest.mark.parametrize("case, files, wanted, config_dir, cwd, expected, absent", MCP_CASES,
+                         ids=[row[0] for row in MCP_CASES])
+def test_doctor_mcp(tmp: Path, case: str, files: dict[str, str], wanted: dict, config_dir: str | None, cwd: str,
+                    expected: list[tuple[str, str]], absent: list[str]) -> None:
+    """Each capability is found by the configured names at user level, per project or in the repo; a gap is a WARN."""
+    cli_load(DOCTOR)
+    from doctor_checks import check_mcp
+    for name, text in files.items():
+        (tmp / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / name).write_text(text, encoding="utf-8")
+    (tmp / "home").mkdir(exist_ok=True)
+    environ = {"CLAUDE_CONFIG_DIR": str(tmp / config_dir)} if config_dir else {}
+    shown = [(line.level, line.text) for line in check_mcp(tmp / "home", wanted, tmp / cwd, environ)]
+    check(f"{case}: the expected lines appear, none is a FAIL, and the absent texts do not",
+          all(any(level == got and text in body for got, body in shown) for level, text in expected)
+          and all(level != "FAIL" for level, _ in shown)
+          and not any(text in f"{level} {body}" for text in absent for level, body in shown), shown)
+    check(f"{case}: one how-to note with no names configured, else the unchecked sources named last",
+          len(shown) == 1 if not any(wanted.values()) else shown[-1] == UNCHECKED, shown)
+
+
+def test_mcp_config_section(tmp: Path) -> None:
+    """The shared defaults name no server; a list of names is accepted and anything else is a config error."""
+    cli_load(DOCTOR)
+    from task_gc import ConfigError, load_config
+    check("the defaults are empty", load_config(tmp)["mcp"] == {"docs": [], "code_search": []})
+    (tmp / "config.json").write_text(json.dumps({"mcp": {"docs": ["docs-a"]}}), encoding="utf-8")
+    check("a list of names is merged over the defaults",
+          load_config(tmp)["mcp"] == {"docs": ["docs-a"], "code_search": []})
+    for bad in ({"docs": "docs-a"}, {"docs": [""]}, {"search": ["x"]}):
+        (tmp / "config.json").write_text(json.dumps({"mcp": bad}), encoding="utf-8")
+        with pytest.raises(ConfigError):
+            load_config(tmp)

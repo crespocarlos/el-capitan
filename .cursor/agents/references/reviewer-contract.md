@@ -140,9 +140,9 @@ it is attributable to you. State your conclusion in the body; leave the leading 
 
 Search Sourcerer's code index before reaching for a text search: it ranks by relevance across whole
 repositories, so it finds implementations you could not have guessed the words for. Take the first row
-that fits and stop there. Your frontmatter grants `Read`, `Grep` and `Glob` only — the tools below
-come from the harness, so use them when the server is configured and the equivalent `Grep`/`Glob`/
-`Read` call when it is not:
+that fits and stop there. You inherit the session's tools, so the tools below exist when the server is
+configured. When it is not, or a call fails, use the equivalent `Grep`/`Glob`/`Read` call and name the
+fallback in your reply (`code search unreachable: used text search`):
 
 | Task | Use |
 | --- | --- |
@@ -173,5 +173,5 @@ stop at 8.
 Verify ES|QL (`.esql` files, `FROM … |`, `esql` identifiers) and Elasticsearch or Kibana API claims
 against the docs server, never from memory: search with `search_internal_docs`, confirm with
 `get_internal_document_by_url`, cite the URL. The code index shows how code builds a query, not
-whether the syntax is valid. With no docs server, or a failed lookup, mark the claim `unverified`: a
-guessed option is indistinguishable from a verified one.
+whether the syntax is valid. With no docs server, or a failed lookup, mark the claim
+`unverified (docs server unreachable)`: a guessed option is indistinguishable from a verified one.

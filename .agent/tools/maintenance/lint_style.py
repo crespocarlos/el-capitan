@@ -108,7 +108,7 @@ def vendor_terms(name: str, text: str) -> Findings:
     """An Elastic-only identifier outside the Kibana-scoped prompts sits under an `(opt-in)` heading."""
     if name.startswith(VENDOR_SCOPED):
         return []
-    text = FRONTMATTER.sub(blank, text)  # a `tools:` grant is mcp-grant-policy's
+    text = FRONTMATTER.sub(blank, text)  # a frontmatter tool list is agents-inherit-tools's
     found, opted, level, offset = [], False, 0, 0
     for line in mask(text, inline=False).splitlines(keepends=True):
         heading = re.match(r"(#+) ", line)

@@ -4,6 +4,14 @@ Run orchestrators inline. Dispatch personas only from the main session: use Curs
 Agent, preserve inherited model selection, and use the documented fallback only when native dispatch
 is unavailable. `REVIEW_ROOT` is the review directory `crew-reviewer` resolved.
 
+**Dispatch a persona by its agent type.** In Claude Code, pass `subagent_type: reviewer-<name>` (the
+critics and explorers by their own names), so the persona's frontmatter applies: it inherits the
+session's tools, the docs MCP server and semantic code search included, and its `disallowedTools`
+denies the writers. A generic agent told to read the persona file inherits everything with no deny
+list, so never dispatch that way. When the agent type is not registered in this session, stop and tell
+the user so, naming `crew doctor`, which checks that the agents are linked into every Claude config
+dir; do not fall back to a generic agent.
+
 Reviewer personas may run read-only: Cursor Ask mode, or a Claude Code read-only subagent, where
 artifact writes are unavailable, and the `claude -p` fallback likewise returns only stdout. Dispatch
 prompts must carry the immutable evidence the assigned lens needs — diff, contract, relevant file

@@ -1,7 +1,7 @@
 ---
 name: reviewer-code-quality
 description: "Systematic quality reviewer with structured checklist. Works on code diffs, plans, and proposals. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob
+disallowedTools: Write, Edit, NotebookEdit, Bash, Agent, Artifact, ArtifactData, ArtifactComments, EnterWorktree, ExitWorktree, SendMessage, TaskStop, Skill, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__atlassian__*, mcp__notion__*, mcp__filesystem__*, mcp__claude_ai_Claude_Docs__*
 readonly: true
 maxTurns: 10
 ---

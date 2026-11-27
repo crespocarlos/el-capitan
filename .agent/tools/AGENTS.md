@@ -290,32 +290,42 @@ off-glossary synonyms it knows; crew-lint `glossary-terms` keeps this the one gl
   `is_background`; it ignores `tools` and `maxTurns` and inherits every parent tool, MCP included,
   so `readonly: true` is its only tool restriction. Claude Code reads `tools`, `disallowedTools` and
   `maxTurns` and ignores `readonly`, so `maxTurns` binds under Claude Code only and every turn budget
-  here is prose-enforced in Cursor. `tools` therefore speaks Claude Code ids. These notes live here
-  once; an agent's frontmatter carries no harness comments. Do not set `model:`.
-- **`tools` grants only ids that always resolve.** A granted MCP id fails the whole dispatch on a
-  project without that server (`crew-lint` `mcp-grant-policy`), so vendor tools appear only in prose,
-  as optional.
+  here is prose-enforced in Cursor. `disallowedTools` therefore speaks Claude Code ids. These notes
+  live here once; an agent's frontmatter carries no harness comments. Do not set `model:`.
+- **Every agent inherits the session's tools; its class denies by list.** A `tools:` allowlist shuts
+  out every MCP server in Claude Code, the docs server and semantic code search included, so no agent
+  has one (`crew-lint` `agents-inherit-tools`). Each agent class carries one exact `disallowedTools`
+  list, defined once in `lint_prompts.py`, and the same rule fails a list that differs from it:
+  - **Read-only class** (`READONLY_AGENT_DENY`, every persona and explorer): the native writers,
+    `Agent`, the tools that act outside the review (`Artifact`, `ArtifactData`, `ArtifactComments`,
+    `EnterWorktree`, `ExitWorktree`, `SendMessage`, `TaskStop`, `Skill`), and `mcp__<server>__*` for
+    the MCP servers whose tools write (GitHub, GitLab, Slack, Linear, Jira/Atlassian, Notion,
+    filesystem, Claude Docs).
+  - **`crew-pr-resolver`** (`RESOLVER_AGENT_DENY`): the same minus `Bash`, kept for `gh` reads and
+    probes.
+  - **`reviewer-probe`** (`PROBE_AGENT_DENY`): the same minus `Write` and `Bash`, kept for its
+    throwaway artifact; it has no Edit, NotebookEdit or Agent, since it makes no edit that outlives
+    the run.
+  - **`crew-builder`** and the inline orchestrators: no list.
+
+  The inherited search servers are read-only (their `tools.json` tools search, read and list), and
+  semantic code search is assumed read-only. A server added later and not on a list is inherited
+  until it is added; a new write-capable server goes on the lists, and every agent's line is updated,
+  in the same change.
 - **`readonly: true` is enforced, not copied.** `crew-lint`'s `missing-readonly` rule fails any agent
-  under `.cursor/agents/` that omits it, except the workers named in `WRITE_CAPABLE_AGENTS` and the
-  inline-only orchestrators named in `INLINE_ONLY_AGENTS`, both in `lint_prompts.py`. There are two
-  workers: `crew-builder` writes the change it was dispatched to make, and `reviewer-probe` writes one
-  throwaway artifact, runs it, and deletes it. `crew-pr-resolver` is a read-only analysis subagent; the
-  main session creates its worktree before dispatch and applies the plan it returns as its final
-  message. It keeps Bash for `gh` reads and probes, so in Claude Code, which ignores `readonly`, its
-  read-only promise holds by instruction only. Add an exemption there when
-  an agent must write, so the reason is reviewable rather than implied by an omission.
-- **An inheriting read-only agent denies the writers by list.** A read-only agent with no `tools:`
-  line inherits every session tool in Claude Code, MCP servers included, so its `disallowedTools`
-  must equal `READONLY_AGENT_DENY` in `lint_prompts.py` (`crew-lint`'s `inherited-tools-can-write`):
-  the native writers, `Agent`, and `mcp__<server>__*` for the MCP servers whose tools write (GitHub,
-  GitLab, Slack, Linear, Jira/Atlassian, Notion, filesystem, Claude Docs). Read-only search servers stay
-  available. An MCP server not on that list is denied only by the agent's instructions, so a new
-  write-capable server is added there, and the five agents' lines updated, in the same change.
+  under `.cursor/agents/` that omits it, except the classes `AGENT_CLASSES` in `lint_prompts.py`
+  exempts. There are two workers: `crew-builder` writes the change it was dispatched to make, and
+  `reviewer-probe` writes one throwaway artifact, runs it, and deletes it; `crew-reviewer` and
+  `crew-specwriter` run inline, where `readonly` never applies. `crew-pr-resolver` is a read-only
+  analysis subagent; the main session creates its worktree before dispatch and applies the plan it
+  returns as its final message. It keeps Bash for `gh` reads and probes, so in Claude Code, which
+  ignores `readonly`, its read-only promise holds by instruction only. Add a class there when an
+  agent must write, so the reason is reviewable rather than implied by an omission.
 - **Backgrounding is a call-site field.** Set `run_in_background: true` on the dispatch that needs it;
   do not put `is_background` in frontmatter, which would state the same fact twice with no check that
   the copies agree.
-- **Tool ids resolve against the catalog.** `crew-lint` checks every id against `mcp_servers` and
-  `native_tools` in `tools.json`; register a new one there, never only in prose.
+- **MCP tool ids resolve against the catalog.** `crew-lint` checks every `mcp__<server>__<tool>` id
+  against `mcp_servers` in `tools.json`; register a new one there, never only in prose.
 - **Skill files** follow the workflow header, execution model, numbered steps shape;
   `crew-commit/SKILL.md` is the canonical example. Material a step needs only sometimes goes in
   `references/` and is linked, not inlined. An agent or skill file stays under 11,500 bytes.

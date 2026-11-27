@@ -1,7 +1,7 @@
-"""The checks `crew-doctor.py` runs against an install: links, hook registrations, managed blocks, tools, state.
+"""The checks `crew-doctor.py` runs on an install: links, hook registrations, managed blocks, tools, state, MCP.
 
-Each check returns `Line`s; a `FAIL` line is a problem the command's exit code counts, `ok` and `note`
-are not. The checkout is the one this file resolves into, so a doctor run through `~/.agent/bin`
+Each check returns `Line`s; a `FAIL` line is a problem the command's exit code counts, `ok`, `note` and
+`WARN` are not. The checkout is the one this file resolves into, so a doctor run through `~/.agent/bin`
 checks the install against the tree it links to. The block text is `.claude/install_blocks.py`'s.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ RERUN = " (re-run install.sh)"
 
 @dataclass(frozen=True)
 class Line:
-    level: str  # "ok", "note" or "FAIL"
+    level: str  # "ok", "note", "WARN" or "FAIL"
     area: str
     text: str
 
@@ -204,3 +204,79 @@ def check_state(places: Places, limits: dict) -> list[Line]:
                 "crew-task.py gc --only telemetry --apply removes only it")
         lines.append(Line("FAIL", "state", text))
     return lines
+
+
+CAPABILITIES = (("docs", "docs server"), ("code_search", "code search"))
+MCP_HOWTO = ('no mcp section in ~/.agent/config.json, so no MCP server is checked; add '
+             '"mcp": {"docs": ["<server>"], "code_search": ["<server>"]} with your server names')
+UNCHECKED = "servers from plugins and claude.ai connectors are not checked"
+
+
+def mcp_servers(path: Path) -> tuple[set[str], dict[str, set[str]]]:
+    """The user-level `mcpServers` names of an MCP config file, and each `projects` entry's; empty if unreadable."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set(), {}
+    if not isinstance(data, dict):
+        return set(), {}
+
+    def names(entry: object) -> set[str]:
+        servers = entry.get("mcpServers") if isinstance(entry, dict) else None
+        return set(servers) if isinstance(servers, dict) else set()
+
+    projects = data.get("projects")
+    return names(data), {key: names(value) for key, value in projects.items()} if isinstance(projects, dict) else {}
+
+
+def repo_root(cwd: Path) -> Path | None:
+    """The nearest directory at or above `cwd` holding `.git`, without running git."""
+    return next((path for path in (cwd, *cwd.parents) if (path / ".git").exists()), None)
+
+
+def claude_config_dirs(home: Path, environ: dict[str, str]) -> list[Path]:
+    """`~/.claude`, `$CLAUDE_CONFIG_DIR` when set, and the install manifest's `config_dirs`, each once."""
+    dirs = [home / ".claude"]
+    try:
+        recorded = (install_blocks().load_manifest(home) or {}).get("config_dirs")
+    except ValueError:
+        recorded = None
+    extra = [environ.get("CLAUDE_CONFIG_DIR", ""), *(recorded if isinstance(recorded, list) else [])]
+    for item in extra:
+        path = Path(os.path.expanduser(item)) if isinstance(item, str) and item else None
+        if path and path.resolve() not in {seen.resolve() for seen in dirs}:
+            dirs.append(path)
+    return dirs
+
+
+def claude_capability(where: str, names: set[str], user: set[str], projects: dict[str, set[str]]) -> Line:
+    """One capability in one Claude config dir: at user level, or in every project, else a WARN naming the gaps."""
+    missing = sorted(project for project, servers in projects.items() if not servers & names)
+    if user & names:
+        return Line("ok", "mcp", f"{where} at user level")
+    if projects and not missing:
+        return Line("ok", "mcp", f"{where} in every project ({len(projects)})")
+    gaps = f" for {len(missing)} of {len(projects)} projects: {capped(missing)}" if projects else ""
+    return Line("WARN", "mcp", f"{where} missing{gaps}; add it at user level")
+
+
+def check_mcp(home: Path, wanted: dict[str, list[str]], cwd: Path, environ: dict[str, str]) -> list[Line]:
+    """The docs and code-search capabilities by the `mcp` config's server names, per harness; a gap is a WARN."""
+    capabilities = [(label, set(wanted.get(key) or [])) for key, label in CAPABILITIES if wanted.get(key)]
+    if not capabilities:
+        return [Line("note", "mcp", MCP_HOWTO)]
+    repo = repo_root(cwd)
+    lines = []
+    for config_dir in claude_config_dirs(home, environ):
+        # The default config dir keeps its MCP config beside it, in ~/.claude.json.
+        user, projects = mcp_servers((home if config_dir == home / ".claude" else config_dir) / ".claude.json")
+        if repo:
+            projects[str(repo)] = projects.get(str(repo), set()) | mcp_servers(repo / ".mcp.json")[0]
+        lines += [claude_capability(f"Claude Code {tilde(config_dir, home)}: {label} ({', '.join(sorted(names))})",
+                                    names, user, projects) for label, names in capabilities]
+    cursor = set().union(*(mcp_servers(base / ".cursor" / "mcp.json")[0] for base in (home, repo) if base))
+    sources = "~/.cursor/mcp.json" + (" or the repo's .cursor/mcp.json" if repo else "")
+    lines += [Line("ok", "mcp", f"Cursor: {label} ({', '.join(sorted(cursor & names))})") if cursor & names
+              else Line("WARN", "mcp", f"Cursor: {label} missing: none of {', '.join(sorted(names))} in {sources}")
+              for label, names in capabilities]
+    return [*lines, Line("note", "mcp", UNCHECKED)]

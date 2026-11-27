@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / ".agent" / "tools"
 LINT_PATH = TOOLS / "maintenance" / "crew-lint.py"
 LINT = load(LINT_PATH)
-from lint_prompts import READONLY_AGENT_DENY  # noqa: E402
+from lint_prompts import AGENT_CLASSES, PROBE_AGENT_DENY, READONLY_AGENT_DENY, RESOLVER_AGENT_DENY, parse_frontmatter  # noqa: E402
 from lint_references import lint_handoff  # noqa: E402
 from lint_writing import lint_local_state_tracked  # noqa: E402
 
@@ -69,32 +69,45 @@ def missing_one(index: int) -> tuple[str, str]:
     return agent(f"reviewer-missing-{index}", f"readonly: true\ndisallowedTools: {rest}\n")
 
 
+def classed(name: str, deny: tuple[str, ...], readonly: bool) -> tuple[str, str]:
+    return agent(name, ("readonly: true\n" if readonly else "") + (f"disallowedTools: {', '.join(deny)}\n" if deny else ""))
+
+
+# (agent, its class list, readonly: true expected, the tool the class keeps): each class's exact list passes, one entry
+# missing fails, and denying the tool the class keeps fails.
+CLASSES = (("reviewer-a", READONLY_AGENT_DENY, True, "Read"), ("crew-pr-resolver", RESOLVER_AGENT_DENY, True, "Bash"),
+           ("reviewer-probe", PROBE_AGENT_DENY, False, "Write"), ("crew-builder", (), False, "Write"))
+CLASS_FIXTURES = tuple(row for name, deny, readonly, kept in CLASSES for row in (
+    (f"{name}: its exact class list", dict([classed(name, deny, readonly)]), {}),
+    *([(f"{name}: one entry missing", dict([classed(name, deny[1:], readonly)]), {"agents-inherit-tools": 1})] if deny else []),
+    (f"{name}: an extra entry", dict([classed(name, (*deny, kept), readonly)]), {"agents-inherit-tools": 1})))
+
+
 SKILL = ".cursor/skills/{}/SKILL.md"
 RULE, RULE_HEAD = "rules/fixture.mdc", "---\ndescription: \"Fixture rule\"\nalwaysApply: false\n---\n"
 PASSAGE = "The reviewer reads every changed file once and records the anchor it used for each finding.\n"
 # (case, files, {rule: findings expected}): a rule absent from the map must not fire at all.
 FIXTURES = (
-    ("declared native ids only", dict([agent("reviewer-a", DENY_ALL + "tools: Read, Grep, Glob\n")]), {}),
-    ("an MCP id granted in tools:", dict([agent("reviewer-a", DENY_ALL + "tools: Read, mcp__sourcerer__sourcerer_code_search\n")]), {"mcp-grant-policy": 1}),
-    ("an undeclared MCP server", dict([agent("reviewer-a", DENY_ALL + "tools: Read, mcp__elastic-docs__search_docs\n")]),
-     {"mcp-tool-unknown": 1, "mcp-grant-policy": 1}),
-    ("an undeclared tool on a declared server", dict([agent("reviewer-a", DENY_ALL + "tools: Read, mcp__sourcerer__bogus\n")]),
-     {"mcp-tool-unknown": 1, "mcp-grant-policy": 1}),
-    ("an undeclared native tool id", dict([agent("reviewer-a", DENY_ALL + "tools: Read, SemanticSearch\n")]), {"tool-id-unknown": 1}),
-    ("an MCP id in agent prose is not a grant", dict([agent("reviewer-a", DENY_ALL + "tools: Read\n", "Use mcp__sourcerer__sourcerer_code_search.\n")]), {}),
+    ("a tools: line, even of native ids, shuts out the MCP servers", dict([agent("reviewer-a", DENY_ALL + "tools: Read, Grep, Glob\n")]),
+     {"agents-inherit-tools": 1}),
+    ("an undeclared MCP server in a tools: line", dict([agent("reviewer-a", DENY_ALL + "tools: Read, mcp__elastic-docs__search_docs\n")]),
+     {"mcp-tool-unknown": 1, "agents-inherit-tools": 1}),
+    ("an undeclared tool on a declared server", dict([agent("reviewer-a", DENY_ALL, "Use mcp__sourcerer__bogus.\n")]), {"mcp-tool-unknown": 1}),
+    ("a declared MCP id in agent prose", dict([agent("reviewer-a", DENY_ALL, "Use mcp__sourcerer__sourcerer_code_search.\n")]), {}),
     ("an unknown MCP id in rule prose", {"rules/fixture.mdc": "---\ndescription: \"Fixture rule\"\nalwaysApply: false\n---\nUse mcp__retired-server__old_tool.\n"},
      {"mcp-tool-unknown": 1}),
     ("a malformed mcp_servers catalog", {".agent/tools/tools.json": json.dumps({**CATALOG, "mcp_servers": "sourcerer"})}, {"invalid-tool-catalog": 1}),
     ("a catalog with no native_tools list", {".agent/tools/tools.json": json.dumps({k: v for k, v in CATALOG.items() if k != "native_tools"})},
      {"invalid-tool-catalog": 1}),
-    ("a read-only agent without the flag", dict([agent("reviewer-a", "tools: Read\n")]), {"missing-readonly": 1}),
-    ("readonly: false is not a declaration", dict([agent("reviewer-a", "readonly: false\n")]), {"missing-readonly": 1}),
-    ("the resolver analysis must declare readonly", dict([agent("crew-pr-resolver", "tools: Read\n")]), {"missing-readonly": 1}),
+    ("a read-only agent without the flag", dict([classed("reviewer-a", READONLY_AGENT_DENY, False)]), {"missing-readonly": 1}),
+    ("readonly: false is not a declaration", dict([agent("reviewer-a", DENY_ALL.replace("true", "false"))]), {"missing-readonly": 1}),
+    ("the resolver analysis must declare readonly", dict([classed("crew-pr-resolver", RESOLVER_AGENT_DENY, False)]), {"missing-readonly": 1}),
     ("a worker that declares readonly", dict([agent("crew-builder", "readonly: true\n")]), {"unexpected-readonly": 1}),
-    ("exempt writers and orchestrators write freely", dict([agent("crew-builder", ""), agent("crew-reviewer", ""), agent("crew-specwriter", "")]), {}),
-    ("an inheriting read-only agent missing any deny entry, or all of them",
+    ("the builder and the orchestrators carry no list", dict([agent("crew-builder", ""), agent("crew-reviewer", ""), agent("crew-specwriter", "")]), {}),
+    ("a read-only agent missing any deny entry, or all of them",
      dict([agent("reviewer-open", "readonly: true\n"), agent("reviewer-denied", DENY_ALL), *map(missing_one, range(len(READONLY_AGENT_DENY)))]),
-     {"inherited-tools-can-write": len(READONLY_AGENT_DENY) + 1}),
+     {"agents-inherit-tools": len(READONLY_AGENT_DENY) + 1}),
+    *CLASS_FIXTURES,
     ("a broken frontmatter is its own finding, not a missing flag",
      {".cursor/agents/reviewer-broken.md": "---\nname: reviewer-broken\ndescription: \"Fixture agent.\"\nBody.\n"}, {"invalid-agent-frontmatter": 1}),
     ("an unprefixed command", {".agent/tools/task/task-progress.py": "#!/usr/bin/env python3\n", ".agent/tools/tools.json": json.dumps({**CATALOG, "tools": [
@@ -133,8 +146,8 @@ FIXTURES = (
       ".cursor/agents/crew-pr-resolver/references/acting-on-threads.md": "Run `crew-mem.py journal add`.\n",
       SKILL.format("crew-log"): "Run `crew-mem.py import-inbox --all`.\n"}, {"one-closing-confirmation": 2}),
 )
-FIXTURE_RULES = {"mcp-grant-policy", "mcp-tool-unknown", "tool-id-unknown", "missing-readonly", "unexpected-readonly",
-                 "inherited-tools-can-write", "invalid-agent-frontmatter", "invalid-tool-catalog", "command-name", "removed-command-form",
+FIXTURE_RULES = {"mcp-tool-unknown", "missing-readonly", "unexpected-readonly",
+                 "agents-inherit-tools", "invalid-agent-frontmatter", "invalid-tool-catalog", "command-name", "removed-command-form",
                  "no-incident-narration", "duplicate-passages", "glossary-terms",
                  "vendor-tools-scoped", "undefined-placeholder", "one-closing-confirmation"}
 ROUTER = ("# Router\n\n| Trigger | Crew member |\n|---|---|\n| `crew review` | crew-reviewer |\n| `crew commit` | crew-commit |\n"
@@ -213,6 +226,16 @@ def test_fixture(case: str, files: dict[str, str], expected: dict[str, int], tmp
     (root / "rules").mkdir(exist_ok=True)
     counts = collections.Counter(rule for _, _, rule, _ in LINT.lint(root, False))
     assert {rule: counts[rule] for rule in FIXTURE_RULES} == {rule: expected.get(rule, 0) for rule in FIXTURE_RULES}, dict(counts)
+
+
+@pytest.mark.parametrize("path", sorted((ROOT / ".cursor" / "agents").glob("*.md")), ids=lambda path: path.stem)
+def test_agent_carries_its_class_list(path: Path) -> None:
+    """Every shipped agent inherits the session's tools and denies exactly its class's list, in order."""
+    frontmatter, _, error = parse_frontmatter(path.read_text())
+    assert not error, error
+    fields = dict(line.split(":", 1) for line in frontmatter.splitlines() if ":" in line)
+    listed = [item.strip() for item in fields.get("disallowedTools", "").split(",") if item.strip()]
+    assert "tools" not in fields and listed == list(AGENT_CLASSES.get(path.stem, (True, READONLY_AGENT_DENY))[1]), (sorted(fields), listed)
 
 
 @pytest.mark.parametrize("case,files,rule", HANDOFFS, ids=[case for case, _, _ in HANDOFFS])

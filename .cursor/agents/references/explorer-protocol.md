@@ -23,7 +23,9 @@ what is still open.
 | repository search | a path or text search (`Grep`/`Glob` in Cursor, the native search tool elsewhere) |
 | file read | `sourcerer_files_read_lines`, or a native read of a line range |
 
-With no index configured, the index slots go to repository search.
+With no index configured, the index slots go to repository search. When semantic code search is
+unreachable (not in your tools, or a call fails), fall back the same way and name it in the summary
+(`code search unreachable: used text search`), so the consumer knows the results were not ranked.
 
 ## Returning
 
