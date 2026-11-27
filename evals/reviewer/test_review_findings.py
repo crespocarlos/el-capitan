@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Contract checks for .agent/tools/review/crew-review-findings.py normalize and persist."""
+"""`crew-review-findings.py`: normalize, persist and their evidence gates, coverage, outcomes, probes, review-dir.
+
+Every subcommand runs in this process through `evals/tools/cli_runner.py`.
+"""
 from __future__ import annotations
 
 import importlib.util
@@ -12,11 +15,19 @@ from pathlib import Path
 
 TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
 # The tool is loaded by path below; its package directory holds the bootstrap it imports first.
-sys.path.insert(0, str(TOOL.parent))
+sys.path[:0] = [str(TOOL.parent), str(TOOL.parents[3] / "evals" / "tools")]
+from cli_runner import run as cli  # noqa: E402
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True)
+    return cli(TOOL, *args)
+
+
+def no_findings(tmp: Path) -> str:
+    """An empty findings file: `persist` in self and changes mode requires `--findings`."""
+    path = tmp / "no-findings.json"
+    path.write_text("[]")
+    return str(path)
 
 
 def write_map(tmp: Path, known: list[str], mapping: list) -> tuple[Path, Path]:
@@ -295,8 +306,9 @@ def test_persist_rejects_a_report_carrying_a_generated_section(tmp: Path) -> Non
     (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
 
-    def persist() -> subprocess.CompletedProcess:
-        return run("persist", "--review-dir", str(review_dir), "--report", str(report),
+    def persist(listed: list | None = None) -> subprocess.CompletedProcess:
+        (tmp / "findings.json").write_text(json.dumps(listed or []))
+        return run("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", str(tmp / "findings.json"),
                    "--mode", "changes", "--files", "a.ts", "--personas", "adversarial")
 
     for heading in ("### Coverage by layer", "### Files reviewed"):
@@ -309,10 +321,12 @@ def test_persist_rejects_a_report_carrying_a_generated_section(tmp: Path) -> Non
     # A finding may quote a heading verbatim (the contract requires quoting) — that is not a
     # duplicate section. Verified against the 2026-11-18 report that quoted one inside a fence.
     report.write_text(
-        "## Review: changes\n\n1. [attention] **a.md — line 2** — the doc says\n\n"
+        "## Review: changes\n\n1. [nit · 4] **a.md — line 2** — the doc says\n\n"
         "```text\n### Files reviewed\n- a.ts\n```\n"
     )
-    assert persist().returncode == 0, "a quoted heading was rejected as a duplicate section"
+    quoted = [{"title": "the doc says", "label": "nit", "file": "a.md", "line": 2, "disposition": "patch",
+               "kind": "documentation", "confidence": 4}]
+    assert persist(quoted).returncode == 0, "a quoted heading was rejected as a duplicate section"
     # A deeper heading is a different section: `#### Files reviewed` is not `### Files reviewed`.
     report.write_text("## Review: changes\n\n#### Files reviewed by hand\n")
     assert persist().returncode == 0, "a level-4 heading was rejected as a duplicate section"
@@ -331,7 +345,7 @@ def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     review_dir.mkdir(parents=True)
     report = tmp / "report.md"
     report.write_text("x\n")
-    args = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--strict", "--personas", "adversarial")
+    args = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp), "--strict", "--personas", "adversarial")
     result = run(*args)
     assert result.returncode == 2 and "adversarial.in.md" in result.stderr
     (review_dir / "adversarial.in.md").write_text("in")
@@ -340,7 +354,7 @@ def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     assert run(*args).returncode == 0
     comma_args = (
-        "persist", "--review-dir", str(review_dir), "--report", str(report),
+        "persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
         "--strict", "--personas", "adversarial,code-quality",
     )
     result = run(*comma_args)
@@ -356,7 +370,7 @@ def test_persist_strict_rejects_empty_persona_output(tmp: Path) -> None:
     for persona in ("adversarial", "code-quality"):
         (review_dir / f"{persona}.in.md").write_text("in")
         (review_dir / f"{persona}.out.md").write_text("")
-    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+    result = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
                  "--strict", "--personas", "adversarial", "code-quality")
     assert result.returncode == 2 and "no output" in result.stderr
     assert not (tmp / "task" / "REVIEW.md").exists()
@@ -378,18 +392,16 @@ def test_persist_strict_rejects_placeholder_persona_output(tmp: Path) -> None:
     }.items():
         (review_dir / f"{persona}.in.md").write_text("in")
         (review_dir / f"{persona}.out.md").write_text(body)
-    result = run("persist", "--review-dir", str(review_dir), "--report", str(report),
-                 "--strict", "--personas", "adversarial", "code-quality")
+    gated = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp), "--strict")
+    result = run(*gated, "--personas", "adversarial", "code-quality")
     assert result.returncode == 2 and "no output" in result.stderr, result.stdout + result.stderr
     assert not (tmp / "task" / "REVIEW.md").exists()
     # The same placeholder alone must fail too, and a real artifact must still pass.
     (review_dir / "adversarial.out.md").write_text("status: dispatched\n")
-    assert run("persist", "--review-dir", str(review_dir), "--report", str(report),
-               "--strict", "--personas", "adversarial").returncode == 2
+    assert run(*gated, "--personas", "adversarial").returncode == 2
     for persona in ("adversarial", "code-quality"):
         (review_dir / f"{persona}.out.md").write_text("### Findings: none\n")
-    assert run("persist", "--review-dir", str(review_dir), "--report", str(report),
-               "--strict", "--personas", "adversarial", "code-quality").returncode == 0
+    assert run(*gated, "--personas", "adversarial", "code-quality").returncode == 0
 
 
 def test_mode_argument_accepts_documented_casing(tmp: Path) -> None:
@@ -465,7 +477,7 @@ def test_persist_pr_mode_accepts_head_absent_from_local_repo(tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert f"Reviewed at: {absent}" in (task / "REVIEW.md").read_text()
     # Non-PR modes still reject a SHA the local repository cannot resolve.
-    local = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+    local = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
                 "--mode", "self", "--head", absent, "--personas", "adversarial")
     assert local.returncode == 2 and "is not a commit" in local.stderr
 
@@ -597,7 +609,7 @@ def test_select_returns_required_personas(tmp: Path) -> None:
         "adversarial", "architecture", "code-quality", "product-flow", "prompt-quality"]
     assert json.loads(run("select", "--mode", "pr", "--paths", "x.ts").stdout)["required"] == ["adversarial", "code-quality"]
     assert "prompt-quality" in json.loads(
-        run("select", "--mode", "changes", "--paths", "evals/reviewer/run.py").stdout
+        run("select", "--mode", "changes", "--paths", "evals/reviewer/helpers.py").stdout
     )["required"]
     # Specs and ideas have no diff to derive lenses from; an empty selection would mean
     # a review could pass with no persona dispatched.
@@ -682,7 +694,7 @@ def test_persist_strict_runs_coverage_only_when_layers_exist(tmp: Path) -> None:
     report.write_text("## Verdict: PASS\n")
     (review_dir / "adversarial.in.md").write_text("in")
     (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
-    args = ("persist", "--review-dir", str(review_dir), "--report", str(report),
+    args = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
             "--strict", "--personas", "adversarial")
     # No hunk index and no layer map: nothing to cover, so the gate stays out of the way.
     assert run(*args).returncode == 0, run(*args).stderr
@@ -701,7 +713,7 @@ def test_persist_strict_runs_coverage_only_when_layers_exist(tmp: Path) -> None:
     assert orphan.returncode == 2 and "hunk index" in orphan.stderr, orphan.stderr
     # A stray map is ignored when the caller opts out, so a caller that cannot supply an index
     # still has a way through the gates.
-    plain = run("persist", "--review-dir", str(review_dir), "--report", str(report),
+    plain = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
                 "--personas", "adversarial", "--lenient")
     assert plain.returncode == 0, plain.stderr
     # A hunk index with no map means the pre-pass failed: persist, but say coverage was skipped.
@@ -800,87 +812,22 @@ def test_persist_strict_appends_coverage_by_layer(tmp: Path) -> None:
     assert blocked.returncode == 2 and "unknown hunk" in blocked.stderr, blocked.stderr
 
 
-def test_validate_map_reports_contract_errors_with_layer_index(tmp: Path) -> None:
-    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
-    review = tmp / "review.json"
-    review.write_text(json.dumps({
-        "summary": "what happens",
-        "risk": "high",
-        "layers": [{"id": "L1", "explainer": "why", "reviewFocus": "- verify", "hunks": ["h1", "h9"]}],
-        "concerns": [{"severity": "urgent", "title": "t", "detail": "d", "hunk": "h7"}],
-    }))
-    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
-    assert result.returncode == 1
-    assert "unknown hunk 'h9'" in result.stderr
-    assert "h2" in result.stderr                      # reported as in no layer
-    assert "concerns[1].severity" in result.stderr
-    assert "concerns[1].hunk 'h7'" in result.stderr
-
-
-def test_validate_map_accepts_a_complete_map(tmp: Path) -> None:
-    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
-    review = tmp / "review.json"
-    review.write_text(json.dumps({
-        "summary": "what happens",
-        "risk": "low",
-        "layers": [
-            {"id": "foundation", "kind": "foundation", "title": "types",
-             "explainer": "why", "reviewFocus": "- look", "hunks": ["h1"]},
-            {"id": "core", "title": "logic", "explainer": "why", "reviewFocus": "- check", "hunks": ["h2"],
-             "hunkNotes": {"h2": "the fix"}},
-        ],
-        "concerns": [{"severity": "nit", "title": "t", "detail": "d", "hunk": "h2"}],
-        "references": [{"title": "docs", "url": "https://example.invalid"}],
-    }))
-    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["ok"] is True
-
-
-def test_validate_map_requires_review_focus_and_at_most_eight_layers(tmp: Path) -> None:
+def test_coverage_checks_each_layer_shape(tmp: Path) -> None:
+    """At most eight layers, a reviewFocus on each, and a hunk note only for the layer's own hunk."""
     known = [f"h{index}" for index in range(1, 10)]
-    hunks, _ = write_map(tmp, known, [[hunk] for hunk in known])
-    review = tmp / "review.json"
-    review.write_text(json.dumps({
-        "summary": "what happens",
-        "layers": [
-            {"id": f"L{index}", "explainer": "why", "reviewFocus": "- verify", "hunks": [hunk]}
-            for index, hunk in enumerate(known, 1)
-        ],
-    }))
-    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
-    assert result.returncode == 1 and "exceeds the maximum of 8" in result.stderr, result.stderr
-
-    review.write_text(json.dumps({
-        "summary": "what happens",
-        "layers": [{"id": "L1", "explainer": "why", "hunks": known}],
-    }))
-    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
-    assert result.returncode == 1 and "reviewFocus is missing" in result.stderr, result.stderr
-
-
-def test_validate_map_rejects_a_note_for_a_foreign_hunk(tmp: Path) -> None:
-    """A hunkNotes entry must belong to the layer that carries it, or the note is unreachable."""
-    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
-    review = tmp / "review.json"
-    review.write_text(json.dumps({
-        "summary": "s",
-        "layers": [{"id": "L1", "explainer": "e", "hunks": ["h1"], "hunkNotes": {"h2": "note"}}],
-    }))
-    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
-    assert result.returncode == 1 and "not in its hunks" in result.stderr, result.stderr
-
-
-def test_validate_map_accepts_a_note_for_its_own_hunk(tmp: Path) -> None:
-    hunks, _ = write_map(tmp, ["h1", "h2"], [["h1"], ["h2"]])
-    review = tmp / "review.json"
-    review.write_text(json.dumps({
-        "summary": "s",
-        "layers": [{"id": "L1", "explainer": "e", "reviewFocus": "- verify", "hunks": ["h1", "h2"],
-                    "hunkNotes": {"h2": "note"}}],
-    }))
-    result = run("validate-map", "--review", str(review), "--hunks", str(hunks))
-    assert result.returncode == 0, result.stderr
+    hunks, _ = write_map(tmp, known, [known])
+    layer = {"id": "L1", "explainer": "why", "reviewFocus": "- verify", "hunks": known}
+    cases = (
+        ([{**layer, "id": f"L{i}", "hunks": [hunk]} for i, hunk in enumerate(known, 1)], "exceeds the maximum of 8"),
+        ([{key: value for key, value in layer.items() if key != "reviewFocus"}], "reviewFocus is missing"),
+        ([{**layer, "hunks": known[:1]}, {**layer, "id": "L2", "hunks": known[1:], "hunkNotes": {"h1": "note"}}], "not in its hunks"),
+        ([{**layer, "hunkNotes": {"h2": "note"}}], None),
+    )
+    layers = tmp / "shaped.json"
+    for mapping, needle in cases:
+        layers.write_text(json.dumps({"layers": mapping}))
+        result = run("coverage", "--hunks", str(hunks), "--layers", str(layers))
+        assert (result.returncode == 0) if needle is None else (result.returncode == 2 and needle in result.stderr), (needle, result.stderr)
 
 
 SPEC = """# Spec
@@ -947,7 +894,7 @@ def test_check_packages_rejects_generated_hunks_and_persist_strict_agrees(tmp: P
     (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
     report.write_text("## Verdict: PASS\n")
-    persist = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--strict",
+    persist = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp), "--strict",
                "--personas", "adversarial")
     # A directory packaged before package.diff existed is not held to the package rules.
     assert run(*persist).returncode == 0
@@ -1082,7 +1029,7 @@ def test_confidence_flags_and_merge_candidates_are_gone(tmp: Path) -> None:
     (review_dir / "adversarial.in.md").write_text("package")
     (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
     report = tmp / "report.md"
-    args = ["persist", "--review-dir", str(review_dir), "--report", str(report),
+    args = ["persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
             "--mode", "changes", "--personas", "adversarial"]
     report.write_text("## Review: changes — nothing\n")
     rejected = run(*args, "--confidence", "30", "--confidence-reason", "the diff was read")
@@ -1107,9 +1054,8 @@ def provenance_review(tmp: Path, personas: tuple[str, ...]) -> tuple[Path, Path]
 
 
 def save_out(review_dir: Path, persona: str, text: str, *flags: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(TOOL), "save-out", "--review-dir", str(review_dir),
-                           "--persona", persona, "--harness", "cursor", *flags],
-                          input=text.encode("utf-8"), capture_output=True)
+    """In process: `save-out` reads `sys.stdin.buffer`, which the runner must provide."""
+    return cli(TOOL, "save-out", "--review-dir", str(review_dir), "--persona", persona, "--harness", "cursor", *flags, stdin=text)
 
 
 def persist_dir(review_dir: Path, report: Path, personas: tuple[str, ...], *extra: str):
@@ -1125,6 +1071,7 @@ def test_save_out_stores_the_raw_reply_with_provenance(tmp: Path) -> None:
     raw = RAW_REPLY.replace("\n", "\r\n")
     saved = save_out(review_dir, "adversarial", raw, "--agent-id", "agent-1", "--model", "m-1")
     assert saved.returncode == 0, saved.stderr
+    assert json.loads(saved.stdout)["saved"] == str(review_dir / "adversarial.out.md"), saved.stdout
     assert (review_dir / "adversarial.out.md").read_bytes() == raw.encode(), "raw bytes, not a rewrite"
     record = json.loads((review_dir / "adversarial.provenance.json").read_text())
     assert record["schema_version"] == 1 and record["harness"] == "cursor"
@@ -1389,6 +1336,234 @@ def test_an_anchor_outside_the_diff_must_be_tracked_and_blocking_needs_a_read_li
     assert run("normalize", str(source), "--files", "a.ts").returncode == 2, "without --repo the old rule stands"
 
 
+def probe_persist(tmp: Path, label: str = "needs more info", tail: str = "", *extra: str) -> subprocess.CompletedProcess:
+    """Persist one emitted unsettled finding (score 2) under `label`; `tail` follows the numbered list."""
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
+    report, findings = tmp / "report.md", tmp / "findings.json"
+    findings.write_text(json.dumps([{"title": "Unsettled guard", "label": label,
+                                     "disposition": "patch", "kind": "correctness", "confidence": 2}]))
+    report.write_text(f"## Verdict: PASS\n\n1. [{label} · 2] — Unsettled guard\n{tail}")
+    return run("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", str(findings),
+               "--personas", "adversarial", *(extra or ("--mode", "changes")))
+
+
+def test_persist_requires_a_probe_record_for_an_unsettled_finding(tmp: Path) -> None:
+    """The probe reply counts only when `save-out --persona probe` saved it with its provenance record."""
+    refused = probe_persist(tmp)
+    assert refused.returncode == 2 and "--persona probe" in refused.stderr, refused.stderr
+    review_dir = tmp / "task" / "review" / "ts"
+    (review_dir / "probe.out.md").write_text("ran: npm test -- guard\nobserved: inconclusive\n")
+    unrecorded = probe_persist(tmp)
+    assert unrecorded.returncode == 2 and "no matching provenance record" in unrecorded.stderr, unrecorded.stderr
+    saved = save_out(review_dir, "probe", "ran: npm test -- guard\nobserved: inconclusive\n")
+    assert saved.returncode == 0 and (review_dir / "probe.provenance.json").is_file(), saved.stderr
+    assert probe_persist(tmp).returncode == 0, probe_persist(tmp).stderr
+
+
+def test_persist_needs_findings_outside_pr_mode_and_probes_any_low_score(tmp: Path) -> None:
+    """Without `--findings` the probe gate cannot run, so self and changes refuse; PR mode never probes."""
+    report = tmp / "bare.md"
+    report.write_text("## Review: changes\n")
+    bare = run("persist", "--review-dir", str(tmp / "task" / "review" / "ts"), "--report", str(report), "--mode", "changes")
+    assert bare.returncode == 2 and "requires --findings" in bare.stderr, bare.stderr
+    pr = probe_persist(tmp / "pr", "needs more info", "", "--mode", "pr", "--head", "0123456789abcdef0123456789abcdef01234567")
+    assert pr.returncode == 0, pr.stderr
+    nit = probe_persist(tmp / "nit", "nit")
+    assert nit.returncode == 2 and "reviewer-probe" in nit.stderr, nit.stderr
+
+
+def test_a_skipped_probe_names_why_it_cannot_run_and_settles_nothing(tmp: Path) -> None:
+    """`probe: skipped` takes a reason from the fixed vocabulary, and the finding stays `[needs more info]`."""
+    vague = probe_persist(tmp, "needs more info", "\nprobe: skipped not worth it\n")
+    assert vague.returncode == 2 and "no-runtime" in vague.stderr, vague.stderr
+    assert probe_persist(tmp, "needs more info", "\nprobe: skipped no-runtime: no test runner in this checkout\n").returncode == 0
+    relabelled = probe_persist(tmp / "nit", "nit", "\nprobe: skipped no-network: the API is offline\n")
+    assert relabelled.returncode == 2 and "[needs more info]" in relabelled.stderr, relabelled.stderr
+
+
+def candidate_file(tmp: Path, **overrides: object) -> Path:
+    """One verified, anchored attention finding at confidence 4; an override replaces a field, None drops it."""
+    finding = {"title": "Guard missing", "label": "attention", "file": "a.ts", "line": 3, "disposition": "patch",
+               "verified": True, "evidence": "a.ts:3", "kind": "correctness", "confidence": 4,
+               "validation": "read a.ts:1-9; the guard is absent"}
+    for key, value in overrides.items():
+        if value is None:
+            finding.pop(key, None)
+        else:
+            finding[key] = value
+    source = tmp / "candidates.json"
+    source.write_text(json.dumps([finding]))
+    return source
+
+
+def gated_persist(tmp: Path, mode: str, *extra: str, **overrides: object) -> tuple[subprocess.CompletedProcess, Path, tuple]:
+    review_dir = tmp / "task" / "review" / "ts"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "adversarial.in.md").write_text("in")
+    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
+    report = tmp / "report.md"
+    report.write_text("## Review: Spec\n" if mode == "spec" else "## Verdict: WARN\n\n1. [attention · 4] **`a.ts:3`** — Guard missing\n")
+    args = ("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", str(candidate_file(tmp, **overrides)),
+            "--mode", mode, "--personas", "adversarial", *extra)
+    return run(*args), review_dir, args
+
+
+def test_persist_applies_the_gates_without_a_flag_and_lenient_is_the_escape(tmp: Path) -> None:
+    """The documented invocation is the enforced one, in every mode, and a gated run writes nothing."""
+    for mode, extra, gate in (("changes", ("--files", "a.ts"), "records no validation sentence"),
+                              ("spec", (), "records no validation sentence")):
+        result, review_dir, args = gated_persist(tmp / mode, mode, *extra, validation=None)
+        assert result.returncode == 2 and gate in result.stderr, (mode, result.stderr)
+        assert not (review_dir / "REVIEW.md").exists() and not (tmp / mode / "task" / "REVIEW.spec.md").exists()
+    _, review_dir, args = gated_persist(tmp / "lenient", "changes", "--files", "a.ts", validation=None)
+    assert run(*args, "--lenient").returncode == 0 and (review_dir / "REVIEW.md").is_file()
+    # `--strict` is the default's old spelling and cannot re-enable what `--lenient` turned off.
+    source = candidate_file(tmp, validation=None)
+    assert run("normalize", str(source), "--lenient", "--strict").returncode == 0
+
+
+def test_kind_is_required_at_persist_and_names_every_value(tmp: Path) -> None:
+    result, review_dir, args = gated_persist(tmp, "changes", kind=None)
+    assert result.returncode == 2 and "has no kind" in result.stderr, result.stderr
+    for value in ("security", "correctness", "reliability", "documentation", "testing", "other"):
+        assert value in result.stderr, f"the rejection must name {value}: {result.stderr}"
+    assert not (review_dir / "REVIEW.md").exists()
+    assert run(*args, "--lenient").returncode == 0, "a finding written before kind is still readable"
+
+
+def outcome_dir(tmp: Path) -> Path:
+    directory = tmp / "task" / "review" / "20261122120000"
+    directory.mkdir(parents=True)
+    (directory / "findings.json").write_text(json.dumps({"findings": [
+        {"title": "Guard missing", "label": "attention", "disposition": "patch", "fingerprint": "aaa111",
+         "persona": ["adversarial"], "kind": "correctness"},
+        {"title": "Rename helper", "label": "nit", "disposition": "patch", "fingerprint": "bbb222",
+         "persona": ["code-quality"], "kind": "other"}]}))
+    return directory
+
+
+def log_outcome(directory: Path, fingerprint: str, outcome: str, review_dir: str = "", *extra: str) -> subprocess.CompletedProcess:
+    return run("outcome", "--review-dir", review_dir or str(directory), "--fingerprint", fingerprint, "--persona", "adversarial",
+               "--label", "attention", "--outcome", outcome, "--reason", "applied in the pass", *extra)
+
+
+def outcomes(directory: Path, *acted: str) -> tuple[int, dict]:
+    result = run("outcomes", "--review-dir", str(directory), *(("--acted", *acted) if acted else ()))
+    return result.returncode, json.loads(result.stdout or "{}")
+
+
+def test_one_outcome_per_decision_the_latest_wins_and_a_gap_fails(tmp: Path) -> None:
+    """Two decisions write two lines; an untouched finding stays unrecorded; a later decision supersedes."""
+    directory = outcome_dir(tmp)
+    code, payload = outcomes(directory)
+    assert code == 0 and payload["recorded"] == 0, "an absent journal is an answer, not a failure"
+    log_outcome(directory, "aaa111", "fixed")
+    code, payload = outcomes(directory, "aaa111", "bbb222")
+    assert code == 1 and payload["missing"] == ["bbb222"], payload
+    log_outcome(directory, "bbb222", "deferred")
+    log_outcome(directory, "bbb222", "rejected")
+    journal = tmp / "task" / "review" / "outcomes.jsonl"
+    assert len(journal.read_text().splitlines()) == 3
+    code, payload = outcomes(directory, "aaa111", "bbb222")
+    assert code == 0 and payload["recorded"] == 2 and payload["missing"] == [] and payload["outcomes"] == {"fixed": 1, "rejected": 1}, payload
+
+
+def test_a_relative_review_dir_attributes_to_its_own_review(tmp: Path) -> None:
+    directory = outcome_dir(tmp)
+    saved = os.getcwd()
+    try:
+        os.chdir(directory)
+        assert log_outcome(directory, "aaa111", "fixed", ".").returncode == 0
+    finally:
+        os.chdir(saved)
+    payload = outcomes(directory)[1]
+    assert payload["recorded"] == 1 and payload["fingerprints"] == ["aaa111"], payload
+
+
+def probe_normalize(tmp: Path, **overrides: object) -> subprocess.CompletedProcess:
+    return run("normalize", str(candidate_file(tmp, **overrides)))
+
+
+def test_a_probe_moves_a_score_only_with_its_evidence(tmp: Path) -> None:
+    """A confirming probe may raise a score; only a refuting probe may lower one, and only off a request."""
+    raised = probe_normalize(tmp, confidence_from=2, probe="confirmed", validation="ran `node --test g.js`; it fails without the guard")
+    assert raised.returncode == 0 and json.loads(raised.stdout)["findings"][0]["probe"] == "confirmed", raised.stderr
+    asking = {"label": "needs more info", "disposition": "decide", "verified": None, "evidence": None}
+    lowered = probe_normalize(tmp, **asking, confidence=1, confidence_from=4, probe="refuted", validation="ran `pytest`; the guard fires first")
+    assert lowered.returncode == 0 and json.loads(lowered.stdout)["findings"][0]["confidence"] == 1, lowered.stderr
+    unmeasured = probe_normalize(tmp, **{**asking, "verified": True, "evidence": "a.ts:3"}, confidence=2, confidence_from=4,
+                                 validation="read a.ts:1-9 again; the guard is there")
+    assert unmeasured.returncode == 2 and "only ever moves up" in unmeasured.stderr and "refuted" in unmeasured.stderr, unmeasured.stderr
+    request = probe_normalize(tmp, confidence=2, confidence_from=3, probe="refuted", validation="ran `pytest`; the loop fires once")
+    assert request.returncode == 2 and "refuted request is not a request" in request.stderr and "needs more info" in request.stderr, request.stderr
+    for bad in ("refutes", "", 7):
+        result = probe_normalize(tmp, probe=bad)
+        assert result.returncode == 2 and "invalid probe" in result.stderr and "confirmed, inconclusive, refuted" in result.stderr, (bad, result.stderr)
+    bare = {"label": "nit", "probe": "refuted", "verified": None, "evidence": None}
+    assert "no validation sentence" in probe_normalize(tmp, **bare, validation=None).stderr
+    assert probe_normalize(tmp, **bare, validation="ran the probe; the guard fires once").returncode == 0
+
+
+def test_a_score_move_recorded_as_an_outcome_needs_its_evidence(tmp: Path) -> None:
+    directory = tmp / "review" / "ts"
+    directory.mkdir(parents=True)
+
+    def move(*extra: str) -> subprocess.CompletedProcess:
+        return log_outcome(directory, "c3", "fixed", "", *extra)
+
+    sentence = ("--validation", "ran the probe; the guard fires first")
+    assert "--validation" in move("--confidence", "4", "--confidence-from", "2").stderr
+    assert "--probe refuted" in move("--confidence", "1", "--confidence-from", "4", *sentence).stderr
+    refuted = move("--confidence", "1", "--confidence-from", "4", *sentence, "--probe", "refuted")
+    assert refuted.returncode == 0 and json.loads(refuted.stdout)["probe"] == "refuted", refuted.stderr
+    assert "--validation" in move("--confidence", "1", "--confidence-from", "4", "--probe", "refuted").stderr
+    assert "cannot also raise" in move("--confidence", "4", "--confidence-from", "2", *sentence, "--probe", "refuted").stderr
+
+
+def test_review_dir_prefers_a_writable_task_and_falls_back_to_a_named_temp_path(tmp: Path) -> None:
+    """The task directory when writable (not in PR mode); else a temp path naming the repo, the reason on stderr."""
+    sys.path.insert(0, str(TOOL.parent))
+    import review_workspace
+
+    task = tmp / "task"
+    task.mkdir()
+    (task / ".task-id").write_text(json.dumps({"slug": "probe"}))
+    chosen = review_workspace.review_dir(str(task), "probe", "self")
+    assert str(chosen).startswith(str(task)) and chosen.is_dir() and not (chosen / ".write-probe").exists(), chosen
+    review_workspace.claim(chosen, "self", "probe", str(task))
+    record = json.loads((chosen / "run.json").read_text())
+    assert (record["mode"], record["repo"], record["task_dir"]) == ("self", "probe", str(task)) and record["created"], record
+    assert not (chosen / "paths.txt").exists()
+    printed = run("review-dir", "--task-dir", str(task), "--repo", "probe")
+    assert printed.returncode == 0 and printed.stdout.strip() and not printed.stderr.strip(), printed
+    # The temp fallback is shared by every user of the machine, so its repo name is this run's own.
+    temp_repo = f"probe-{os.getpid()}"
+    assert str(task) not in str(review_workspace.review_dir(str(task), temp_repo, "pr")), "PR mode never uses the task directory"
+    if os.geteuid() != 0:
+        sealed = tmp / "sealed"
+        sealed.mkdir()
+        sealed.chmod(0o500)
+        try:
+            fallback = review_workspace.review_dir(str(sealed), temp_repo, "self")
+        finally:
+            sealed.chmod(0o700)
+        assert str(sealed) not in str(fallback) and f"crew-review-{temp_repo}" in str(fallback) and fallback.is_dir(), fallback
+        missing = run("review-dir", "--repo", f"{temp_repo}-unwritable", "--task-dir", "/nonexistent/task")
+        assert missing.returncode == 0 and len(missing.stdout.strip().splitlines()) == 1 and "not writable" in missing.stderr, missing
+    base = tmp / "prune"
+    keep = base / "99999999999999"
+    keep.mkdir(parents=True)
+    for index in range(14):
+        (base / f"202601010000{index:02d}").mkdir()
+        (base / f"202601010000{index:02d}" / "artifact.json").write_text("{}")
+    removed = review_workspace.cleanup_stale(base, keep)
+    remaining = [p.name for p in base.iterdir()]
+    assert len(removed) == 4 and len(remaining) == 11 and keep.name in remaining, remaining
+
+
 def main() -> int:
     tests = [v for k, v in globals().items() if k.startswith("test_")]
     failed = 0
@@ -1397,9 +1572,9 @@ def main() -> int:
             try:
                 test(Path(tmp))
                 print(f"pass: {test.__name__}")
-            except AssertionError as error:
+            except Exception as error:  # one failing test must not stop the rest
                 failed += 1
-                print(f"FAIL: {test.__name__}: {error}")
+                print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
     print(f"{len(tests) - failed}/{len(tests)} passed")
     return 1 if failed else 0
 

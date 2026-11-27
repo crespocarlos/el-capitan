@@ -169,6 +169,11 @@ def main() -> int:
     dest_hooks = dest.setdefault("hooks", {})
     for event_type, entries in src.get("hooks", {}).items():
         dest_hooks[event_type] = merge_event(dest_hooks.get(event_type, []), entries)
+    # An event the template dropped can still hold a retired registration; one left empty goes.
+    for event_type in [e for e in dest_hooks if e not in src.get("hooks", {})]:
+        dest_hooks[event_type] = merge_event(dest_hooks[event_type], [])
+        if not dest_hooks[event_type]:
+            del dest_hooks[event_type]
 
     merge_permissions(dest, src)
 

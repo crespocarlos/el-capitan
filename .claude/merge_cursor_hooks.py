@@ -30,7 +30,9 @@ def main() -> int:
     else:
         dest = {"version": 1, "hooks": {}}
     hooks = dest.setdefault("hooks", {})
-    for event, entries in template["hooks"].items():
+    # Every event, the template's and the ones it dropped: a retired registration can sit in either.
+    for event in list(dict.fromkeys([*template["hooks"], *hooks])):
+        entries = template["hooks"].get(event, [])
         ours = {entry.get("command") for entry in entries}
         kept = []
         for entry in hooks.get(event, []):
@@ -41,6 +43,8 @@ def main() -> int:
                 continue
             kept.append(entry)
         hooks[event] = kept + [dict(entry) for entry in entries]
+        if not hooks[event] and event not in template["hooks"]:
+            del hooks[event]
     descriptor, temporary = tempfile.mkstemp(dir=os.path.dirname(dst) or ".", text=True)
     with os.fdopen(descriptor, "w", encoding="utf-8") as f:
         json.dump(dest, f, indent=2)

@@ -19,6 +19,9 @@ from memory_store import ensure_store, refresh
 
 from lib.output import json_payload, print_lines, rows_limit
 
+CONTEXT_MIN_SCORE = 0.35  # a ranked unit below this is noise for `context`
+CONTEXT_BUDGET_TOKENS = 1500  # the word-cost ceiling of one `context` answer
+
 
 def sanitized_query(query: str) -> str:
     """Quoted-phrase fallback: FTS5 treats `(`, `:` and quotes as operators."""
@@ -207,10 +210,10 @@ def context(args: argparse.Namespace) -> int:
     ranked = rank_context(rows, query, args.paths or [], args.mode)
     chosen, token_total = [], 0
     for item in ranked:
-        if item["score"] < args.min_score or len(chosen) == 5:
+        if item["score"] < CONTEXT_MIN_SCORE or len(chosen) == 5:
             continue
         cost = max(1, len(item["claim"].split()) * 2)
-        if chosen and token_total + cost > args.budget_tokens:
+        if chosen and token_total + cost > CONTEXT_BUDGET_TOKENS:
             continue
         chosen.append(item)
         token_total += cost

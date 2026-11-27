@@ -19,11 +19,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
+from cli_runner import run as cli
+
+TOOL =Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True)
+    return cli(TOOL, *args)
 
 
 def finding(**overrides: object) -> dict:

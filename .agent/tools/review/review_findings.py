@@ -164,11 +164,6 @@ def check_strict(findings: list[Finding], files: list[str] | None = None) -> Non
 
 NON_HUNK = "non-hunk"
 
-
-def is_non_hunk(finding: Finding) -> bool:
-    return finding.extra.get("anchor") == NON_HUNK
-
-
 def strip_markers(findings: list[Finding]) -> None:
     """Drop any incoming `anchor`: only `mark_outside` may set it, so a hand-set marker skips no rule."""
     for finding in findings:

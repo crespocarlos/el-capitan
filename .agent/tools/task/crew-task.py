@@ -18,7 +18,6 @@ DELEGATED = {
     "blocked": "<TASK_DIR> <reason>: one BLOCKED line, shown by crew ls",
     "worktree": "pref|record|check: where the worker runs, and whether a branch may be cut here",
 }
-TASKS_DIR = Path.home() / ".agent/tasks"
 
 
 def delegated(name: str, argv: list[str]) -> int:
@@ -87,7 +86,7 @@ def make_parser() -> argparse.ArgumentParser:
                             ("normalize-status", normalize, "rewrite legacy lowercase status tokens")):
         sub = commands.add_parser(name, help=text)
         sub.add_argument("--apply", action="store_true", help="write the changes (default: report only)")
-        sub.add_argument("--tasks-dir", type=Path, default=TASKS_DIR)
+        sub.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
         sub.set_defaults(run=run)
     for name, text in DELEGATED.items():
         commands.add_parser(name, help=text, add_help=False)

@@ -120,6 +120,8 @@ HOOK_MAX_PAYLOADS=64
 hook_segments() {
   local out rec
   HOOK_SEGS=()
+  # Checked first: piping into a missing awk can also print `printf: write error` on stderr.
+  command -v awk >/dev/null 2>&1 || hook_fail "awk is not installed; cannot parse the shell command"
   [ -n "${HOOK_AWK:-}" ] || read -r -d '' HOOK_AWK <<'AWK' || true
 function resolve(p, dir) {
   if (p == "" || p == "-") return dir

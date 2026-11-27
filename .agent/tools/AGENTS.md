@@ -17,15 +17,15 @@ Ruff (`ruff.toml`) owns generic Python style: imports, return annotations, funct
 of existing violations: delete an entry when its file is clean, never add one for new code.
 `ruff format` is not enforced yet. Behavioral changes also need the suite for the area you
 touched — `evals/memory/run.py` for memory, `evals/reviewer/test_*.py` for review,
-`evals/tools/test_*.py` for a single tool. Three suites create temporary git repositories and fail
-inside the Cursor sandbox with `Operation not permitted`: `bash .claude/hooks/fixtures/run.sh`,
-`python3 evals/tools/test_hooks_contract.py`, and `python3 evals/memory/run.py`. Run those with full
-permissions, and check exit codes directly rather than piping to `tail`, which hides them.
+`evals/tools/test_*.py` for a single tool. Two suites create temporary git repositories and fail
+inside the Cursor sandbox with `Operation not permitted`: `python3 evals/tools/test_hook_cases.py`
+and `python3 evals/memory/run.py`. Run those with full permissions, and check exit codes directly
+rather than piping to `tail`, which hides them.
 
 ## Hooks
 
 Hook scripts under `.claude/hooks/` are shell, and the module ceiling does not apply to them — but
-each one obeys the same contract, and the test that pins it is `evals/tools/test_hooks_contract.py`.
+each one obeys the same contract, and the test that pins it is `evals/tools/test_hook_cases.py`.
 Blocking is exit `2` with one line on stderr (Cursor gets its own JSON deny instead); no objection is
 exit `0` with no output; an input a hook cannot read is one stderr line and exit `0`. A hook never
 mixes the two blocking mechanisms, and only `guard/credentials.sh` fails closed, because only that
@@ -38,8 +38,8 @@ that one rule also prints an allow payload when it has no objection.
 - **Register it in both configs.** `crew-lint.py` fails an unregistered hook, and a file that is
   never registered is a guard that silently stopped guarding.
 - **Keep each rule file under 60 lines.** Anything longer is two rules.
-- **Pin both directions in the fixtures.** `.claude/hooks/fixtures/run.sh` is the verdict contract;
-  a new rule adds its allow and deny cases there and to the contract test's per-hook matrix.
+- **Pin both directions in the case tables.** `evals/tools/hook_cases.py` is the verdict contract;
+  a new rule adds its allow and deny cases there, and a new hook file is classified in it.
 
 ## Language floor
 
@@ -91,8 +91,8 @@ command (a command costs always-on router budget). What the hardening work added
   (`assemble_inputs.py` decides, `assemble_build.py` slices and writes).
 - New prose for these stages lives in `references/` files linked in one line (`stage-rules.md`,
   `worker-dispatch.md`): the prompt files are within bytes of `MAX_PROMPT_FILE_BYTES`.
-- `.github/workflows/validate.yml` lists suites by hand: a new `evals/**/test_*.py` is added there in
-  the same change, or CI never runs it.
+- `.github/workflows/validate.yml` runs every `evals/tools/test_*.py` and `evals/reviewer/test_*.py`
+  in one loop, so a new suite there runs in CI with no workflow change.
 
 ## Settings a repository declares in its AGENTS.md
 
@@ -160,7 +160,7 @@ Rules that the structural gate enforces (crew-lint rule names in parentheses; th
 - No prompt, doc, hook or tool names a removed command form (`removed-command-form`).
 - An import crosses packages only along an edge the `package-edges` block in TOOLS.md declares
   (`package-direction`).
-- `atomic_write`, `gh`, `read_json`, `slug_from_url` and the UTC stamp are each defined once in the tree, and
+- `atomic_write`, `gh`, `read_json_object`, `slug_from_url` and the UTC stamp are each defined once in the tree, and
   PROGRESS.md is touched only by `task/task_progress.py` (`single-owner`).
 - **Git lives in `lib/git.py`** (`direct-git`). No other Python module builds a `git` or `gh` argv, because a
   hand-rolled call reads empty output when git fails and then acts on it. Import the helper for the
@@ -293,6 +293,8 @@ that failed to look.
 Use the edit or write tool for every text change. A `python3 - <<'PY'`, `sed -i`, or redirect that
 rewrites a file bypasses the review diff and turns a wrong anchor into a silent no-op.
 
-When adding tests: put an area's tests in `evals/`, one file per tool or family, hermetic (no network,
-no API key), and register the file in `.github/workflows/validate.yml`. Test the message text and exit
-codes callers rely on; those are the contract.
+When adding tests: the area's file is in `evals/tools/` or `evals/reviewer/` (one file per tool or
+family), hermetic (no network, no API key); CI runs every `test_*.py` there. Run a command in process
+with `evals/tools/cli_runner.py` unless the test is about the process itself; the runner shares imported
+modules between calls, so a tool reads HOME and the environment at call time, never at import.
+Otherwise follow `~/.cursor/agents/references/testing-policy.md`.

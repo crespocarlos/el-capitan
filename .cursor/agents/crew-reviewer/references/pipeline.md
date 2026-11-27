@@ -30,7 +30,7 @@ dispatched context package as `<persona>.in.md` and raw response as `<persona>.o
 **Command surface — read it, do not probe it.** A failed invocation plus a `--help` round trip costs
 two tool calls for an argument shape stated here. Positional, not flag: `crew-review-hunks.py` takes
 the diff, `normalize` its input, `spec-context` the SPEC.md path. `coverage` gates a reviewer
-`layers.json`; `validate-map` serves `crew explain`; `check-map` parses a `reviewer-layers` reply;
+`layers.json`; `check-map` parses a `reviewer-layers` reply;
 `comments` writes the paste-ready bodies.
 
 **PR mode has no task.** A PR review produces no SPEC.md transition, `crew commit` never reads its
@@ -103,8 +103,8 @@ task's `REVIEW.md`.
    detect a tree that moved. `--lenient` is the single supported way to skip the gates, and this
    pipeline never passes it.
    With `layers.json` in `$REVIEW_ROOT`, persistence also requires every hunk id in `hunks.json` to
-   sit in exactly one layer (`crew-review-findings.py coverage`, shared with `validate-map`), so a map can
-   never pass validation and then fail coverage. It then appends `### Coverage by layer` to the
+   sit in exactly one layer (the check `crew-review-findings.py coverage` runs), so a map can
+   never pass `coverage` and then fail persistence. It then appends `### Coverage by layer` to the
    report: one line per layer with its hunks and the emitted findings that cite them, or `no
    findings`, so the reader sees which layers drew scrutiny. Do not write that section yourself.
    With `hunks.json` present, `persist` repeats the hunk-id check from `normalize`.

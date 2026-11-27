@@ -116,7 +116,7 @@ def typed_tests_block_problem(text: str) -> str:
 def typed_tests_problem(spec_path: Path) -> str:
     """Return the check's message when a typed ## Tests block has no runnable Command.
 
-    A spec with no ## Tests section passes: `crew test` reports WARN for it, which is a documented
+    A spec with no ## Tests section passes: it has no commands to run, which is a documented
     outcome, not an error.
     """
     try:

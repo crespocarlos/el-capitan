@@ -12,8 +12,10 @@ import json
 import os
 import urllib.request
 
-ES_URL = os.environ.get("ES_URL", "http://localhost:9200").rstrip("/")
-TRACE_INDEX = os.environ.get("ES_TRACE_INDEX", "traces-generic.otel-default")
+
+def es_url() -> str:
+    """`ES_URL`, read at call time so a caller's environment for this call is the one used."""
+    return os.environ.get("ES_URL", "http://localhost:9200").rstrip("/")
 
 
 def es(path: str, body: dict) -> dict:
@@ -26,7 +28,7 @@ def es(path: str, body: dict) -> dict:
         ).decode()
         headers["authorization"] = f"Basic {auth}"
     request = urllib.request.Request(
-        f"{ES_URL}/{path}", data=json.dumps(body).encode(), method="POST", headers=headers,
+        f"{es_url()}/{path}", data=json.dumps(body).encode(), method="POST", headers=headers,
     )
     with urllib.request.urlopen(request, timeout=60) as response:
         return json.load(response)
@@ -62,4 +64,5 @@ def spans(trace_ids: list[str]) -> list[dict]:
                 {"terms": {"trace_id": trace_ids}},
                 {"terms": {"attributes.gen_ai.operation.name": ["chat", "execute_tool"]}},
             ]}}}
-    return [hit["_source"] for hit in es(f"{TRACE_INDEX}/_search", body)["hits"]["hits"]]
+    index = os.environ.get("ES_TRACE_INDEX", "traces-generic.otel-default")
+    return [hit["_source"] for hit in es(f"{index}/_search", body)["hits"]["hits"]]

@@ -55,6 +55,25 @@ PY
 HOME="$home" bash "$root/install.sh" >/dev/null
 grep -q 'my-own-stop-hook.sh' "$home/.claude/settings.json"
 
+# A retired hook in an event the template no longer has is dropped too, with the event left empty.
+python3 - "$home/.claude/settings.json" "$home/.cursor/hooks.json" <<'PY'
+import json, sys
+for path, entry in zip(sys.argv[1:], ({"hooks": [{"type": "command", "command": "bash \"$HOME/.claude/hooks/session-event.sh\" end"}]},
+                                      {"command": "bash \"$HOME/.claude/hooks/session-event.sh\" end"})):
+    data = json.load(open(path))
+    data["hooks"]["SessionEnd" if "settings" in path else "sessionEnd"] = [entry]
+    json.dump(data, open(path, "w"), indent=2)
+PY
+HOME="$home" bash "$root/install.sh" >/dev/null
+if grep -qe 'session-event.sh' -e '"SessionEnd"' -e '"sessionEnd"' "$home/.claude/settings.json" "$home/.cursor/hooks.json"; then exit 1; fi
+
+# A skill deleted from the repo leaves no folder behind, not even one holding its dangling reference links.
+mkdir -p "$home/.cursor/skills/crew-gone/references"
+ln -s "$root/.cursor/skills/crew-gone/SKILL.md" "$home/.cursor/skills/crew-gone/SKILL.md"
+ln -s "$root/.cursor/skills/crew-gone/references/policy.md" "$home/.cursor/skills/crew-gone/references/policy.md"
+HOME="$home" bash "$root/install.sh" >/dev/null
+test ! -e "$home/.cursor/skills/crew-gone"
+
 # Merge scripts: idempotent, preserve foreign hooks, and fail loudly on bad input.
 counts() {
   python3 - "$1" <<'PY'
@@ -91,7 +110,7 @@ import json, sys
 data = json.load(open(sys.argv[1]))
 commands = [h["command"] for entries in data["hooks"].values() for e in entries for h in e.get("hooks", [])]
 assert any("guard/credentials.sh" in c for c in commands), "guard/credentials.sh is not registered"
-assert any("session-event.sh" in c and " start" in c for c in commands), "session-event start is not registered"
+assert any("memory-context.sh" in c for c in commands), "memory-context.sh is not registered"
 PY
 
 # Same retirement rule for the Cursor template.

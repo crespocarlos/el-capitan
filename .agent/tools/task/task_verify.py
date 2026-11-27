@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 from task_verify_env import (
@@ -60,7 +59,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--list", action="store_true", help="print the gates and their source; run nothing")
     parser.add_argument("--background", action="store_true", help="run detached; poll with --wait")
     parser.add_argument("--wait", type=Path, default=None, metavar="JSON", help="wait for a background run")
-    parser.add_argument("--since", default=None, help="with --wait: ignore a result older than this ISO time (printed by --background)")
     parser.add_argument("--wait-timeout", type=int, default=None, metavar="SECONDS",
                         help="with --wait: give up after this long, exit 4 (default: no limit while the run's pid is alive)")
     return parser.parse_args(argv)
@@ -148,7 +146,7 @@ def run_all(args: argparse.Namespace, root: Path, base: str, declared: dict, out
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     if args.wait:
-        return wait(args.wait, args.wait_timeout, args.since)
+        return wait(args.wait, args.wait_timeout)
     out = out_path(args)
     if args.background and args.list:
         print("verify: --background cannot be used with --list (a list run never writes a result to wait on)", file=sys.stderr)
@@ -210,15 +208,8 @@ def background(argv: list[str], out: Path | None) -> int:
                                  stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
     if read(out).get("state") == "starting":  # the child's own payloads carry its pid too
         atomic_write(out, json.dumps({**starting, "pid": child.pid}) + "\n")
-    print(f"started pid={child.pid} out={out} (wait: crew-verify.py --wait {out} --since {launched})")
+    print(f"started pid={child.pid} out={out} (wait: crew-verify.py --wait {out})")
     return 0
-
-
-def fresh(result: dict, since: str | None) -> bool:
-    try:
-        return since is None or datetime.fromisoformat(str(result.get("started"))) >= datetime.fromisoformat(since)
-    except ValueError:
-        return False
 
 
 def alive(pid: object) -> bool:
@@ -233,12 +224,12 @@ def alive(pid: object) -> bool:
     return True
 
 
-def answer(result: dict, since: str | None, path: Path) -> int | None:
-    """The exit code a finished (`done` or `failed`) fresh result gives, or None while it is not finished."""
-    if result.get("state") == "failed" and fresh(result, since):
+def answer(result: dict, path: Path) -> int | None:
+    """The exit code a finished (`done` or `failed`) result gives, or None while it is not finished."""
+    if result.get("state") == "failed":
         print(f"verify: NOT VERIFIED: the run failed: {result.get('reason')} (log: {log_of(path)})", file=sys.stderr)
         return 2
-    if result.get("state") != "done" or not fresh(result, since):
+    if result.get("state") != "done":
         return None
     if result.get("partial") and result["gates"]:
         print(partial_line(result["skipped"]))
@@ -250,24 +241,24 @@ def answer(result: dict, since: str | None, path: Path) -> int | None:
     return int(result.get("verdict_exit", 3))
 
 
-def wait(path: Path, wait_timeout: int | None, since: str | None = None) -> int:
+def wait(path: Path, wait_timeout: int | None) -> int:
     """Block until the run at `path` finishes, its child dies, or `wait_timeout` seconds pass (exit 4)."""
     started = time.monotonic()
     while wait_timeout is None or time.monotonic() - started < wait_timeout:
         result = read(path)
-        code = answer(result, since, path)
+        code = answer(result, path)
         if code is not None:
             return code
         pid = result.get("pid")
         gone = not alive(pid) if pid is not None else time.monotonic() - started > NO_PID_GRACE
         if gone:
-            code = answer(read(path), since, path)
+            code = answer(read(path), path)
             if code is not None:
                 return code
             what = f"pid {pid} exited" if pid is not None else "no running verify is recorded"
             print(f"verify: NOT VERIFIED: the run failed: {what} without a result (log: {log_of(path)})", file=sys.stderr)
             return 2
-        time.sleep(1)
+        time.sleep(float(os.environ.get("CREW_VERIFY_POLL_SECONDS") or 1))  # how often --wait reads the result
     print(f"verify: {path} still running after {wait_timeout}s; do not hand off (log: {log_of(path)})", file=sys.stderr)
     return EXIT_STILL_RUNNING
 

@@ -71,19 +71,6 @@
       "json_smoke": ["select", "--mode", "self"]
     },
     {
-      "name": "crew-review-stats.py",
-      "dir": "review",
-      "kind": "command",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "argparse",
-      "smoke": "--help",
-      "output": "json",
-      "bounded": true,
-      "list_flags": ["--limit", "--max-chars"],
-      "json_smoke": ["--json", "--tasks-dir", "@tmpdir"]
-    },
-    {
       "name": "crew-review-hunks.py",
       "dir": "review",
       "kind": "command",
@@ -152,16 +139,6 @@
       "owner": "crew-orchestrator",
       "help": "argparse",
       "smoke": "--help",
-      "output": "human"
-    },
-    {
-      "name": "crew-next.py",
-      "dir": "task",
-      "kind": "command",
-      "category": "task",
-      "owner": "crew-orchestrator",
-      "help": "argparse",
-      "smoke": "--stages",
       "output": "human"
     },
     {
@@ -515,8 +492,8 @@
       "kind": "module",
       "category": "library",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-next.py and review_render.py (the next-step table)",
-      "smoke": "imported by crew-next.py and review_render.py (the next-step table)"
+      "help": "imported by review_render.py (the next-step table)",
+      "smoke": "imported by review_render.py (the next-step table)"
     },
     {
       "name": "git.py",
@@ -704,7 +681,7 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py: unit writes: add, cite, supersede, archive, list, show",
+      "help": "imported by crew-mem.py: unit writes: add, cite, supersede, archive (used by consolidate), list, show",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -731,7 +708,7 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py: intake: `.inbox` drafts and ingesting external units",
+      "help": "imported by crew-mem.py: intake: `.inbox` drafts",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -740,7 +717,7 @@
       "kind": "module",
       "category": "memory",
       "owner": "crew-memory",
-      "help": "imported by crew-mem.py: init, reindex, doctor, stats, consolidate",
+      "help": "imported by crew-mem.py: init, consolidate",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -776,8 +753,8 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by review_report.py and review_stats.py: deferred and dropped records, the cost METRIC, the outcome journal",
-      "smoke": "imported by review_report.py and review_stats.py"
+      "help": "imported by review_report.py: deferred and dropped records, the cost METRIC, the outcome journal",
+      "smoke": "imported by review_report.py"
     },
     {
       "name": "review_parse.py",
@@ -922,15 +899,6 @@
       "owner": "crew-reviewer",
       "help": "imported by crew-review-findings.py: the `crew-review-findings.py` subcommand definitions",
       "smoke": "imported by crew-review-findings.py"
-    },
-    {
-      "name": "review_stats.py",
-      "dir": "review",
-      "kind": "module",
-      "category": "review",
-      "owner": "crew-reviewer",
-      "help": "imported by crew-review-stats.py: `crew review-stats`: the corpus, findings by label, precision",
-      "smoke": "imported by crew-review-stats.py"
     },
     {
       "name": "review_render.py",

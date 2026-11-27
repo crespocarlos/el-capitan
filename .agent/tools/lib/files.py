@@ -6,7 +6,6 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any
 
 FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.M | re.S)  # a fenced code block; group 1: its body
 
@@ -42,11 +41,6 @@ def atomic_write(path: Path, content: str) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-
-
-def read_json(path: Path) -> Any:
-    """Parse a JSON file, leaving OSError and JSONDecodeError to the caller's own message."""
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def read_json_object(path: Path, key: str | None = None) -> dict:

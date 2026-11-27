@@ -17,26 +17,30 @@ from pathlib import Path
 
 from lib.git import GitError, commit_time, remote_url, remotes, slug_from_url
 
-DEFAULT_DIR = Path("~/Documents/dev/nightshift-pr-helper").expanduser()
-PLIST = Path("~/Library/LaunchAgents/dev.prhelper.web.plist").expanduser()
 CANONICAL_REMOTE = "elastic/nightshift-pr-helper"
 # `data/logs/<label suffix>.log` holds both streams; launchd.sh writes `web.log`/`sync.log`.
 LOG_TAIL_LINES = 15
 PORTS_TO_CHECK = (5601, 9200)
 
 
+def default_dir() -> Path:
+    """Read at call time, so a HOME set for one call is the HOME it uses."""
+    return Path("~/Documents/dev/nightshift-pr-helper").expanduser()
+
+
 def plist_working_directory() -> tuple[Path | None, str]:
     """The checkout the running server serves, which can differ from the default path."""
-    if not PLIST.is_file():
-        return None, f"{PLIST} is missing (npm run launchd:install)"
+    plist = Path("~/Library/LaunchAgents/dev.prhelper.web.plist").expanduser()
+    if not plist.is_file():
+        return None, f"{plist} is missing (npm run launchd:install)"
     try:
-        with PLIST.open("rb") as handle:
+        with plist.open("rb") as handle:
             payload = plistlib.load(handle)
     except (OSError, plistlib.InvalidFileException) as error:
-        return None, f"cannot read {PLIST}: {error}"
+        return None, f"cannot read {plist}: {error}"
     root = payload.get("WorkingDirectory")
     if not root:
-        return None, f"{PLIST} has no WorkingDirectory"
+        return None, f"{plist} has no WorkingDirectory"
     return Path(root).expanduser(), ""
 
 
@@ -48,7 +52,7 @@ def resolve_root() -> tuple[Path, str]:
     from_plist, _ = plist_working_directory()
     if from_plist is not None and from_plist.is_dir():
         return from_plist, "LaunchAgent WorkingDirectory"
-    return DEFAULT_DIR, "default path"
+    return default_dir(), "default path"
 
 
 def is_canonical_remote(url: str) -> bool:
@@ -101,7 +105,7 @@ def launchd_state() -> tuple[bool, str]:
     result = subprocess.run(["launchctl", "print", label], capture_output=True, text=True)
     if result.returncode == 0:
         return True, ""
-    log = DEFAULT_DIR / "data" / "logs" / "web.log"
+    log = default_dir() / "data" / "logs" / "web.log"
     tail = ""
     if log.is_file():
         lines = log.read_text(errors="replace").splitlines()[-LOG_TAIL_LINES:]

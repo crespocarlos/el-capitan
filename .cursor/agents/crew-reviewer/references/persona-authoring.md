@@ -1,6 +1,6 @@
 # Adding a reviewer persona
 
-Five changes, three of them in code (steps 2, 4, and 5). Miss one and the persona is dispatched with
+Four changes, two of them in code (steps 2 and 4). Miss one and the persona is dispatched with
 no package, or never dispatched at all.
 
 1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
@@ -25,8 +25,6 @@ no package, or never dispatched at all.
    layer kinds its lens reads first. The tool derives its persona list from `PERSONAS`, so a name
    missing from `PRIMARY_KINDS` stops the run with a message naming it instead of silently writing no
    package.
-5. **Fixture** — add the persona to an `evals/reviewer/fixtures.json` case, or its prompt is
-   unmeasured.
 
 Example: an SRE team could add `reviewer-observability.md`, selected on monitoring and alerting paths,
 checking query quality, false-positive risk, and alert actionability.

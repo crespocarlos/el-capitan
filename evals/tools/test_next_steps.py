@@ -7,7 +7,7 @@ knows, so this suite pins both directions: a missing key fails as loudly as a wr
 skill's trailer must name something the table also answers.
 
 The fixture trees are written on disk rather than passed as strings, so each case exercises the same
-load-and-resolve path `crew-next.py` and `review_render.footer` take.
+load-and-resolve path `review_render.footer` takes.
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def test_every_command_is_one_the_router_knows() -> None:
 def test_every_key_has_three_parts_and_a_known_workflow() -> None:
     for key in table():
         assert len(key.split(".")) == 3, key
-        assert key.split(".")[0] in ("build", "lightweight", "respond"), key
+        assert key.split(".")[0] in ("build", "respond"), key
 
 
 def test_a_bare_stage_resolves_when_one_workflow_holds_it() -> None:
@@ -66,7 +66,7 @@ def test_a_bare_stage_resolves_when_one_workflow_holds_it() -> None:
 def test_an_ambiguous_stage_names_the_candidates() -> None:
     """A stage two workflows both answer must refuse the short form rather than pick one."""
     rules = dict(table())
-    rules["lightweight.review.block"] = {"command": "crew commit", "why": "test fixture"}
+    rules["respond.review.block"] = {"command": "crew commit", "why": "test fixture"}
     try:
         resolve(rules, "review.block")
     except ValueError as error:

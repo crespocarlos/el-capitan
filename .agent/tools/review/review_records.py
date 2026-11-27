@@ -2,7 +2,7 @@
 
 Dedupe keys on title and anchor, not the rendered label, so a raised score never appends twice.
 `crew review address` appends one outcome per decision to `<review>/outcomes.jsonl` or
-`<task>/review/outcomes.jsonl`; both shapes are read back for the denominator.
+`<task>/review/outcomes.jsonl`; `outcomes` reads both shapes back.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import review_bootstrap  # noqa: F401
 
 from review_models import Finding, score_move
 from review_render import label_with_score
-from review_vocabulary import CONFIDENCE, PERSONAS, canonical_personas
+from review_vocabulary import PERSONAS, canonical_personas
 from task_progress import append_metric, has_metric
 
 from lib.clock import utc_date, utc_iso
@@ -175,62 +175,17 @@ def decided(review_dir: Path) -> dict[str, str]:
     """Fingerprint → outcome for one review directory, the last record winning.
 
     Last wins because append-only position encodes sequence and an outcome can change: a `deferred`
-    fix applied in a later pass is `fixed`, and the earlier line is history rather than truth.
-    """
-    return {fingerprint: outcome for fingerprint, (outcome, _) in _joined(review_dir).items()}
-
-
-def scored(directory: Path) -> dict:
-    """Fingerprint → the score a decision was made under, when the record carries one.
-
-    A raise is only evidence while it stays attached to the read that settled it, so the outcome
-    journal is where the final score is authoritative: `crew review-stats` joins the score the
-    finding was acted on under, not the one it arrived with. Absent means the decision recorded no
-    score, which stays `unscored` rather than inheriting a persona's original guess.
-
-    The task-level journal holds records from every review of that task, so a record is read only
-    when it names this review — the same filter `_joined` applies — or one review's raise would be
-    joined to a sibling review's finding that happens to share a fingerprint. A value outside the
-    1-5 scale is not a score either, and is dropped rather than banded as `unscored`, which would
-    hide the score the finding itself carries.
-    """
-    target = directory.resolve()
-    found: dict = {}
-    for path in journals(directory):
-        for record in read_journal(path):
-            if owner(path, record) != target:
-                continue
-            value = record.get("confidence")
-            if isinstance(value, int) and not isinstance(value, bool) and value in CONFIDENCE:
-                found[str(record["fingerprint"])] = value
-    return found
-
-
-def _joined(review_dir: Path) -> dict[str, tuple[str, str]]:
-    """Fingerprint → (outcome, journal shape) for one review directory.
-
-    The shape is retained because the two journals record different populations: a run scoped to a
-    review directory journals beside it, while a run naming the review's path journals once per task
-    and disambiguates with its `review_dir` field. Reporting only one shape is what made a corpus
-    holding 356 recorded decisions read as 15.
+    fix applied in a later pass is `fixed`, and the earlier line is history rather than truth. The
+    task-level journal holds every review of the task, so a record counts only for the review it names.
     """
     target = review_dir.resolve()
-    found: dict[str, tuple[str, str]] = {}
+    found: dict[str, str] = {}
     for path in journals(review_dir):
-        shape = "review" if path.parent == review_dir else "task"
         for record in read_journal(path):
             value = str(record.get("outcome") or "").strip().lower()
             if value and owner(path, record) == target:
-                found[record["fingerprint"]] = (value, shape)
+                found[record["fingerprint"]] = value
     return found
-
-
-def by_shape(review_dir: Path) -> dict[str, int]:
-    """How many findings each journal shape accounts for, so a total can be broken down."""
-    counts = {"review": 0, "task": 0}
-    for _, shape in _joined(review_dir).values():
-        counts[shape] += 1
-    return counts
 
 
 def summary(review_dir: Path) -> dict:

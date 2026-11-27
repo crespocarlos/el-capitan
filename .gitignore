@@ -18,5 +18,4 @@
 # Local-only overrides — never commit
 .claude/settings.local.json
 .claude/worktrees/
-evals/reviewer/results/
 .ruff_cache/

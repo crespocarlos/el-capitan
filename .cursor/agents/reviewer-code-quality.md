@@ -57,7 +57,10 @@ errors, null handling, edge case coverage at the function level.
 New behavior has corresponding tests. Changed behavior has updated tests. Tests actually assert
 something meaningful — not just "it ran without throwing". Test names describe what they verify.
 Also check whether each added test protects a distinct contractual behavior or failure mode under
-`personal.mdc` Testing. For redundancy, name the test that already covers the behavior; otherwise
+the [testing policy](~/.cursor/agents/references/testing-policy.md), and flag its four test-shape
+breaches: a new test file that states no reason an existing one could not hold it; cases differing
+only by literals that are not one table; a test pinning prose (prompt, doc or message wording beyond
+the contract); a real `sleep` wait. For redundancy, name the test that already covers the behavior; otherwise
 state the missing contract or plausible bad implementation the test fails to distinguish. If the
 change adds tests but provides no pruning pass and test-by-test evidence, flag the missing
 completion evidence.

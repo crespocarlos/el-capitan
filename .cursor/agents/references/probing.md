@@ -79,6 +79,16 @@ not the whole workflow, the stored record, or the call path around it.
   no run that did not execute is ever reported as though it had. "Cannot verify here" with its reason
   is an answer; a guess dressed as a measurement is not.
 
+## Saving the reply
+
+In self and changes mode `persist` refuses an emitted `[needs more info]` or 1-2 finding until the
+probe is on record. Pipe the worker's reply, unedited, into `crew-review-findings.py save-out
+--review-dir <review-dir> --persona probe --harness <name>` (add `--agent-id` when known): it writes
+`probe.out.md` with the provenance record `persist` checks, so a hand-written or edited file is
+refused. When the probe cannot run here, the report says `probe: skipped <reason>: <detail>` instead,
+`<reason>` one of `no-runtime`, `no-network`, `pr-only`, `external-service`; any other reason is
+refused, and every unsettled finding stays `[needs more info]`.
+
 ## Who probes
 
 A persona cannot run code: `readonly: true` is the only tool restriction Cursor honours, and a persona

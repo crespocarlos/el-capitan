@@ -188,6 +188,7 @@ When the Implementation Report is available:
 - Never start the worker without a gate-checked, approved SPEC.md
 - The skill handles ALL user interaction — the worker is non-interactive
 - If the worker returns failures, always surface them to the user with options
+- Tests the run adds follow the [testing policy](~/.cursor/agents/references/testing-policy.md)
 - **Stop after all tasks pass.** Never commit, push, or create a PR. Always output the handoff message (Step 7) before stopping.
 - **ALWAYS follow crew-builder's protocol for implementation.** The orchestrator handles setup and gates. Code changes follow crew-builder's instructions — either via a subagent (Cursor Task tool) or by reading and following crew-builder's protocol directly. Never skip crew-builder's protocol and implement ad-hoc.
 

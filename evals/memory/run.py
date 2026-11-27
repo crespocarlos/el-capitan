@@ -104,7 +104,7 @@ approval gate.
             store, 'add', '--type', 'observation', '--scope', 'global',
             '--title', 'immutable observation', input='Manual raw evidence.\n',
         )
-        archive_observation = command(store, 'archive', manual_observation.stdout.strip())
+        supersede_observation = command(store, 'supersede', manual_observation.stdout.strip(), manual_observation.stdout.strip())
         traversal_add = command(
             store, 'journal', 'add', '--title', 'bad', '--tags', 'x', '--repo', '../escape',
             journal_dir=journal, input='x\n',
@@ -268,7 +268,7 @@ Body.
                 owner_repo_add.returncode == 0
                 and (store / 'observations' / 'acme-gamma' / f'{owner_repo_add.stdout.strip()}.md').exists()
             ),
-            'observations_are_immutable': archive_observation.returncode == 1 and 'immutable' in archive_observation.stderr,
+            'observations_are_immutable': supersede_observation.returncode == 1 and 'immutable' in supersede_observation.stderr,
             'unsafe_scope_rejected': (
                 traversal_add.returncode == 1 and traversal_import.returncode == 2
                 and not (store / 'observations' / '..' / 'escape').exists()

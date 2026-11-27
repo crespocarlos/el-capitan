@@ -187,7 +187,7 @@ summary).
 `# Repo memory`), then `# Diff` with `package.diff` in full, then the per-persona tail (`# Size gate`,
 `## Spec`, `## Reading map`, `# Repository guidance`, prior-round block, consumers, `# Prompt tier`).
 Sections that do not apply are omitted; the rest keep this order. The head and the diff are identical
-across a run's packages, so a prefix cache pays for them once (`test_assemble_order.py` pins it).
+across a run's packages, so a prefix cache pays for them once (`test_assemble_packages.py` pins it).
 
 ## Repo memory
 

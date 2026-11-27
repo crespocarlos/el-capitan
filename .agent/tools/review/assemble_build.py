@@ -122,16 +122,6 @@ def build(persona: str, review_dir: Path, config: dict, shared: str,
     return "".join(parts), report
 
 
-def assemble_all(review_dir: Path, config: dict, hunks_json: dict | None) -> list[tuple]:
-    """Every package, built before any is written; the shared head is built once, so it is identical."""
-    head = common(review_dir, config)
-    assembled = []
-    for persona in PERSONAS:
-        content, report = build(persona, review_dir, config, head, hunks_json)
-        assembled.append((persona, content, report))
-    return assembled
-
-
 def write_packages(review_dir: Path, assembled: list[tuple]) -> None:
     """Write each package and print its size plus whatever the run narrowed or sent whole."""
     for persona, content, report in assembled:

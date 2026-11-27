@@ -18,194 +18,27 @@ jobs:
           fetch-depth: 0
 
       # Every check below is hermetic: no network, no API key, no model calls.
-      - name: Repo conventions (routing, catalog, references)
+      - name: Repo conventions (routing, catalog, references, prompt budget)
         run: python3 .agent/tools/maintenance/crew-lint.py --budget
-
-      - name: Hook and task-state fixtures
-        run: bash .claude/hooks/fixtures/run.sh
-
-      - name: Hook stdout/stderr/exit contract
-        run: python3 evals/tools/test_hooks_contract.py
-
-      - name: Guard cases (deny table, allow corpus, both payload shapes)
-        run: python3 evals/tools/test_hook_cases.py
-
-      - name: Install migration and idempotency
-        run: bash .claude/hooks/fixtures/install.sh
-
-      - name: Upgrade from origin/main into a fake HOME
-        run: python3 evals/tools/test_upgrade.py
-
-      - name: Installed commands through a symlink from outside the repo
-        run: python3 evals/tools/test_installed_commands.py
-
-      - name: Memory eval
-        run: python3 evals/memory/run.py
-
-      - name: Memory scope key per remote shape
-        run: python3 evals/tools/test_memory_repo_key.py
-
-      - name: Review-findings tests
-        run: python3 evals/reviewer/test_review_findings.py
-
-      - name: Reviewer eval scorer tests
-        run: python3 evals/reviewer/test_scoring.py
-
-      - name: Reviewer persona contract tests
-        run: python3 evals/reviewer/test_personas.py
-
-      - name: Review-hunks parser tests
-        run: python3 evals/tools/test_review_hunks.py
-
-      - name: Review evidence gates (strict default)
-        run: python3 evals/tools/test_review_strict_default.py
-
-      - name: Review comments, dropped records, layer-reply parse
-        run: python3 evals/tools/test_review_comments.py
-
-      - name: Review outcome records
-        run: python3 evals/tools/test_review_outcome.py
-
-      - name: Review corpus statistics
-        run: python3 evals/tools/test_review_stats.py
-
-      - name: Finding confidence (scale, floor, render, bands)
-        run: python3 evals/tools/test_confidence.py
-
-      - name: Review report gate (list, verdict, footer)
-        run: python3 evals/tools/test_review_report_gate.py
-
-      - name: Prior-round review (content ids, earlier-round block, collapse)
-        run: python3 evals/tools/test_review_prior.py
-
-      - name: Prior-round package block (titles, decisions, re-raise rule)
-        run: python3 evals/tools/test_assemble_prior.py
-
-      - name: Handoff trailer grammar (lint_handoff)
-        run: python3 evals/tools/test_crew_lint_handoff.py
-
-      - name: Next-step table (one answer per stage, router-resolvable)
-        run: python3 evals/tools/test_crew_next.py
-
-      - name: Resolver verdict contract (one gate, challenge, Ask floor)
-        run: python3 evals/tools/test_resolver_confidence.py
-
-      - name: Resolver context and intent contract (guidance, Decide, overfitting)
-        run: python3 evals/tools/test_resolver_intent.py
-
-      - name: Resolver edit-verify contract (scope, tests, skipped-check reasons)
-        run: python3 evals/tools/test_resolver_verify.py
-
-      - name: Resolver probe contract (unsettled threads are measured)
-        run: python3 evals/tools/test_resolver_probe.py
-
-      - name: Respond stage order (address-pr → commit → push → reply)
-        run: python3 evals/tools/test_respond_handoff.py
-
-      - name: Package assembly tests
-        run: python3 evals/tools/test_assemble_packages.py
-
-      - name: Package order and shared prefix (assemble_order)
-        run: python3 evals/tools/test_assemble_order.py
-
-      - name: Review cost metric (review_cost_metric)
-        run: python3 evals/tools/test_review_cost_metric.py
-
-      - name: Stage gates in skills (open-pr base, routing, e2e, cost line)
-        run: python3 evals/tools/test_open_pr_gate.py
-
-      - name: Landed state in crew ls
-        run: python3 evals/tools/test_landed.py
-
-      - name: PROGRESS.md owner (UTC and legacy stamps, BLOCKED, owner/repo parsing)
-        run: python3 evals/tools/test_task_progress.py
-
-      - name: Gate verify with CI parity
-        run: python3 evals/tools/test_task_verify.py
-
-      - name: Gate sources outside this repo (Node pin, unreadable CI, prose checks)
-        run: python3 evals/tools/test_task_gate_sources.py
-
-      - name: crew ls --watch
-        run: python3 evals/tools/test_ls_watch.py
-
-      - name: Builder report checks (verbatim gates, unverified claims)
-        run: python3 evals/tools/test_builder_report.py
-
-      - name: Implement worktree rule
-        run: python3 evals/tools/test_implement_worktree.py
-
-      - name: Nightshift e2e client tests
-        run: python3 evals/tools/test_nightshift_e2e.py
-
-      - name: Install managed-block tests
-        run: python3 evals/tools/test_install_blocks.py
-
-      - name: Task-context tool tests
-        run: python3 evals/tools/test_task_context.py
-
-      - name: Tool reference lint tests
-        run: python3 evals/tools/test_crew_lint_mcp.py
-
-      - name: PR action tool tests
-        run: python3 evals/tools/test_pr_review_actions.py
-
-      - name: PR read tool tests
-        run: python3 evals/tools/test_pr_reads.py
-
-      - name: Git library tests
-        run: python3 evals/tools/test_git_lib.py
-
-      - name: Review workspace tests
-        run: python3 evals/tools/test_review_dir.py
-
-      - name: Task lifecycle and review-location tests
-        run: python3 evals/tools/test_lifecycle.py
-
-      - name: Task status contract tests
-        run: python3 evals/tools/test_status_contract.py
-
-      - name: Held-out prompt cases
-        run: python3 evals/prompts/run.py
-
-      - name: Prune report tests
-        run: python3 evals/tools/test_prune_report.py
-
-      - name: Tracked local-state tests
-        run: python3 evals/tools/test_tracked_state.py
-
-      - name: Memory capture flow tests
-        run: python3 evals/tools/test_capture_flow.py
-
-      - name: Permission rule tests
-        run: python3 evals/tools/test_permission_rules.py
-
-      - name: Write boundary tests
-        run: python3 evals/tools/test_write_boundary.py
-
-      - name: Escape rule tests
-        run: python3 evals/tools/test_escape_rule.py
 
       - name: Ruff (version pinned in ruff.toml)
         run: bash evals/ruff.sh check .
 
-      - name: crew-lint rule registry and repository Python rules
-        run: python3 evals/tools/test_lint_rules.py
+      - name: Tests (tools, hooks, reviewer, install surface)
+        run: |
+          failed=0
+          for t in evals/tools/test_*.py evals/reviewer/test_*.py; do
+            echo "::group::$t"
+            python3 "$t" || { echo "::error::$t failed"; failed=1; }
+            echo "::endgroup::"
+          done
+          exit "$failed"
 
-      - name: Command surface (catalog kinds, install links)
-        run: python3 evals/tools/test_command_names.py
+      - name: Install migration and idempotency
+        run: bash .claude/hooks/fixtures/install.sh
 
-      - name: Agent readonly declaration
-        run: python3 evals/tools/test_agent_readonly.py
-
-      - name: Review probe contract (one dispatch, score either way, tree restored)
-        run: python3 evals/tools/test_review_probe.py
-
-      - name: Specwriter critic contract (budget, verdict line)
-        run: python3 evals/tools/test_specwriter_critics.py
-
-      - name: Python syntax
-        run: python3 -m compileall -q .agent/tools evals .claude
+      - name: Memory eval
+        run: python3 evals/memory/run.py
 
       - name: Shell syntax
         run: |

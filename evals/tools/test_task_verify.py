@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""`crew-verify.py`: the repository's gates, run the way its CI runs them.
+"""`crew-verify.py`: the repository's gates, run the way its CI runs them, and the builder report checked against them.
 
 The fixture's test clears `CI` but not `GITHUB_ACTIONS`, which the workflow sets, so a mirror that
 did not copy the runner env would pass it. Declarations come from the base branch, so a PR cannot
-weaken the gates it is judged by. The removed `crew-progress.py verify` form exits 2.
+weaken the gates it is judged by. In other repos verify picks the Node by the first pin, names CI it
+cannot read, surfaces prose commands without running them, and never reports a pass with nothing
+runnable. `report-check` refuses a REPORT.md that claims a gate other than as it exited. `--wait`
+polls every 20 ms here (`CREW_VERIFY_POLL_SECONDS`); the cases run side by side, each in its own
+directory, because each spends its time in git.
 """
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,6 +25,8 @@ TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
 CLI = TASK_TOOLS / "crew-verify.py"
 sys.path.insert(0, str(TASK_TOOLS))
 sys.path.insert(0, str(TASK_TOOLS.parent))
+from cli_runner import run as run_cli  # noqa: E402
+
 FAILED: list[str] = []
 
 WORKFLOW = """name: CI
@@ -82,13 +89,17 @@ def fixture(tmp: Path, level: str = "1", workflow: bool = True) -> Path:
     return root
 
 
+def cli(*arguments: str, home: Path) -> subprocess.CompletedProcess:
+    """`crew-verify.py` as a child process, its `--wait` polling every 20 ms instead of every second."""
+    env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null", "CREW_VERIFY_POLL_SECONDS": "0.02"}
+    env.pop("CREW_TASK_DIR", None)
+    return subprocess.run([sys.executable, str(CLI), *arguments], capture_output=True, text=True, env=env, timeout=120)
+
+
 def verify(root: Path, home: Path, *extra: str) -> tuple[int, str, dict]:
     out = root.parent / "gates.json"
     out.unlink(missing_ok=True)
-    env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
-    env.pop("CREW_TASK_DIR", None)
-    done = subprocess.run([sys.executable, str(CLI), "--repo", str(root), "--base", "main",
-                           "--out", str(out), *extra], capture_output=True, text=True, env=env)
+    done = cli("--repo", str(root), "--base", "main", "--out", str(out), *extra, home=home)
     data = json.loads(out.read_text(encoding="utf-8")) if out.is_file() else {}
     return done.returncode, done.stdout + done.stderr, data
 
@@ -211,18 +222,10 @@ def background_run(tmp: Path) -> None:
     root, home = fixture(tmp / "bg"), tmp / "home5"
     home.mkdir(parents=True)
     out = tmp / "bg" / "gates.json"
-    env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
-    started = subprocess.run([sys.executable, str(CLI), "--repo", str(root), "--base", "main", "--out", str(out),
-                              "--background"], capture_output=True, text=True, env=env)
+    started = cli("--repo", str(root), "--base", "main", "--out", str(out), "--background", home=home)
     check("--background prints started and returns at once", started.returncode == 0 and "started pid=" in started.stdout, started)
-    waited = subprocess.run([sys.executable, str(CLI), "--wait", str(out), "--timeout", "60"],
-                            capture_output=True, text=True, env=env)
+    waited = cli("--wait", str(out), "--timeout", "60", home=home)
     check("--wait prints the gate lines and the failing exit", "unit-tests exit=1" in waited.stdout and waited.returncode == 1, waited)
-
-
-def cli(*arguments: str, home: Path) -> subprocess.CompletedProcess:
-    env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
-    return subprocess.run([sys.executable, str(CLI), *arguments], capture_output=True, text=True, env=env)
 
 
 def stale_result_is_not_waited_on(tmp: Path) -> None:
@@ -244,7 +247,7 @@ def stale_result_is_not_waited_on(tmp: Path) -> None:
 
 def bounded(*arguments: str, home: Path, seconds: int = 60) -> subprocess.CompletedProcess | None:
     """`cli` that gives up after `seconds`: None means the wait hung."""
-    env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null"}
+    env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null", "CREW_VERIFY_POLL_SECONDS": "0.02"}
     try:
         return subprocess.run([sys.executable, str(CLI), *arguments], capture_output=True, text=True, env=env, timeout=seconds)
     except subprocess.TimeoutExpired:
@@ -300,26 +303,380 @@ def wait_matches_foreground_when_unverified(tmp: Path) -> None:
     check("--wait prints the NOT VERIFIED line", "NOT VERIFIED" in waited.stdout + waited.stderr, waited)
 
 
-def old_form_is_gone(tmp: Path) -> None:
-    root = fixture(tmp / "old")
-    done = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-progress.py"), "verify", "--repo", str(root), "--base", "main",
-                           "--list"], capture_output=True, text=True)
-    check("`crew-progress.py verify` is an unknown argument (exit 2)", done.returncode == 2 and "unrecognized" in done.stderr, done)
+def pinned(tmp: Path, name: str, files: dict[str, str]) -> tuple[Path, Path]:
+    """A repo with the CI workflow, no `.nvmrc`, and exactly `files` as its Node pin (if any)."""
+    root, home = fixture(tmp / name), tmp / f"home-{name}"
+    home.mkdir(parents=True)
+    git(root, "rm", "-q", ".nvmrc")
+    for path, text in files.items():
+        write(root, path, text)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "pin")
+    return root, home
 
 
-def main() -> int:
+def node_pin_order(tmp: Path) -> None:
+    """The first pin found picks the Node: .nvmrc, .node-version, .tool-versions, engines.node; none forces nothing."""
+    cases = (
+        ("none", {}, "22.1.0", {"source": "none", "required": ""}),
+        ("nodever", {".node-version": "20.1\n"}, "20.1.0", {"required": "20.1", "used": "v20.1.0", "source": ".node-version"}),
+        ("tool", {".tool-versions": "python 3.11.2\nnodejs 18.2.0\n", "package.json": '{"engines": {"node": "22"}}'}, "18.2.0",
+         {"source": ".tool-versions", "used": "v18.2.0"}),
+        ("engines", {"package.json": '{"name": "x", "engines": {"node": "^20.3.0"}}'}, "20.3.0",
+         {"required": "20.3.0", "used": "v20.3.0", "source": "package.json engines.node"}),
+        ("nvmrc", {".nvmrc": "v22\n", ".node-version": "20\n"}, "22.1.0", {"source": ".nvmrc", "used": "v22.1.0"}),
+    )
+    for name, files, installed, expected in cases:
+        root, home = pinned(tmp, name, files)
+        fake_node(home, installed)
+        _, out, data = verify(root, home)
+        check(f"Node pin {name}: {expected}", all(data["node"].get(k) == v for k, v in expected.items())
+              and (name != "none" or ("no Node pin found, using PATH" in out and data["node"]["used"] != "v22.1.0")), data.get("node"))
+
+
+def python_only(tmp: Path) -> None:
+    """A Python repo is never forced onto Node: no pin file, even with a Node installed under HOME."""
+    root, home = tmp / "py", tmp / "home-py"
+    root.mkdir(parents=True)
+    home.mkdir(parents=True)
+    git(root, "init", "-q", "-b", "main")
+    write(root, "pyproject.toml", "[project]\nname = 'x'\n")
+    write(root, "AGENTS.md", "# Py\n\n```gates\nunit: python3 -c 'print(1)'\n```\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "py")
+    fake_node(home, "22.1.0")
+    code, out, data = verify(root, home)
+    check("a Python-only repo runs its gate on the PATH's Node, records no pin, and keys the cache by it",
+          code == 0 and data["gates"][0]["exit"] == 0 and "no Node pin found, using PATH" in out and data["node"]["source"] == "none"
+          and data["node"]["used"] != "v22.1.0" and data["gates"][0]["node_version"] == data["node"]["used"], out)
+
+
+KIBANA_ROOT = "# Kibana\n\nRun `node scripts/check.js --scope=local|staged|branch` before you push.\n\n## Tests\n\n```sh\nyarn test:jest --config x.js\n```\n"
+KIBANA_NESTED = ("# Alerting\n\nRun `node scripts/check.js --scope=local` and then `yarn test:jest x-pack/plugins/alerting`.\n"
+                 "Type check with `node scripts/type_check.js --project x-pack/plugins/alerting/tsconfig.json`.\n")
+
+
+def committed(root: Path, files: dict[str, str], branch_edit: tuple[str, str] | None = None) -> Path:
+    """A repo with `files` on main and, optionally, one edited file on a `feat` branch."""
+    root.mkdir(parents=True)
+    git(root, "init", "-q", "-b", "main")
+    for path, text in files.items():
+        write(root, path, text)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "base")
+    if branch_edit:
+        git(root, "checkout", "-q", "-b", "feat")
+        write(root, *branch_edit)
+        git(root, "commit", "-q", "-am", "touch")
+    return root
+
+
+def kibana_shape(tmp: Path) -> None:
+    """Unreadable CI is named; the nearest AGENTS.md's prose commands are surfaced, never run, never a pass."""
+    home = tmp / "home-kibana"
+    home.mkdir(parents=True)
+    root = committed(tmp / "kibana", {".nvmrc": "22.1.0\n", ".buildkite/pipelines/pull_request/base.yml": "steps:\n  - command: x.sh\n",
+                                      "AGENTS.md": KIBANA_ROOT, "x-pack/plugins/alerting/AGENTS.md": KIBANA_NESTED,
+                                      "x-pack/plugins/alerting/server/index.ts": "export const a = 1;\n",
+                                      "x-pack/plugins/other/AGENTS.md": "# Other\n\nRun `node scripts/other_check.js`.\n",
+                                      "x-pack/plugins/other/index.ts": "export const b = 1;\n"},
+                     ("x-pack/plugins/alerting/server/index.ts", "export const a = 2;\n"))
+    fake_node(home, "22.1.0")
+    code, out, data = verify(root, home)
+    check("Buildkite is named as unreadable CI, in the JSON too", "CI not readable here (buildkite)" in out and data.get("ci_unreadable") == ["buildkite"], out)
+    check(".nvmrc selects the Node in a repo with no workflows", data["node"]["source"] == ".nvmrc" and data["node"]["used"] == "v22.1.0", data["node"])
+    check("the NEAREST AGENTS.md's three prose commands are surfaced, not the root's or a sibling's",
+          all(f"repo-declared check, run this: {c}" in out for c in ("node scripts/check.js --scope=local", "yarn test:jest x-pack/plugins/alerting",
+                                                                      "node scripts/type_check.js"))
+          and "scripts/other_check.js" not in out and "yarn test:jest --config x.js" not in out, out)
+    check("the prose checks are in the JSON with their file and are never run",
+          len(data["prose_checks"]) == 3 and all(p["from"].endswith("x-pack/plugins/alerting/AGENTS.md") for p in data["prose_checks"])
+          and data["gates"] == [], data.get("prose_checks"))
+    check("no runnable gate: NOT VERIFIED, exit 3, and --strict exits 2",
+          "NOT VERIFIED" in out and data.get("verified") is False and code == 3 and verify(root, home, "--strict")[0] == 2, (code, out))
+
+
+def prose_only_repo(tmp: Path) -> None:
+    home = tmp / "home-prose"
+    home.mkdir(parents=True)
+    root = committed(tmp / "prose", {"AGENTS.md": "# Repo\n\nBefore a PR run `make check` and `make lint`.\n", "src/a.py": "a = 1\n"},
+                     ("src/a.py", "a = 2\n"))
+    code, out, data = verify(root, home)
+    check("a CI-less repo surfaces the root AGENTS.md's commands, names no unreadable CI, and is not a pass",
+          "run this: make check" in out and "run this: make lint" in out and "CI not readable" not in out
+          and code == 3 and data.get("verified") is False, (code, out))
+    code, out, _ = verify(committed(tmp / "bare", {"a.txt": "x\n"}), home)
+    check("nothing declared at all is an error", code == 2 and "NOT VERIFIED" in out, (code, out))
+
+
+def workflows_win(tmp: Path) -> None:
+    """Workflows stay THE source: prose is not consulted, and unreadable CI falls through only without them."""
+    root, home = fixture(tmp / "wf"), tmp / "home-wf"
+    home.mkdir(parents=True)
+    write(root, "AGENTS.md", "# Repo\n\nRun `make check`.\n")
+    write(root, ".buildkite/pipeline.yml", "steps: []\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "prose and buildkite next to workflows")
+    _, out, data = verify(root, home)
+    check("with workflows nothing is unreadable and prose is not surfaced", "source: ci-workflow" in out and not data.get("ci_unreadable")
+          and "repo-declared check" not in out and data.get("verified") is True, out)
+    check("the JSON keeps schema_version 1 and every earlier key", data["schema_version"] == 1 and {"source", "gates", "node", "notes", "skipped"} <= set(data))
+    root2 = fixture(tmp / "blk", workflow=False)
+    write(root2, ".buildkite/pipeline.yml", "steps: []\n")
+    write(root2, "AGENTS.md", "# R\n\n```gates\nunit: true\n```\n\nRun `make check`.\n")
+    git(root2, "add", "-A")
+    git(root2, "commit", "-q", "-m", "block and buildkite")
+    code, out, data = verify(root2, home)
+    check("unreadable CI falls through to the AGENTS.md gates block", "CI not readable here (buildkite)" in out and code == 0
+          and data["source"] == "AGENTS.md gates block@main", (code, out))
+
+
+def wf(trigger: str, extra: str = "") -> str:
+    return f"on:{trigger}\njobs:\n  j:\n{extra}    steps:\n      - name: Gate\n        run: make gate\n"
+
+
+EVALS_SHAPE = ("on:\n  pull_request:\n    branches: [main]\n  workflow_dispatch:\n    inputs:\n      provider:\n"
+               "        type: choice\n        options: [openrouter, anthropic]\n")
+TRIGGERS = {
+    " push": True, " [push, pull_request]": True, "\n  pull_request:\n  push:\n    branches: [main]": True, "\n  - push": True,
+    " pull_request_target": False, "\n  workflow_run:\n    workflows: [CI]": False, "\n  release:\n    types: [published]": False,
+    " workflow_dispatch": False, " [push, workflow_dispatch]": True, " [push, pull_request, workflow_dispatch]": True,
+    " [pull_request, pull_request_target]": False, "\n  push:\n    tags: ['v*']": False,
+    "\n  push:\n    tags: ['v*']\n    branches: [main]": True, "\n  push:\n    tags: ['v*']\n  pull_request:": True,
+}
+PUBLISH_COMMANDS = ("npm publish", "pnpm publish", "yarn publish", "yarn npm publish", "docker push img:1", "gh release create v1",
+                    "gh release upload v1 a.tgz", "gh release edit v1", "twine upload dist/*", "cargo publish", "gem push x.gem",
+                    "git push origin HEAD", "npm ci && npm publish", "make build; docker push img", "make build\ngh release create v1",
+                    "NPM_TOKEN=x npm publish --access public", "make a || git push")
+
+
+def workflow_reading(tmp: Path) -> None:
+    """Which workflows and steps become gates: CI triggers only, never a publish, never a gated job; setup lines dropped."""
+    from task_verify_env import is_partial
+    from task_verify_sources import block_gates, prose_commands, workflow_gates
+
+    for trigger, mirrored in TRIGGERS.items():
+        gates, skipped = workflow_gates({"a.yml": wf(trigger)})
+        check(f"on:{trigger!r} {'is' if mirrored else 'is not'} mirrored, and a skip is recorded",
+              bool(gates) == mirrored and (mirrored or any(s.startswith(("a.yml: workflow not mirrored (on: ", "a.yml: not CI (on: ")) for s in skipped)), gates)
+    gates, skipped = workflow_gates({"evals.yml": EVALS_SHAPE + "jobs:\n  j:\n    steps:\n      - name: Gate\n        run: make gate\n"})
+    check("a pull_request + workflow_dispatch workflow is mirrored", [g["command"] for g in gates] == ["make gate"] and not skipped, skipped)
+    check("a workflow with no push or pull_request is named as not CI", workflow_gates({"nightly.yml": wf(" schedule")})[1] == ["nightly.yml: not CI (on: schedule)"])
+    gates, skipped = workflow_gates({"a.yml": wf(" push", "    environment: production\n")})
+    check("a job with environment: is skipped and says why", not gates and any("environment" in s for s in skipped), skipped)
+    gated = wf(" push", "    if: startsWith(github.ref, 'refs/tags/')\n").replace("make gate", "npm publish")
+    gates, skipped = workflow_gates({"a.yml": gated})
+    check("a job-level if: is not mirrored and makes the run partial", gates == [] and "j: job with an if:, not mirrored" in skipped and is_partial(skipped))
+    for command in PUBLISH_COMMANDS:
+        step = "        run: |\n" + "".join(f"          {line}\n" for line in command.splitlines())
+        gates, skipped = workflow_gates({"a.yml": f"on: push\njobs:\n  j:\n    steps:\n      - name: Ship\n{step}      - name: Unit\n        run: make unit\n"})
+        check(f"`{command!r}` is never a gate and is recorded", [g["command"] for g in gates] == ["make unit"]
+              and any(s.startswith("ship: runs a publish") for s in skipped) and is_partial(skipped), (gates, skipped))
+    for command in ("npm run publish-docs", "echo npm publish", "git pushd", "docker pull img"):
+        check(f"`{command}` is not mistaken for a publish", len(workflow_gates({"a.yml": wf(" push").replace("make gate", command)})[0]) == 1)
+    gates, skipped = workflow_gates({"a.yml": "on: push\njobs:\n  j:\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm ci && npm test\n"
+                                     "      - run: |\n          npm ci\n          npm run lint\n      - run: |\n          npm ci\n          pip install x\n"})
+    check("`npm ci && npm test` keeps its gate, a block drops its leading setup lines, a setup-only step is skipped",
+          [g["command"] for g in gates] == ["npm ci && npm test", "npm run lint"] and any("setup step" in s for s in skipped), (gates, skipped))
+    text = "Run `npm test`.\n\n```gates\nunit: npm run check\n```\n\nThen `npm run lint`.\n"
+    check("the gates block read is the block the prose commands leave out",
+          [g["command"] for g in block_gates(text)] == ["npm run check"] and prose_commands(text) == ["npm test", "npm run lint"])
+    root, home = fixture(tmp / "rel"), tmp / "home-rel"
+    home.mkdir(parents=True)
+    write(root, ".github/workflows/release.yml", "on:\n  push:\n    tags: ['v*']\njobs:\n  ship:\n    steps:\n      - run: npm publish\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "release workflow")
+    _, out, _ = verify(root, home, "--list")
+    check("--list names the workflows and the parser before any gate, never lists a publish, and names the release workflow",
+          "workflows: .github/workflows/ci.yml" in out and "workflow parser: " in out and ": npm publish" not in out
+          and "unit-tests: sh check.sh" in out and ".github/workflows/release.yml: workflow not mirrored (on: push)" in out, out)
+
+
+WORKFLOW_PARTIAL = ("on: push\njobs:\n  j:\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm ci\n"
+                    "      - name: Cond\n        if: github.ref == 'x'\n        run: make deploy\n      - name: Unit\n        run: echo unit\n")
+
+
+def partial_mirror_is_not_verified(tmp: Path) -> None:
+    root, home = fixture(tmp / "pm"), tmp / "home-pm"
+    home.mkdir(parents=True)
+    write(root, ".github/workflows/ci.yml", WORKFLOW_PARTIAL)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "partial")
+    code, out, data = verify(root, home)
+    check("passing gates on a partial mirror are NOT VERIFIED (exit 3), counted, listed, said before any gate line",
+          code == 3 and data.get("verified") is False and data.get("partial") is True and [g["exit"] for g in data["gates"]] == [0]
+          and "skipped: 2 steps" in out and "not mirrored: 1 uses: steps" in out
+          and out.index("NOT VERIFIED: partial mirror (1 steps skipped)") < out.index("exit="), (code, out))
+    check("--strict makes it exit 2", verify(root, home, "--strict")[0] == 2)
+    out_json = root.parent / "gates.json"
+    cli("--repo", str(root), "--base", "main", "--out", str(out_json), "--background", home=home)
+    waited = cli("--wait", str(out_json), "--timeout", "60", home=home)
+    check("--wait agrees with the foreground path", waited.returncode == 3 and "NOT VERIFIED: partial mirror (1 steps skipped)" in waited.stdout, waited)
+    write(root, ".github/workflows/ci.yml", WORKFLOW_PARTIAL.replace("echo unit", "exit 1"))
+    git(root, "commit", "-qam", "failing")
+    check("a failed gate still exits 1 on a partial mirror", verify(root, home)[0] == 1)
+
+
+NOT_CI = {  # one CI file, the rest scheduled or dispatched by hand
+    "ci.yml": "on:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n"
+              "      - run: npm ci\n      - name: Unit\n        run: echo unit\n",
+    "generate.yml": "on:\n  schedule:\n    - cron: '0 8 * * *'\n  workflow_dispatch:\n    inputs:\n      dry_run:\n        type: boolean\n",
+    "smoke.yml": "on:\n  schedule:\n    - cron: '15 6 * * *'\n",
+    "migrate.yml": "on:\n  workflow_dispatch:\n",
+    "hook.yml": "on:\n  repository_dispatch:\n    types: [deploy]\n",
+}
+
+
+def non_ci_workflows_are_not_partial(tmp: Path) -> None:
+    root, home = fixture(tmp / "nc", workflow=False), tmp / "home-nc"
+    home.mkdir(parents=True)
+    for name, trigger in NOT_CI.items():
+        write(root, f".github/workflows/{name}", trigger + ("" if name == "ci.yml" else "jobs:\n  run:\n    steps:\n      - name: Deploy\n        run: make deploy\n"))
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "workflows")
+    code, out, data = verify(root, home)
+    check("CI steps beside schedule- and dispatch-only workflows are verified (exit 0), each other workflow named not CI",
+          code == 0 and data.get("verified") is True and data.get("partial") is False and [g.get("command") for g in data["gates"]] == ["echo unit"]
+          and all(f".github/workflows/{name}: not CI (on: " in out for name in NOT_CI if name != "ci.yml"), (code, out))
+    write(root, ".github/workflows/ci.yml", NOT_CI["ci.yml"] + "      - name: Cond\n        if: github.ref == 'x'\n        run: make it\n")
+    git(root, "commit", "-qam", "conditional step")
+    code, _, data = verify(root, home)
+    check("a skipped step inside the CI workflow still makes the run partial", code == 3 and data.get("partial") is True)
+
+
+FAKE_YQ = """#!/bin/sh
+if [ "$1" = --version ]; then echo "$YQ_VERSION"; exit 0; fi
+printf '{"on":{"push":null},"env":{"PYTHON":3.10,"BIG":12345678901234567890,"NODE":22},"jobs":{"j":{"timeout-minutes":5,"steps":[{"run":"echo hi","continue-on-error":true}]}}}'
+"""
+
+
+def parser_chain(tmp: Path) -> None:
+    """mikefarah yq reads the workflow when installed (scalars as strings); otherwise the stdlib reader does. Changes os.environ."""
+    from lib.workflow_yaml import load
+
+    tmp.mkdir(parents=True)
+    (tmp / "yq").write_text(FAKE_YQ, encoding="utf-8")
+    (tmp / "yq").chmod(0o755)
+    saved = dict(os.environ)
+    try:
+        os.environ.update(PATH=f"{tmp}{os.pathsep}{saved['PATH']}", YQ_VERSION="yq (https://github.com/mikefarah/yq/) version v4.44.1")
+        doc, parser = load("on: push\n")
+        check("mikefarah yq is the parser when installed, its scalars kept as written (3.10 stays 3.10), null as ''", parser == "yq" and doc == {
+            "on": {"push": ""}, "env": {"PYTHON": "3.10", "BIG": "12345678901234567890", "NODE": "22"},
+            "jobs": {"j": {"timeout-minutes": "5", "steps": [{"run": "echo hi", "continue-on-error": "true"}]}}}, (parser, doc))
+        os.environ["YQ_VERSION"] = "yq 3.2.3"
+        check("another yq is not used: the stdlib reader is the fallback", load("on: push\n") == ({"on": "push"}, "stdlib"))
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+REPORT = """## Implementation Report
+
+**Tasks:** 2/2 passed
+
+### Quality gates
+```
+knip exit=1
+biome exit=0
+```
+- `knip` — {knip} — exit 1
+- `biome` — {biome}
+
+### Unverified claims
+{claims}
+
+### Report data
+```json
+{data}
+```
+
+### Files Changed
+a.py
+"""
+REPORT_GATES = {"schema_version": 1, "state": "done", "gates": [
+    {"name": "knip", "exit": 1, "command": "npm run knip"}, {"name": "biome", "exit": 0, "command": "npx biome ci ."}]}
+REPORT_DATA = json.dumps({"schema_version": 1, "gates": [{"name": "knip", "exit": 1}, {"name": "biome", "exit": 0}]})
+OLD_REPORT = "## Implementation Report\n\n**Tasks:** 1/1 passed\n\n### Quality gates\n- `npm test` — pass\n\n### Files Changed\na.py\n"
+
+
+def report_text(knip: str = "fail", biome: str = "pass", claims: str = "- the hook runs — verify: `bash hook-test.sh`", data: str = REPORT_DATA) -> str:
+    return REPORT.format(knip=knip, biome=biome, claims=claims, data=data)
+
+
+# (case, report text, extra arguments, gates JSON or None, exit code, text the output must carry)
+REPORT_CASES = (
+    ("a verbatim copy with honest claims passes", report_text(), (), REPORT_GATES, 0, "report-check: ok"),
+    ("a `pass` claim against exit=1 fails", report_text(knip="pass"), (), REPORT_GATES, 1, "contradicts exit=1"),
+    ("a `fail` claim against exit=0 fails", report_text(biome="fail"), (), REPORT_GATES, 1, "biome: fail"),
+    ("a `skipped` claim for a gate verify ran fails", report_text(biome="skipped"), (), REPORT_GATES, 1, "biome: skipped"),
+    ("a copied line that differs from the JSON fails", report_text().replace("knip exit=1", "knip exit=0"), (), REPORT_GATES, 1,
+     "report says exit=0, verify says exit=1"),
+    ("a gate missing from the verbatim copy fails", report_text().replace("knip exit=1\n", ""), (), REPORT_GATES, 1, "gate knip (exit=1) is not copied"),
+    ("Report data that disagrees with the JSON fails", report_text(data=REPORT_DATA.replace('"exit": 1', '"exit": 0')), (), REPORT_GATES, 1,
+     "Report data gates differ"),
+    *((f"a `{word}` claim is not one of pass, fail, skipped", report_text(knip=word), (), REPORT_GATES, 1, f"`{word}`")
+      for word in ("passed", "clean", "ok", "green", "failed")),
+    ("a gate with no claim line fails", report_text().replace("- `knip` — fail — exit 1\n", ""), (), REPORT_GATES, 1, "no claim line for gate knip"),
+    ("two claim lines for one gate fail", report_text(biome="pass\n- `biome` — pass"), (), REPORT_GATES, 1, "2 claim lines for gate biome"),
+    ("`none` is a valid Unverified claims section", report_text(claims="none"), (), REPORT_GATES, 0, ""),
+    ("an unverified claim with no verify command fails", report_text(claims="- the hook runs under Cursor"), (), REPORT_GATES, 1, "without"),
+    ("a strict check rejects a report with no new sections", OLD_REPORT, (), None, 1, "missing section: ### Unverified claims"),
+    ("a Report data block that is not JSON fails", report_text(data="not json"), (), REPORT_GATES, 1, "schema_version"),
+    ("a Report data block without schema_version 1 fails", report_text(data=json.dumps({"tasks": 1})), (), REPORT_GATES, 1, ""),
+    ("an old report parses in lenient mode", OLD_REPORT, ("--lenient",), None, 0, ""),
+    ("a gates JSON that exists is compared even in a lenient run", OLD_REPORT, ("--lenient",), REPORT_GATES, 1, "not copied"),
+    ("claims about commands that are not gates are not compared", OLD_REPORT, ("--lenient",), {"gates": []}, 0, ""),
+    ("--unverified prints the list capped at five", report_text(claims="\n".join(f"- claim {i} — verify: `cmd {i}`" for i in range(8))),
+     ("--unverified", "5"), REPORT_GATES, 0, "+3 more"),
+)
+
+
+def report_check(tmp: Path) -> None:
+    """`crew-verify.py report-check`: a builder's REPORT.md may claim a gate only as the gates JSON recorded it."""
+    import task_verify_report as rc
+
+    for index, (case, text, extra, gates, code, needle) in enumerate(REPORT_CASES):
+        directory = tmp / str(index)
+        directory.mkdir(parents=True)
+        (directory / "REPORT.md").write_text(text, encoding="utf-8")
+        arguments = [str(directory / "REPORT.md"), *extra]
+        if gates is not None:
+            (directory / "gates.json").write_text(json.dumps(gates), encoding="utf-8")
+            arguments += ["--gates", str(directory / "gates.json")]
+        done = run_cli(CLI, "report-check", *arguments)
+        check(case, done.returncode == code and needle in done.stdout + done.stderr, done.stdout + done.stderr)
+    check("every parser returns empty for an old report or plain prose", rc.sections(OLD_REPORT).get("Unverified claims") is None
+          and rc.unverified_claims(OLD_REPORT) == [] and rc.report_data(OLD_REPORT) is None and rc.gate_exits(OLD_REPORT) == {}
+          and rc.unverified_claims("just prose\n") == [] and rc.problems("x", None, True) == [] and rc.capped(OLD_REPORT, 5) == [])
+    check("an unreadable gates file is not a crash", rc.load_gates(tmp / "missing.json") is None)
+
+
+def run_cases(parallel: tuple, serial: tuple = ()) -> int:
+    """Each case in its own directory; `parallel` ones side by side, `serial` ones (they change os.environ) after."""
+    def one(case) -> None:
+        try:
+            case(tmp / case.__name__)
+        except (RuntimeError, KeyError, IndexError, OSError, ValueError, TypeError, subprocess.TimeoutExpired) as error:
+            check(case.__name__, False, f"{type(error).__name__}: {error}")
+
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
-        for case in (mirrors_the_runner, caching, base_declaration_wins, fallback_order, drift_warning, background_run,
-                     stale_result_is_not_waited_on, early_exit_is_reported, wait_matches_foreground_when_unverified,
-                     wait_follows_the_child, old_form_is_gone):
-            try:
-                case(tmp / case.__name__)
-            except (RuntimeError, KeyError, IndexError, OSError, ValueError) as error:
-                check(case.__name__, False, f"{type(error).__name__}: {error}")
+        with ThreadPoolExecutor(max_workers=len(parallel)) as pool:
+            list(pool.map(one, parallel))
+        for case in serial:
+            one(case)
     for name in FAILED:
         print(f"failed: {name}", file=sys.stderr)
     return 1 if FAILED else 0
+
+
+def main() -> int:
+    return run_cases((mirrors_the_runner, caching, base_declaration_wins, fallback_order, drift_warning, background_run,
+                      stale_result_is_not_waited_on, early_exit_is_reported, wait_matches_foreground_when_unverified, wait_follows_the_child,
+                      node_pin_order, python_only, kibana_shape, prose_only_repo, workflows_win, workflow_reading,
+                      partial_mirror_is_not_verified, non_ci_workflows_are_not_partial),
+                     (parser_chain, report_check))
 
 
 if __name__ == "__main__":

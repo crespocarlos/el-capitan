@@ -16,10 +16,6 @@ Owns the pipeline state machine, session-start awareness, and autopilot. Routing
 - **respond** — `crew resolve PR <PR>` → address-pr → commit → push → reply; terminal state is every
   approved thread replied and pushed. Reviewer approval is external.
 
-> **Lightweight path (no spec needed):** for changes touching ≤3 files with no new export or API
-> surface — `crew quick` → `crew review changes` → `crew commit`. Skips spec, worktree, task state;
-> use full `build` beyond that threshold.
-
 ## State machine
 
 ```
@@ -70,8 +66,7 @@ Append-only audit records for offline analysis; never parsed for gates or transi
 
 ## Invariants
 
-- Never start `build` implementation without an approved SPEC.md; the lightweight path is the only
-  exception.
+- Never start `build` implementation without an approved SPEC.md.
 - Done means the acceptance criteria pass, not "looks right".
 - Git/gh is the source of truth for pipeline state; PROGRESS.md is the audit trail.
 - Autopilot never skips a gate — it chains between gates, not through them.

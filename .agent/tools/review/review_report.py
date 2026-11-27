@@ -14,7 +14,7 @@ from pathlib import Path
 
 import review_pr_plan as comments
 import review_records as records
-from review_coverage import check_assessments, check_personas_present, strict_gates
+from review_coverage import check_assessments, check_personas_present, check_probe, strict_gates
 from review_findings import check_findings, check_strict, read_findings, strict_mode
 from review_models import Finding
 from review_render import GENERATED_SECTIONS, Trail, assessment_section, capped, footer, heading_lines, with_banner
@@ -213,6 +213,8 @@ def validate_review_dir(args: argparse.Namespace) -> Path:
     if args.review_dir.parent.name != "review":
         raise ValueError(f"--review-dir must be <task>/review/<timestamp>, got {args.review_dir}")
     owner = args.review_dir.parent.parent
+    if args.mode in ("self", "changes") and not args.findings:
+        raise ValueError(f"--mode {args.mode} requires --findings: the report and probe gates read it")
     if args.mode == "pr" and not args.head.strip():
         raise ValueError("--mode pr requires --head with the reviewed GitHub SHA")
     if args.mode == "pr" and (owner / "SPEC.md").is_file():
@@ -323,6 +325,7 @@ def persist(args: argparse.Namespace) -> int:
         # The body, not the assembled report: the footer states the derived verdict, so comparing it
         # would let any contradiction in the model's own list pass its own gate.
         check_report(body, findings, args.mode, bool(trail.degraded))
+        check_probe(args.review_dir, body, findings, args.mode)
     rows = [f for f in findings if f.disposition in records.RECORDED_DISPOSITIONS]
     args.review_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(args.review_dir / "REVIEW.md", report)

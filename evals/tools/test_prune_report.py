@@ -63,7 +63,7 @@ def fixture(base: Path) -> Path:
     write(root, ".agent/tools/TOOLS.md",
           "# Tools\n\n`crew-called.py`, `crew-tested.py`, and `crew-orphan.py` are all documented.\n")
     write(root, "evals/tools/test_something.py",
-          "#!/usr/bin/env python3\n\"\"\"Runs crew-tested.py.\"\"\"\n")
+          "#!/usr/bin/env python3\n\"\"\"A test.\"\"\"\nTOOL = \"crew-tested.py\"\n")
     return root
 
 
@@ -122,17 +122,18 @@ def install_cases(base: Path) -> None:
     check("nothing is uncalled, so the report exits 0", code == 0, code)
 
 
-def journal_cases(base: Path) -> None:
-    """Journal mentions are reported beside the verdict, never instead of it."""
+def description_cases(base: Path) -> None:
+    """A docstring, a comment or a tool-tree `.md` doc describes a command; it does not call it."""
     root = fixture(base)
-    tasks = base / "tasks" / "probe"
-    tasks.mkdir(parents=True)
-    (tasks / "PROGRESS.md").write_text("METRIC: crew-orphan.py used\n", encoding="utf-8")
-    code, rows, _ = report(root, "--tasks-dir", str(base / "tasks"))
-    row = next(row for row in rows if row["name"] == "crew-orphan.py")
-    check("a journal mention is counted", row["journals"] == 1, row)
-    check("a journal mention is not a caller", row["verdict"] == "uncalled", row)
+    write(root, ".agent/tools/task/helper_module.py",
+          '"""Wraps crew-orphan.py."""\n# crew-orphan.py is described here\nVALUE = 1\n')
+    write(root, ".agent/tools/AGENTS.md", "# Tools\n\nRun `crew-orphan.py` to see.\n")
+    code, rows, _ = report(root)
+    check("a docstring, a comment and a tool-tree doc are not callers",
+          verdicts(rows).get("crew-orphan.py") == "uncalled", verdicts(rows))
     check("the report still fails for an uncalled command", code == 1, code)
+    write(root, ".agent/tools/task/helper_module.py", 'COMMAND = "crew-orphan.py"\n')
+    check("a string in code is a caller", verdicts(report(root)[1]).get("crew-orphan.py") == "called")
 
 
 def unreadable_catalog_cases(base: Path) -> None:
@@ -150,7 +151,7 @@ def main() -> int:
         fixture_cases(base / "one")
         table_cases(base / "two")
         install_cases(base / "three")
-        journal_cases(base / "four")
+        description_cases(base / "four")
         unreadable_catalog_cases(base / "five")
     finally:
         shutil.rmtree(base, ignore_errors=True)

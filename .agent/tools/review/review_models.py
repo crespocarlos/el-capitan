@@ -141,10 +141,9 @@ def score_move(args) -> dict:
     """The score fields one decision records, refusing a move nothing settled.
 
     The journal's copy of the finding-side rule: `--confidence` is the score the finding was acted on
-    under and `--confidence-from` the one it arrived with, so the join in `crew review-stats` reads
-    evidence rather than the label the record carries. Both halves or neither, and either direction
-    needs `--validation`, because `scored()` makes this journal authoritative — a move with no
-    recorded evidence is the one record that could lie about where a score came from. A lower score
+    under and `--confidence-from` the one it arrived with, so the record carries evidence rather than
+    a bare label. Both halves or neither, and either direction needs `--validation`, because a move
+    with no recorded evidence is the one record that could lie about where a score came from. A lower score
     needs `--probe refuted` on top, and a raise refuses that outcome for the mirror reason.
     """
     if (args.confidence is None) != (args.confidence_from is None):
@@ -161,7 +160,7 @@ def score_move(args) -> dict:
         raise ValueError(
             f"a score move from {args.confidence_from} to {args.confidence} needs --validation "
             "naming the read or the probe that settled it; a move with no recorded evidence is an "
-            "assertion, and this journal is what `scored()` treats as authoritative"
+            "assertion, and this journal is the only record of where a score came from"
         )
     outcome = getattr(args, "probe", None)
     if args.confidence < args.confidence_from and outcome != "refuted":

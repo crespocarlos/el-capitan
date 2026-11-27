@@ -81,7 +81,7 @@ def listing() -> list[dict]:
 
 
 def stale(entry: dict) -> bool:
-    """A worktree `crew cleanup` may offer: never the main one, and gone or merged."""
+    """A worktree a cleanup may offer: never the main one, and gone or merged."""
     return not entry["main"] and bool(entry["branch"]) and (entry["merged"] or entry["gone"])
 
 

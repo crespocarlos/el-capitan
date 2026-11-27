@@ -1,9 +1,7 @@
-"""Intake: the `.inbox` drafts and the ingest of external Markdown units.
+"""Intake: the `.inbox` drafts.
 
 `inbox_report` states what importing a draft would do (NOOP, UPDATE, SUPERSEDE, ADD) before any write;
-`apply_inbox` imports it, removes the draft and restores every file on failure. An ingest copies units
-in with `source_path: import/<name>` and the destination scope, skipping a body already stored, so a
-re-run is a no-op; the source directory is never modified.
+`apply_inbox` imports it, removes the draft and restores every file on failure.
 """
 from __future__ import annotations
 
@@ -14,7 +12,7 @@ import sys
 from pathlib import Path
 
 from memory_frontmatter import parse_unit, render_unit
-from memory_paths import MemoryStoreError, canonical_scope, memory_root, normalized, repo_key, scope_directory, slug
+from memory_paths import MemoryStoreError, memory_root, normalized, repo_key, scope_directory, slug
 from memory_store import (
     commit_external_changes,
     duplicate_candidates,
@@ -169,88 +167,3 @@ def import_inbox(args: argparse.Namespace) -> int:
             return EXIT_DUPLICATE
     return 0
 
-
-def write_units(writes: list[tuple[Path, str]]) -> list[tuple[Path, str | None]]:
-    """Commit, then write each rendered unit, and return each file's previous content.
-
-    Every write happens inside one commit so a failure can restore each file from its backup,
-    which is why the caller gets the backup list rather than a bare success flag.
-    """
-    backups: list[tuple[Path, str | None]] = []
-    commit_external_changes()
-    for path, rendered in writes:
-        previous = path.read_text(encoding="utf-8") if path.exists() else None
-        atomic_write(path, rendered)
-        backups.append((path, previous))
-    refreshed = refresh(write_indexes=False)
-    backups.extend(write_indexes_for_scopes(refreshed))
-    refreshed.close()
-    run_git(["add", "-A"])
-    return backups
-
-
-def parse_imports(source: Path, destination_scope: str) -> tuple[list, list[str], list[str]]:
-    """Parse the source units; returns the parsed pairs, the skipped names, and the errors."""
-    parsed, errors, skipped = [], [], []
-    for path in sorted(source.glob("*.md")):
-        if path.name in {"MEMORY.md", "INDEX.md"}:
-            skipped.append(path.name)
-            continue
-        try:
-            unit = parse_unit(
-                path, source_path=f"import/{path.name}", inferred_scope=destination_scope
-            )
-            unit["scope"] = destination_scope
-            parsed.append((path, unit))
-        except (OSError, ValueError) as error:
-            errors.append(f"parse error: {path.name}: {error}")
-    return parsed, skipped, errors
-
-
-def ingest(args: argparse.Namespace) -> int:
-    """Copy external Markdown units without ever modifying their source directory."""
-    ensure_store()
-    source = Path(args.path).expanduser()
-    if not source.is_dir():
-        print(f"source directory unavailable: {source}", file=sys.stderr)
-        return 1
-    destination_scope = canonical_scope(args.repo or repo_key())
-    parsed, skipped, errors = parse_imports(source, destination_scope)
-    for name in skipped:
-        print(f"skipped: {name}")
-    for error in errors:
-        print(error, file=sys.stderr)
-    if args.dry_run:
-        for _, unit in parsed:
-            print(unit["id"])
-        return 0
-    with store_lock():
-        conn = refresh(write_indexes=False)
-        existing = {
-            row["id"]: row["body"] for row in conn.execute("SELECT id, body FROM units")
-        }
-        writes = []
-        for _, unit in parsed:
-            target = imported_path(unit)
-            rendered = render_unit(unit)
-            same_id = existing.get(unit["id"])
-            if same_id is not None and same_id == unit["body"]:
-                continue
-            if target.exists() and target.read_text(encoding="utf-8") == rendered:
-                continue
-            writes.append((target, rendered))
-        if not writes:
-            print("no changes")
-            return 0
-        backups: list[tuple[Path, str | None]] = []
-        try:
-            backups = write_units(writes)
-            git_commit(f"mem: ingest {args.source} {len(writes)} units")
-        except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryStoreError) as error:
-            restore_units(backups)
-            print(str(error), file=sys.stderr)
-            return 2
-    for _path, unit in parsed:
-        if any(target.name.startswith(f"{unit['type']}_{slug(unit['title'])}") for target, _ in writes):
-            print(unit["id"])
-    return 0

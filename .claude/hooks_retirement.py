@@ -30,6 +30,7 @@ RETIRED_SCRIPTS = (
     "guard-shell.sh",
     "review-address-gate.sh",
     "review-address-approval.sh",
+    "session-event.sh",
 )
 
 # `<hooks dir>/<name>` where the hooks directory is this installer's managed destination, quoted or

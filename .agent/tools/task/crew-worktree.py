@@ -2,7 +2,7 @@
 """Resolve or create a git worktree, and answer what the other worktrees are.
 
 With a branch it resolves or creates that branch's worktree, pruning stale registrations first
-(`crew implement`); `--list` reports every worktree as JSON (`crew cleanup`); `fetch`, `sync` and
+(`crew implement`); `--list` reports every worktree as JSON; `fetch`, `sync` and
 `--remove` refresh the remote, check a branch out, and remove a worktree with its branch.
 """
 from __future__ import annotations

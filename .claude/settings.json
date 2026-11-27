@@ -136,15 +136,6 @@
     ],
     "SessionStart": [
       {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/session-event.sh\" start 2>/dev/null; exit 0"
-          }
-        ]
-      },
-      {
         "hooks": [
           {
             "type": "command",
@@ -161,25 +152,7 @@
         ]
       }
     ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/session-event.sh\" end 2>/dev/null; exit 0"
-          }
-        ]
-      }
-    ],
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/session-event.sh\" session 2>/dev/null; exit 0"
-          }
-        ]
-      },
       {
         "hooks": [
           {

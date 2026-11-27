@@ -59,11 +59,6 @@ class TaskState:
         """The recorded branch, falling back to `default` when `.task-id` did not record one."""
         return self.meta.get("branch", default)
 
-    @property
-    def modified(self) -> int:
-        """Days since the newest activity file, the same value `age` holds."""
-        return self.age
-
     def to_json(self) -> dict:
         """The record as JSON, in the key order the loader has always produced."""
         return {

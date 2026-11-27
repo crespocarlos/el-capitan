@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The next-step table: one answer per completed stage, shared by the CLI and the report footer.
+"""The next-step table: one answer per completed stage, read by the report footer.
 
 The table is `task/next-steps.json`, keyed by `<workflow>.<stage>.<outcome>`: which command runs
-after a stage. `crew-next.py` and `review_render.footer` both read it here, so the report's
-`> Next:` line and the command never disagree. A skill's own trailer is prose (`lint_handoff`).
+after a stage. `review_render.footer` reads it here, so the report's `> Next:` line is data.
+A skill's own trailer is prose (`lint_handoff`).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 STEP_TABLE = Path(__file__).resolve().parent.parent / "task" / "next-steps.json"
 # The workflows `crew-orchestrator.mdc` declares. A key may omit the workflow when exactly one holds
 # the stage, which is how a `crew review` caller names `review.block` without repeating `build`.
-WORKFLOWS = ("build", "lightweight", "respond")
+WORKFLOWS = ("build", "respond")
 
 
 def load_table(path: Path = STEP_TABLE) -> dict:

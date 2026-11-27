@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Hermetic checks for the read half of `crew-pr-actions.py`: fields, absence, failure, threads.
+"""Hermetic checks for `crew-pr-actions.py`: the reads (fields, absence, failure, threads) and the mutation guard.
 
-Every case runs the real CLI as a subprocess with a stub `gh` first on PATH, so the tool's own
-behavior towards the outside world is what is measured. The four properties are the contract a
+Every case runs the real CLI (in this process) with a stub `gh` first on PATH, so the tool's own
+behavior towards the outside world is what is measured. A mutation only plans without `--execute`
+and never calls gh; with it, gh is called once with the argv the plan printed. The four properties are the contract a
 prompt depends on: a field list prints bare lines in the order asked, a field gh did not return
 prints empty with exit 0, a failed call exits nonzero carrying gh's message, and `diff` passes the
 patch through byte for byte.
@@ -14,10 +15,11 @@ at all, so "no threads" and "could not read" stay distinguishable.
 """
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "review" / "crew-pr-actions.py"
@@ -71,10 +73,8 @@ def stub_pages(directory, pages):
 
 
 def run(arguments, bindir, home):
-    env = {**os.environ, "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}",
-           "PYTHONDONTWRITEBYTECODE": "1", "HOME": str(home)}
-    return subprocess.run([sys.executable, str(TOOL), *arguments],
-                          capture_output=True, text=True, env=env)
+    """The CLI in this process; the stub `gh` it calls is first on PATH."""
+    return cli(TOOL, *arguments, env={"PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}", "HOME": str(home)})
 
 
 def check(name, condition, detail=""):
@@ -271,10 +271,42 @@ def dry_run_cases(box):
           "pr=42" in json.loads(result.stdout)["planned"]["command"])
 
 
+REPLY = ("reply", "--repo", "owner/repo", "--pr", "7", "--thread-id", "T_1", "--comment-id", "123", "--body", "Fixed.")
+RESOLVE = ("resolve", "--repo", "owner/repo", "--pr", "7", "--thread-id", "T_1")
+
+
+def write_cases(box):
+    """A mutation plans without --execute (or with --dry-run) and calls gh only with --execute."""
+    box.stub('{"data": {"stub": true}}')
+    for extra in ((), ("--dry-run",)):
+        result = box.run(*REPLY, *extra)
+        planned = json.loads(result.stdout)["planned"]
+        check(f"reply {extra or 'without --execute'} plans the exact gh call and makes none",
+              result.returncode == 0 and not box.calls() and planned["action"] == "reply"
+              and planned["execute"] is False and planned["command"][:2] == ["gh", "api"]
+              and planned["command"][2].endswith("/comments/123/replies") and planned["body"] == "Fixed.", planned)
+    result = box.run(*RESOLVE, "--execute")
+    check("--execute calls gh once, resolving the thread, and prints its output",
+          result.returncode == 0 and len(box.calls()) == 1 and "resolveReviewThread" in box.calls()[0]
+          and "threadId=T_1" in box.calls()[0] and "stub" in result.stdout, (box.calls(), result.stdout))
+    both = box.run(*RESOLVE, "--execute", "--dry-run")
+    check("--execute with --dry-run is an invocation error", both.returncode == 2)
+    refused = box.run("resolve", "--repo", "nope", "--pr", "7", "--thread-id", "T_1", "--execute")
+    check("--repo without a slash is rejected before any call", refused.returncode != 0 and len(box.calls()) == 1)
+    custom = box.path / "custom.graphql"
+    custom.write_text("query { viewer { login } }\n")
+    fetch = ("fetch", "--repo", "owner/repo", "--pr", "7", "--dry-run")
+    default = json.loads(box.run(*fetch).stdout)["planned"]["command"]
+    result = box.run(*fetch, "--query", str(custom))
+    check("the default --query is the installed asset, and an explicit one is honored",
+          f"query=@{box.path / '.agent' / 'bin' / 'pr-review-threads.graphql'}" in default
+          and f"query=@{custom}" in json.loads(result.stdout)["planned"]["command"], (default, result.stdout))
+
+
 def main():
     cases = (field_cases, absent_field_cases, failing_gh_cases, diff_cases, other_read_cases,
              fetch_shape_cases, fetch_merge_cases, fetch_failure_cases, fetch_empty_cases,
-             dry_run_cases)
+             dry_run_cases, write_cases)
     for case in cases:
         with Sandbox() as box:
             case(box)

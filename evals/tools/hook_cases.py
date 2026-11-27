@@ -1,12 +1,15 @@
-"""The case tables `test_hook_cases.py` runs through every shell guard, in both payload shapes.
+"""The case tables `test_hook_cases.py` runs through the hooks, in both payload shapes.
 
-A case is `(command, cwd, by)`: `cwd` names a fixture tree from `test_hook_cases.fixture()`, and `by`
-is the guard that must deny (deny table) or `None` (allow table). `{name}` in a command is replaced
-by that fixture tree's path. `PAYLOADS` are raw envelopes for the cases a command cannot express.
+A shell case is `(command, cwd, by)`: `cwd` names a fixture tree from `test_hook_cases.fixture()`, and
+`by` is the guard that must deny (deny table) or `None` (allow table). `{name}` in a command is
+replaced by that fixture tree's path. A file case is `(fields, cwd, by)` sent to the `Write|Edit`
+hooks; `{home}`, `{tmp}`, `{tasks}` and `{review}` are filled in as well. `PAYLOADS` are raw
+envelopes for the cases a command cannot express.
 """
 from __future__ import annotations
 
 SECRET = "key=AKI" + "AABCDEFGHIJKLMNOP"
+WRITE_TRACKED = "python3 - <<'PY'\nfrom pathlib import Path\nPath(\"tracked.txt\").write_text(\"x\")\nPY"
 
 DENY = [
     # Quotes, escapes and wrappers no longer hide a destructive subcommand.
@@ -14,14 +17,17 @@ DENY = [
     ('git reset "--hard"', "clean", "destructive-git"),
     ("git clean -d -f", "clean", "destructive-git"),
     ("git clean --force", "clean", "destructive-git"),
+    ("git push -f origin main", "clean", "destructive-git"),
     ("git push --force-with-lease --force", "clean", "destructive-git"),
     ("bash -c 'git reset --hard'", "clean", "destructive-git"),
     ('zsh -lc "cd /tmp && git clean -fdx"', "clean", "destructive-git"),
     ("git re\\set --ha\\rd", "clean", "destructive-git"),
     ("git --no-pager -c core.pager=cat -C {clean} reset --hard", "nogit", "destructive-git"),
+    ("git --git-dir=/tmp/a/.git --work-tree=/tmp/x reset --hard", "clean", "destructive-git"),
     ("echo ok && GIT_TRACE=0 git push origin +main", "clean", "destructive-git"),
     ('echo "$(git reset --hard)"', "clean", "destructive-git"),
     ("git reset --hard; # " + "x" * 70000, "clean", "destructive-git"),
+    ("git push --force-if-includes origin feature", "clean", "destructive-git"),
     # A shell reading its script from a heredoc, a here-string or a pipe runs that text.
     ("bash <<'EOF'\ngit reset --hard\nEOF", "clean", "destructive-git"),
     ("bash <<< 'git reset --hard'", "clean", "destructive-git"),
@@ -35,18 +41,25 @@ DENY = [
     ("sudo -u me git reset --hard", "clean", "destructive-git"),
     ("echo . | xargs git clean -fdx", "clean", "destructive-git"),
     ("find . -exec git reset --hard \\;", "clean", "destructive-git"),
-    ("timeout -s KILL 5 git checkout main", "locked", "worker-tree"),
     # Past the payload cap the command is too complex to judge, so it is denied.
     ("echo " + "$(:) " * 70, "clean", "destructive-git"),
+    # A fresh worker lock: a tree change in that tree, named by cwd, `git -C`, a leading `cd` or a runner.
+    ("git checkout main", "locked", "worker-tree"),
+    ("git restore base.txt", "locked", "worker-tree"),
+    ("git -C {locked} checkout main", "clean", "worker-tree"),
+    ("cd {locked} && git restore base.txt", "clean", "worker-tree"),
+    ("timeout -s KILL 5 git checkout main", "locked", "worker-tree"),
+    ("CREW_WORKER_TASK=T-2 git checkout main", "locked", "worker-tree"),
+    ("CREW_WORKER_TASK= git checkout main", "locked", "worker-tree"),
     # A `cd` target the guard cannot resolve leaves the directory where it was.
     ('cd "$PWD" && git checkout main', "locked", "worker-tree"),
     ("cd \"$PWD\" && python3 -c \"open('tracked.txt','w')\"", "source", "source-edit"),
     # Each segment is judged in its own tree: `-C` on one segment does not move the next.
     ("git -C {clean} log; git checkout main", "locked", "worker-tree"),
-    ("cd {locked} && git restore base.txt", "clean", "worker-tree"),
     ("git -C {clean} status && git switch -c x", "locked", "worker-tree"),
     ("sh -c 'git checkout main'", "locked", "worker-tree"),
-    # PR refs, through escapes and global options.
+    # PR refs, plain and through escapes, aliases and global options.
+    ("gh pr checkout 12", "clean", "local-pr-ref"),
     ("gh pr chec\\kout 12", "clean", "local-pr-ref"),
     ("g\\h pr 'check'out 12", "clean", "local-pr-ref"),
     ("gh pr -R owner/repo checkout 12", "clean", "local-pr-ref"),
@@ -54,10 +67,11 @@ DENY = [
     ("echo 12 | xargs gh pr co", "clean", "local-pr-ref"),
     ("bash -c 'gh pr chec\\kout 12'", "clean", "local-pr-ref"),
     ("git --no-pager fetch origin pull/7/head:pr7", "clean", "local-pr-ref"),
+    ("git fetch origin refs/pull/$PR/head", "clean", "local-pr-ref"),
     ('git show "refs/pull/42/head:src/a.ts"', "clean", "local-pr-ref"),
     ("git log main..pull/42/head", "clean", "local-pr-ref"),
     ("git fetch origin 'pull/*/head:refs/remotes/pr/*'", "clean", "local-pr-ref"),
-    # Snippets that write a tracked file, in both quoting styles and through a heredoc.
+    # Snippets that write a tracked file: both quoting styles, a heredoc, an absolute interpreter, a subdirectory cwd.
     ("python3 -c \"open('tracked.txt','w').write('x')\"", "source", "source-edit"),
     ("python3 -c 'open(\"tracked.txt\", \"w\").write(\"x\")'", "source", "source-edit"),
     ("node -e \"require('fs').writeFileSync('tracked.txt', 'x')\"", "source", "source-edit"),
@@ -65,17 +79,33 @@ DENY = [
     ("perl -e 'open(my $f, \">\", \"tracked.txt\"); print $f 1'", "source", "source-edit"),
     ("perl -e \"open(F, '>tracked.txt'); print F 1\"", "source", "source-edit"),
     ("python3 <<PY\nopen('tracked.txt', 'w').write('x')\nPY", "source", "source-edit"),
+    (WRITE_TRACKED, "source", "source-edit"),
+    (WRITE_TRACKED.replace("python3", "/usr/bin/python3"), "source", "source-edit"),
     ("node - <<'JS'\nrequire('fs').writeFileSync(\"src/pull/handler.ts\", '')\nJS", "source", "source-edit"),
     ("cd src && python3 -c \"open('pull/handler.ts','w')\"", "source", "source-edit"),
-    # A secret added in the same command, and a scan that cannot run.
+    ("python3 -c \"open('handler.ts','w')\"", "source-sub", "source-edit"),
+    # A secret staged or added in the same command, a large diff with the secret first, and a scan that cannot run.
     ("git add leak.txt && git commit -m add", "leaky", "credentials"),
     ("git add -A && git commit -m all", "leaky", "credentials"),
     ("git commit -am wip", "leaky", "credentials"),
     ("cd {leaky} && git add . && git commit -m dot", "clean", "credentials"),
+    ("git commit -m leak", "staged", "credentials"),
+    ("git -C {staged} commit -m leak", "clean", "credentials"),
+    ('git commit -m "restore cd /tmp behavior"', "staged", "credentials"),
+    ("git commit -m big", "bigleak", "credentials"),
     ("git commit -m x", "corrupt", "credentials"),
     ("gh pr create --draft", "clean", "credentials"),
     ("git add -A && git commit -m all", "loose", "credentials"),
-    ("git push --force-if-includes origin feature", "clean", "destructive-git"),
+    # zsh reads an unquoted word starting with `=` as a command lookup that aborts the line.
+    ("echo =====", "clean", "zsh-equals"),
+    ("echo ==", "clean", "zsh-equals"),
+    ("echo =ls", "clean", "zsh-equals"),
+    ("cat a | cut -c1-9; echo =====; grep -n x b", "clean", "zsh-equals"),
+    ('g "label" f "pattern"; echo x == y', "clean", "zsh-equals"),
+    ("cat a.md; echo =======DISPATCH; cat b.md", "clean", "zsh-equals"),
+    ("cat <<'EOF' > /tmp/f\nbody == data\nEOF\necho =====", "clean", "zsh-equals"),
+    ('cat <<< "$x"; echo =====', "clean", "zsh-equals"),
+    ("cat <<-EOF\n\tbody == data\n\tEOF\necho =====", "clean", "zsh-equals"),
 ]
 
 # Ordinary work: every guard stays silent (Cursor's fail-closed credentials rule answers `{}`).
@@ -88,6 +118,13 @@ ALLOW = [
     ("git -C {clean} status", "locked"),
     ("git -C {clean} checkout main", "locked"),
     ("cd {clean} && git switch main", "locked"),
+    ("git status", "locked"),
+    ("git reset --soft HEAD~1", "locked"),
+    ('git commit -m "git checkout main"', "locked"),
+    ("CREW_WORKER_TASK=T-1 git checkout main", "locked"),
+    ("export CREW_WORKER_TASK=T-1 && git switch -c next", "locked"),
+    ("git checkout main", "stale"),
+    ("git checkout main", "clean"),
     ("git -c color.ui=never --no-pager log -3", "clean"),
     ("", "clean"),
     ("ls -la", "nogit"),
@@ -98,11 +135,13 @@ ALLOW = [
     ("cat <<'EOF' > /tmp/hook-case-notes.txt\ngit reset --hard is dangerous\nEOF", "clean"),
     ("cat <<-EOF\n\tgit push --force\n\tEOF\nls", "clean"),
     ("python3 - <<'PY'\nprint(\"a; b | c\")\nPY", "source"),
+    ("python3 - <<'PY'\nfrom pathlib import Path\nPath(\"/tmp/hook-case.json\").write_text(\"{}\")\nPY", "source"),
     ("cat > /tmp/hook-case.py <<'PY'\nopen('tracked.txt', 'w')\nPY", "source"),
     ('echo "a; git reset --hard | b"', "clean"),
     ("grep -n 'push --force' README.md | wc -l", "clean"),
     ('git commit -m "fix: never git push --force; use a lease"', "clean"),
     ("git push --force-with-lease origin feature", "clean"),
+    ("git push --force-with-lease --force-if-includes origin feature", "clean"),
     ("git push origin HEAD", "clean"),
     ("git reset --soft HEAD~1", "clean"),
     ("git clean -n", "clean"),
@@ -110,6 +149,10 @@ ALLOW = [
     ("gh pr -R owner/repo view 12", "clean"),
     ('grep -n "gh" README.md', "clean"),
     ("gh pr view 12 --json headRefOid --jq .headRefOid", "clean"),
+    # A jq filter with escapes inside quotes is read-only data.
+    ("""gh pr view --json url,number,state --jq '"#\\(.number) (\\(.state)): \\(.url)"'""", "clean"),
+    ('gh pr view --json number --jq "#\\(.number)"', "clean"),
+    ("""gh pr view --json number --jq '"#" + (.number|tostring)'""", "clean"),
     ("git fetch upstream main", "clean"),
     ("git log --grep=pull/123", "clean"),
     ("bash -c 'echo hi; ls'", "clean"),
@@ -125,10 +168,9 @@ ALLOW = [
     ("find . -name '*.py' -exec wc -l {} +", "clean"),
     ("git add notes.txt && git commit -m notes", "addable"),
     ("git commit -am wip", "source"),
+    ("cd '{addable}' && git commit -m clean", "staged"),
+    ('git -C "{addable}" commit -m clean', "staged"),
     ("gh pr create --draft --repo example/upstream", "clean"),
-    ("CREW_WORKER_TASK=T-1 git checkout main", "locked"),
-    ("git checkout main", "stale"),
-    ("echo =", "clean"),
     ("printf '%s\\n' \"a|b;c\" | tr '|' ' '", "clean"),
     ('make -j4 build && ./bin/run --flag "x;y"', "clean"),
     ("docker ps --format '{{.Names}}' | grep api", "clean"),
@@ -146,13 +188,29 @@ ALLOW = [
     ("python3 -c \"import os; open('/tmp/o','w').write(str(os.listdir('src')))\"", "source"),
     ("git add -u && git commit -m x", "loose"),
     ("git add --update . && git commit -m x", "loose"),
-    ("git push --force-with-lease --force-if-includes origin feature", "clean"),
+    # Quoted `=` is text, and so is a lone `=`, a comment, a heredoc body and an assignment.
+    ("echo =", "clean"),
+    ("echo '====='", "clean"),
+    ("printf '%s\\n' '-----'", "clean"),
+    ('x=1; y=2; echo "$x$y"', "clean"),
+    ("rg --glob=!*.md x", "clean"),
+    ('printf "%s\\n" "a=b"', "clean"),
+    ('jq -n "{a:1}"', "clean"),
+    ('grep -c "=" f', "clean"),
+    ('rg -n "===" f', "clean"),
+    ("echo a==b", "clean"),
+    ('[ "$a" = "$b" ] && echo same', "clean"),
+    ('[[ "$a" == "$b" ]] && echo same', "clean"),
+    ("ls -la; # ===== files =====", "clean"),
+    ("grep -n x a\n# ===== next =====\nwc -l b", "clean"),
+    ("python3 - <<'PY'\nprint(\"x == y\")\nPY", "clean"),
+    ("cat <<-EOF\n\tbody == data\n\tEOF\nrm -f /tmp/hook-case-x", "clean"),
 ]
 
 # `(command, cwd, tool, env, by)` run through `credentials.sh` alone with `tool` missing from PATH.
 # Without `grep` the secret scan cannot run, so a commit blocks while a command that needs no scan
 # passes. A failure before the scan starts (no `awk` for the normaliser, no `jq` for the input) lets
-# the command through with at most one line on stderr, and so does any failure under an off switch.
+# the command through with exactly one line on stderr, and so does any failure under an off switch.
 MISSING = [
     ("git commit -m x", "clean", "grep", {}, "credentials"),
     ("git add notes.txt && git commit -m notes", "addable", "grep", {}, "credentials"),
@@ -163,9 +221,10 @@ MISSING = [
     ("git commit -m x", "clean", "jq", {"EL_CAPITAN_GUARD_CREDENTIALS": "off"}, None),
 ]
 
-# The documented off switches, read from the hook's environment: `EL_CAPITAN_GUARDS=off` silences
-# every guard, `EL_CAPITAN_GUARD_<NAME>=off` one guard and no other.
-OFF = [
+# `(command, cwd, env, by)` with the hook's environment changed: the documented off switches
+# (`EL_CAPITAN_GUARDS=off` silences every guard, `EL_CAPITAN_GUARD_<NAME>=off` one and no other), the
+# worker's own task id (only the lock's id is exempt).
+ENV = [
     ("git reset --hard", "clean", {"EL_CAPITAN_GUARDS": "off"}, None),
     ("git reset --hard", "clean", {"EL_CAPITAN_GUARD_DESTRUCTIVE_GIT": "off"}, None),
     ("git reset --hard", "clean", {"EL_CAPITAN_GUARDS": "on"}, "destructive-git"),
@@ -176,6 +235,49 @@ OFF = [
     ("git add leak.txt && git commit -m add", "leaky", {"EL_CAPITAN_GUARD_CREDENTIALS": "off"}, None),
     ("echo =====", "clean", {"EL_CAPITAN_GUARD_ZSH_EQUALS": "off"}, None),
     ("echo =====", "clean", {"EL_CAPITAN_GUARDS": "off"}, None),
+    ("git checkout main", "locked", {"CREW_WORKER_TASK": "T-1"}, None),
+    ("git -C {locked} checkout main", "clean", {"CREW_WORKER_TASK": "T-1"}, None),
+    ("git checkout main", "locked", {"CREW_WORKER_TASK": "T-2"}, "worker-tree"),
+    ("git checkout main", "locked", {"CREW_WORKER_TASK": ""}, "worker-tree"),
+]
+
+# A denial a row expects from these guards must say (first) and must not say (second) these words.
+MESSAGES = {
+    # The denied agent cannot tell a live worker from a crashed one: no task id, no removal command.
+    "worker-tree": (("ask the user before removing the lock", "1 min old"), ("T-1", "lock remove")),
+}
+
+# `(fields, cwd, by)` sent to every `Write|Edit` hook: a write outside the boundary is denied after
+# `..` is resolved, the agent homes, /tmp and the review pipeline's temp directory are allowed, and a
+# spec titled for one task is never written over another task's existing spec.
+FILES = [
+    ({"file_path": "{clean}/new.md"}, "clean", None),
+    ({"file_path": "{clean}/deep/a/b/c.ts"}, "clean", None),
+    ({"file_path": "{clean}/../outside.md"}, "clean", "check-write-boundary"),
+    ({"file_path": "{clean}/sub/../../outside.md"}, "clean", "check-write-boundary"),
+    ({"file_path": "{home}/outside.md"}, "clean", "check-write-boundary"),
+    ({"file_path": "/outside/file"}, "clean", "check-write-boundary"),
+    ({"file_path": "{home}/.claude/agents/x.md"}, "clean", None),
+    ({"file_path": "{home}/.cursor/skills/x/SKILL.md"}, "clean", None),
+    ({"file_path": "/tmp/scratch.json"}, "clean", None),
+    ({"file_path": "{tmp}/crew-review-x/f.json"}, "clean", None),
+    ({"file_path": "{review}/layers.json"}, "clean", None),
+    ({"file_path": "{tmp}/not-a-repo/x.json"}, "clean", "check-write-boundary"),
+    ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Reviewer finding kind axis and confidence"},
+     "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent"}, "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Alignment agent tool frontmatter"},
+     "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent tool frontmatter with the harness"},
+     "clean", None),
+    ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent tool frontmatter"}, "clean", None),
+    ({"file_path": "{tasks}/AAA-other/REPORT.md", "content": "# Spec: Reviewer finding kind axis"}, "clean", None),
+    ({"file_path": "{tasks}/BBB-new/SPEC.md", "content": "# Spec: Reviewer finding kind axis"}, "clean", None),
+    ({"file_path": "{tasks}/CCC-fresh/SPEC.md",
+      "content": "# Spec: Cut duplicated is it normal work in discovery and reporting"},
+     "clean", None),
+    ({"file_path": "{tasks}/CCC-fresh/SPEC.md", "content": "# Spec: Something else entirely"}, "clean", None),
+    ({"file_path": "{home}/.agent/somewhere/SPEC.md", "content": "# Spec: anything at all"}, "clean", None),
 ]
 
 # Raw envelopes `(label, claude payload, cursor payload)` with no usable command.
@@ -191,3 +293,7 @@ PAYLOADS = [
     ("no cwd", {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git status"}},
      {"hook_event_name": "beforeShellExecution", "command": "git status"}),
 ]
+
+# Hooks whose stdout is their product: only their failure handling is checked here.
+SILENT = ("mode-anchor.sh", "memory-context.sh", "cursor-memory-context.sh", "notify-idle.sh", "log-tool-use.sh",
+          "memory-capture-prompt.sh", "spec-status-reconcile.sh")

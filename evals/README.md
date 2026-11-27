@@ -53,19 +53,3 @@ A good `crew-spec` result shows:
 - Consistent `Verify:` lines in tasks and `WHEN … THEN` criteria (the key quality signals for crew-builder)
 
 If `terse` matches `crew-spec` on structure score, the template isn't adding value beyond generic instruction — that's a signal to revise the template.
-
-## Reviewer eval
-
-A separate precision/recall harness for individual reviewer personas lives in `evals/reviewer/`.
-
-It measures whether each persona (adversarial, code-quality, prompt-quality, etc.) produces the correct findings when given known-bad diffs. Regressions surface as drops in recall or new scope violations when persona instruction files change.
-
-```bash
-# Run all reviewer fixtures
-OPENROUTER_API_KEY=... uv run python evals/reviewer/run.py
-
-# Summarize most recent reviewer eval run
-uv run python evals/reviewer/run.py --summarize
-```
-
-See [evals/reviewer/README.md](reviewer/README.md) for fixture format, scoring methodology, and how to add new fixtures.

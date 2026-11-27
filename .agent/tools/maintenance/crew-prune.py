@@ -2,7 +2,7 @@
 """Report catalog commands nothing references, so the next uncalled command is visible.
 
 `uncalled` (no prompt, hook, installer or tool names it) is the only automatic verdict; `test-only`
-is listed for a person to decide. Usage: crew-prune.py [--root DIR] [--tasks-dir DIR] [--json].
+is listed for a person to decide. Usage: crew-prune.py [--root DIR] [--json].
 Exit: 0 nothing uncalled, 1 at least one uncalled, 2 the catalog is unreadable.
 """
 from __future__ import annotations
@@ -14,13 +14,7 @@ from pathlib import Path
 
 import maintenance_bootstrap  # noqa: F401
 
-from prune_callers import (
-    caller_texts,
-    journal_texts,
-    telemetry,
-    tool_names,
-    verdict,
-)
+from prune_callers import caller_texts, tool_names, verdict
 
 WIDTHS = {"name": 30, "verdict": 12, "other": 9}
 
@@ -30,25 +24,24 @@ def defining_files(name: str, corpus: dict) -> set[Path]:
     return {path for group in ("tools", "tests") for path, _ in corpus[group] if path.name == name}
 
 
-def command_row(name: str, corpus: dict, journals: list) -> dict:
+def command_row(name: str, corpus: dict) -> dict:
     """One command's counts per caller group and the verdict those counts support."""
     own = defining_files(name, corpus)
     counts = {group: sum(1 for path, text in texts if path not in own and name in text)
               for group, texts in corpus.items()}
-    row = {"name": name, **counts, "journals": telemetry(name, journals)}
+    row = {"name": name, **counts}
     row["verdict"] = verdict(counts)
     return row
 
 
-def rows(root: Path, tasks_dir: Path | None) -> list[dict]:
+def rows(root: Path) -> list[dict]:
     corpus = caller_texts(root)
-    journals = journal_texts(tasks_dir)
-    return [command_row(name, corpus, journals) for name in tool_names(root)]
+    return [command_row(name, corpus) for name in tool_names(root)]
 
 
 def print_table(results: list[dict]) -> None:
     """One table, then the counts that make the verdict auditable."""
-    columns = ("name", "verdict", "prompts", "hooks", "install", "tools", "tests", "journals")
+    columns = ("name", "verdict", "prompts", "hooks", "install", "tools", "tests")
     print("".join(name.upper().ljust(WIDTHS.get(name, WIDTHS["other"])) for name in columns))
     for row in results:
         print("".join(str(row[name]).ljust(WIDTHS.get(name, WIDTHS["other"])) for name in columns))
@@ -68,8 +61,6 @@ def main() -> int:
         description="Report catalog commands with no caller; uncalled is the only automatic verdict.")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3],
                         help="repository root (default: the one this file lives in)")
-    parser.add_argument("--tasks-dir", type=Path, default=None,
-                        help="task journals to count invocations from; reported, never decisive")
     parser.add_argument("--json", action="store_true",
                         help="print the rows as a JSON array on stdout")
     args = parser.parse_args()
@@ -77,7 +68,7 @@ def main() -> int:
         print(f"error: root does not exist: {args.root}", file=sys.stderr)
         return 2
     try:
-        results = rows(args.root.resolve(), args.tasks_dir)
+        results = rows(args.root.resolve())
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
