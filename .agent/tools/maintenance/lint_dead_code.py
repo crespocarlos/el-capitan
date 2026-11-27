@@ -1,8 +1,9 @@
-"""The caller set for a catalog command: which files reference it, and where.
+"""`crew-lint.py --dead-code`: catalog commands nothing references, so the next uncalled command is visible.
 
-Callers are prompts (rules, agents, skills, always-loaded guidance), hooks, `install.sh`, other
-tools and the CI workflows. `TOOLS.md`, `tools.json` and the tool tree's `.md` docs describe commands, so they are not
-callers, and neither is a Python docstring or comment; tests are counted apart and never decide.
+Callers are prompts, hooks, `install.sh`, other tools and the CI workflows. `TOOLS.md`, `README.md`,
+`tools.json` and the tool tree's `.md` docs describe commands, so they are not callers, and neither is a
+Python docstring or comment; tests are counted apart and never decide. `uncalled` is the only
+automatic verdict; `test-only` is listed for a person to decide.
 """
 from __future__ import annotations
 
@@ -24,10 +25,11 @@ PROMPT_PATTERNS = (
 HOOK_PATTERNS = (".claude/hooks/**/*.sh",)
 TOOL_PATTERNS = (".agent/tools/**/*.py", ".agent/tools/**/*.sh", ".github/workflows/*.yml")
 TEST_PATTERNS = ("evals/**/*.py",)
-# The catalog page names every command, so it is the one document that cannot be a caller. `README.md`
-# is not a caller either: it describes the surface to a human and never asks the pipeline to run one.
+# The catalog page names every command, so it cannot be a caller; the README describes the surface
+# to a person and never asks the pipeline to run one.
 EXCLUDED = {"TOOLS.md", "README.md"}
 VERDICTS = ("called", "test-only", "uncalled")
+WIDTHS = {"name": 30, "verdict": 12, "other": 9}
 
 
 def tool_names(root: Path) -> list[str]:
@@ -44,13 +46,12 @@ def tool_names(root: Path) -> list[str]:
     return sorted(name for name in names if name)
 
 
-def sources(root: Path, patterns: tuple[str, ...], exclude: Path | None = None) -> list[Path]:
-    """Every file under `root` matching one of `patterns`, minus the catalog page and `exclude`."""
+def sources(root: Path, patterns: tuple[str, ...]) -> list[Path]:
+    """Every file under `root` matching one of `patterns`, minus the catalog page and the README."""
     found: set[Path] = set()
     for pattern in patterns:
         found.update(path for path in root.glob(pattern) if path.is_file())
-    return sorted(path for path in found
-                  if path.name not in EXCLUDED and (exclude is None or path != exclude))
+    return sorted(path for path in found if path.name not in EXCLUDED)
 
 
 def python_code(source: str) -> str:
@@ -102,9 +103,39 @@ def caller_texts(root: Path) -> dict[str, list[tuple[Path, str]]]:
 def verdict(counts: dict[str, int]) -> str:
     """Called when any caller group names it; test-only when only a test does; else uncalled.
 
-    A command the pipeline never invokes and only a test exercises is reported separately rather
-    than called: a test keeps a command correct, not needed.
+    A test keeps a command correct, not needed, so a command only a test exercises is not called.
     """
     if sum(counts[group] for group in ("prompts", "hooks", "install", "tools")):
         return "called"
     return "test-only" if counts["tests"] else "uncalled"
+
+
+def command_row(name: str, corpus: dict) -> dict:
+    """One command's counts per caller group, its own file excluded, and the verdict they support."""
+    own = {path for group in ("tools", "tests") for path, _ in corpus[group] if path.name == name}
+    counts = {group: sum(1 for path, text in texts if path not in own and name in text)
+              for group, texts in corpus.items()}
+    return {"name": name, **counts, "verdict": verdict(counts)}
+
+
+def dead_code_rows(root: Path) -> list[dict]:
+    """One row per catalog command; raises ValueError when the catalog is unreadable."""
+    names = tool_names(root)
+    corpus = caller_texts(root)
+    return [command_row(name, corpus) for name in names]
+
+
+def dead_code_table(results: list[dict]) -> list[str]:
+    """The table, then the counts that make the verdict auditable."""
+    columns = ("name", "verdict", "prompts", "hooks", "install", "tools", "tests")
+    lines = ["".join(name.upper().ljust(WIDTHS.get(name, WIDTHS["other"])) for name in columns)]
+    lines += ["".join(str(row[name]).ljust(WIDTHS.get(name, WIDTHS["other"])) for name in columns) for row in results]
+    uncalled = [row["name"] for row in results if row["verdict"] == "uncalled"]
+    test_only = [row["name"] for row in results if row["verdict"] == "test-only"]
+    lines += ["", f"{len(results)} commands: {len(results) - len(uncalled) - len(test_only)} called, "
+                  f"{len(test_only)} named only by a test, {len(uncalled)} uncalled"]
+    if test_only:
+        lines.append(f"test-only (a person decides): {', '.join(test_only)}")
+    if uncalled:
+        lines.append(f"uncalled (no reference at all): {', '.join(uncalled)}")
+    return lines

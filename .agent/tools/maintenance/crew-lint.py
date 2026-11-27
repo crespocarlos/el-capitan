@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate cross-file el-capitan conventions.
 
-Usage: crew-lint.py [--root DIR] [--budget] [--json] [--list-rules]
+Usage: crew-lint.py [--root DIR] [--budget] [--json] [--list-rules | --commands | --write-readme | --dead-code]
 
 Each family lives in its own `lint_*` module and every rule is registered in `lint_files.RULES`
 (`--list-rules` prints it). This file only parses arguments and maps findings to an exit code.
@@ -16,6 +16,8 @@ from pathlib import Path
 import maintenance_bootstrap  # noqa: F401
 
 from lint_catalog import installed_tool_names, lint_tool_catalog
+from lint_dead_code import dead_code_rows, dead_code_table
+from lint_docs import help_text, lint_readme, lint_release_files, write_readme
 from lint_files import files, rule_table
 from lint_prompts import (
     MAX_ALWAYS_RULE_TOKENS,
@@ -39,8 +41,8 @@ from lint_writing import (
 )
 
 Finding = tuple[str, int, str, str]
-# The two documentation roots a stale path is most likely to hide in, checked alongside the prompts.
-DOC_ROOTS = ("README.md", "AGENTS.md")
+# The documentation a stale path is most likely to hide in, checked alongside the prompts.
+DOC_ROOTS = ("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "docs/*.md")
 
 
 def rule_names(root: Path) -> set[str]:
@@ -78,7 +80,7 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_tool_surface(root, all_files))
     findings.extend(lint_progress_transitions(root, all_files))
     findings.extend(lint_edit_discipline(root, all_files))
-    docs = [root / name for name in DOC_ROOTS if (root / name).is_file()]
+    docs = sorted(path for pattern in DOC_ROOTS for path in root.glob(pattern) if path.is_file())
     findings.extend(lint_repo_paths(root, all_files + docs))
     rules = rule_names(root)
     findings.extend(lint_documents(root, all_files, installed_names, rules, router_path(root)))
@@ -89,19 +91,43 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_removed_forms(root))
     findings.extend(lint_tool_prose(root))
     findings.extend(lint_style(root))
+    findings.extend(lint_readme(root))
+    findings.extend(lint_release_files(root))
     if budget:
         findings.extend(lint_budget(root, all_files, rules))
     return findings
 
 
-def main() -> int:
+def dead_code(root: Path, as_json: bool) -> int:
+    """The caller report: exit 1 when a command is uncalled, 2 when the catalog is unreadable."""
+    try:
+        results = dead_code_rows(root)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    print(json.dumps(results, indent=2) if as_json else "\n".join(dead_code_table(results)))
+    return 1 if any(row["verdict"] == "uncalled" for row in results) else 0
+
+
+def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate repository conventions; --budget adds the size gates.")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument("--budget", action="store_true", help="also check the always-on and prompt ceilings")
     parser.add_argument("--json", action="store_true",
-                        help="print findings as a JSON array on stdout; the measurement goes to stderr")
-    parser.add_argument("--list-rules", action="store_true", help="print every registered rule and exit")
-    args = parser.parse_args()
+                        help="print findings (or --dead-code rows) as JSON on stdout; the measurement goes to stderr")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--list-rules", action="store_true", help="print every registered rule and exit")
+    mode.add_argument("--commands", action="store_true",
+                      help="print the crew command table (`crew help`), generated from the router and tools.json")
+    mode.add_argument("--write-readme", action="store_true",
+                      help="rewrite the README's generated blocks: the command table and the counts")
+    mode.add_argument("--dead-code", action="store_true",
+                      help="report catalog commands no prompt, hook, installer or tool calls; exit 1 on one uncalled")
+    return parser
+
+
+def main() -> int:
+    args = make_parser().parse_args()
     if args.list_rules:
         print("\n".join(rule_table()))
         return 0
@@ -109,6 +135,16 @@ def main() -> int:
         print(f"error: root does not exist: {args.root}", file=sys.stderr)
         return 2
     root = args.root.resolve()
+    if args.commands:
+        print(help_text(root))
+        return 0
+    if args.write_readme:
+        missing = write_readme(root)
+        for name in missing:
+            print(f"error: README.md has no generated:{name} block", file=sys.stderr)
+        return 1 if missing else 0
+    if args.dead_code:
+        return dead_code(root, args.json)
     if args.budget:
         budget_report(root)
     findings = lint(root, args.budget)

@@ -217,13 +217,21 @@ def restore_units(backups: list[tuple[Path, str | None]]) -> None:
             atomic_write(path, previous)
 
 
-def mutate(operation: str, change: Callable[[], list[tuple[Path, str | None]]]) -> int:
-    """Lock, preserve changed unit files, index, commit, and restore on failure."""
+def mutate(operation: str, change: Callable[[], list[tuple[Path, str | None]]],
+           written: list[tuple[Path, str | None]] | None = None) -> int:
+    """Lock, preserve changed unit files, index, commit, and restore on failure.
+
+    `written` is a list `change` appends each `(path, previous text)` to before it writes, so a failure
+    partway restores what was already written; `change` may also return its backups when it is done.
+    """
     ensure_store()
+    backups = written if written is not None else []
     with store_lock():
         try:
             commit_external_changes()
-            backups = change()
+            returned = change()
+            if returned is not backups:
+                backups.extend(returned)
             conn = refresh(write_indexes=False)
             backups.extend(write_indexes_for_scopes(conn))
             conn.close()
@@ -232,9 +240,13 @@ def mutate(operation: str, change: Callable[[], list[tuple[Path, str | None]]]) 
                 git_commit(operation)
             return 0
         except (OSError, sqlite3.Error, subprocess.SubprocessError, MemoryStoreError) as error:
-            restore_units(locals().get("backups", []))
+            restore_units(backups)
             print(str(error), file=sys.stderr)
             return 2
+        except ValueError:
+            # A refused change or a unit `refresh` cannot parse: undo the writes, keep the caller's error.
+            restore_units(backups)
+            raise
 
 
 def duplicate_candidates(conn, unit: dict) -> list[str]:

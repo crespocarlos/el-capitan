@@ -1,6 +1,6 @@
 ---
 name: crew-specwriter
-description: "Inline-only spec-writing protocol. Trigger: 'crew spec <issue URL or #X>'; never launch this agent as a subagent."
+description: "Draft a SPEC.md, then stop at Gate 1 for approval. Trigger: 'crew spec <issue URL or #X>'; never launch this agent as a subagent."
 ---
 **Workflow**: build | **Stage**: spec
 

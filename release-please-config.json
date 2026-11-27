@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "cf843d2f7bc4e75cfcd3598845f7652b0eb91ea8",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "el-capitan",
+      "version-file": "VERSION",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "changelog-sections": [
+        {"type": "feat", "section": "Added"},
+        {"type": "fix", "section": "Fixed"},
+        {"type": "perf", "section": "Changed"},
+        {"type": "refactor", "section": "Changed"},
+        {"type": "revert", "section": "Removed"},
+        {"type": "docs", "section": "Documentation", "hidden": true},
+        {"type": "test", "section": "Tests", "hidden": true},
+        {"type": "chore", "section": "Miscellaneous", "hidden": true},
+        {"type": "ci", "section": "Continuous Integration", "hidden": true},
+        {"type": "build", "section": "Build", "hidden": true}
+      ]
+    }
+  }
+}

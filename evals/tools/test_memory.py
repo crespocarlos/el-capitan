@@ -17,6 +17,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -150,12 +151,116 @@ def test_add_cite_and_journal_round_trip(tmp: Path) -> None:
     stored = list((tmp / "memory" / "observations" / "demo").glob("observation-*.md"))
     check("journal add stores the entry as one observation in its repo's scope",
           journal.returncode == 0 and len(stored) == 1, journal.stderr)
+    (tmp / "memory" / ".inbox" / "procedure-draft.md").write_text(DRAFT.format(id="draft", title="Draft"), encoding="utf-8")
+    (tmp / "memory" / "global" / ".hidden.md").write_text(DRAFT.format(id="hidden", title="Hidden"), encoding="utf-8")
+    (tmp / "memory" / "global" / "link.md").symlink_to(stored[0])
+    (tmp / "dangling.tar.gz").symlink_to(tmp / "victim.tar.gz")
+    check("export refuses a target path that is a link, even a dangling one",
+          mem("export", str(tmp / "dangling.tar.gz")).returncode == 2 and not (tmp / "victim.tar.gz").exists())
+    exported = mem("export", str(tmp / "units.tar.gz"))
+    with tarfile.open(tmp / "units.tar.gz") as bundle:
+        members = bundle.getmembers()
+    names = sorted(member.name for member in members)
+    check("export carries the unit and the observation, not the index, inbox, sessions, a link or a hidden file",
+          exported.returncode == 0 and len(names) == 2 and all(n.startswith(("global/", "observations/demo/")) for n in names)
+          and "skipped" in exported.stderr and "link.md" in exported.stderr and ".hidden.md" in exported.stderr, (names, exported.stderr))
+    check("the export is private and names no owner",
+          (tmp / "units.tar.gz").stat().st_mode & 0o777 == 0o600 and all((m.uid, m.gid, m.uname, m.gname) == (0, 0, "", "") for m in members))
+    env["CREW_MEMORY_DIR"] = str(tmp / "other")
+    mem("init")
+    first, again = mem("import", str(tmp / "units.tar.gz")), mem("import", str(tmp / "units.tar.gz"))
+    found = json.loads(mem("search", "hook suite", "--repo", "*", "--json").stdout or "[]")
+    check("import adds every unit to a new store, indexed; a second import changes nothing",
+          (first.returncode, again.returncode) == (0, 0) and [u["id"] for u in found] == [unit.get("id")]
+          and "added 0, unchanged 2" in again.stdout, (first.stderr, again.stdout, found))
+    stored_unit = next((tmp / "other" / "global").glob("*.md"))
+    stored_unit.write_text(stored_unit.read_text() + "Edited here.\n", encoding="utf-8")
+    conflict = mem("import", str(tmp / "units.tar.gz"))
+    check("a differing stored unit is kept and the import exits 1",
+          conflict.returncode == 1 and "Edited here." in stored_unit.read_text(), conflict.stderr)
     (tmp / "not-a-dir").write_text("x", encoding="utf-8")
     env["CREW_MEMORY_DIR"] = str(tmp / "not-a-dir" / "memory")
     plain, warned = mem("context", "--query", "x"), mem("context", "--query", "x", "--warn-unavailable")
     check("an unavailable store exits 2, or with --warn-unavailable prints none and a warning and exits 0",
           plain.returncode == 2 and (warned.returncode, warned.stdout.strip()) == (0, "none")
           and "warning: memory unavailable" in warned.stderr, (plain.returncode, warned.stdout, warned.stderr))
+
+
+def unit_text(ident: str, scope: str = "global", unit_type: str = "procedure", status: str = "active") -> str:
+    return (f"---\nid: {ident}\ntype: {unit_type}\nscope: {scope}\ntitle: Title {ident}\nstatus: {status}\n"
+            f"created: 2026-01-01\nmodified: 2026-01-01\nevidence: [x]\n---\nBody of {ident}.\n")
+
+
+# (case, archive members, a regular file put in the store first or None, module caps patched) -> refused, exit 2, nothing written
+REFUSED = (
+    ("a path outside the unit layout", {"global/ok.md": unit_text("procedure-ok"), "repos/../escape.md": unit_text("procedure-esc")}, None, {}),
+    ("no frontmatter", {"global/ok.md": unit_text("procedure-ok"), "global/bad.md": "no frontmatter\n"}, None, {}),
+    ("an unknown type", {"global/ok.md": unit_text("procedure-ok"), "global/odd.md": unit_text("odd-x", unit_type="rumour")}, None, {}),
+    ("an unknown status", {"global/ok.md": unit_text("procedure-ok"), "global/odd.md": unit_text("procedure-x", status="lost")}, None, {}),
+    ("a declared scope other than its path's", {"global/sc.md": unit_text("procedure-sc", scope="repos/victim")}, None, {}),
+    ("a repo unit claiming global", {"repos/x/sc.md": unit_text("procedure-sc", scope="global")}, None, {}),
+    ("names equal after casefold", {"global/Case.md": unit_text("procedure-a"), "global/case.md": unit_text("procedure-b")}, None, {}),
+    ("one id twice", {"global/a.md": unit_text("procedure-same"), "global/b.md": unit_text("procedure-same")}, None, {}),
+    ("an id already stored under another path", {"global/zz-other.md": unit_text("procedure-orig")}, None, {}),
+    ("a member over the size cap", {"global/big.md": unit_text("procedure-big") + "a" * 300_000}, None, {}),
+    ("more members than the cap", {f"global/m{i}.md": unit_text(f"procedure-m{i}") for i in range(3)}, None, {"MAX_MEMBERS": 2}),
+    ("more bytes than the total cap", {f"global/m{i}.md": unit_text(f"procedure-m{i}") for i in range(3)}, None, {"MAX_TOTAL_BYTES": 400}),
+    ("a write failing partway", {"repos/aaa/one.md": unit_text("procedure-one", "aaa"), "repos/zzz/two.md": unit_text("procedure-two", "zzz")},
+     "repos/zzz", {}),
+)
+
+
+@pytest.mark.parametrize("case,members,blocker,caps", REFUSED, ids=[case for case, *_ in REFUSED])
+def test_import_refuses_an_archive_whole(case: str, members: dict[str, str], blocker: str | None, caps: dict[str, int],
+                                         tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every member is checked before anything is written; a write that fails partway leaves nothing behind."""
+    import memory_bootstrap  # noqa: F401
+
+    import memory_transfer
+    from cli_runner import run as cli
+
+    for name, value in caps.items():
+        monkeypatch.setattr(memory_transfer, name, value)
+    env = {"CREW_MEMORY_DIR": str(tmp / "memory"), "CREW_JOURNAL_DIR": str(tmp / "journal"), "HOME": str(tmp)}
+
+    def mem(*arguments: str, stdin: str = "") -> subprocess.CompletedProcess:
+        return cli(ROOT / ".agent" / "tools" / "memory" / "crew-mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
+
+    mem("init")
+    (tmp / "memory" / "global" / "orig.md").write_text(unit_text("procedure-orig"), encoding="utf-8")
+    if blocker:
+        (tmp / "memory" / blocker).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / "memory" / blocker).write_text("not a directory\n", encoding="utf-8")
+    before = sorted(p.relative_to(tmp / "memory").as_posix() for p in (tmp / "memory").rglob("*.md"))
+    with tarfile.open(tmp / "in.tar.gz", "w:gz") as bundle:
+        for name, text in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(text.encode())
+            bundle.addfile(info, io.BytesIO(text.encode()))
+    result = mem("import", str(tmp / "in.tar.gz"))
+    after = sorted(p.relative_to(tmp / "memory").as_posix() for p in (tmp / "memory").rglob("*.md"))
+    listed = mem("list", "--json")
+    assert (result.returncode, after, listed.returncode) == (2, before, 0), (result.stdout, result.stderr, after, listed.stderr)
+
+
+def test_mutate_restores_when_the_index_cannot_parse_a_write(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import memory_bootstrap  # noqa: F401
+
+    import memory_maintenance
+    import memory_store
+
+    monkeypatch.setenv("CREW_MEMORY_DIR", str(tmp / "memory"))
+    monkeypatch.setenv("HOME", str(tmp))
+    memory_maintenance.init_store()
+    bad = tmp / "memory" / "global" / "bad.md"
+
+    def change() -> list:
+        bad.write_text("no frontmatter\n", encoding="utf-8")
+        return [(bad, None)]
+
+    with pytest.raises(ValueError):
+        memory_store.mutate("mem: bad", change)
+    check("a unit the refresh cannot parse is removed again", not bad.exists())
 
 
 def test_primary_remote() -> None:

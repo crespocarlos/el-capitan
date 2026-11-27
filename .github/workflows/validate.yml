@@ -35,10 +35,16 @@ jobs:
         run: bash evals/ruff.sh check .
 
       - name: Spelling in prompts and docs (codespell, pinned)
-        run: uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md .agent/tools/AGENTS.md .agent/tools/TOOLS.md
+        run: uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md CHANGELOG.md .github .agent/tools/AGENTS.md .agent/tools/TOOLS.md
 
-      - name: Prompt prose (Vale, pinned; styles in .vale/styles)
-        run: uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md .agent/tools/AGENTS.md
+      - name: Prompt and doc prose (Vale, pinned; styles in .vale/styles)
+        run: uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md .agent/tools/AGENTS.md
+
+      - name: Workflow security (zizmor, pinned, offline audits)
+        run: uvx zizmor==1.33.1 --offline .github/workflows
+
+      - name: Workflow syntax (actionlint, pinned)
+        run: uvx --from actionlint-py==1.7.12.25 actionlint
 
       - name: Shell syntax
         run: |

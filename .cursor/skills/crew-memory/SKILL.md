@@ -1,16 +1,16 @@
 ---
 name: crew-memory
 disable-model-invocation: true
-description: "Manage unified observations and durable memory. Triggers: 'crew remember: <text>' and 'crew memory seed|consolidate|journal'."
+description: "Add a durable lesson to memory, draft candidates from the journal, consolidate the inbox, or import legacy journals. Triggers: 'crew memory add <text>' and 'crew memory seed|consolidate|journal'."
 ---
 
 # Memory
 
 Follow `~/.cursor/skills/crew-memory/references/contract.md`.
 
-## Remember
+## Add
 
-Validate the candidate against the write gate. For an approved candidate, run `crew-mem.py add` with a
+`crew memory add <text>`: validate the candidate against the write gate. For an approved candidate, run `crew-mem.py add` with a
 typed scope and title, reading its claim from stdin. On exit 3, show the duplicate ids and ask
 whether to supersede, force-add, or skip. On exit 2, print `warning: memory unavailable`.
 

@@ -9,8 +9,8 @@ this file covers the code that pipeline runs.
 python3 .agent/tools/maintenance/crew-lint.py --budget   # catalog, references, module cap, imports, budget
 bash evals/ruff.sh check .                               # Ruff, the version pinned in ruff.toml
 bash evals/test.sh -n auto                               # every test: pinned pytest + pytest-xdist (uvx)
-uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md .agent/tools/AGENTS.md .agent/tools/TOOLS.md
-uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md .agent/tools/AGENTS.md
+uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md CHANGELOG.md .github .agent/tools/AGENTS.md .agent/tools/TOOLS.md
+uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md .agent/tools/AGENTS.md
 ```
 
 The first two are fast and cover structure; codespell and Vale (pinned, the same lines CI runs) check

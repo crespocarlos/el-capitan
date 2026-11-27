@@ -245,3 +245,96 @@ def test_tracked_state(tmp: Path) -> None:
           [p.split(".agent/")[-1].split("/")[0] for p in found] == ["reviews", "tasks"], found)
     subprocess.run(["git", "-C", str(scratch), "rm", "-r", "--cached", "-q", ".agent/tasks", ".agent/reviews"], check=True, env=env)
     check("untracked state passes", lint_local_state_tracked(scratch) == [])
+
+
+def command_entry(name: str, **extra: object) -> dict:
+    return {"name": name, "dir": "task", "kind": "command", "category": "task", "owner": "repository", "help": "argparse", "smoke": "--help", **extra}
+
+
+DOCS_ROUTER = ("# Router\n\n| Trigger | Crew member |\n|---|---|\n| `crew commit` | crew-commit |\n| `crew doctor` | `~/.agent/bin/crew-doctor.py` |\n"
+               "| `crew idp` | crew-idp skill (quarterly, not a stage) |\n")
+DOCS_README = "".join(f"<!-- generated:{name} (crew-lint.py --write-readme) -->\n<!-- /generated:{name} -->\n" for name in ("commands", "standalone", "counts"))
+DOCS_ROOT = {
+    "rules/crew-router.mdc": DOCS_ROUTER, "README.md": DOCS_README, "VERSION": "0.1.0\n", ".release-please-manifest.json": '{".": "0.1.0"}\n',
+    ".agent/tools/tools.json": json.dumps({**CATALOG, "tools": [command_entry("crew-doctor.py", routes={"crew doctor": "Install health."})]}),
+    SKILL.format("crew-commit"): "---\nname: crew-commit\ndescription: \"Commit the staged work. Trigger: 'crew commit'.\"\n---\n",
+    SKILL.format("crew-idp"): "---\nname: crew-idp\ndescription: \"Use when review season comes round: draft the review answers. Trigger: 'crew idp'.\"\n---\n",
+    "release-please-config.json": '{"bootstrap-sha": "cf843d2", "packages": {}}\n',
+    **{name: "x\n" for name in ("CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", ".github/workflows/release-please.yml",
+                                ".github/pull_request_template.md", ".github/ISSUE_TEMPLATE/bug_report.md")},
+}
+DOCS_RULES = ("readme-commands-current", "readme-counts-current", "release-files")
+# (case, files changed after --write-readme (None deletes), {rule: findings expected})
+DOCS = (
+    ("fresh blocks and every release file", {}, {}),
+    ("a routed row added after the table was written",
+     {"rules/crew-router.mdc": DOCS_ROUTER + "| `crew log` | crew-log |\n", SKILL.format("crew-log"): "---\nname: crew-log\ndescription: \"Log it.\"\n---\n"},
+     {"readme-commands-current": 1, "readme-counts-current": 1}),
+    ("an unrouted skill changes only the counts", {SKILL.format("extra"): "---\nname: extra\ndescription: \"x\"\n---\n"}, {"readme-counts-current": 1}),
+    ("a tool row with no routes summary", {".agent/tools/tools.json": json.dumps({**CATALOG, "tools": [command_entry("crew-doctor.py")]})},
+     {"readme-commands-current": 2}),
+    ("no generated markers", {"README.md": "# Readme\n"}, {"readme-commands-current": 2, "readme-counts-current": 1}),
+    ("VERSION differs from the release-please manifest, and a release file is missing", {"VERSION": "0.2.0\n", "SECURITY.md": None}, {"release-files": 2}),
+    ("a release-please config with no bootstrap-sha would release the whole history", {"release-please-config.json": '{"packages": {}}\n'},
+     {"release-files": 1}),
+)
+
+
+@pytest.mark.parametrize("case,changes,expected", DOCS, ids=[case for case, _, _ in DOCS])
+def test_readme_blocks_and_release_files(case: str, changes: dict[str, str | None], expected: dict[str, int], tmp: Path) -> None:
+    root = write(tmp, DOCS_ROOT)
+    written = cli(LINT_PATH, "--root", str(root), "--write-readme")
+    printed = cli(LINT_PATH, "--root", str(root), "--commands").stdout
+    readme = (root / "README.md").read_text()
+    everyday, standalone = readme.split("generated:standalone", 1)
+    check("--write-readme fills the tables `--commands` prints (`crew help`), each row described; a row the router marks "
+          "not a stage goes to the standalone block with its qualifier, and a leading `Use when` clause is dropped",
+          written.returncode == 0 and "| `crew doctor` | Install health. |" in everyday and "| `crew commit` | Commit the staged work. |" in everyday
+          and "crew idp" not in everyday and "| `crew idp` | Quarterly: draft the review answers. |" in standalone
+          and "| `crew idp` | Quarterly" in printed and all(line in readme for line in printed.splitlines() if line.startswith("|")),
+          (written.stderr, readme, printed))
+    stamp = (root / "README.md").stat()
+    cli(LINT_PATH, "--root", str(root), "--write-readme")
+    check("an unchanged README is not rewritten", (root / "README.md").stat().st_mtime_ns == stamp.st_mtime_ns
+          and (root / "README.md").stat().st_ino == stamp.st_ino)
+    for name, text in changes.items():
+        (root / name).unlink() if text is None else write(root, {name: text})
+    counts = collections.Counter(rule for _, _, rule, _ in LINT.lint(root, False))
+    assert {rule: counts[rule] for rule in DOCS_RULES} == {rule: expected.get(rule, 0) for rule in DOCS_RULES}, dict(counts)
+
+
+PRUNE_CATALOG = {**CATALOG, "tools": [command_entry(name) for name in ("crew-called.py", "crew-tested.py", "crew-orphan.py")],
+                 "modules": [{"name": "helper_module.py", "dir": "task", "kind": "module", "category": "task", "owner": "repository",
+                              "help": "imported", "smoke": "imported"}]}
+PRUNE_ROOT = {
+    ".agent/tools/tools.json": json.dumps(PRUNE_CATALOG), ".agent/tools/task/helper_module.py": '"""Imported, never invoked."""\n',
+    **{f".agent/tools/task/{name}": f'#!/usr/bin/env python3\n"""{name} does a thing."""\n' for name in ("crew-called.py", "crew-tested.py", "crew-orphan.py")},
+    "rules/crew-router.mdc": "# Router\n\nThe pipeline runs `~/.agent/bin/crew-called.py`.\n", "install.sh": "#!/usr/bin/env bash\nln -sf a b\n",
+    ".agent/tools/TOOLS.md": "`crew-called.py`, `crew-tested.py`, and `crew-orphan.py` are all documented.\n", "README.md": "Run `crew-orphan.py`.\n",
+    "evals/tools/test_something.py": '"""A test."""\nTOOL = "crew-tested.py"\n',
+}
+# (case, files changed, crew-orphan.py's verdict, exit code): a catalog page, README, docstring or comment describes; it does not call.
+DEAD_CODE = (
+    ("the catalog page and the README are not callers", {}, "uncalled", 1),
+    ("an installer reference is a caller", {"install.sh": "#!/usr/bin/env bash\nln -sf crew-orphan.py b\n"}, "called", 0),
+    ("a docstring, a comment and a tool-tree doc are not callers",
+     {".agent/tools/task/helper_module.py": '"""Wraps crew-orphan.py."""\n# crew-orphan.py is described here\nVALUE = 1\n',
+      ".agent/tools/AGENTS.md": "Run `crew-orphan.py` to see.\n"}, "uncalled", 1),
+    ("a string in code is a caller", {".agent/tools/task/helper_module.py": 'COMMAND = "crew-orphan.py"\n'}, "called", 0),
+)
+
+
+@pytest.mark.parametrize("case,changes,orphan,code", DEAD_CODE, ids=[case for case, _, _, _ in DEAD_CODE])
+def test_dead_code(case: str, changes: dict[str, str], orphan: str, code: int, tmp: Path) -> None:
+    root = write(tmp, {**PRUNE_ROOT, **changes})
+    result = cli(LINT_PATH, "--root", str(root), "--dead-code", "--json")
+    verdicts = {row["name"]: row["verdict"] for row in json.loads(result.stdout or "[]")}
+    assert (verdicts, result.returncode) == ({"crew-called.py": "called", "crew-tested.py": "test-only", "crew-orphan.py": orphan}, code), result.stderr
+
+
+def test_dead_code_table_and_unreadable_catalog(tmp: Path) -> None:
+    table = cli(LINT_PATH, "--root", str(write(tmp / "repo", PRUNE_ROOT)), "--dead-code")
+    rows = [line for line in table.stdout.splitlines() if line.startswith("crew-")]
+    check("the table has one row per command and counts the uncalled", len(rows) == 3 and "1 uncalled" in table.stdout and table.returncode == 1, table.stdout)
+    broken = cli(LINT_PATH, "--root", str(tmp), "--dead-code")
+    check("an unreadable catalog exits 2", broken.returncode == 2 and "cannot read the catalog" in broken.stderr, broken.stderr)

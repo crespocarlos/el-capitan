@@ -30,7 +30,6 @@ GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
 READS = {
     "crew-agent-context.py": (["{repo}/README.md"], {0}),
     "crew-lint.py": (["--json", "--root", "{root}"], {0, 1}),
-    "crew-prune.py": (["--json", "--root", "{root}"], {0}),
     "crew-ls.py": (["--json", "--tasks-dir", "{tasks}"], {0}),
     "crew-doctor.py": (["--offline"], {1}),  # the throwaway HOME has no install: problems, exit 1
     # Plans only: a reply mutates GitHub solely with --execute.

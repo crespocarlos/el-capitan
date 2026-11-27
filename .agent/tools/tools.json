@@ -21,18 +21,8 @@
       "help": "argparse",
       "smoke": "--help",
       "output": "json",
-      "json_smoke": ["--json", "--root", "."]
-    },
-    {
-      "name": "crew-prune.py",
-      "dir": "maintenance",
-      "kind": "command",
-      "category": "maintenance",
-      "owner": "repository",
-      "help": "argparse",
-      "smoke": "--help",
-      "output": "json",
-      "json_smoke": ["--json", "--root", "."]
+      "json_smoke": ["--json", "--root", "."],
+      "routes": {"crew help": "List every crew command and what it does, generated from the router and tools.json."}
     },
     {
       "name": "crew-doctor.py",
@@ -42,7 +32,8 @@
       "owner": "repository",
       "help": "argparse",
       "smoke": "--offline",
-      "output": "human"
+      "output": "human",
+      "routes": {"crew doctor": "One screen of install health: links, hook registrations, managed blocks, tool versions, `gh` sign-in, state sizes; exit 1 on a problem."}
     },
     {
       "name": "crew-ls.py",
@@ -55,7 +46,11 @@
       "output": "json",
       "bounded": true,
       "list_flags": ["--limit", "--max-chars"],
-      "json_smoke": ["--json", "--tasks-dir", "@tmpdir"]
+      "json_smoke": ["--json", "--tasks-dir", "@tmpdir"],
+      "routes": {
+        "crew ls": "Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line.",
+        "crew report": "Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures."
+      }
     },
     {
       "name": "crew-pr-actions.py",
@@ -67,7 +62,8 @@
       "smoke": "--help",
       "output": "json-always",
       "json_smoke": ["reply", "--repo", "owner/repo", "--pr", "1", "--thread-id", "T",
-                     "--comment-id", "C", "--body", "b"]
+                     "--comment-id", "C", "--body", "b"],
+      "routes": {"crew pr": "Read a PR, its diff, the repository or an issue through one read-only tool; writes stay `gh`."}
     },
     {
       "name": "crew-review-findings.py",
@@ -169,7 +165,8 @@
       "owner": "crew-orchestrator",
       "help": "argparse",
       "smoke": "--help",
-      "output": "human"
+      "output": "human",
+      "routes": {"crew gc": "Retention from `~/.agent/config.json`: artifacts of DONE tasks after 14 days, DONE tasks archived after 90, session files after 30, the legacy telemetry; a dry run unless `--apply`."}
     },
     {
       "name": "crew-verify.py",
@@ -389,13 +386,22 @@
       "smoke": "imported by crew-evals-compare.py"
     },
     {
-      "name": "prune_callers.py",
+      "name": "lint_dead_code.py",
       "dir": "maintenance",
       "kind": "module",
       "category": "maintenance",
       "owner": "repository",
-      "help": "imported by crew-prune.py: the caller set for a catalog command (`crew-prune.py`)",
-      "smoke": "imported by crew-prune.py"
+      "help": "imported by crew-lint.py: the caller report for catalog commands (`--dead-code`)",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
+      "name": "lint_docs.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py: the generated README blocks (`--commands`, `--write-readme`) and the release files",
+      "smoke": "imported by crew-lint.py"
     },
     {
       "name": "doctor_checks.py",
@@ -764,6 +770,15 @@
       "category": "memory",
       "owner": "crew-memory",
       "help": "imported by crew-mem.py: init, consolidate",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_transfer.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py: export and import of the units, every member checked before a write",
       "smoke": "imported by crew-mem.py"
     },
     {

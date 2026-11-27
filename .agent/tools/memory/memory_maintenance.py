@@ -2,7 +2,8 @@
 """Memory maintenance: init and consolidate.
 
 Store lifecycle and the bulk report over the whole store. Inbox drafting and importing are
-`memory_inbox`, because each has its own failure modes.
+`memory_inbox`, and moving units between machines is `memory_transfer`, because each has its own
+failure modes.
 """
 from __future__ import annotations
 

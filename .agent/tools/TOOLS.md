@@ -46,8 +46,8 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
-| `maintenance/` | `crew-doctor.py`, `crew-lint.py`, `crew-prune.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `prune_callers.py`, `doctor_checks.py` | — | Repository validation, the caller report, one module per lint family, and the install health check |
+| `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py` | — | Durable units and immutable observations |
+| `maintenance/` | `crew-doctor.py`, `crew-lint.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
 | `lib/` | — | `files.py`, `git.py`, `gh_reads.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
@@ -62,11 +62,11 @@ file at that exact path.
 and `crew-lint.py` are argparse entry points over their modules: each parses the command line and
 dispatches, and holds no command logic. Modules import each other by their namespaced name in
 dependency order (`memory_paths` → `memory_frontmatter` → `memory_store` → `memory_add`/`memory_search`/
-`memory_journal`/`memory_inbox` → `memory_maintenance`; `review_vocabulary` → `review_models` →
+`memory_journal`/`memory_inbox` → `memory_maintenance`, `memory_store` → `memory_transfer`; `review_vocabulary` → `review_models` →
 `review_findings` → `review_render`/`review_layers` → `review_coverage` → `review_report`; `task_status`
 → `task_progress` → `task_state` → `task_resolve`/`task_gates`/`ls_data` → `task_report`; `evals_query` →
 `evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_catalog`/`lint_prompts`/
-`lint_references`/`lint_writing`/`lint_python`, `lint_writing` → `lint_style`), so a module never imports back
+`lint_references`/`lint_writing`/`lint_python`, `lint_writing` → `lint_style`, `lint_catalog` → `lint_docs`), so a module never imports back
 into one that imports it. Import paths: "Imports" in `.agent/tools/AGENTS.md`. The entry points
 re-export the names their public contract names, listed in each one's `__all__`, so
 `crew-assemble-packages.py` and the tests can keep importing them from the command file rather than
@@ -74,8 +74,7 @@ reaching into a private module.
 
 **Packages import along these edges only** (crew-lint `package-direction`; a module's package is the
 directory it lives in, `lib` imports nothing from a package). `review` may read task state (PROGRESS
-METRIC lines, the report check) and `maintenance` reads PROGRESS records for the prune report and the
-retention policy and sizes (`task_gc.py`) for `crew-doctor.py`; `task`
+METRIC lines, the report check) and `maintenance` reads the retention policy and sizes (`task_gc.py`) for `crew-doctor.py`; `task`
 never imports `review`, and nothing imports `maintenance`, `memory` or `evals` across packages:
 
 ```package-edges
@@ -151,6 +150,10 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `memory_journal.py`: journal observations: import and single-entry add
 - `memory_inbox.py`: intake: `.inbox` drafts
 - `memory_maintenance.py`: init, consolidate (`crew-inbox.py` fronts `memory_inbox.py`)
+- `memory_transfer.py`: `export` (regular unit files only, a new 0600 `.tar.gz`, owner names cleared)
+  and `import` (every member checked before any write: layout, 256 KiB and count/total caps,
+  frontmatter, type, status, scope against its path, id and case-folded name collisions; a stored
+  unit that differs is kept; a failed write leaves nothing)
 
 ### `evals/`
 
@@ -183,7 +186,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `lint_writing.py`: removed command forms, docstrings, narration, pipeline prose rules
 - `lint_style.py`: the writing standard for prompt files (emphasis, emoji, narration, shared
   passages, glossary, vendor scope, placeholders, the closing confirmation)
-- `prune_callers.py`: the caller set for a catalog command (`crew-prune.py`)
+- `lint_docs.py`: the one generator of the README command table and counts (`--commands`, `crew
+  help`; `--write-readme`), their staleness rules, and the release files
+- `lint_dead_code.py`: the caller set for a catalog command (`--dead-code`)
 - `doctor_checks.py`: the `crew-doctor.py` checks: links, hook registrations, managed blocks (`.claude/install_blocks.py`), tools, state sizes
 
 ## Contracts
@@ -198,13 +203,13 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   (`human`, `json`, `json-always`, `json-flag`, `json_static`, `source-only`), `bounded` with the
   `list_flags` it accepts, and a `json_smoke` invocation. The same test asserts every documented JSON
   mode parses and every bounded command advertises its flag, so a new flag cannot go undocumented and
-  a documented flag cannot go missing.
+  a documented flag cannot go missing. A command a `crew` verb routes to carries `routes`: each verb
+  with the one-line summary the README command table and `crew help` show (`lint_docs.py`).
 
 | Command | Output | Bound |
 |---|---|---|
 | `crew-agent-context.py` | JSON always | — |
-| `crew-lint.py` | findings, or JSON with `--json` | — |
-| `crew-prune.py` | table of caller counts, or JSON with `--json` | — |
+| `crew-lint.py` | findings, or JSON with `--json`; `--commands` a Markdown table; `--dead-code` a table of caller counts, or JSON with `--json` | — |
 | `crew-ls.py` | table, `--md`, or JSON with `--json`; `--report` text or JSON | `--limit`, `--max-chars` |
 | `crew-doctor.py` | one screen of `ok`, `note` and `FAIL` lines; exit 1 on a `FAIL` | — |
 | `crew-mem.py` | text; JSON for `search`, `context`, `list` with `--json` | `--limit`, `--max-chars` |
@@ -332,7 +337,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `crew-task.py mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry. It exists for a spec whose branch was intentionally
   rebased; it is never used by a skill on its own initiative.
-- `crew-prune.py` reports catalog commands with no caller. A caller is a reference from a prompt
+- `crew-lint.py --dead-code` reports catalog commands with no caller. A caller is a reference from a prompt
   (rules, agents, skills, the root `AGENTS.md`, the templates), a hook, `install.sh`, another tool's
   code or a CI workflow; a Python docstring or comment, the tool tree's `.md` docs and the catalog
   page are not callers, and tests are counted in their own column and never decide the verdict,
@@ -544,7 +549,7 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
 reader sees one purpose per file. `lib/hook.sh` is sourced, never registered; it holds the command
 normaliser every shell guard reads through and the off switches (`EL_CAPITAN_GUARDS=off`,
-`EL_CAPITAN_GUARD_<NAME>=off`, documented in the README's hooks section). The normaliser prefers
+`EL_CAPITAN_GUARD_<NAME>=off`, documented in `docs/hooks.md`). The normaliser prefers
 `shfmt` (optional) when it is on PATH: `shfmt --to-json` parses the command and `lib/segments.jq`
 turns the tree into the same segment records the awk fallback emits, so the guards never know which
 parser ran; awk reads the whole command when shfmt is absent or fails on any part of it, and when
