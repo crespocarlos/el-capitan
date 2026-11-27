@@ -41,8 +41,41 @@ DENY = [
     ("sudo -u me git reset --hard", "clean", "destructive-git"),
     ("echo . | xargs git clean -fdx", "clean", "destructive-git"),
     ("find . -exec git reset --hard \\;", "clean", "destructive-git"),
+    # Compound commands: the shfmt path walks the tree, the awk path splits on their keywords.
+    ("case x in a) git reset --hard;; esac", "clean", "destructive-git"),
+    ("f() { git clean -fdx; }; f", "clean", "destructive-git"),
+    ("export A=$(git reset --hard)", "clean", "destructive-git"),
+    ("for i in $(git reset --hard); do :; done", "clean", "destructive-git"),
+    ("[[ -n $(git push -f) ]] && echo é", "clean", "destructive-git"),
+    ("echo 'git reset --hard' | cat | bash", "clean", "destructive-git"),
+    # What shfmt cannot parse, at the top or in a payload, is read by awk, never allowed for it.
+    ("git reset --hard; fi", "clean", "destructive-git"),
+    ("bash -c 'git reset --hard; fi'", "clean", "destructive-git"),
     # Past the payload cap the command is too complex to judge, so it is denied.
     ("echo " + "$(:) " * 70, "clean", "destructive-git"),
+    # A `cd` into a name with a control character leaves the directory where it was, and a control
+    # character inside a word or a directory never shifts the record's fields.
+    ("mkdir -p $'\\037' && cd $'\\037' && git reset --hard", "clean", "destructive-git"),
+    ("cd $'\\037'; git clean -fdx", "clean", "destructive-git"),
+    ("mkdir -p $'q\\nq' && cd $'q\\nq' && sh -c 'git push -f'", "clean", "destructive-git"),
+    ("cd $'\\037' && git commit -m x", "ctrlleak", "credentials"),
+    ("git -C $'\\037' reset --hard", "clean", "destructive-git"),
+    # An unquoted expansion may be empty, so a word is also read without it.
+    ("${NOPE}git reset --hard", "clean", "destructive-git"),
+    ("$(true)git reset --hard", "clean", "destructive-git"),
+    ("`true`git reset --hard", "clean", "destructive-git"),
+    ("g${NOPE}it reset --hard", "clean", "destructive-git"),
+    ("git ${NOPE}reset --hard", "clean", "destructive-git"),
+    ("git reset ${NOPE}--hard", "clean", "destructive-git"),
+    # A shell's script: the first word after `-c` that is not an option, stdin by name, or a process
+    # substitution the guard cannot read (and a shell inside one reads a pipe it cannot see).
+    ("bash -c -- 'git reset --hard'", "clean", "destructive-git"),
+    ("bash -c -e 'git reset --hard'", "clean", "destructive-git"),
+    ("echo 'git reset --hard' > >(bash)", "clean", "destructive-git"),
+    ("bash <(echo 'git reset --hard')", "clean", "destructive-git"),
+    ("bash < <(echo 'git reset --hard')", "clean", "destructive-git"),
+    ("echo 'git reset --hard' | bash /dev/stdin", "clean", "destructive-git"),
+    ("bash /dev/fd/5 5<<< 'git reset --hard'", "clean", "destructive-git"),
     # A fresh worker lock: a tree change in that tree, named by cwd, `git -C`, a leading `cd` or a runner.
     ("git checkout main", "locked", "worker-tree"),
     ("git restore base.txt", "locked", "worker-tree"),
@@ -207,6 +240,19 @@ ALLOW = [
     ("cat <<-EOF\n\tbody == data\n\tEOF\nrm -f /tmp/hook-case-x", "clean"),
 ]
 
+# Every row above runs through both parsers of `hook_segments` (shfmt on PATH, and PATH without it)
+# and must get the same verdict from each. These rows are the listed exceptions, `(command, cwd, by
+# with shfmt, by with awk, reason)`: the commands the awk normaliser misreads and the shfmt tree gets
+# right, so shfmt's verdict is the correct one.
+PARSERS_DIFFER = [
+    ('echo $(echo ")"; git reset --hard)', "clean", "destructive-git", None,
+     "awk's `$(...)` matcher skips single quotes only: the quoted `)` ends the payload, the rest reads as quoted text"),
+    ("cat <<EOF\n$(git reset --hard)\nEOF", "clean", "destructive-git", None,
+     "bash expands `$(...)` in an unquoted heredoc body; awk keeps every heredoc body as data"),
+    ('echo "$(echo "a)") git reset --hard"', "clean", None, "destructive-git",
+     "the same quoted `)`: awk ends the payload early and reads the quoted tail as an unquoted `git` word"),
+]
+
 # `(command, cwd, tool, env, by)` run through `credentials.sh` alone with `tool` missing from PATH.
 # Without `grep` the secret scan cannot run, so a commit blocks while a command that needs no scan
 # passes. A failure before the scan starts (no `awk` for the normaliser, no `jq` for the input) lets
@@ -244,7 +290,8 @@ ENV = [
 # A denial a row expects from these guards must say (first) and must not say (second) these words.
 MESSAGES = {
     # The denied agent cannot tell a live worker from a crashed one: no task id, no removal command.
-    "worker-tree": (("ask the user before removing the lock", "1 min old"), ("T-1", "lock remove")),
+    # The age grows while the suite runs (slow runners pass a minute), so only its presence is checked.
+    "worker-tree": (("ask the user before removing the lock", " min old)"), ("T-1", "lock remove")),
 }
 
 # `(fields, cwd, by)` sent to every `Write|Edit` hook: a write outside the boundary is denied after

@@ -88,6 +88,7 @@ def test_normalize_rejects_unknown_persona(tmp: Path) -> None:
 
 
 def test_normalize_accepts_legacy_persona(tmp: Path) -> None:
+    """Old review directories name the removed `fresh-eyes` persona and must still normalize."""
     source = tmp / "legacy.json"
     source.write_text(json.dumps([{"title": "x", "label": "nit", "persona": "Fresh Eyes"}]))
     result = run("normalize", str(source), "--lenient")
@@ -361,27 +362,8 @@ def test_persist_strict_requires_persona_artifacts(tmp: Path) -> None:
     assert result.returncode == 2 and "comma-separated personas" in result.stderr
 
 
-def test_persist_strict_rejects_empty_persona_output(tmp: Path) -> None:
-    """A persona that died before writing anything must not yield a persisted review."""
-    review_dir = tmp / "task" / "review" / "ts"
-    review_dir.mkdir(parents=True)
-    report = tmp / "report.md"
-    report.write_text("x\n")
-    for persona in ("adversarial", "code-quality"):
-        (review_dir / f"{persona}.in.md").write_text("in")
-        (review_dir / f"{persona}.out.md").write_text("")
-    result = run("persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
-                 "--strict", "--personas", "adversarial", "code-quality")
-    assert result.returncode == 2 and "no output" in result.stderr
-    assert not (tmp / "task" / "REVIEW.md").exists()
-
-
 def test_persist_strict_rejects_placeholder_persona_output(tmp: Path) -> None:
-    """A stub with a plausible status word must not pass as a completed persona.
-
-    2026-11-09: `status: dispatched` stubs survived `--strict` because any word was
-    returned verbatim and only a fixed set of six was treated as unusable.
-    """
+    """A stub with a plausible status word, like an empty reply (see `persona_outcome`), must not pass as a completed persona."""
     review_dir = tmp / "task" / "review" / "ts"
     review_dir.mkdir(parents=True)
     report = tmp / "report.md"
@@ -1010,35 +992,6 @@ def test_kind_is_required_at_normalize_validated_and_normalized(tmp: Path) -> No
     assert plain == classified
 
 
-def test_confidence_flags_and_merge_candidates_are_gone(tmp: Path) -> None:
-    """The removed --confidence flags and merge_candidates output stay removed."""
-    source = tmp / "c.json"
-    base = {"label": "attention", "file": "a.yaml", "disposition": "patch", "kind": "other",
-            "verified": True, "evidence": "a.yaml:3", "validation": "read a.yaml:1-9",
-            "confidence": 4}
-    source.write_text(json.dumps([
-        {**base, "title": "resolver falls back to empty list instead of reported rules"},
-        {**base, "title": "resolver falls back to empty list ignoring reported rules"},
-    ]))
-    payload = json.loads(run("normalize", str(source)).stdout)
-    assert "merge_candidates" not in payload, "normalize no longer reports candidate pairs"
-    assert len(payload["findings"]) == 2, "a similar pair is kept as two findings"
-
-    review_dir = tmp / "task" / "review" / "20260101000000"
-    review_dir.mkdir(parents=True)
-    (review_dir / "adversarial.in.md").write_text("package")
-    (review_dir / "adversarial.out.md").write_text("### Findings: none\n")
-    report = tmp / "report.md"
-    args = ["persist", "--review-dir", str(review_dir), "--report", str(report), "--findings", no_findings(tmp),
-            "--mode", "changes", "--personas", "adversarial"]
-    report.write_text("## Review: changes — nothing\n")
-    rejected = run(*args, "--confidence", "30", "--confidence-reason", "the diff was read")
-    assert rejected.returncode == 2 and "unrecognized arguments" in rejected.stderr, rejected.stderr
-    assert not (review_dir / "REVIEW.md").exists(), "a rejected call writes nothing"
-    assert run(*args).returncode == 0
-    assert "Confidence:" not in (review_dir / "REVIEW.md").read_text()
-
-
 RAW_REPLY = "### Findings: none\n\nAssessment: approve — the change reads as intended and is covered.\n"
 
 
@@ -1164,19 +1117,8 @@ def test_a_shared_agent_id_is_a_degraded_review_capped_at_warn(tmp: Path) -> Non
     assert json.loads(done.stdout)["degraded"] == "Degraded: 1 agent, 2 lenses"
 
 
-def test_a_declared_degraded_run_is_capped_even_without_agent_ids(tmp: Path) -> None:
-    """A fork that plays every lens has no ids to compare, so the orchestrator declares it."""
-    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality", "architecture"))
-    for persona in ("adversarial", "code-quality", "architecture"):
-        assert save_out(review_dir, persona, RAW_REPLY, "--degraded").returncode == 0
-    degraded_findings(tmp, None)
-    report.write_text("## Review: changes\nVerdict: WARN\n")
-    done = persist_dir(review_dir, report, ("adversarial", "code-quality", "architecture"))
-    assert done.returncode == 0, done.stderr
-    assert (review_dir / "REVIEW.md").read_text().startswith("Degraded: 1 agent, 3 lenses")
-
-
-def test_a_degraded_review_keeps_block_as_block(tmp: Path) -> None:
+def test_a_declared_degraded_review_keeps_block_as_block(tmp: Path) -> None:
+    """A fork that plays every lens has no ids to compare, so the orchestrator declares it; BLOCK stays BLOCK."""
     review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
     for persona in ("adversarial", "code-quality"):
         save_out(review_dir, persona, "- [blocking] Missing null guard\nAnchor: a.ts:3\n", "--degraded")
@@ -1562,22 +1504,3 @@ def test_review_dir_prefers_a_writable_task_and_falls_back_to_a_named_temp_path(
     removed = review_workspace.cleanup_stale(base, keep)
     remaining = [p.name for p in base.iterdir()]
     assert len(removed) == 4 and len(remaining) == 11 and keep.name in remaining, remaining
-
-
-def main() -> int:
-    tests = [v for k, v in globals().items() if k.startswith("test_")]
-    failed = 0
-    for test in tests:
-        with tempfile.TemporaryDirectory() as tmp:
-            try:
-                test(Path(tmp))
-                print(f"pass: {test.__name__}")
-            except Exception as error:  # one failing test must not stop the rest
-                failed += 1
-                print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

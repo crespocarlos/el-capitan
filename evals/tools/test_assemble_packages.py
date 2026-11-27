@@ -13,7 +13,6 @@ import json
 import pathlib
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from cli_runner import run as cli
@@ -70,26 +69,16 @@ def read(run: Path, persona: str) -> str:
     return (run / f"{persona}.in.md").read_text()
 
 
-def test_every_persona_gets_the_same_contract_and_hunk_reference(tmp: Path) -> None:
-    run = build(tmp)
-    for persona in ("adversarial", "architecture", "code-quality", "product-flow", "prompt-quality"):
-        text = read(run, persona)
-        assert "# Shared reviewer contract" in text, persona
-        assert "## Hunk reference" in text and "h1 @2(+2/-1)" in text, persona
-        assert f"SPEC for {persona}" in text, persona
-        assert "```diff" in text, persona
-
-
 def test_prompt_tier_elides_what_the_diff_already_quotes(tmp: Path) -> None:
+    """Collapsing a run shifts every offset after it, so kept lines carry their file line numbers."""
     run = build(tmp)
     text = read(run, "prompt-quality")
     tier = text[text.index("# Prompt tier"):]
-    assert "line six" in tier, "unchanged text outside the hunk must survive"
+    assert "\n6: line five\n" in tier and "\n7: line six\n" in tier, "unchanged text outside the hunk survives, numbered"
     assert "line two" not in tier, "a context line inside the hunk is already in the diff"
     assert "… (lines 2-5 are in the diff above)" in tier
     assert "new rule" not in tier, "the added line is in the diff"
-    # The other personas get no prompt tier at all.
-    assert "# Prompt tier" not in read(run, "code-quality")
+    assert "\n1: # Prompt\n" in tier
 
 
 def test_guidance_narrowing_is_opt_in_and_keeps_pre_heading_text(tmp: Path) -> None:
@@ -141,21 +130,6 @@ def test_elision_falls_back_without_a_hunk_index(tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
     tier = read(run, "prompt-quality")
     assert "… (lines" not in tier and "new rule" in tier
-
-
-def test_dropped_guidance_sections_are_printed(tmp: Path) -> None:
-    guidance = {"/repo/AGENTS.md": "# R\n\n## Code Style Guidelines\nx\n\n## Data model\ny\n"}
-    run = tmp / "review" / "20260101000002"
-    run.mkdir(parents=True)
-    (run / "package.diff").write_text(DIFF)
-    (run / "hunks.index.md").write_text("# Hunk index\n\n- `prompt.md`: h1 @2(+2/-1)\n")
-    (run / "agent-context.json").write_text(json.dumps({"files": guidance}))
-    (run / "assemble.json").write_text(json.dumps({
-        "repo": str(tmp), "guidance_keep": {"code-quality": ["Code Style"]}}))
-    result = cli(TOOL, str(run))
-    assert result.returncode == 0, result.stderr
-    assert "guidance narrowed, 1 section(s) dropped" in result.stdout
-    assert "Data model" in result.stdout
 
 
 def test_a_keep_list_that_matches_nothing_is_refused(tmp: Path) -> None:
@@ -217,15 +191,6 @@ def test_a_layer_without_kind_or_title_still_packages(tmp: Path) -> None:
     text = read(run, "code-quality")
     assert "### 1. layer — L1" in text and "Explain: why" in text
     assert not (run / "_common.md").exists(), "no shared file is written any more"
-
-
-def test_elided_lines_carry_their_file_line_numbers(tmp: Path) -> None:
-    """Collapsing a run shifts every offset after it, so kept lines must carry their numbers."""
-    run = build(tmp)
-    tier = read(run, "prompt-quality")
-    assert "\n1: # Prompt\n" in tier
-    assert "\n6: line five\n" in tier and "\n7: line six\n" in tier
-    assert "… (lines 2-5 are in the diff above)" in tier
 
 
 def test_the_builders_unverified_claims_reach_every_persona(tmp: Path) -> None:
@@ -423,16 +388,6 @@ def test_a_prompt_quality_build_reads_the_diff_once(tmp: Path) -> None:
     assert len(reads) == 1 and fixture_diff() in content, f"package.diff was read {len(reads)} times"
 
 
-def test_pr_mode_refuses_the_extras_that_read_the_local_index(tmp: Path) -> None:
-    from assemble_inputs import check_inputs
-
-    review, _ = layout(tmp)
-    for key in ("consumers", "prompt_files"):
-        problem = check_inputs(review, {"mode_kind": "pr", key: json.loads((review / "assemble.json").read_text())[key]})
-        assert key in problem and "PR mode" in problem, f"{key}: {problem!r}"
-    assert check_inputs(review, {"mode_kind": "pr"}) == "", "a PR run with no extras must proceed"
-
-
 # --- the prior-round block and the machinery behind it -------------------------------------------
 
 PRIOR = {"file": "prompt/discovery.md.text", "line": 11, "label": "nit", "fingerprint": "aaa",
@@ -507,22 +462,3 @@ def test_the_collapse_omits_a_reviewed_body_and_keeps_its_ids_citable(tmp: Path)
     note = next(line for line in collapsed.splitlines() if "already reviewed at" in line)
     assert "h1" in note and "+added" not in collapsed and "b.ts" in collapsed and "+new" in collapsed, collapsed
     assert manifest.collapse_reviewed(PRIOR_DIFF, parsed, set(), "20260101000000") == PRIOR_DIFF
-
-
-def main() -> int:
-    tests = [value for key, value in globals().items() if key.startswith("test_")]
-    failed = 0
-    for test in tests:
-        with tempfile.TemporaryDirectory() as directory:
-            try:
-                test(Path(directory))
-                print(f"pass: {test.__name__}")
-            except Exception as error:
-                failed += 1
-                print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Hermetic checks for crew-task-context.py: resolution, subsetting, truncation, rendering."""
+from __future__ import annotations
+
 import json
-import os
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
+
+import pytest
+from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "task" / "crew-task-context.py"
@@ -16,18 +18,14 @@ REVIEW = ("# Review\n\n" + ("finding text here\n" * 60)
           + "\n### Files reviewed\n- `a.py`\n\nVerdict: WARN\n"
             "> Next: run `crew review address` to resolve blocking findings, or `crew commit` when "
             "the verdict is PASS or WARN.\nReviewed at: abcdef1\n")
+NOWHERE = ("--remote", "https://example.invalid/none.git", "--branch", "none")
 
 
-def run(*arguments, task_dir=None, unset_cache=False):
-    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    env.pop("CREW_TASK_DIR", None) if unset_cache else None
-    if task_dir:
-        env["CREW_TASK_DIR"] = str(task_dir)
-    return subprocess.run([sys.executable, str(TOOL), *arguments],
-                          capture_output=True, text=True, env=env)
+def run(*arguments: str, task_dir: Path | None = None) -> subprocess.CompletedProcess:
+    return cli(TOOL, *arguments, env={"CREW_TASK_DIR": str(task_dir) if task_dir else None})
 
 
-def make_task(store):
+def make_task(store: Path) -> Path:
     task = store / "task"
     task.mkdir()
     (task / ".task-id").write_text(json.dumps({
@@ -40,85 +38,47 @@ def make_task(store):
     return task
 
 
-def check(name, condition, detail=""):
-    if not condition:
-        raise AssertionError(f"{name}: {detail}")
-    print(f"pass: {name}")
+@pytest.mark.parametrize("arguments", [["--max-chars", "-1"], ["--max-chars", "0"], ["--artifacts", "spec,nope"],
+                                       ["--artifacts", " , "]])
+def test_invalid_invocations_exit_2(arguments: list[str], tmp: Path) -> None:
+    result = run(*arguments, task_dir=make_task(tmp))
+    assert result.returncode == 2, result.stdout + result.stderr
 
 
-def main():
-    with tempfile.TemporaryDirectory() as temporary:
-        store = Path(temporary)
-        task = make_task(store)
-
-        # Invalid invocations exit 2 and name the problem.
-        for arguments, label in (
-            (("--max-chars", "-1"), "negative max-chars"),
-            (("--max-chars", "0"), "zero max-chars"),
-            (("--artifacts", "spec,nope"), "unknown artifact key"),
-            (("--artifacts", " , "), "empty artifact selection"),
-        ):
-            result = run(*arguments, task_dir=task)
-            check(f"rejects {label}", result.returncode == 2, result.stdout + result.stderr)
-
-        # CREW_TASK_DIR is honored without invoking the resolver.
-        result = run("--json", task_dir=task)
-        check("honors CREW_TASK_DIR", result.returncode == 0, result.stderr)
-        payload = json.loads(result.stdout)
-        check("reports the cached task", payload["task"]["directory"] == str(task), payload["task"])
-        check("reads status from SPEC", payload["task"]["status"] == "APPROVED", payload["task"])
-        check("defaults to every artifact", sorted(payload["artifacts"]) == sorted(
-            ["task_id", "spec", "progress", "report", "review", "deferred", "handoff"]))
-        check("absent artifact is reported", payload["artifacts"]["handoff"]["state"] == "absent")
-
-        # Explicit --task-dir wins over the cache and subsets both renderings identically.
-        result = run("--task-dir", str(task), "--artifacts", " spec , review ", "--json")
-        payload = json.loads(result.stdout)
-        check("strips whitespace in --artifacts", sorted(payload["artifacts"]) == ["review", "spec"],
-              sorted(payload["artifacts"]))
-        markdown = run("--task-dir", str(task), "--artifacts", "spec,review").stdout
-        check("markdown omits unrequested artifacts", "PROGRESS.md" not in markdown, markdown[:200])
-
-        # Truncation direction: reports keep the tail (identity fields), specs keep the head.
-        payload = json.loads(run("--task-dir", str(task), "--max-chars", "200", "--json").stdout)
-        review = payload["artifacts"]["review"]
-        check("review is truncated", review["truncated"] is True)
-        check("review keeps its tail", "Reviewed at: abcdef1" in review["content"], review["content"])
-        check("review records the edge", review["truncated_edge"] == "tail")
-        # The footer is the identity block persist appends, so the edge must keep all three lines.
-        # A flip to `head` would return the heading and the first findings instead, and this fails.
-        for footer_line in ("Verdict: WARN", "> Next: run `crew review address`", "Reviewed at: abcdef1"):
-            check(f"tail keeps the footer's {footer_line!r}", footer_line in review["content"],
-                  review["content"][-400:])
-        spec = payload["artifacts"]["spec"]
-        check("spec keeps its head", spec["content"].startswith("# Spec: demo"))
-        progress = payload["artifacts"]["progress"]
-        check("progress keeps its newest events", "step 28" in progress["content"], progress["content"])
-        check("bytes is the file size", spec["bytes"] == len(SPEC.encode("utf-8")))
-
-        markdown = run("--task-dir", str(task), "--max-chars", "200", "--artifacts", "review").stdout
-        check("markdown flags truncation in the header", "TRUNCATED" in markdown, markdown[:300])
-
-        # An explicit branch describes another context, so the cached task is not reused.
-        result = run("--json", "--remote", "https://example.invalid/none.git", "--branch", "none",
-                     task_dir=task)
-        check("branch override resolves fresh", json.loads(result.stdout)["task"]["found"] is False)
-
-        # A non-task directory is an invocation error, not an empty result.
-        check("rejects a non-task directory", run("--task-dir", str(store)).returncode == 2)
-
-        # No task anywhere: exit 0 with every requested artifact absent.
-        result = run("--json", "--remote", "https://example.invalid/none.git", "--branch", "none",
-                     unset_cache=True)
-        check("no task exits 0", result.returncode == 0, result.stderr)
-        payload = json.loads(result.stdout)
-        check("no task reports found false", payload["task"]["found"] is False, payload["task"])
-        check("no task reports every artifact absent",
-              all(entry["state"] == "absent" for entry in payload["artifacts"].values()))
-
-    print("all task-context checks passed")
-    return 0
+def test_the_cached_task_and_its_artifacts(tmp: Path) -> None:
+    task = make_task(tmp)
+    result = run("--json", task_dir=task)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert (payload["task"]["directory"], payload["task"]["status"]) == (str(task), "APPROVED"), payload["task"]
+    assert sorted(payload["artifacts"]) == ["deferred", "handoff", "progress", "report", "review", "spec", "task_id"]
+    assert payload["artifacts"]["handoff"]["state"] == "absent"
+    # An explicit --task-dir wins over the cache and subsets both renderings identically.
+    payload = json.loads(run("--task-dir", str(task), "--artifacts", " spec , review ", "--json").stdout)
+    assert sorted(payload["artifacts"]) == ["review", "spec"], sorted(payload["artifacts"])
+    assert "PROGRESS.md" not in run("--task-dir", str(task), "--artifacts", "spec,review").stdout
+    # A branch override describes another context, so the cached task is not reused.
+    assert json.loads(run("--json", *NOWHERE, task_dir=task).stdout)["task"]["found"] is False
+    assert run("--task-dir", str(tmp)).returncode == 2, "a non-task directory is an invocation error"
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def test_truncation_keeps_the_identity_edge(tmp: Path) -> None:
+    """Reports keep the tail (the footer persist appends), specs the head, progress its newest events."""
+    task = make_task(tmp)
+    payload = json.loads(run("--task-dir", str(task), "--max-chars", "200", "--json").stdout)
+    review = payload["artifacts"]["review"]
+    assert review["truncated"] is True and review["truncated_edge"] == "tail", review
+    for footer_line in ("Verdict: WARN", "> Next: run `crew review address`", "Reviewed at: abcdef1"):
+        assert footer_line in review["content"], review["content"][-400:]
+    spec = payload["artifacts"]["spec"]
+    assert spec["content"].startswith("# Spec: demo") and spec["bytes"] == len(SPEC.encode("utf-8"))
+    assert "step 28" in payload["artifacts"]["progress"]["content"]
+    assert "TRUNCATED" in run("--task-dir", str(task), "--max-chars", "200", "--artifacts", "review").stdout
+
+
+def test_no_task_anywhere_reports_every_artifact_absent() -> None:
+    result = run("--json", *NOWHERE)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["task"]["found"] is False, payload["task"]
+    assert all(entry["state"] == "absent" for entry in payload["artifacts"].values())

@@ -11,8 +11,9 @@ import json
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
+
+import pytest
 
 TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-hunks.py"
 
@@ -60,10 +61,6 @@ new file mode 100644
 +{"name": "x"}
 +{"lock": true}
 """
-
-
-class Skip(Exception):
-    """A test that could not run here; reported as a skip, never counted as passed."""
 
 
 def run(args: list[str], stdin: str | None = None) -> subprocess.CompletedProcess:
@@ -214,9 +211,9 @@ def test_python_parser_matches_nightshift_when_available(tmp: Path) -> None:
     """
     root = Path("~/Documents/dev/nightshift-pr-helper").expanduser()
     if not (root / "lib" / "diff.ts").is_file() or not (root / "node_modules" / "tsx").is_dir():
-        raise Skip("no nightshift checkout")
+        pytest.skip("no nightshift checkout")
     if shutil.which("node") is None:
-        raise Skip("no node on PATH")
+        pytest.skip("no node on PATH")
     source = tmp / "parity.diff"
     source.write_text(MIXED)
     theirs = tmp / "theirs"
@@ -230,7 +227,7 @@ def test_python_parser_matches_nightshift_when_available(tmp: Path) -> None:
     result = subprocess.run(["node", "--import", "tsx/esm", "--eval", script],
                             capture_output=True, text=True, cwd=root)
     if result.returncode:
-        raise Skip(f"nightshift parser unavailable: {result.stderr.strip().splitlines()[-1:]}")
+        pytest.skip(f"nightshift parser unavailable: {result.stderr.strip().splitlines()[-1:]}")
     ours = parse(MIXED, tmp)["json"]
     night = json.loads((theirs / "hunks.json").read_text())
     shape = lambda parsed: [  # noqa: E731
@@ -241,25 +238,3 @@ def test_python_parser_matches_nightshift_when_available(tmp: Path) -> None:
     assert shape(ours) == shape(night), "hunk ids or bodies drifted from nightshift's parseDiff"
     assert [(f["path"], f["status"], f["hunkIds"]) for f in ours["files"]] == [
         (f["path"], f["status"], f["hunkIds"]) for f in night["files"]]
-
-
-def main() -> int:
-    tests = [value for key, value in globals().items() if key.startswith("test_")]
-    failed = skipped = 0
-    for test in tests:
-        with tempfile.TemporaryDirectory() as tmp:
-            try:
-                test(Path(tmp))
-                print(f"pass: {test.__name__}")
-            except Skip as reason:
-                skipped += 1
-                print(f"skip: {test.__name__}: {reason}")
-            except Exception as error:
-                failed += 1
-                print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
-    print(f"{len(tests) - failed - skipped}/{len(tests)} passed, {skipped} skipped")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

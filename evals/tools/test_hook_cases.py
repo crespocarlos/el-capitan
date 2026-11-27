@@ -7,8 +7,11 @@ as `PreToolUse` and Cursor's `preToolUse` to each `Write|Edit` hook. Each runs u
 and under `/bin/bash` (bash 3.2 on macOS). The verdict is the join of the hooks: deny when any denies,
 allow when every one is silent. A deny names its off switches and the hook that must be among the
 deniers; an allow fails on any output at all, so an internal error fails the allow corpus as surely as
-a wrong denial. Then every hook, the silent ones included, must survive unreadable input and a missing
-`jq` with exit 0 and at most one stderr line, and every hook file must be classified here.
+a wrong denial. Every shell row also runs through both parsers of `hook_segments`: with `shfmt` on
+PATH and with PATH stripped of it (the awk fallback), and both must give the expected verdict, so they
+agree except on the rows `PARSERS_DIFFER` lists with a reason. Then every hook, the silent ones
+included, must survive unreadable input and a missing `jq` with exit 0 and at most one stderr line,
+and every hook file must be classified here.
 """
 from __future__ import annotations
 
@@ -19,10 +22,12 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from hook_cases import ALLOW, DENY, ENV, FILES, MESSAGES, MISSING, PAYLOADS, SECRET, SILENT
+import pytest
+from hook_cases import ALLOW, DENY, ENV, FILES, MESSAGES, MISSING, PARSERS_DIFFER, PAYLOADS, SECRET, SILENT
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / ".claude" / "hooks"
@@ -60,6 +65,9 @@ def fixture(home: Path) -> dict[str, Path]:
     big = "".join(f"{n}\n" for n in range(40000))
     stage(trees["large"], "big.txt", big)
     (trees["addable"] / "notes.txt").write_text("plain notes\n", encoding="utf-8")
+    trees["ctrlleak"] = repository(home / "ctrlleak", {})
+    (trees["ctrlleak"] / "\x1f").mkdir()
+    stage(trees["ctrlleak"], "\x1f/leak.txt", SECRET + "\n")
     trees["leaky"] = repository(home / "leaky", {"config.txt": "a=1\n"})
     (trees["leaky"] / "leak.txt").write_text(SECRET + "\n", encoding="utf-8")
     (trees["leaky"] / "config.txt").write_text(SECRET + "\n", encoding="utf-8")
@@ -128,18 +136,30 @@ def file_shapes(fields: dict, cwd: Path) -> list[dict]:
             {"hook_event_name": "preToolUse", "tool_name": "Write", **fields, "cwd": str(cwd)}]
 
 
-def path_without(home: Path, tool: str) -> str:
-    """Every executable on PATH except `tool`, linked into one directory."""
-    shim = home / f"no-{tool}-bin"
-    if shim.is_dir():
-        return str(shim)
-    shim.mkdir()
+def path_without(home: Path, *tools: str) -> str:
+    """PATH with `tools` removed: a directory that holds one of them is replaced by a copy of its links
+    without it, and every other directory stays as it is (built once, before any thread runs)."""
+    entries = []
     for directory in filter(os.path.isdir, os.environ.get("PATH", "").split(os.pathsep) + ["/usr/bin", "/bin"]):
-        for entry in os.listdir(directory):
-            target = os.path.join(directory, entry)
-            if entry != tool and not (shim / entry).exists() and os.access(target, os.X_OK):
-                (shim / entry).symlink_to(target)
-    return str(shim)
+        if not any(os.path.exists(os.path.join(directory, tool)) for tool in tools):
+            entries.append(directory)
+            continue
+        shim = home / "shims" / (directory.strip("/").replace("/", "-") + "-no-" + "-".join(sorted(tools)))
+        if not shim.is_dir():
+            shim.mkdir(parents=True)
+            for entry in os.listdir(directory):
+                if entry not in tools:
+                    (shim / entry).symlink_to(os.path.join(directory, entry))
+        entries.append(str(shim))
+    return os.pathsep.join(entries)
+
+
+def parsers() -> list[str]:
+    """Both parsers of `hook_segments`; without shfmt installed only awk runs locally, and CI must have it."""
+    if shutil.which("shfmt"):
+        return ["shfmt", "awk"]
+    assert not os.environ.get("CI"), "CI installs shfmt so the shfmt parser path runs"
+    return ["awk"]
 
 
 def expand(text: str, places: dict[str, Path]) -> str:
@@ -153,7 +173,7 @@ def rows_for(kind: str, table: list, places: dict[str, Path], env: dict, guards:
     for command, tree, by in table:
         for payload in shapes(expand(command, places), places[tree]):
             rows.append({"label": f"{kind} {command[:70]!r} in {tree}", "payload": payload, "cwd": places[tree], "by": by, "env": env,
-                         "guards": guards})
+                         "guards": guards, "command": expand(command, places)})
     return rows
 
 
@@ -161,11 +181,12 @@ def cases(home: Path, places: dict[str, Path]) -> list[dict]:
     """One row per table entry and payload shape: what to send, where, and what must come back."""
     rows = rows_for("deny", DENY, places, {}, GUARDS)
     rows += rows_for("allow", [(command, tree, None) for command, tree in ALLOW], places, {}, GUARDS)
+    for command, tree, by, awk_by, _ in PARSERS_DIFFER:
+        rows += [{**row, "awk_by": awk_by} for row in rows_for("parsers differ", [(command, tree, by)], places, {}, GUARDS)]
     credentials = [guard for guard in GUARDS if guard.stem == "credentials"]
-    paths = {tool: path_without(home, tool) for tool in sorted({case[2] for case in MISSING})}
     for command, tree, tool, env, by in MISSING:
-        found = rows_for(f"no-{tool} {env}", [(command, tree, by)], places, {**env, "PATH": paths[tool]}, credentials)
-        rows += [{**row, "loose": True} for row in found]
+        found = rows_for(f"no-{tool} {env}", [(command, tree, by)], places, env, credentials)
+        rows += [{**row, "loose": True, "missing": (tool,)} for row in found]
     for command, tree, env, by in ENV:
         rows += rows_for(f"env {env}", [(command, tree, by)], places, env, GUARDS)
     for label, claude, cursor in PAYLOADS:
@@ -173,22 +194,26 @@ def cases(home: Path, places: dict[str, Path]) -> list[dict]:
                  for payload in (claude, cursor)]
     for fields, tree, by in FILES:
         filled = {key: expand(value, places) for key, value in fields.items()}
-        rows += [{"label": f"file {fields}", "payload": payload, "cwd": places[tree], "by": by, "env": {}, "guards": FILE_HOOKS}
+        rows += [{"label": f"file {fields}", "payload": payload, "cwd": places[tree], "by": by, "env": {}, "guards": FILE_HOOKS, "shell": False}
                  for payload in file_shapes(filled, places[tree])]
-    # A deny row asks only the guard that must deny; the allow rows run every guard over every parser path.
-    return [{**row, "guards": [g for g in row["guards"] if g.stem == row["by"]]} if row["by"] else row for row in rows]
+    # A deny row asks only the guard that must deny (on both parsers); the allow rows run every guard.
+    def asked(row: dict) -> list:
+        expected = {row["by"], row.get("awk_by", row["by"])}
+        return row["guards"] if None in expected else [g for g in row["guards"] if g.stem in expected]
+    return [{**row, "guards": asked(row)} for row in rows]
 
 
-def failure(row: dict, verdicts: dict[str, str]) -> str:
-    where = f"{row['label']} [{row['payload'].get('hook_event_name')}]"
+def failure(row: dict, verdicts: dict[str, str], parser: str) -> str:
+    where = f"{row['label']} [{row['payload'].get('hook_event_name')}, {parser}]"
     errors = [v for v in verdicts.values() if v.startswith("error")]
     deniers = sorted(name for name, v in verdicts.items() if v == "deny")
+    by = row.get("awk_by", row["by"]) if parser == "awk" else row["by"]
     if errors:
         return f"{where}: {errors[0]}"
-    if row["by"] is None and deniers:
+    if by is None and deniers:
         return f"{where}: denied by {deniers}"
-    if row["by"] is not None and row["by"] not in deniers:
-        return f"{where}: expected a deny from {row['by']}, got {deniers or 'allow'}"
+    if by is not None and by not in deniers:
+        return f"{where}: expected a deny from {by}, got {deniers or 'allow'}"
     return ""
 
 
@@ -243,11 +268,51 @@ def bashes() -> list[str]:
     return sorted(unique.values())
 
 
-def judge(job: tuple[str, dict], env: dict) -> str:
-    bash, row = job
-    verdicts = {guard.stem: run_guard(bash, guard, row, {**env, **row["env"]}) for guard in row["guards"]}
-    found = failure(row, verdicts)
+def parser_env(row: dict, env: dict, home: Path, parser: str) -> dict:
+    """The row's environment; the awk parser runs with shfmt removed from PATH."""
+    hidden = row.get("missing", ()) + (("shfmt",) if parser == "awk" else ())
+    return {**env, **row["env"], **({"PATH": path_without(home, *hidden)} if hidden else {})}
+
+
+def judge(job: tuple[str, str, dict], env: dict, home: Path) -> str:
+    """One row under one bash and one parser."""
+    bash, parser, row = job
+    verdicts = {guard.stem: run_guard(bash, guard, row, parser_env(row, env, home, parser)) for guard in row["guards"]}
+    found = failure(row, verdicts, parser)
     return f"{bash}: {found}" if found else ""
+
+
+RECORDS = 'HOOK_NAME=records; . "$1"; HOOK_CWD=$2; hook_deny() { printf "deny: %s\\n" "$1"; exit 0; }; hook_segments "$3"; printf "%s\\n" ${HOOK_SEGS[@]+"${HOOK_SEGS[@]}"}'
+
+
+def records(bash: str, row: dict, env: dict, home: Path, parser: str) -> tuple:
+    """What `hook_segments` gives the guards for the row's command, through one parser."""
+    done = subprocess.run([bash, "-c", RECORDS, "records", str(HOOKS / "lib" / "hook.sh"), str(row["cwd"]), row["command"]],
+                          capture_output=True, text=True, env=parser_env(row, env, home, parser), cwd=str(row["cwd"]), timeout=120)
+    return done.returncode, done.stdout, done.stderr
+
+
+def agree(job: tuple[str, list], env: dict, home: Path) -> str:
+    """The awk parser on the rows that share one command: identical records from both parsers mean the guards,
+    which read nothing else of the command, give identical verdicts; otherwise (and for every listed difference)
+    each row is judged through awk."""
+    bash, group = job
+    if "command" in group[0] and "awk_by" not in group[0] and records(bash, group[0], env, home, "shfmt") == records(bash, group[0], env, home, "awk"):
+        return ""
+    return "\n".join(line for line in (judge((bash, "awk", row), env, home) for row in group) if line)
+
+
+def jobs_for(rows: list[dict]) -> list[tuple]:
+    """Every row through the first parser; with shfmt present, the awk parser through `agree`, once per command."""
+    found = parsers()
+    jobs = [(judge, (bash, found[0], row)) for bash in bashes() for row in rows]
+    if len(found) == 2:
+        groups: dict = {}
+        for row in filter(lambda row: row.get("shell", True), rows):
+            key = (row["command"], str(row["cwd"]), row.get("missing"), json.dumps(row["env"], sort_keys=True), row["by"]) if "command" in row else id(row)
+            groups.setdefault(key, []).append(row)
+        jobs += [(agree, (bash, group)) for bash in bashes() for group in groups.values()]
+    return jobs
 
 
 def fixture_home() -> Path:
@@ -263,7 +328,9 @@ def fixture_home() -> Path:
     return Path(tempfile.mkdtemp(prefix="hook-cases-", dir=base)).resolve()
 
 
-def main() -> int:
+@pytest.fixture(scope="module")
+def world() -> Iterator[tuple[dict, dict[str, Path], list[dict]]]:
+    """The environment, the named places and every case row, built once per worker."""
     home = fixture_home()
     tmp = home / "tmp"
     tmp.mkdir()
@@ -275,28 +342,86 @@ def main() -> int:
         review = subprocess.run([sys.executable, str(ROOT / ".agent/tools/review/crew-review-findings.py"), "review-dir", "--repo", "boundary-probe"],
                                 capture_output=True, text=True, env=env)
         places["review"] = Path(review.stdout.strip())
-        if review.returncode != 0 or not review.stdout.strip() or not places["review"].is_absolute():
-            print(f"FAIL: review-dir must print an absolute path (exit {review.returncode}): {review.stdout}{review.stderr}")
-            return 1
+        assert review.returncode == 0 and review.stdout.strip() and places["review"].is_absolute(), \
+            f"review-dir must print an absolute path (exit {review.returncode}): {review.stdout}{review.stderr}"
         rows = cases(home, places)
-        places["no-jq"], places["no-awk"] = Path(path_without(home, "jq")), Path(path_without(home, "awk"))
-        jobs = [(bash, row) for bash in bashes() for row in rows]
-        failed = unclassified() + shell_choice(env)
-        with ThreadPoolExecutor(max_workers=max(4, (os.cpu_count() or 2) * 2)) as pool:
-            failed += [line for line in pool.map(lambda job: judge(job, env), jobs) if line]
-            failed += [line for line in pool.map(lambda job: unreadable(job, env, {k: str(v) for k, v in places.items()}), failure_jobs()) if line]
+        # Every PATH a row or a failure job uses, built here so no thread creates one.
+        for missing in {row.get("missing", ()) for row in rows}:
+            if missing:
+                path_without(home, *missing)
+            path_without(home, "shfmt", *missing)
+        # Without awk the normaliser can still run on shfmt, so `no awk` hides both to reach the awk check.
+        places["no-jq"], places["no-awk"] = Path(path_without(home, "jq")), Path(path_without(home, "awk", "shfmt"))
+        yield env, places, rows
     finally:
         shutil.rmtree(home, ignore_errors=True)
-    for line in failed:
-        print(f"FAIL: {line}")
-    if failed:
-        print(f"fail: {len(failed)} of {len(jobs) + len(failure_jobs())} case run(s)")
-        return 1
-    print(f"pass: {len(DENY)} deny, {len(ALLOW)} allow, {len(MISSING)} missing-tool, {len(ENV)} environment, {len(FILES)} file and "
-          f"{len(PAYLOADS)} payload case(s); {len(GUARDS) + len(FILE_HOOKS) + len(SILENT)} hooks survive bad input; both shapes, under "
-          f"{', '.join(bashes())}")
-    return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def in_parallel(check, jobs: list) -> list[str]:
+    """Hook runs are subprocess-bound: threads overlap them, fewer under xdist, whose workers already fill the cores."""
+    workers = 4 if os.environ.get("PYTEST_XDIST_WORKER") else max(4, (os.cpu_count() or 2) * 2)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return [line for line in pool.map(check, jobs) if line]
+
+
+def test_every_hook_is_classified() -> None:
+    assert not unclassified(), unclassified()
+
+
+def test_the_zsh_rule_follows_the_executing_shell(world: tuple) -> None:
+    env, _, _ = world
+    assert not shell_choice(env), shell_choice(env)
+
+
+SLICES = 8
+
+
+@pytest.mark.parametrize("part", range(SLICES))
+def test_cases(part: int, world: tuple) -> None:
+    """Every row, in both payload shapes, under every bash and through both parsers: deny rows name their
+    guard, allow rows stay silent (the awk parser through `agree`; a file row reads no command, so once).
+
+    The rows are dealt into slices so xdist can spread them; a slice is every SLICES-th job.
+    """
+    env, places, rows = world
+    failed = in_parallel(lambda job: job[0](job[1], env, places["home"]), jobs_for(rows)[part::SLICES])
+    assert not failed, "\n".join(failed)
+
+
+def test_a_broken_shfmt_falls_back_to_awk(world: tuple) -> None:
+    """A shfmt that prints invalid JSON makes jq fail, and awk then reads the command: the same records
+    and the same deny. The real shfmt path, for its part, runs: on every listed difference its records differ."""
+    env, places, _ = world
+    home = places["home"]
+    stub = home / "broken-shfmt"
+    stub.mkdir(exist_ok=True)
+    (stub / "shfmt").write_text("#!/bin/sh\ncat >/dev/null\necho '{'\n", encoding="utf-8")
+    (stub / "shfmt").chmod(0o755)
+    row = {"command": "git reset --hard", "cwd": places["clean"], "env": {"PATH": f"{stub}{os.pathsep}{path_without(home, 'shfmt')}"},
+           "payload": shapes("git reset --hard", places["clean"])[0], "by": "destructive-git"}
+    guard = HOOKS / "guard" / "destructive-git.sh"
+    assert run_guard("bash", guard, row, {**env, **row["env"]}) == "deny"
+    assert records("bash", row, env, home, "shfmt") == records("bash", row, env, home, "awk")
+    if "shfmt" in parsers():
+        for command, tree, *_ in PARSERS_DIFFER:
+            real = {"command": command, "cwd": places[tree], "env": {}}
+            assert records("bash", real, env, home, "shfmt") != records("bash", real, env, home, "awk"), command
+
+
+def test_a_deep_pipeline_is_denied_quickly(world: tuple) -> None:
+    """shfmt's JSON grows with nesting depth times size (1.6 GB for this one), so a command this deep is read by awk."""
+    if "shfmt" not in parsers():
+        pytest.skip("shfmt is not installed; the awk path alone has no JSON to grow")
+    env, places, _ = world
+    payload = shapes("true | " * 3900 + "git reset --hard", places["clean"])[0]
+    start = time.monotonic()
+    done = run("bash", HOOKS / "guard" / "destructive-git.sh", json.dumps(payload), env, places["clean"])
+    elapsed = time.monotonic() - start
+    # The unbounded path took 25 s here; 15 s leaves room for a loaded CI runner.
+    assert done.returncode == 2 and elapsed < 15, f"exit {done.returncode} after {elapsed:.1f}s: {done.stderr[:300]}"
+
+
+def test_every_hook_survives_bad_input(world: tuple) -> None:
+    env, places, _ = world
+    failed = in_parallel(lambda job: unreadable(job, env, {k: str(v) for k, v in places.items()}), failure_jobs())
+    assert not failed, "\n".join(failed)

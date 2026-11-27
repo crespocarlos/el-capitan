@@ -13,10 +13,9 @@ import json
 import os
 import shutil
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
 
+import pytest
 from cli_runner import load
 from cli_runner import run as cli
 
@@ -28,7 +27,6 @@ from lint_prompts import READONLY_AGENT_DENY  # noqa: E402
 from lint_references import lint_handoff  # noqa: E402
 from lint_writing import lint_local_state_tracked  # noqa: E402
 
-FAILED: list[str] = []
 # (case, rule, file under .agent/tools, text appended to it: a new file starts empty)
 SEEDED = (
     ("git-argv", "direct-git", "task/task_seeded_git.py", "ARGV = [\"git\", \"status\"]\n"),
@@ -137,9 +135,7 @@ HANDOFFS = (
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
-    print(("pass: " if condition else "FAIL: ") + name + ("" if condition else f": {detail}"))
-    if not condition:
-        FAILED.append(name)
+    assert condition, f"{name}: {detail}"
 
 
 def write(root: Path, files: dict[str, str]) -> Path:
@@ -149,9 +145,18 @@ def write(root: Path, files: dict[str, str]) -> Path:
     return root
 
 
-def seeded(base: Path, registered: set[str]) -> None:
+@pytest.fixture(scope="module")
+def registered() -> set[str]:
+    listing = cli(LINT_PATH, "--list-rules")
+    rules = {line.split()[0] for line in listing.stdout.splitlines() if line.strip()}
+    check("--list-rules exits 0 and lists every seeded and fixture rule",
+          listing.returncode == 0 and {rule for _, rule, _, _ in SEEDED} | FIXTURE_RULES <= rules, listing.stdout)
+    return rules
+
+
+def test_seeded_violations_are_reported_at_their_files(tmp: Path, registered: set[str]) -> None:
     """Every seed in one copy of the tool tree: each must be reported by its rule, at its file."""
-    root = base / "seeded"
+    root = tmp / "seeded"
     shutil.copytree(TOOLS, root / ".agent" / "tools", ignore=shutil.ignore_patterns("__pycache__"))
     (root / "rules").mkdir()
     expected = collections.Counter()
@@ -170,21 +175,27 @@ def seeded(base: Path, registered: set[str]) -> None:
     check("every reported rule is registered", not unknown, unknown)
 
 
-def fixtures(base: Path, registered: set[str]) -> None:
-    for index, (case, files, expected) in enumerate(FIXTURES):
-        root = write(base / f"fixture-{index}", {".agent/tools/tools.json": json.dumps(CATALOG), **files})
-        (root / "rules").mkdir(exist_ok=True)
-        counts = collections.Counter(rule for _, _, rule, _ in LINT.lint(root, False))
-        wrong = {rule: counts[rule] for rule in FIXTURE_RULES if counts[rule] != expected.get(rule, 0)}
-        check(f"{case}: {expected or 'no finding'}", not wrong and FIXTURE_RULES <= registered, dict(counts))
-    for index, (case, files, rule) in enumerate(HANDOFFS):
-        root = write(base / f"handoff-{index}", {"rules/crew-router.mdc": ROUTER, **files})
-        rules = [found[2] for found in lint_handoff(root, root / "rules" / "crew-router.mdc")]
-        check(f"handoff, {case}: {rule or 'no finding'}", rule in rules if rule else rules == [], rules)
-    located = lint_handoff(write(base / "located", {"rules/crew-router.mdc": ROUTER, SKILL.format("crew-commit"): NEXT.format("frobnicate")}),
-                           base / "located" / "rules" / "crew-router.mdc")
-    write(base / "fixture-0", dict([agent("reviewer-a", "tools: Read\n")]))
-    printed = cli(LINT_PATH, "--root", str(base / "fixture-0"))
+@pytest.mark.parametrize("case,files,expected", FIXTURES, ids=[case for case, _, _ in FIXTURES])
+def test_fixture(case: str, files: dict[str, str], expected: dict[str, int], tmp: Path) -> None:
+    root = write(tmp, {".agent/tools/tools.json": json.dumps(CATALOG), **files})
+    (root / "rules").mkdir(exist_ok=True)
+    counts = collections.Counter(rule for _, _, rule, _ in LINT.lint(root, False))
+    assert {rule: counts[rule] for rule in FIXTURE_RULES} == {rule: expected.get(rule, 0) for rule in FIXTURE_RULES}, dict(counts)
+
+
+@pytest.mark.parametrize("case,files,rule", HANDOFFS, ids=[case for case, _, _ in HANDOFFS])
+def test_handoff(case: str, files: dict[str, str], rule: str | None, tmp: Path) -> None:
+    root = write(tmp, {"rules/crew-router.mdc": ROUTER, **files})
+    rules = [found[2] for found in lint_handoff(root, root / "rules" / "crew-router.mdc")]
+    assert rule in rules if rule else rules == [], rules
+
+
+def test_findings_are_located(tmp: Path) -> None:
+    located = lint_handoff(write(tmp / "located", {"rules/crew-router.mdc": ROUTER, SKILL.format("crew-commit"): NEXT.format("frobnicate")}),
+                           tmp / "located" / "rules" / "crew-router.mdc")
+    write(tmp / "fixture-0", {".agent/tools/tools.json": json.dumps(CATALOG), **dict([agent("reviewer-a", "tools: Read\n")])})
+    (tmp / "fixture-0" / "rules").mkdir()
+    printed = cli(LINT_PATH, "--root", str(tmp / "fixture-0"))
     check("the text report prints `path:line: rule: message` and exits 1",
           printed.returncode == 1 and ".cursor/agents/reviewer-a.md:1: missing-readonly: " in printed.stdout, printed.stdout)
     check("an unrouted verb is reported at its file and line, naming the verb",
@@ -192,9 +203,9 @@ def fixtures(base: Path, registered: set[str]) -> None:
           and "crew frobnicate" in located[0][3], located)
 
 
-def tracked_state(base: Path) -> None:
+def test_tracked_state(tmp: Path) -> None:
     """Per-run state under `.agent/` is reported when tracked; tools and templates are not."""
-    scratch = write(base / "state", {".agent/tools/keep.py": "x\n", ".agent/_SPEC_TEMPLATE.md": "t\n", ".agent/tasks/abc/SPEC.md": "leaked\n",
+    scratch = write(tmp / "state", {".agent/tools/keep.py": "x\n", ".agent/_SPEC_TEMPLATE.md": "t\n", ".agent/tasks/abc/SPEC.md": "leaked\n",
                                      ".agent/reviews/note.md": "leaked\n"})
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.invalid", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e.invalid"}
     subprocess.run(["git", "init", "-q", str(scratch)], check=True, env=env)
@@ -204,21 +215,3 @@ def tracked_state(base: Path) -> None:
           [p.split(".agent/")[-1].split("/")[0] for p in found] == ["reviews", "tasks"], found)
     subprocess.run(["git", "-C", str(scratch), "rm", "-r", "--cached", "-q", ".agent/tasks", ".agent/reviews"], check=True, env=env)
     check("untracked state passes", lint_local_state_tracked(scratch) == [])
-
-
-def main() -> int:
-    listing = cli(LINT_PATH, "--list-rules")
-    registered = {line.split()[0] for line in listing.stdout.splitlines() if line.strip()}
-    check("--list-rules exits 0 and lists every seeded rule", listing.returncode == 0 and {rule for _, rule, _, _ in SEEDED} <= registered,
-          {rule for _, rule, _, _ in SEEDED} - registered)
-    with tempfile.TemporaryDirectory() as raw:
-        base = Path(raw)
-        seeded(base, registered)
-        fixtures(base, registered)
-        tracked_state(base)
-    print("lint-rules: fail" if FAILED else "lint-rules: pass")
-    return 1 if FAILED else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -14,9 +14,7 @@ import os
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -171,11 +169,9 @@ def test_status_and_report_read_the_run(tmp: Path) -> None:
         # The skill compares this with the PR's current head; without it a stale run reads as current.
         assert status["testedHead"] == TESTED_HEAD
         report = json.loads(run(stub, "report", KEY).stdout)
-        assert report["testedHead"] == TESTED_HEAD
-        assert report["verdict"] == "pass"
-        assert report["findings"][0]["title"] == "slow"
-        assert report["notCovered"] == ["permissions"]
-        assert report["environmentChanges"] == ["restarted Kibana"]
+        assert report["testedHead"] == TESTED_HEAD and report["verdict"] == "pass"
+        assert (report["findings"], report["notCovered"], report["environmentChanges"]) == (
+            [{"kind": "note", "title": "slow"}], ["permissions"], ["restarted Kibana"]), report
         # Nightshift's `via` is a list, and a skipped check proves nothing either way: a passing
         # check observed only by a health probe or a script must be named as not end-to-end,
         # while a skipped one is neither claimed nor flagged.
@@ -303,15 +299,11 @@ def test_port_in_use_detects_a_bound_local_port(tmp: Path) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
-        port = listener.getsockname()[1]
-        assert module.port_in_use(port) is True
-    # Nothing should still be listening right after the socket closes and the OS frees it;
-    # retry briefly in case TIME_WAIT races the check.
-    for _ in range(20):
-        if not module.port_in_use(port):
-            break
-        time.sleep(0.05)
-    assert module.port_in_use(port) is False
+        assert module.port_in_use(listener.getsockname()[1]) is True
+    # Bound but never listening: the port is held and refuses connections, with nothing to race.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as idle:
+        idle.bind(("127.0.0.1", 0))
+        assert module.port_in_use(idle.getsockname()[1]) is False
 
 
 def test_duplicate_config_keys_flags_a_repeated_key_only(tmp: Path) -> None:
@@ -447,25 +439,6 @@ def test_worktrees_lists_designated_ones(tmp: Path) -> None:
              "kibanaPort": 5602, "kibanaRunning": False, "path": "/Users/x/worktrees/kibana-e2e-1",
              "dirty": [], "dirtyCount": 0, "mainRepoRisk": False},
         ]
-        assert "GET", "/api/deploy" in [(i["method"], i["path"].split("?")[0]) for i in stub.requests]
+        assert ("GET", "/api/deploy") in [(i["method"], i["path"].split("?")[0]) for i in stub.requests]
     finally:
         stub.close()
-
-
-def main() -> int:
-    tests = [value for key, value in globals().items() if key.startswith("test_")]
-    failed = 0
-    for test in tests:
-        with tempfile.TemporaryDirectory() as tmp:
-            try:
-                test(Path(tmp))
-                print(f"pass: {test.__name__}")
-            except AssertionError as error:
-                failed += 1
-                print(f"FAIL: {test.__name__}: {error}")
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

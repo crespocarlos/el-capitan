@@ -12,12 +12,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
+import pytest
 from cli_runner import run as cli
 
-ROOT =Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
 
 BANDS = {5: "confirmed", 4: "strong", 3: "likely", 2: "uncertain", 1: "suspicion"}
@@ -80,19 +80,31 @@ def test_a_finding_with_no_confidence_is_rejected_naming_every_band(tmp: Path) -
     assert not (tmp / "task" / "REVIEW.md").exists(), "a rejected run writes no report"
 
 
-def test_normalize_rejects_a_missing_score_too(tmp: Path) -> None:
-    """`normalize` is the other gate, and the same rule holds there."""
-    result = normalize(tmp, [base(confidence=None)])
-    assert result.returncode == 2 and "has no confidence" in result.stderr, result.stderr
+# (case, finding, flags, exit code, texts stderr must carry): the `normalize` gate on the score.
+NORMALIZE = [
+    ("a missing score is refused", base(confidence=None), (), 2, ("has no confidence",)),
+    *[(f"confidence {bad!r} is outside the scale", base(confidence=bad), (), 2,
+       ("invalid confidence", "integer 1-5")) for bad in (0, 6, "high", 4.5, True, "4", [4])],
+    *[(f"{label} at {score} belongs as needs more info", base(label=label, confidence=score), (), 2,
+       ("below 3", "needs more info")) for label in ("attention", "blocking") for score in (1, 2)],
+    ("a question may carry doubt", base(label="needs more info", confidence=1), (), 0, ()),
+    ("a nit may carry doubt", base(label="nit", confidence=1), (), 0, ()),
+    ("3 is a request the reviewer stands behind", base(confidence=3), (), 0, ()),
+    *[(f"a raise with validation {missing!r} has no read", base(confidence=4, confidence_from=2, validation=missing),
+       (), 2, ("records no validation sentence", "from 2 to 4")) for missing in (None, "   ", 7)],
+    ("a score only ever moves up", base(confidence=2, confidence_from=4, label="needs more info"), (), 2,
+     ("only ever moves up",)),
+    ("a pair naming one score is not a raise", base(confidence=4, confidence_from=4), (), 2, ("not a raise",)),
+    ("--lenient re-reads an unrecorded raise", base(confidence=4, confidence_from=2, validation=None), ("--lenient",),
+     0, ()),
+]
 
 
-def test_a_value_outside_one_to_five_is_rejected_naming_the_range(tmp: Path) -> None:
-    """0, 6, "high", 4.5, True, and the string "4" are all outside the scale."""
-    for bad in (0, 6, "high", 4.5, True, "4", [4]):
-        result = normalize(tmp, [base(confidence=bad)])
-        assert result.returncode == 2, f"{bad!r} was accepted: {result.stdout}"
-        assert "invalid confidence" in result.stderr, f"{bad!r}: {result.stderr}"
-        assert "integer 1-5" in result.stderr, f"{bad!r}: {result.stderr}"
+@pytest.mark.parametrize("case,finding,flags,code,needles", NORMALIZE, ids=[row[0] for row in NORMALIZE])
+def test_the_normalize_score_gate(case: str, finding: dict, flags: tuple[str, ...], code: int,
+                                  needles: tuple[str, ...], tmp: Path) -> None:
+    result = normalize(tmp, [finding], *flags)
+    assert result.returncode == code and all(n in result.stderr for n in needles), result.stdout + result.stderr
 
 
 def test_every_band_is_accepted_and_survives_to_json(tmp: Path) -> None:
@@ -107,26 +119,9 @@ def test_every_band_is_accepted_and_survives_to_json(tmp: Path) -> None:
         assert json.loads(result.stdout)["findings"][0]["confidence"] == score
 
 
-def test_a_low_score_on_an_acted_finding_is_redirected_not_dropped(tmp: Path) -> None:
-    """A `blocking` or `attention` finding the reviewer doubts belongs as `[needs more info]`."""
-    for label in ("attention", "blocking"):
-        for score in (1, 2):
-            result = normalize(tmp, [base(label=label, confidence=score)])
-            assert result.returncode == 2, f"{label} at {score} was accepted: {result.stdout}"
-            assert "below 3" in result.stderr, result.stderr
-            assert "needs more info" in result.stderr, result.stderr
-    # A question and a nit may carry doubt: neither is a request to change code.
-    assert normalize(tmp, [base(label="needs more info", confidence=1)]).returncode == 0
-    assert normalize(tmp, [base(label="nit", confidence=1)]).returncode == 0
-    # The floor is a minimum, so 3 is a request the reviewer stands behind.
-    assert normalize(tmp, [base(confidence=3)]).returncode == 0
-
-
 def test_a_historical_finding_with_no_score_is_read_through_lenient(tmp: Path) -> None:
     """The record written before the field existed must stay readable, or no old review can be re-read."""
-    legacy = base(confidence=None)
-    assert normalize(tmp, [legacy]).returncode == 2
-    lenient = normalize(tmp, [legacy], "--lenient")
+    lenient = normalize(tmp, [base(confidence=None)], "--lenient")
     assert lenient.returncode == 0, lenient.stderr
     assert "confidence" not in json.loads(lenient.stdout)["findings"][0], (
         "an absent score must not be written back as a value"
@@ -153,33 +148,6 @@ def test_a_raise_with_a_recorded_read_is_accepted(tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
     finding = json.loads(result.stdout)["findings"][0]
     assert finding["confidence"] == 4 and finding["confidence_from"] == 2, finding
-
-
-def test_a_raise_without_a_recorded_read_is_rejected(tmp: Path) -> None:
-    """An assertion in place of a read is refused, which is the only shape that separates the two."""
-    for missing in ({"validation": None},
-                    {"validation": "   "},
-                    {"validation": 7}):
-        payload = {**base(confidence=4, confidence_from=2), **missing}
-        result = normalize(tmp, [payload])
-        assert result.returncode == 2, f"{missing} was accepted: {result.stdout}"
-        assert "records no validation sentence" in result.stderr, result.stderr
-        assert "from 2 to 4" in result.stderr, result.stderr
-    # A finding that claims it came from a higher score is not a raise at all.
-    backwards = base(confidence=2, confidence_from=4, label="needs more info")
-    result = normalize(tmp, [backwards])
-    assert result.returncode == 2 and "only ever moves up" in result.stderr, result.stderr
-    # And a pair naming one score records nothing, so it is refused instead of logged as a raise.
-    same = base(confidence=4, confidence_from=4)
-    result = normalize(tmp, [same])
-    assert result.returncode == 2 and "not a raise" in result.stderr, result.stderr
-
-
-def test_a_raises_original_score_survives_lenient(tmp: Path) -> None:
-    """`--lenient` still reads history, and also tolerates an unrecorded raise so an old run re-reads."""
-    payload = base(confidence=4, confidence_from=2, validation=None)
-    assert normalize(tmp, [payload]).returncode == 2
-    assert normalize(tmp, [payload], "--lenient").returncode == 0
 
 
 def test_a_routed_finding_keeps_its_original_score(tmp: Path) -> None:
@@ -299,23 +267,3 @@ def test_the_deferred_line_and_the_coverage_table_carry_the_score(tmp: Path) -> 
     assert "[attention · 5] Guard missing" in written, written
     deferred = (tmp / "task" / "DEFERRED.md").read_text()
     assert "[attention · 3] Old bug" in deferred, deferred
-
-
-
-def main() -> int:
-    tests = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
-    failed = 0
-    for test in tests:
-        with tempfile.TemporaryDirectory() as directory:
-            try:
-                test(Path(directory))
-                print(f"pass: {test.__name__}")
-            except AssertionError as error:
-                failed += 1
-                print(f"FAIL: {test.__name__}: {error}")
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

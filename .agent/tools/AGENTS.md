@@ -8,19 +8,19 @@ this file covers the code that pipeline runs.
 ```bash
 python3 .agent/tools/maintenance/crew-lint.py --budget   # catalog, references, module cap, imports, budget
 bash evals/ruff.sh check .                               # Ruff, the version pinned in ruff.toml
-python3 evals/tools/test_command_names.py                # catalog kinds, installed link set
+bash evals/test.sh -n auto                               # every test: pinned pytest + pytest-xdist (uvx)
 ```
 
-The three are fast and cover structure. `crew-lint.py --list-rules` prints every crew-lint rule;
+The first two are fast and cover structure. `crew-lint.py --list-rules` prints every crew-lint rule;
 Ruff (`ruff.toml`) owns generic Python style: imports, return annotations, function size (statements,
 `PLR0915`), unused code, banned generic module names. `ruff.toml`'s `per-file-ignores` is a baseline
 of existing violations: delete an entry when its file is clean, never add one for new code.
 `ruff format` is not enforced yet. Behavioral changes also need the suite for the area you
-touched — `evals/memory/run.py` for memory, `evals/reviewer/test_*.py` for review,
-`evals/tools/test_*.py` for a single tool. Two suites create temporary git repositories and fail
-inside the Cursor sandbox with `Operation not permitted`: `python3 evals/tools/test_hook_cases.py`
-and `python3 evals/memory/run.py`. Run those with full permissions, and check exit codes directly
-rather than piping to `tail`, which hides them.
+touched — `evals/memory/run.py` for memory, `bash evals/test.sh evals/tools/test_<name>.py` for a
+single suite (a test takes `tmp`, its own temporary directory, from `evals/conftest.py`). Suites that
+create temporary git repositories fail inside the Cursor sandbox with `Operation not permitted`
+(`test_hook_cases.py`, `evals/memory/run.py`). Run those with full permissions, and check exit codes
+directly rather than piping to `tail`, which hides them.
 
 ## Hooks
 
@@ -91,8 +91,9 @@ command (a command costs always-on router budget). What the hardening work added
   (`assemble_inputs.py` decides, `assemble_build.py` slices and writes).
 - New prose for these stages lives in `references/` files linked in one line (`stage-rules.md`,
   `worker-dispatch.md`): the prompt files are within bytes of `MAX_PROMPT_FILE_BYTES`.
-- `.github/workflows/validate.yml` runs every `evals/tools/test_*.py` and `evals/reviewer/test_*.py`
-  in one loop, so a new suite there runs in CI with no workflow change.
+- `.github/workflows/validate.yml` runs `bash evals/test.sh -n auto` (pytest collects every
+  `evals/tools/test_*.py` and `evals/reviewer/test_*.py`, `pytest.ini`) on ubuntu and macOS with
+  Python 3.9 and 3.12, so a new suite there runs in CI with no workflow change.
 
 ## Settings a repository declares in its AGENTS.md
 

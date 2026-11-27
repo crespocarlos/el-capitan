@@ -19,7 +19,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from cli_runner import run as cli
@@ -30,7 +29,6 @@ INSTALL = ROOT / "install.sh"
 SOURCE_ONLY = {"task-env.sh", "crew-diff.sh"}
 HELP_LINE_CEILING = 40
 TOOLS_DOC = (TOOLS / "TOOLS.md").read_text()
-FAILED: list[str] = []
 # (case, module, parser function, text the --help must show, text it must not)
 HELP_TEXTS = (
     ("crew-task.py worktree --help lists every action, check included", "task_worktrees", "pref_main", ("pref", "record", "check <TREE>"), ()),
@@ -42,9 +40,7 @@ EXIT_ROW = re.compile(r"^\| `(crew-[a-z0-9-]+\.py[^`]*)` \| `([3-9])` \| [^|]+ \
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
-    print(("pass: " if condition else "FAIL: ") + name + ("" if condition else f": {detail}"))
-    if not condition:
-        FAILED.append(name)
+    assert condition, f"{name}: {detail}"
 
 
 def catalog() -> list[dict]:
@@ -190,7 +186,7 @@ def output_cases(tmp: Path, texts: dict[str, str]) -> None:
           isinstance(payload, dict) and payload.get("truncated") is True and payload.get("total") == 3 and "--limit" in payload.get("hint", ""), listed)
 
 
-def exit_code_cases() -> None:
+def test_exit_codes() -> None:
     """Every non-standard exit code is a named `EXIT_*` constant and has a row in the AGENTS.md table."""
     guide = (TOOLS / "AGENTS.md").read_text(encoding="utf-8")
     documented = {(found.group(3), int(found.group(2))) for found in map(EXIT_ROW.match, guide.splitlines()) if found}
@@ -210,15 +206,9 @@ def exit_code_cases() -> None:
     check("every EXIT_* constant is documented, and every documented code declared", declared == documented, sorted(declared ^ documented))
 
 
-def main() -> int:
-    exit_code_cases()
-    with tempfile.TemporaryDirectory() as raw:
-        tmp = Path(raw)
-        install_links(tmp)
-        output_cases(tmp, help_cases())
-    print(f"command surface: {len(FAILED)} failed" if FAILED else "command surface: pass")
-    return 1 if FAILED else 0
+def test_install_links(tmp: Path) -> None:
+    install_links(tmp)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def test_help_and_machine_readable_output(tmp: Path) -> None:
+    output_cases(tmp, help_cases())

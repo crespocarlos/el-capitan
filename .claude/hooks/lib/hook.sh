@@ -111,15 +111,79 @@ hook_allow() {
 #     or a `cat` of a heredoc; any other producer (`cat file | sh`, `curl ... | bash`) cannot be
 #     read, and hook_segments denies it unless the caller set HOOK_SHELL_STDIN=allow;
 #   - past MAX_PAYLOADS nested payloads the command is too complex to judge: hook_segments denies.
+# Two parsers emit these records. With `shfmt` on PATH (optional, preferred) the command is parsed
+# into a real bash syntax tree (`shfmt --to-json`) and lib/segments.jq derives the records from it;
+# each string payload (`sh -c`, `eval`, a shell's stdin) goes through shfmt again. Without shfmt, or
+# when shfmt or jq fails on any part of the command, the awk program below reads the whole command,
+# so a parse failure never becomes an allow the awk path would not give.
 # `hook_seg N` loads segment N into SEG_DIR, SEG_BODY (heredoc and here-string text), SEG_QUOTED (one
 # `1` or `0` per word: whether any of it was quoted) and SEG_WORDS.
 HOOK_US=$'\037'
 # Each nested payload (`$(...)`, `sh -c`, `eval`, a shell's stdin) is scanned again: the cap bounds
 # the work one command can cause, and past it the command is denied rather than partly read.
 HOOK_MAX_PAYLOADS=64
+HOOK_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# shfmt's JSON grows with nesting depth times size (a 27 KB pipeline of 3,900 stages prints 1.6 GB),
+# so a command over HOOK_SHFMT_BYTES, or with more than HOOK_SHFMT_NESTING characters that can nest
+# (`|`, `&`, `(`, `{`, a backtick), goes to awk instead.
+HOOK_SHFMT_BYTES=16384
+HOOK_SHFMT_NESTING=64
+
+# Every record field is escaped with \035 as the escape byte (`\035e` for \035, `\035u` for US, `\035r`
+# for RS) and a newline is RS, so no byte inside a field can split it. `hook_unesc TEXT [nl]` undoes the
+# escapes into HOOK_TEXT; with `nl`, RS is read back as a newline first.
+HOOK_ESC=$'\035'
+hook_unesc() {
+  HOOK_TEXT=$1
+  if [ "${2:-}" = nl ]; then HOOK_TEXT=${HOOK_TEXT//$'\036'/$'\n'}; fi
+  case "$HOOK_TEXT" in *"$HOOK_ESC"*) ;; *) return 0 ;; esac
+  HOOK_TEXT=${HOOK_TEXT//"${HOOK_ESC}r"/$'\036'}
+  HOOK_TEXT=${HOOK_TEXT//"${HOOK_ESC}u"/$HOOK_US}
+  HOOK_TEXT=${HOOK_TEXT//"${HOOK_ESC}e"/$HOOK_ESC}
+}
+
+# The shfmt path: the records of $1 on stdout, status 1 when shfmt or jq fails on any payload (shfmt's
+# tree is streamed into jq, never held in a variable). The payload count runs across the shfmt runs,
+# so the cap means what it means on the awk path.
+hook_shfmt() {
+  local texts=("$1") dirs=("$HOOK_CWD") k=0 qn=1 out line
+  while [ "$k" -lt "${#texts[@]}" ]; do
+    out=$(printf '%s' "${texts[$k]}" | shfmt -ln=bash --to-json 2>/dev/null \
+      | jq -r --rawfile src <(printf '%s' "${texts[$k]}") --arg dir "${dirs[$k]}" --arg home "${HOME:-}" \
+        --argjson qn "$qn" --argjson max "$HOOK_MAX_PAYLOADS" -f "$HOOK_LIB/segments.jq" 2>/dev/null
+      [ "${PIPESTATUS[*]}" = "0 0 0" ]) || return 1
+    while IFS= read -r line; do
+      case "$line" in
+        "${HOOK_US}payload${HOOK_US}"*)
+          line=${line#"${HOOK_US}payload${HOOK_US}"}
+          hook_unesc "${line%%"$HOOK_US"*}" nl
+          dirs[${#dirs[@]}]=$HOOK_TEXT
+          hook_unesc "${line#*"$HOOK_US"}" nl
+          texts[${#texts[@]}]=$HOOK_TEXT ;;
+        "${HOOK_US}qn${HOOK_US}"*) qn=${line##*"$HOOK_US"} ;;
+        *) printf '%s\n' "$line" ;;
+      esac
+    done <<<"$out"
+    k=$((k + 1))
+  done
+}
+
+# True when $1 is small and shallow enough for the shfmt path (bytes and nesting counted in one awk run).
+hook_shfmt_fits() {
+  local size
+  [ "${#1}" -le "$HOOK_SHFMT_NESTING" ] && return 0
+  size=$(printf '%s' "$1" | LC_ALL=C awk '{ n += length($0) + 1; m += gsub(/[|&({`]/, "") } END { print n + 0, m + 0 }') || return 1
+  [ "${size% *}" -le "$((HOOK_SHFMT_BYTES + 1))" ] && [ "${size#* }" -le "$HOOK_SHFMT_NESTING" ]
+}
+
 hook_segments() {
-  local out rec
+  local out
   HOOK_SEGS=()
+  if command -v shfmt >/dev/null 2>&1 && hook_shfmt_fits "$1" && out=$(hook_shfmt "$1"); then
+    hook_records "$out"
+    return
+  fi
   # Checked first: piping into a missing awk can also print `printf: write error` on stderr.
   command -v awk >/dev/null 2>&1 || hook_fail "awk is not installed; cannot parse the shell command"
   [ -n "${HOOK_AWK:-}" ] || read -r -d '' HOOK_AWK <<'AWK' || true
@@ -131,17 +195,29 @@ function resolve(p, dir) {
   return dir "/" p
 }
 # Past MAX_PAYLOADS (HOOK_MAX_PAYLOADS) the END block reports an overflow, so nothing is dropped silently.
-function enqueue(s, d) { if (QN >= MAX_PAYLOADS) { OVERFLOW = 1; return } QN++; Q[QN] = s; QD[QN] = d }
+# A process substitution's payload (ps) has a stdin the guard cannot see.
+function enqueue(s, d, ps) { if (QN >= MAX_PAYLOADS) { OVERFLOW = 1; return } QN++; Q[QN] = s; QD[QN] = d; QP[QN] = ps }
+# The record escapes, as `enc` in lib/segments.jq: \035 is the escape byte, so a US or RS inside a word
+# never splits it, and a newline is RS (BWK awk's split() also splits on a newline). Words are stored
+# escaped; dec gives back the text a payload needs.
+function enc(s) { gsub(/\035/, "\035e", s); gsub(/\037/, "\035u", s); gsub(/\036/, "\035r", s); gsub(/\n/, RS_, s); return s }
+function dec(s) { gsub(RS_, "\n", s); gsub(/\035r/, "\036", s); gsub(/\035u/, "\037", s); gsub(/\035e/, "\035", s); return s }
+# W is the word as written; WA the same word with every expansion that may be empty left out.
+function add(x) { W = W x; WA = WA x }
 function pushword() {
   if (INW) {
     if (REDIR == 2) HSD = HSD W "\n"
     else if (REDIR == 3) { PN++; PD[PN] = W; PS[PN] = HSTRIP; PO[PN] = 0 }
-    else if (REDIR == 0) { WSTR = (NW ? WSTR US : "") W; QSTR = QSTR (WQ ? 1 : 0); NW++ }
+    else if (REDIR == 0) {
+      WSTR = (NW ? WSTR US : "") enc(W); QSTR = QSTR (WQ ? 1 : 0); NW++
+      if (WA != W) ADIFF = 1
+      if (WA != "" || WQ) { ASTR = (ANW ? ASTR US : "") enc(WA); AQSTR = AQSTR (WQ ? 1 : 0); ANW++ }
+    }
     REDIR = 0
   }
-  W = ""; INW = 0; WQ = 0
+  W = ""; WA = ""; INW = 0; WQ = 0
 }
-# Options of a wrapper that take the next word as their value.
+# Options of a wrapper that take the next word as their value. Mirrors `optval` in lib/segments.jq.
 function optval(w, o) {
   if (w == "nice") return o == "-n"
   if (w == "sudo") return o ~ /^-[ugCDhpRrtTU]$/
@@ -150,15 +226,28 @@ function optval(w, o) {
   if (w == "stdbuf") return o ~ /^-[ioe]$/
   return 0
 }
-# A shell with `-c` runs its payload; with no `-c` and no script argument (or with `-s`) it runs stdin.
+# A script argument: stdin by name reads stdin, another descriptor or a process substitution is opaque.
+function script(w, idx) {
+  if (w == "/dev/stdin" || w == "/dev/fd/0") SHIN[idx] = 1
+  else if (w ~ /^\/dev\/fd\// || w ~ /^[<>]\(/) OPAQUE = 1
+}
+# A shell with `-c` runs its payload, the first word after `-c` that is not an option; with no `-c`
+# and no script argument (or with `-s`) it runs stdin. Mirrors `shellin` in lib/segments.jq.
 function shellin(a, i, n, idx,    j, s) {
   s = 0
   for (j = i + 1; j <= n; j++) {
-    if (a[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < n) enqueue(a[j + 1], DIR); return }
+    if (a[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) {
+      for (j++; j <= n && a[j] ~ /^[-+]/; j++) {
+        if (a[j] == "--" || a[j] == "-") { j++; break }
+        if (a[j] ~ /^[-+][oO]$/ || a[j] ~ /^--(rcfile|init-file)$/) j++
+      }
+      if (j <= n) enqueue(dec(a[j]), DIR)
+      return
+    }
     if (a[j] ~ /^[-+][oO]$/ || a[j] ~ /^--(rcfile|init-file)$/) { j++; continue }
-    if (a[j] == "--") { if (j < n && !s) return; break }
+    if (a[j] == "--") { if (j < n && !s) { script(dec(a[j + 1]), idx); return } break }
     if (a[j] ~ /^[-+]/) { if (a[j] ~ /^-[A-Za-z]*s/) s = 1; continue }
-    if (!s) return
+    if (!s) { script(dec(a[j]), idx); return }
     break
   }
   SHIN[idx] = 1
@@ -169,11 +258,12 @@ function lit(a, i, n, base,    j, t, k) {
   if (base == "echo") while (j <= n && a[j] ~ /^-[neE]+$/) j++
   for (; j <= n; j++) t = t (k++ ? " " : "") a[j]
   gsub(/\\n/, "\n", t)
-  return t
+  return dec(t)
 }
-function store(   a, n, i, j, out, base, idx, w) {
-  if (NW == 0) return 0
-  n = split(WSTR, a, US); i = 1
+# The index of the command word: leading assignments and wrappers with their options are skipped.
+# Mirrors `lead` in lib/segments.jq.
+function lead(a, n,    i, w) {
+  i = 1
   while (i <= n) {
     if (a[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { i++; continue }
     if (a[i] !~ /^(env|command|exec|nohup|time|timeout|stdbuf|builtin|sudo|nice|then|do|else|if|elif|while|until|!|\{|\})$/) break
@@ -181,37 +271,54 @@ function store(   a, n, i, j, out, base, idx, w) {
     while (i <= n && a[i] ~ /^-/) { if (optval(w, a[i])) i++; i++ }
     if (w == "timeout" && i <= n) i++
   }
+  return i
+}
+# When an expansion that may be empty sits in a word, a second record follows with those expansions
+# left out (a word left empty and unquoted is dropped, as bash drops it), so `${X}git` reads as git.
+function store(   a, n, i, j, k, out, base, idx, b, m) {
+  if (NW == 0) return 0
+  n = split(WSTR, a, US); i = lead(a, n)
   if (i > n) return 0
   out = a[i]; for (j = i + 1; j <= n; j++) out = out US a[j]
   NSEG++; SD[NSEG] = DIR; SW[NSEG] = out; SB[NSEG] = HSD; SQ[NSEG] = substr(QSTR, i); idx = NSEG
   PIPE[idx] = PIPEIN; PIPEIN = 0
+  if (ADIFF) {
+    m = split(ASTR, b, US); j = lead(b, m)
+    if (j <= m) {
+      out = b[j]; for (k = j + 1; k <= m; k++) out = out US b[k]
+      NSEG++; SD[NSEG] = DIR; SW[NSEG] = out; SB[NSEG] = ""; SQ[NSEG] = substr(AQSTR, j)
+    }
+  }
   base = a[i]; sub(/.*\//, "", base)
   if (base == "cd") {
     j = i + 1; while (j <= n && a[j] ~ /^-./) j++
-    if (j > n || a[j] !~ /[$`]/) DIR = resolve(j <= n ? a[j] : "~", DIR)
+    if (j > n || a[j] !~ /[$`]|[[:cntrl:]]/) DIR = resolve(j <= n ? a[j] : "~", DIR)
   }
   if (base ~ /^(sh|bash|zsh|dash|ksh)$/) shellin(a, i, n, idx)
+  if (base ~ /^(sh|bash|zsh|dash|ksh)$/ && INPS) PSIN[idx] = 1
   if (base == "echo" || base == "printf") LIT[idx] = lit(a, i, n, base)
   if (base == "cat") { CAT[idx] = 1; for (j = i + 1; j <= n; j++) if (a[j] !~ /^-/) CAT[idx] = 0 }
-  if (base == "eval" && i < n) { out = a[i + 1]; for (j = i + 2; j <= n; j++) out = out " " a[j]; enqueue(out, DIR) }
+  if (base == "eval" && i < n) { out = a[i + 1]; for (j = i + 2; j <= n; j++) out = out " " a[j]; enqueue(dec(out), DIR) }
   return idx
 }
 function endseg(   k, idx) {
   pushword(); idx = store(); LAST = idx
   for (k = 1; k <= PN; k++) if (PO[k] == 0) PO[k] = idx ? idx : -1
-  WSTR = ""; QSTR = ""; NW = 0; HSD = ""; REDIR = 0
+  WSTR = ""; QSTR = ""; NW = 0; HSD = ""; REDIR = 0; ASTR = ""; AQSTR = ""; ANW = 0; ADIFF = 0; INPS = 0
 }
 # After a scan, every shell that runs stdin gets that text as a payload: its own heredoc or
-# here-string, or what an `echo`, `printf` or heredoc `cat` pipes into it. Any other producer is opaque.
-function stdins(first,    k, p) {
+# here-string, or what an `echo`, `printf` or heredoc `cat` pipes into it. Any other producer is opaque,
+# and so is the stdin of a process substitution (a shell inside one, or one reading `< <(...)`).
+function stdins(first, ps,    k, p) {
   for (k = first; k <= NSEG; k++) {
     if (!SHIN[k]) continue
+    if (PSIN[k]) { OPAQUE = 1; continue }
     if (SB[k] != "") { enqueue(SB[k], SD[k]); continue }
     p = PIPE[k]
     while (p > 0 && CAT[p] && SB[p] == "") p = PIPE[p]
     if (p > 0 && (p in LIT)) enqueue(LIT[p], SD[k])
     else if (p > 0 && CAT[p]) enqueue(SB[p], SD[k])
-    else if (p != 0) OPAQUE = 1
+    else if (p != 0 || ps) OPAQUE = 1
   }
 }
 function closing(s, i, n,    c, depth, j) {
@@ -231,25 +338,55 @@ function ansi(s, i, n,    c, nx, v) {
   while (i <= n) {
     c = substr(s, i, 1)
     if (c == "'") return i + 1
-    if (c != "\\") { W = W c; i++; continue }
+    if (c != "\\") { add(c); i++; continue }
     nx = substr(s, i + 1, 1); i += 2
-    if (nx == "n") W = W "\n"
-    else if (nx == "t") W = W "\t"
+    if (nx == "n") add("\n")
+    else if (nx == "t") add("\t")
     else if (nx == "x" && hexval(substr(s, i, 1)) >= 0) {
       v = hexval(substr(s, i, 1)); i++
       if (hexval(substr(s, i, 1)) >= 0) { v = v * 16 + hexval(substr(s, i, 1)); i++ }
-      W = W sprintf("%c", v)
+      add(sprintf("%c", v))
     } else if (nx ~ /[0-7]/) {
       v = nx + 0; while (substr(s, i, 1) ~ /[0-7]/ && v < 32) { v = v * 8 + substr(s, i, 1); i++ }
-      W = W sprintf("%c", v)
-    } else W = W nx
+      add(sprintf("%c", v))
+    } else add(nx)
   }
   return i
 }
-function subst(s, i, n, open,    j) {
+# `$(...)` or a backtick: the body is a payload, and the text may expand to nothing, so WA leaves it
+# out (an arithmetic `$((...))` always expands to a number, so WA keeps it, as the tree does).
+function subst(s, i, n, open,    j, t) {
   if (open == "`") { j = index(substr(s, i + 1), "`"); j = j ? i + j : n + 1; enqueue(substr(s, i + 1, j - i - 1), DIR) }
   else { j = closing(s, i + 2, n); enqueue(substr(s, i + 2, j - i - 2), DIR) }
-  W = W substr(s, i, j - i + 1); INW = 1
+  t = substr(s, i, j - i + 1); INW = 1
+  if (open == "(" && substr(s, i + 2, 1) == "(") add(t); else W = W t
+  return j + 1
+}
+# `${...}` or `$name` (`$1`, `$@`, ...): an expansion that may be empty, so it goes into W and not WA.
+# A `$(...)` or backtick inside `${...}` is still read as a payload.
+function param(s, i, n,    c, j, depth) {
+  INW = 1; c = substr(s, i + 1, 1)
+  if (c ~ /[A-Za-z_]/) { j = i + 1; while (substr(s, j, 1) ~ /[A-Za-z0-9_]/) j++; W = W substr(s, i, j - i); return j }
+  if (c != "{") { W = W substr(s, i, 2); return i + 2 }
+  W = W "${"; i += 2; depth = 1
+  while (i <= n) {
+    c = substr(s, i, 1)
+    if (c == "\\") { W = W substr(s, i, 2); i += 2; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { j = length(WA); i = subst(s, i, n, "("); WA = substr(WA, 1, j); continue }
+    if (c == "`") { i = subst(s, i, n, "`"); continue }
+    if (c == "{") depth++
+    else if (c == "}" && --depth == 0) { W = W c; return i + 1 }
+    W = W c; i++
+  }
+  return i
+}
+function isparam(s, i) { return substr(s, i, 1) == "$" && substr(s, i + 1, 1) ~ /[{A-Za-z_0-9@*#?$!-]/ }
+# `<(...)` or `>(...)`: the body is a payload whose stdin the guard cannot see; as the target of `<`
+# it is the stdin of the segment's command.
+function psubst(s, i, n,    j) {
+  j = closing(s, i + 2, n); enqueue(substr(s, i + 2, j - i - 2), DIR, 1)
+  if (REDIR == 1 && REDIRIN) INPS = 1
+  add(substr(s, i, j - i + 1)); INW = 1
   return j + 1
 }
 function dquote(s, i, n,    c, nx) {
@@ -259,11 +396,12 @@ function dquote(s, i, n,    c, nx) {
     if (c == "\\") {
       nx = substr(s, i + 1, 1)
       if (nx == "\n") { i += 2; continue }
-      if (nx == "$" || nx == "`" || nx == "\"" || nx == "\\") { W = W nx; i += 2; continue }
+      if (nx == "$" || nx == "`" || nx == "\"" || nx == "\\") { add(nx); i += 2; continue }
     }
     if (c == "$" && substr(s, i + 1, 1) == "(") { i = subst(s, i, n, "("); continue }
     if (c == "`") { i = subst(s, i, n, "`"); continue }
-    W = W c; i++
+    if (isparam(s, i)) { i = param(s, i, n); continue }
+    add(c); i++
   }
   return i
 }
@@ -283,7 +421,7 @@ function heredocs(s, i, n,    k, line, t, e, body) {
   return i
 }
 function redirect(s, i, n, c) {
-  if (INW && W ~ /^[0-9]+$/) { W = ""; INW = 0; WQ = 0 } else pushword()
+  if (INW && W ~ /^[0-9]+$/) { W = ""; WA = ""; INW = 0; WQ = 0 } else pushword()
   if (c == "<" && substr(s, i + 1, 2) == "<<") { REDIR = 2; return i + 3 }
   if (c == "<" && substr(s, i + 1, 1) == "<") {
     i += 2; HSTRIP = 0; if (substr(s, i, 1) == "-") { HSTRIP = 1; i++ }
@@ -291,41 +429,43 @@ function redirect(s, i, n, c) {
   }
   i++; if (substr(s, i, 1) ~ /[>|]/) i++
   if (substr(s, i, 1) == "&") { i++; while (i <= n && substr(s, i, 1) ~ /[0-9-]/) i++; return i }
-  REDIR = 1; return i
+  REDIR = 1; REDIRIN = (c == "<"); return i
 }
-function scan(s, dir,    n, i, c, j, first) {
-  n = length(s); i = 1; DIR = dir; W = ""; INW = 0; WQ = 0; WSTR = ""; QSTR = ""; NW = 0; REDIR = 0; HSD = ""; PN = 0
+function scan(s, dir, ps,    n, i, c, j, first) {
+  n = length(s); i = 1; DIR = dir; W = ""; WA = ""; INW = 0; WQ = 0; WSTR = ""; QSTR = ""; NW = 0; REDIR = 0; HSD = ""; PN = 0
   PIPEIN = 0; first = NSEG + 1
   while (i <= n) {
     c = substr(s, i, 1)
-    if (c == "'") { j = index(substr(s, i + 1), "'"); if (j == 0) j = n - i + 1; W = W substr(s, i + 1, j - 1); INW = 1; WQ = 1; i += j + 1 }
+    if (c == "'") { j = index(substr(s, i + 1), "'"); if (j == 0) j = n - i + 1; add(substr(s, i + 1, j - 1)); INW = 1; WQ = 1; i += j + 1 }
     else if (c == "\"") { INW = 1; WQ = 1; i = dquote(s, i + 1, n) }
     else if (c == "$" && substr(s, i + 1, 1) == "'") { INW = 1; WQ = 1; i = ansi(s, i + 2, n) }
     else if (c == "$" && substr(s, i + 1, 1) == "(") i = subst(s, i, n, "(")
     else if (c == "`") i = subst(s, i, n, "`")
-    else if (c == "\\") { if (substr(s, i + 1, 1) != "\n") { W = W substr(s, i + 1, 1); INW = 1 } i += 2 }
+    else if (isparam(s, i)) i = param(s, i, n)
+    else if ((c == "<" || c == ">") && substr(s, i + 1, 1) == "(") i = psubst(s, i, n)
+    else if (c == "\\") { if (substr(s, i + 1, 1) != "\n") { add(substr(s, i + 1, 1)); INW = 1 } i += 2 }
     else if (c == "#" && !INW) { while (i <= n && substr(s, i, 1) != "\n") i++ }
     else if (c == " " || c == "\t") { pushword(); i++ }
     else if (c == "\n") { endseg(); i = heredocs(s, i + 1, n) }
-    else if (c == "&" && substr(s, i + 1, 1) == ">") { pushword(); REDIR = 1; i += 2; if (substr(s, i, 1) == ">") i++ }
+    else if (c == "&" && substr(s, i + 1, 1) == ">") { pushword(); REDIR = 1; REDIRIN = 0; i += 2; if (substr(s, i, 1) == ">") i++ }
     else if (c == "|" && substr(s, i + 1, 1) != "|") {
       endseg(); PIPEIN = LAST ? LAST : -1; i++; if (substr(s, i, 1) == "&") i++
     }
     else if (c == "|") { endseg(); PIPEIN = 0; i += 2 }
     else if (c == ";" || c == "&" || c == "(" || c == ")") { endseg(); i++ }
     else if (c == ">" || c == "<") i = redirect(s, i, n, c)
-    else { W = W c; INW = 1; i++ }
+    else { add(c); INW = 1; i++ }
   }
   endseg()
-  stdins(first)
+  stdins(first, ps)
 }
 BEGIN { US = sprintf("%c", 31); RS_ = sprintf("%c", 30); MAX_PAYLOADS = max + 0 }
 { text = (NR == 1) ? $0 : text "\n" $0 }
 END {
   QN = 1; Q[1] = text; QD[1] = cwd
-  for (qi = 1; qi <= QN; qi++) scan(Q[qi], QD[qi])
+  for (qi = 1; qi <= QN; qi++) scan(Q[qi], QD[qi], QP[qi])
   for (k = 1; k <= NSEG; k++) {
-    gsub(/\n/, RS_, SW[k]); gsub(/\n/, RS_, SB[k]); print SD[k] US SB[k] US SQ[k] US SW[k]
+    print enc(SD[k]) US enc(SB[k]) US SQ[k] US SW[k]
   }
   if (OVERFLOW) print US "overflow"
   if (OPAQUE) print US "stdin"
@@ -333,6 +473,12 @@ END {
 AWK
   out=$(printf '%s\n' "$1" | awk -v cwd="$HOOK_CWD" -v home="${HOME:-}" -v max="$HOOK_MAX_PAYLOADS" "$HOOK_AWK" 2>/dev/null) \
     || hook_fail "cannot parse the shell command"
+  hook_records "$out"
+}
+
+# Either parser's output into HOOK_SEGS; the overflow and opaque-stdin markers deny here.
+hook_records() {
+  local rec
   while IFS= read -r rec; do
     case "$rec" in
       "") ;;
@@ -343,18 +489,27 @@ AWK
           || hook_deny "Blocked: a shell reads its script from a pipe the guard cannot read, so the commands it runs go unchecked. Run the script as a file (\`bash FILE\`) or pass it with \`bash -c\`." ;;
       *) HOOK_SEGS[${#HOOK_SEGS[@]}]=$rec ;;
     esac
-  done <<<"$out"
+  done <<<"$1"
 }
 
 # IFS is set on `read` alone: bash before 4.4 also splits a here-string with the current IFS.
 hook_seg() {
   IFS=$HOOK_US read -r -a HOOK_PARTS <<<"${HOOK_SEGS[$1]}"
   [ "${#HOOK_PARTS[@]}" -gt 3 ] || HOOK_PARTS[3]=""
-  SEG_DIR=${HOOK_PARTS[0]}
-  SEG_BODY=${HOOK_PARTS[1]:-}
-  SEG_BODY=${SEG_BODY//$'\036'/$'\n'}
+  hook_unesc "${HOOK_PARTS[0]}" nl
+  SEG_DIR=$HOOK_TEXT
+  hook_unesc "${HOOK_PARTS[1]:-}" nl
+  SEG_BODY=$HOOK_TEXT
   SEG_QUOTED=${HOOK_PARTS[2]:-}
   SEG_WORDS=("${HOOK_PARTS[@]:3}")
+  case "${HOOK_SEGS[$1]}" in *"$HOOK_ESC"*) ;; *) return 0 ;; esac
+  local k=3
+  SEG_WORDS=()
+  while [ "$k" -lt "${#HOOK_PARTS[@]}" ]; do
+    hook_unesc "${HOOK_PARTS[$k]}"
+    SEG_WORDS[${#SEG_WORDS[@]}]=$HOOK_TEXT
+    k=$((k + 1))
+  done
 }
 
 # An absolute path for $1 relative to $2, in HOOK_PATH; `~` is the hook's HOME.
