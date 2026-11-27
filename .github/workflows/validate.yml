@@ -68,13 +68,23 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ matrix.python }}
-
+      # uv provides the interpreter (and activates a venv with it): setup-python has no 3.9 for the newest Ubuntu image.
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           enable-cache: false
+          python-version: ${{ matrix.python }}
+
+      - name: Interpreter on PATH
+        env:
+          WANT: ${{ matrix.python }}
+        run: |
+          uv python install "$WANT"
+          dirname "$(uv python find "$WANT")" >> "$GITHUB_PATH"
+
+      - name: Interpreter in use
+        env:
+          WANT: ${{ matrix.python }}
+        run: python3 -c 'import os, sys; print(sys.version); assert "%d.%d" % sys.version_info[:2] == os.environ["WANT"]'
 
       # The hook tests run every case through both normaliser paths: shfmt (this pinned binary) and awk.
       - name: shfmt (pinned release binary, checksum checked)
