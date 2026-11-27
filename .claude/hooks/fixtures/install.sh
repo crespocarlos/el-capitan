@@ -109,10 +109,10 @@ data = json.load(open(sys.argv[1]))
 print(json.dumps({k: len(v) for k, v in sorted(data["hooks"].items())}))
 PY
 }
-cp "$root/.claude/settings.json" "$home/merge.json"
-python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/merge.json" >/dev/null
+cp "$root/.claude/settings.template.json" "$home/merge.json"
+python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/merge.json" >/dev/null
 first=$(counts "$home/merge.json")
-python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/merge.json" >/dev/null
+python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/merge.json" >/dev/null
 test "$first" = "$(counts "$home/merge.json")"
 
 # A hook this repository retired must be removed from an existing install: the guard files fail
@@ -128,7 +128,7 @@ data["hooks"].setdefault("PreToolUse", []).append({"hooks": [
     {"type": "command", "command": "bash \"$HOME/.claude/hooks/my-own-hook.sh\""}]})
 json.dump(data, open(path, "w"), indent=2)
 PY
-python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/merge.json" >/dev/null
+python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/merge.json" >/dev/null
 if grep -q 'block-destructive-git.sh' "$home/merge.json"; then exit 1; fi
 grep -q 'myhooks/session-start.sh' "$home/merge.json"
 grep -q 'my-own-hook.sh' "$home/merge.json"
@@ -157,7 +157,7 @@ count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['hoo
 template_count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['hooks']['beforeShellExecution']))" "$root/.cursor/hooks.template.json")
 test "$count" = "$template_count"
 printf '{bad' > "$home/broken.json"
-if python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.json" "$home/broken.json" >/dev/null 2>&1; then exit 1; fi
+if python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/broken.json" >/dev/null 2>&1; then exit 1; fi
 test "$(cat "$home/broken.json")" = '{bad'
 
 # Dry-run must change nothing.
@@ -415,8 +415,10 @@ test "$pristine_c2" = "$(tree_state "$c2")"
 # print both ways forward; with none left, `autoMemoryEnabled: false` is written. (Keeping a user's value and
 # removing the key on uninstall are the merger's: test_install_blocks.py `test_settings_merge`.)
 mem=$(fresh_dir mem)
-# The checkout's .claude/settings.json is also its project settings, so it never carries the key itself.
-if grep -q autoMemoryEnabled "$root/.claude/settings.json"; then exit 1; fi
+# Neither the template nor the checkout's project settings carries the key itself.
+if grep -q autoMemoryEnabled "$root/.claude/settings.template.json" "$root/.claude/settings.json"; then exit 1; fi
+# The checkout's project settings register no hooks, so neither harness loads a second copy of them.
+python3 -c 'import json, sys; assert "hooks" not in json.load(open(sys.argv[1]))' "$root/.claude/settings.json"
 auto_memory() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("autoMemoryEnabled"))' "$1"; }
 folder=$(printf '%s' "$mem" | tr -c 'A-Za-z0-9' '-')
 mkdir -p "$mem/.claude/projects/$folder/memory" "$mem/.claude/projects/-gone/memory"

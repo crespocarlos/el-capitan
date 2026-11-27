@@ -448,10 +448,11 @@ else
 fi
 
 # Claude Code hooks (settings + hook scripts)
-if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
-  # settings.json: merge el-capitan hooks into existing config rather than symlinking.
-  # This is a managed copy — re-run install.sh to pick up upstream changes.
-  SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.json"
+if [ -f "$SCRIPT_DIR/.claude/settings.template.json" ]; then
+  # settings.template.json: merge el-capitan hooks into existing config rather than symlinking.
+  # This is a managed copy — re-run install.sh to pick up upstream changes. The template is not named
+  # settings.json, so Claude Code and Cursor never load it as this checkout's project settings.
+  SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.template.json"
   # What the merge adds (absent before) is recorded in the install manifest, per config dir; uninstall
   # removes only that. Every config dir's hooks run the scripts in ~/.claude/hooks.
   # Crew memory is the one memory store: Claude Code's auto-memory goes off in a dir (`autoMemoryEnabled:

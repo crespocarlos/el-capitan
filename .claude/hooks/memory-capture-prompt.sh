@@ -10,6 +10,7 @@
 set -euo pipefail
 HOOK_NAME=memory-capture-prompt
 . "$(dirname "$0")/lib/hook.sh"
+hook_stand_down memory-capture-prompt.sh
 hook_input
 INPUT="$HOOK_INPUT" python3 - <<'PY'
 import hashlib

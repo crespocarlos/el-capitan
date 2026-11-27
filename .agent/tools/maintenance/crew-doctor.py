@@ -20,6 +20,7 @@ from doctor_checks import (
     Line,
     check_auto_memory,
     check_blocks,
+    check_cursor_duplicates,
     check_hooks,
     check_links,
     check_state,
@@ -43,9 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as error:
         limits, mcp = dict(DEFAULTS["doctor"]), None
         lines.append(Line("FAIL", "config", f"{error}; fix the file (the default limits apply meanwhile)"))
-    lines += [*check_links(home), *check_hooks(home), *check_blocks(home), *check_auto_memory(home),
-              *check_rendered_agents(home), *check_tools(sign_in=not args.offline), *check_state(places, limits),
-              *check_mcp(home, mcp, Path.cwd(), dict(os.environ))]
+    lines += [*check_links(home), *check_hooks(home), *check_cursor_duplicates(home, Path.cwd()), *check_blocks(home),
+              *check_auto_memory(home), *check_rendered_agents(home), *check_tools(sign_in=not args.offline),
+              *check_state(places, limits), *check_mcp(home, mcp, Path.cwd(), dict(os.environ))]
     print(f"crew doctor: install from {ROOT}")
     for line in lines:
         print(f"  {line.level:<4}  {line.area:<6}  {line.text}")

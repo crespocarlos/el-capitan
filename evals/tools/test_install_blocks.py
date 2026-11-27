@@ -29,7 +29,7 @@ from cli_runner import run as cli
 pytestmark = pytest.mark.timeout(300)
 PROJECT = Path(__file__).resolve().parents[2]
 INSTALL = PROJECT / "install.sh"
-SETTINGS = PROJECT / ".claude" / "settings.json"
+SETTINGS = PROJECT / ".claude" / "settings.template.json"
 MERGE = SETTINGS.parent / "merge_claude_settings.py"
 BLOCKS = SETTINGS.parent / "install_blocks.py"
 DOCTOR = PROJECT / ".agent" / "tools" / "maintenance" / "crew-doctor.py"
@@ -111,6 +111,16 @@ def test_permission_rules() -> None:
     hidden = [r for r in allow_rules if r.startswith(prefixes) or (command_of(r) or "").endswith("=*")]
     check("no allow rule skips the command check or hides it behind an assignment",
           not broad and not hidden, (broad, hidden))
+
+
+def test_project_settings_register_no_hooks() -> None:
+    """Claude Code and Cursor load the checkout's `.claude/settings.json` as project settings, and Cursor runs a hook
+    each file registers, so it holds no hooks; its other keys are the template's, which install merges."""
+    project = json.loads((PROJECT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    template = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    check("the project settings register no hooks", "hooks" not in project, sorted(project))
+    check("the project settings keep the template's other keys",
+          project == {key: value for key, value in template.items() if key != "hooks"}, sorted(project))
 
 
 def test_settings_merge(tmp: Path) -> None:
@@ -635,6 +645,50 @@ def test_cursor_guards_without_jq(installed: Path, tmp: Path) -> None:
           any(level == "FAIL" and "jq is not on PATH" in text for level, text in lines), lines)
     found = [(line.level, line.text) for line in check_cursor_fail_closed(home, PROJECT, jq="/usr/bin/jq")]
     check("with jq the same install is fine", [level for level, _ in found] == ["ok"], found)
+
+
+def test_doctor_cursor_duplicates(installed: Path, tmp: Path) -> None:
+    """A script in ~/.cursor/hooks.json and in a Claude-format file Cursor loads, however each spells its command, runs
+    twice there unless it stands down: an install's shared scripts are stood down; a duplicate with no stand-down
+    (two spellings of one script), a fail-closed guard whose Cursor entry lost `failClosed: true`, and a guard whose
+    Cursor entry only names it in a comment (so it keeps running) are each one WARN naming the script."""
+    home = tmp / "home"
+    copy_install(installed, home)
+    cli_load(DOCTOR)
+    from doctor_checks import check_cursor_duplicates
+
+    def found(cwd: Path) -> list[tuple[str, str]]:
+        return [(line.level, line.text) for line in check_cursor_duplicates(home, cwd)]
+
+    fresh = found(tmp)
+    check("an install's shared hooks stand down in the Claude-format copy",
+          [level for level, _ in fresh] == ["ok"] and "stand down" in fresh[0][1], fresh)
+    repo = tmp / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".claude").mkdir()
+    idle = 'bash "$HOME/.claude/hooks/notify-idle.sh"'
+    (repo / ".claude" / "settings.json").write_text(json.dumps(
+        {"hooks": {"Notification": [{"hooks": [{"type": "command", "command": idle + " 2>/dev/null; exit 0"}]}]}}),
+        encoding="utf-8")
+    edit_json(home / ".cursor/hooks.json", lambda data: data["hooks"].setdefault("stop", []).append({"command": idle}))
+    flagged = found(repo / "sub")
+    check("one script spelled two ways, in the repository's project settings and Cursor's, with no stand-down",
+          [level for level, _ in flagged] == ["WARN"] and "notify-idle.sh (" in flagged[0][1]
+          and idle + " | " + idle + " 2>/dev/null; exit 0" in flagged[0][1] and "run twice" in flagged[0][1], flagged)
+    edit_json(home / ".cursor/hooks.json", fail_open)
+    opened = found(tmp)
+    check("a fail-closed guard whose Cursor entry is fail-open keeps running, so it is flagged",
+          [level for level, _ in opened] == ["WARN"] and "guard/source-edit.sh (" in opened[0][1], opened)
+
+    def comment_only(data: dict) -> None:
+        for entry in data["hooks"]["beforeShellExecution"]:
+            if "destructive-git" in entry["command"]:
+                entry["command"] = "true # $HOME/.claude/hooks/guard/destructive-git.sh"
+
+    edit_json(home / ".cursor/hooks.json", comment_only)
+    spoofed = found(tmp)
+    check("a guard whose Cursor entry only names it in a comment keeps running, so it is flagged",
+          [level for level, _ in spoofed] == ["WARN"] and "guard/destructive-git.sh (" in spoofed[0][1], spoofed)
 
 
 def claude_memory_entry(home: Path, folder: str) -> None:

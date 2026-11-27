@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Merge el-capitan hooks into an existing ~/.claude/settings.json (idempotent).
 
-Usage: merge_claude_settings.py <src_settings.json> <dest_settings.json> [--manifest <home>] [--auto-memory-off]
+Usage: merge_claude_settings.py <src_template.json> <dest_settings.json> [--manifest <home>] [--auto-memory-off]
+
+The source is `.claude/settings.template.json`; the checkout's own `.claude/settings.json` is its project
+settings and carries no hooks.
 
 `autoMemoryEnabled: false` (`AUTO_MEMORY_OFF`, not in the template) is merged only with `--auto-memory-off`,
 which install passes once the dir's Claude memory entries are in crew memory; a value the destination holds
@@ -21,7 +24,7 @@ hooks is a dict keyed by event type, with each value an array of
   existing install.
 - Every hook whose command is not in the template is preserved untouched.
 
-Matcher is not a unique key (settings.json registers several matcher-less
+Matcher is not a unique key (the template registers several matcher-less
 entries per event), so entries are never replaced wholesale: that would
 delete user hooks that share a matcher.
 
@@ -42,8 +45,8 @@ import install_blocks
 from hooks_retirement import retired
 from install_blocks import write_json
 
-# Written by install, not carried in the template: the template is also this checkout's project settings,
-# and a key there would turn auto-memory off for every session inside the checkout before any migration.
+# Written by install, not carried in the template: install turns auto-memory off in a config dir only once
+# that dir's Claude memory entries are imported, and a template key would turn it off before any migration.
 AUTO_MEMORY_OFF = {"autoMemoryEnabled": False}
 
 

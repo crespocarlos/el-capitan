@@ -9,6 +9,7 @@ HOOK_NAME=credentials
 HOOK_FAIL_CLOSED=1 HOOK_FAIL_BLOCKS=0 HOOK_SHELL_STDIN=allow
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/../lib/hook.sh"
+hook_stand_down guard/credentials.sh fail-closed
 hook_input
 hook_event
 cmd=$(hook_field command)

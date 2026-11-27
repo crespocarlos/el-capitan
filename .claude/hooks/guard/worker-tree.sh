@@ -10,6 +10,7 @@ set -euo pipefail
 HOOK_NAME=worker-tree
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/../lib/hook.sh"
+hook_stand_down guard/worker-tree.sh fail-closed
 hook_input
 hook_event
 cmd=$(hook_field command)

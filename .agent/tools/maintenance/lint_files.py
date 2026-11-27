@@ -17,6 +17,7 @@ PATTERNS = (
     ".agent/tools/*.md",
     ".claude/CLAUDE.md",
     ".claude/settings.json",
+    ".claude/settings.template.json",
     ".cursor/hooks.template.json",
     ".claude/hooks/*.sh",
     ".claude/hooks/guard/*.sh",

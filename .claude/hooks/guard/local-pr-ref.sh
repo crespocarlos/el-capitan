@@ -8,6 +8,7 @@ set -euo pipefail
 HOOK_NAME=local-pr-ref
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/../lib/hook.sh"
+hook_stand_down guard/local-pr-ref.sh fail-closed
 hook_input
 hook_event
 cmd=$(hook_field command)

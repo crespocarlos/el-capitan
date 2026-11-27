@@ -5,6 +5,7 @@ set -euo pipefail
 HOOK_NAME=memory-context
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/lib/hook.sh"
+hook_stand_down cursor-memory-context.sh
 hook_input
 
 rc=0

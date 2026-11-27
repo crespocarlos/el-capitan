@@ -5,6 +5,7 @@ set -euo pipefail
 HOOK_NAME=log-tool-use
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/lib/hook.sh"
+hook_stand_down log-tool-use.sh
 hook_input
 
 INPUT="$HOOK_INPUT" python3 - <<'PY'

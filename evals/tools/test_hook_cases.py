@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,8 @@ from pathlib import Path
 import pytest
 from hook_cases import (
     ALLOW,
+    COUNTERPART_DECOYS,
+    CURSOR_COPY,
     DENY,
     ENV,
     FILES,
@@ -466,6 +469,8 @@ def test_idle_notification_is_quiet(label: str, extra: dict, ago: int | None, ca
     run_env = {k: v for k, v in env.items() if k not in ("CLAUDE_JOB_DIR", "CREW_MEMORY_DIR", "EL_CAPITAN_NOTIFY")}
     run_env.update(extra, HOME=str(home), PATH=f"{stub}{os.pathsep}{env['PATH']}")
     payload = {"session_id": "s1", "hook_event_name": "Notification", "notification_type": "idle_prompt", "cwd": str(places["clean"])}
+    if "CURSOR_VERSION" in extra:  # Cursor's copy carries both signals
+        payload["cursor_version"] = extra["CURSOR_VERSION"]
     done = run("bash", HOOKS / "notify-idle.sh", json.dumps(payload), run_env, places["clean"])
     lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
     assert (done.returncode, done.stdout, done.stderr) == (0, "", ""), done
@@ -516,6 +521,133 @@ def test_every_cursor_security_guard_fails_closed_and_answers() -> None:
                              "cwd": str(ROOT)})
             done = run("bash", HOOKS / script(entry), json.dumps(payload), {**os.environ, "CREW_WORKER_TASK": ""}, ROOT)
             assert (done.returncode, done.stdout) == (0, "{}\n"), (script(entry), done)
+
+
+HOOK_SCRIPT = re.compile(r"/\.claude/hooks/([\w./-]+\.sh)")
+STAND_DOWN = re.compile(r"^hook_stand_down[ \t]+(\S+)([ \t]+fail-closed)?[ \t]*$", re.M)
+DROPPED = re.compile(r"^hook_dropped_in_cursor[ \t]*$", re.M)
+COUNTERPART_EVENTS = json.loads((HOOKS / "lib" / "cursor-counterparts.json").read_text(encoding="utf-8"))
+
+
+def cursor_rows() -> dict[str, tuple[str, str]]:
+    """docs/hooks.md "Each hook in Cursor": hook -> (what it does in Cursor, counterpart or reason)."""
+    section = (ROOT / "docs" / "hooks.md").read_text(encoding="utf-8").split("\n## Each hook in Cursor\n", 1)[1]
+    rows = {}
+    for line in section.split("\n## ", 1)[0].splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) == 4 and cells[0].startswith("`"):
+            rows[cells[0].strip("`")] = (cells[2], cells[3])
+    return rows
+
+
+def template_scripts(name: str, nested: bool) -> dict[str, bool]:
+    """Each script a template registers, and whether any of its entries is `failClosed: true`."""
+    found: dict[str, bool] = {}
+    for entries in json.loads((ROOT / name).read_text(encoding="utf-8"))["hooks"].values():
+        for hook in (inner for entry in entries for inner in (entry["hooks"] if nested else [entry])):
+            script = HOOK_SCRIPT.search(hook["command"]).group(1)
+            found[script] = found.get(script, False) or hook.get("failClosed") is True
+    return found
+
+
+def test_every_claude_hook_has_a_cursor_row() -> None:
+    """Every hook the Claude template registers has a row; the row's verdict is what its script does first: a stand-down
+    names the Cursor-template counterpart it waits for, fail-closed exactly when that entry is, before reading input."""
+    rows, cursor = cursor_rows(), template_scripts(".cursor/hooks.template.json", False)
+    missing = sorted(set(template_scripts(".claude/settings.template.json", True)) - set(rows))
+    assert not missing, f"hooks with no row in docs/hooks.md, Each hook in Cursor: {missing}"
+    assert {hook for hook, _, _ in CURSOR_COPY} | {"notify-idle.sh"} == set(rows), "CURSOR_COPY covers every row"
+    for hook, (verdict, cell) in rows.items():
+        text = (HOOKS / hook).read_text(encoding="utf-8")
+        call, dropped = STAND_DOWN.search(text), DROPPED.search(text)
+        first = (call or dropped).start() < text.index("\nhook_input") if call or dropped else True
+        if verdict == "stands down":
+            assert call and not dropped and first, f"{hook}: no hook_stand_down before hook_input"
+            counterpart, closed = call.group(1), bool(call.group(2))
+            assert f"`{counterpart}`" in cell and counterpart in cursor, f"{hook}: counterpart {counterpart}"
+            assert closed == cursor[counterpart] == ("fail-closed" in cell), f"{hook}: fail-closed differs"
+            event = COUNTERPART_EVENTS.get(counterpart)
+            assert event and f"`{event}`" in cell, f"{hook}: lib/cursor-counterparts.json names {event} for {counterpart}"
+            native = json.loads((ROOT / ".cursor" / "hooks.template.json").read_text(encoding="utf-8"))["hooks"][event]
+            assert any(f'"$HOME/.claude/hooks/{counterpart}"' in entry["command"] for entry in native), \
+                f"{hook}: the Cursor template does not register {counterpart} under {event}"
+        elif verdict == "dropped":
+            assert dropped and not call and first, f"{hook}: no hook_dropped_in_cursor before hook_input"
+        else:
+            assert verdict == "keeps running" and not call and not dropped, f"{hook}: {verdict}"
+
+
+def home_state(home: Path) -> set[tuple[str, int, int]]:
+    return {(str(path), path.stat().st_size, path.stat().st_mtime_ns) for path in home.rglob("*")
+            if path.is_file() and not path.is_symlink()}
+
+
+def cursor_copy_run(hook: str, payload: dict, cwd: Path, env: dict, home: Path) -> tuple[bool, int, str]:
+    """Whether the run said nothing and changed nothing in HOME, its exit code, and a summary for a failure message."""
+    before = home_state(home)
+    done = run("bash", HOOKS / hook, json.dumps(payload), env, cwd)
+    quiet = (done.returncode, done.stdout, done.stderr) == (0, "", "") and home_state(home) == before
+    return quiet, done.returncode, f"exit {done.returncode} stdout={done.stdout[:160]!r} stderr={done.stderr[:200]!r}"
+
+
+def decoyed(template: dict, counterpart: str, event: str | None, command: str) -> dict:
+    """The Cursor template with every entry for `counterpart` replaced by one fail-closed decoy."""
+    path = f"/.claude/hooks/{counterpart}"
+    hooks = {name: [entry for entry in entries if path not in entry["command"]] for name, entries in template["hooks"].items()}
+    target = event or COUNTERPART_EVENTS[counterpart]
+    hooks[target] = hooks.get(target, []) + [{"command": command.format(script=counterpart), "failClosed": True}]
+    return {**template, "hooks": hooks}
+
+
+def test_the_cursor_copy_runs_once(world: tuple) -> None:
+    """Cursor's Claude-format copy of an event (`cursor_version` in the payload) does nothing in a hook that stands down
+    or is dropped, while Claude Code's copy does something; a hook that keeps running answers both alike. Without its
+    counterpart registered in ~/.cursor/hooks.json (fail-closed with `failClosed: true`), or with only a decoy of it
+    (`COUNTERPART_DECOYS`), a stand-down keeps running."""
+    env, places, _ = world
+    home, rows, failed = places["home"], cursor_rows(), []
+    installed = home / ".cursor" / "hooks.json"
+    installed.parent.mkdir(exist_ok=True)
+    template = json.loads((ROOT / ".cursor" / "hooks.template.json").read_text(encoding="utf-8"))
+    fail_open = {**template, "hooks": {event: [{key: value for key, value in entry.items() if key != "failClosed"}
+                                               for entry in entries] for event, entries in template["hooks"].items()}}
+    try:
+        for hook, payload, tree in CURSOR_COPY:
+            verdict, cell = rows[hook]
+            claude = {**json.loads(expand(json.dumps(payload), places)), "cwd": str(places[tree])}
+            copy = {**claude, "cursor_version": "2.1.0"}
+            installed.write_text(json.dumps(template), encoding="utf-8")
+            quiet, code, said = cursor_copy_run(hook, copy, places[tree], env, home)
+            own_quiet, own_code, own_said = cursor_copy_run(hook, claude, places[tree], env, home)
+            if verdict == "keeps running" and (quiet, code) != (own_quiet, own_code):
+                failed.append(f"{hook} keeps running, yet Cursor's copy differs: {said} vs Claude Code's {own_said}")
+            if verdict != "keeps running" and (not quiet or own_quiet):
+                failed.append(f"{hook} {verdict}: Cursor's copy {said}; Claude Code's {own_said}")
+            if verdict != "stands down":
+                continue
+            installed.write_text(json.dumps(fail_open), encoding="utf-8")
+            if "fail-closed" in cell and cursor_copy_run(hook, copy, places[tree], env, home)[0]:
+                failed.append(f"{hook} stood down although its Cursor counterpart is fail-open")
+            installed.unlink()
+            if cursor_copy_run(hook, copy, places[tree], env, home)[0]:
+                failed.append(f"{hook} stood down although Cursor registers no counterpart")
+            counterpart = STAND_DOWN.search((HOOKS / hook).read_text(encoding="utf-8")).group(1)
+            for label, event, command in COUNTERPART_DECOYS:
+                installed.write_text(json.dumps(decoyed(template, counterpart, event, command)), encoding="utf-8")
+                if cursor_copy_run(hook, copy, places[tree], env, home)[0]:
+                    failed.append(f"{hook} stood down for {label}")
+    finally:
+        if installed.exists():
+            installed.unlink()
+    assert not failed, "\n".join(failed)
+
+
+def test_an_inherited_input_flag_changes_nothing(world: tuple) -> None:
+    """`HOOK_INPUT_READ` exported by the harness is reset when lib/hook.sh is sourced, so the payload is still read."""
+    env, places, _ = world
+    payload = json.dumps(shapes("git reset --hard", places["clean"])[0])
+    done = run("bash", HOOKS / "guard" / "destructive-git.sh", payload, {**env, "HOOK_INPUT_READ": "1"}, places["clean"])
+    assert done.returncode == 2 and "Destructive git" in done.stderr, done
 
 
 def test_only_a_task_spec_needs_the_status_reader(world: tuple) -> None:

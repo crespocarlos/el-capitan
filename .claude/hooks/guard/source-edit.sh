@@ -10,6 +10,7 @@ set -euo pipefail
 HOOK_NAME=source-edit
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/../lib/hook.sh"
+hook_stand_down guard/source-edit.sh fail-closed
 hook_input
 hook_event
 cmd=$(hook_field command)

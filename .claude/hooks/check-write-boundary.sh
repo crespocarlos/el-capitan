@@ -4,6 +4,7 @@ set -euo pipefail
 HOOK_NAME=check-write-boundary
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/lib/hook.sh"
+hook_stand_down check-write-boundary.sh fail-closed
 hook_input
 hook_event
 path=$(hook_field file_path)

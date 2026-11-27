@@ -10,7 +10,7 @@
 #                 (hook_allow); a crash there blocks.
 #   cannot judge  one line on stderr and no objection. A hook that sets `HOOK_FAIL_CLOSED=1` exits 2
 #                 instead while `HOOK_FAIL_BLOCKS` (default: HOOK_FAIL_CLOSED) is 1; the same rule
-#                 carries `onFailure: "block"` in `.claude/settings.json` and `failClosed: true` in
+#                 carries `onFailure: "block"` in `.claude/settings.template.json` and `failClosed: true` in
 #                 `.cursor/hooks.template.json`, so a crash blocks too. An off switch (hook_off)
 #                 turns that exit 2 into no objection as well.
 #
@@ -39,7 +39,8 @@ hook_off() {
 # jq's own diagnostics are captured, not printed: the contract is one stderr line per failure. The
 # shape is guessed from the raw text first, so a failure before the parse still answers Cursor.
 hook_input() {
-  HOOK_INPUT=$(cat) || hook_fail "cannot read hook input"
+  [ "${HOOK_INPUT_READ:-0}" != failed ] || hook_fail "cannot read hook input"
+  [ "${HOOK_INPUT_READ:-0}" = 1 ] || HOOK_INPUT=$(cat) || hook_fail "cannot read hook input"
   case "$HOOK_INPUT" in *'"PreToolUse"'*) HOOK_SHAPE=claude ;; *) HOOK_SHAPE=cursor ;; esac
   command -v jq >/dev/null 2>&1 || hook_fail "jq is not installed; cannot read hook input"
   [ -n "$HOOK_INPUT" ] || HOOK_INPUT='{}'
@@ -49,6 +50,46 @@ hook_input() {
   meta=$parsed
   HOOK_EVENT=${meta%%$'\t'*}
   HOOK_CWD=${meta#*$'\t'}
+}
+
+# Each hook in Cursor (docs/hooks.md). Cursor also runs the Claude-format registrations, so a hook its
+# Cursor template registers too ran there more than once. A Claude-format event (PascalCase
+# `hook_event_name`) whose payload carries `cursor_version` is Cursor's copy. Called first, before
+# hook_input (which reuses the payload read here):
+#   hook_stand_down COUNTERPART [fail-closed]  exits 0 with no output when ~/.cursor/hooks.json registers
+#       COUNTERPART under the event `lib/cursor-counterparts.json` names for it, as the command
+#       `bash "$HOME/.claude/hooks/COUNTERPART"` (then only `2>/dev/null` and `; exit 0`), with
+#       `failClosed: true` too for `fail-closed`, so a guard never runs nowhere;
+#   hook_dropped_in_cursor                      exits 0 with no output in Cursor's copy, always.
+# `CURSOR_VERSION` alone is not the signal: Claude Code started from Cursor's terminal may inherit it.
+# `crew doctor` (doctor_checks.py, COUNTERPART_COMMAND) applies the same match.
+HOOK_INPUT_READ=0
+hook_cursor_copy() {
+  if [ "${HOOK_INPUT_READ:-0}" = 0 ]; then
+    HOOK_INPUT_READ=1
+    HOOK_INPUT=$(cat) || HOOK_INPUT_READ=failed
+  fi
+  [ "$HOOK_INPUT_READ" = 1 ] || return 1
+  case "$HOOK_INPUT" in *'"cursor_version"'*) ;; *) return 1 ;; esac
+  command -v jq >/dev/null 2>&1 || return 1
+  printf '%s' "$HOOK_INPUT" | jq -e 'type == "object" and has("cursor_version")
+    and ((.hook_event_name | strings) // "" | test("^[A-Z]"))' >/dev/null 2>&1
+}
+
+hook_stand_down() {
+  hook_cursor_copy || return 0
+  jq -e --arg script "$1" --arg closed "${2:-}" --slurpfile map "$HOOK_LIB/cursor-counterparts.json" \
+    '($map[0][$script] | strings) as $event
+     | ("^\\s*bash \"\\$HOME/\\.claude/hooks/" + ($script | gsub("\\."; "\\."))
+        + "\"(\\s+2>/dev/null)?(\\s*;\\s*exit 0)?\\s*$") as $form
+     | [.hooks | objects | .[$event] | arrays | .[] | objects | select(.command | strings | test($form))
+        | select($closed == "" or .failClosed == true)] | length > 0' \
+    "$HOME/.cursor/hooks.json" >/dev/null 2>&1 || return 0
+  exit 0
+}
+
+hook_dropped_in_cursor() {
+  if hook_cursor_copy; then exit 0; fi
 }
 
 # Normalize the three event spellings into one shape, and anchor cwd to something that exists.

@@ -52,7 +52,8 @@ literals, and never pin prose. A guard change adds an allow and a deny case to
   catalog.
 - A renamed or removed command, flag or verb is removed outright, with every caller and doc moved in
   the same change; `crew-lint`'s `removed-command-form` rule fails on the old form.
-- A hook is registered in both `.claude/settings.json` and `.cursor/hooks.template.json`.
+- A hook is registered in both `.claude/settings.template.json` and `.cursor/hooks.template.json`,
+  with a row in [docs/hooks.md](docs/hooks.md#each-hook-in-cursor) "Each hook in Cursor".
 
 ## Commits and releases
 

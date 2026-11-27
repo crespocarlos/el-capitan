@@ -1,6 +1,6 @@
 # Hooks
 
-`install.sh` registers hooks in both harnesses: `.claude/settings.json` is merged into
+`install.sh` registers hooks in both harnesses: `.claude/settings.template.json` is merged into
 `~/.claude/settings.json`, and `.cursor/hooks.template.json` into `~/.cursor/hooks.json`. Each hook is
 one small file under `.claude/hooks/`; read any of them before you install. The guards among them
 are a security boundary: [SECURITY.md](../SECURITY.md) says what they protect and how to report a
@@ -44,10 +44,16 @@ values, while the owner ran one shell command, one file edit and two Task subage
 - **Cursor usage.** `stop` carries `input_tokens`, `output_tokens`, `cache_read_tokens`,
   `cache_write_tokens`, `model_id`, `loop_count` and `status`, once per agent loop.
 - **Cursor also runs Claude-format hooks.** Every event was logged a second time from the
-  `.claude/settings.json` registrations (`PreToolUse`, `SubagentStop`, `Stop`), usually twice, in
-  the same second as the Cursor entry. Cursor loads Claude Code hook settings (most likely
-  `~/.claude/settings.json` and the repository's `.claude/settings.json`), so el-capitan's Claude
-  hooks run in Cursor beside the template's.
+  Claude-format registrations (`PreToolUse`, `SubagentStop`, `Stop`), usually twice, in the same
+  second as the Cursor entry. Cursor loads Claude Code hook settings (most likely
+  `~/.claude/settings.json` and the repository's `.claude/settings.json`) and does not merge an
+  identical command, so el-capitan's Claude hooks ran in Cursor beside the template's. Those payloads
+  carry `cursor_version` (and the environment `CURSOR_VERSION`). [Each hook in
+  Cursor](#each-hook-in-cursor) says what runs now.
+- **Claude Code runs an identical command once.** Its hooks reference: "If you define the same
+  handler in more than one settings file, it runs once"
+  ([code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks), read 2026-11-28). A hook
+  in both `~/.claude/settings.json` and a project's `.claude/settings.json` is no duplicate there.
 - **`CLAUDE_JOB_DIR` in hooks: an inference, not observed.** A `claude --bg` job started with
   `EL_CAPITAN_PROBE=1` in the launching shell ran its `SessionStart` and `Stop` hooks, and the probe
   logged nothing: background sessions are most likely started by Claude Code's background service
@@ -56,6 +62,57 @@ values, while the owner ran one shell command, one file edit and two Task subage
   spawned by the same process, so it most likely reaches them; `notify-idle.sh` keeps its check.
   Idle banners from background jobs would show it does not, and the hook would then need another
   signal. `check-write-boundary.sh` does not depend on it.
+
+## Each hook in Cursor
+
+Cursor runs the Claude-format registrations of `~/.claude/settings.json` beside its own
+`~/.cursor/hooks.json`. The template is `.claude/settings.template.json`, not the checkout's
+`.claude/settings.json`, so the checkout's project settings (permissions only) add no third copy.
+Every hook the template registers has one row:
+
+- **stands down**: in Cursor's Claude-format copy (a PascalCase `hook_event_name` and a
+  `cursor_version` in the payload) the script exits 0 with no output before anything else
+  (`hook_stand_down` in `lib/hook.sh`), because its Cursor-template counterpart does the work. It
+  stands down only while `~/.cursor/hooks.json` registers that counterpart under the event
+  `.claude/hooks/lib/cursor-counterparts.json` names for it, as the command
+  `bash "$HOME/.claude/hooks/<counterpart>"` followed by nothing but `2>/dev/null` and `; exit 0`,
+  and for a fail-closed guard only with `failClosed: true`. A comment that names the script, a
+  prefixed or extended command, or an entry under another event is no counterpart, so the hook keeps
+  running and a guard never runs nowhere. `CURSOR_VERSION` alone does not count: Claude Code started
+  from Cursor's terminal may inherit it.
+- **Tool names.** The probe saw Cursor report an edit as `Write` to both its own `preToolUse` and
+  the Claude-format `PreToolUse`, so the template's `Write|Edit` matcher covers every edit the
+  Claude-format `Write|Edit|MultiEdit` matcher did; Cursor's shell is `beforeShellExecution`, which
+  fires for every command whatever the tool is called.
+- **keeps running**: no Cursor-template counterpart; the Claude-format copy is the one that runs.
+- **dropped**: exits 0 with no output in Cursor's copy (`hook_dropped_in_cursor`), for the reason
+  given.
+
+`crew doctor` warns about a script registered both in `~/.cursor/hooks.json` and in a Claude-format
+file Cursor loads for the current repository (however each spells the command) that does not stand
+down by the same match, and lists the commands behind it.
+
+| Hook | Claude event | In Cursor | Counterpart or reason |
+|---|---|---|---|
+| `guard/destructive-git.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/destructive-git.sh`, fail-closed |
+| `guard/local-pr-ref.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/local-pr-ref.sh`, fail-closed |
+| `guard/source-edit.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/source-edit.sh`, fail-closed |
+| `guard/task-files.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/task-files.sh`, fail-closed |
+| `guard/owner-only.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/owner-only.sh`, fail-closed |
+| `guard/zsh-equals.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/zsh-equals.sh` |
+| `guard/worker-tree.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/worker-tree.sh`, fail-closed |
+| `guard/credentials.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/credentials.sh`, fail-closed |
+| `check-write-boundary.sh` | `PreToolUse` Write, Edit | stands down | `preToolUse` `check-write-boundary.sh`, fail-closed |
+| `check-task-spec-owner.sh` | `PreToolUse` Write, Edit | stands down | `preToolUse` `check-task-spec-owner.sh`, fail-closed |
+| `log-tool-use.sh` | `PostToolUse`, `PostToolUseFailure` | stands down | `postToolUse`, `postToolUseFailure` `log-tool-use.sh` |
+| `record-pr.sh` | `PostToolUse` Bash | stands down | `afterShellExecution` `record-pr.sh` |
+| `memory-context.sh` | `SessionStart` | stands down | `sessionStart` `cursor-memory-context.sh` |
+| `memory-capture-prompt.sh` | `Stop` | stands down | `stop` `memory-capture-prompt.sh` |
+| `agents-refresh.sh` | `SessionStart` | keeps running | from the Claude-format load |
+| `spec-status-reconcile.sh` | `SessionStart` | keeps running | from the Claude-format load |
+| `mode-anchor.sh` | `UserPromptSubmit` | keeps running | from the Claude-format load |
+| `notify-idle.sh` | `Notification` | keeps running | from the Claude-format load, when Cursor sends `idle_prompt` |
+| `capture-reply.sh` | `SubagentStop` | dropped | it reads Claude Code's transcript and reply fields, which Cursor's subagent payload lacks, so it would only report "no marker"; Cursor keeps the manual `save-out` |
 
 ## Status integrity
 
