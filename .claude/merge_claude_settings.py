@@ -9,7 +9,9 @@ is never changed, and uninstall removes the key only while it is still false.
 
 With `--manifest`, what the merge added (rules, hooks and keys the destination lacked) is recorded in
 `<home>/.agent/install-manifest.json`, under the destination's config dir (`install_blocks.settings_section`);
-`uninstall.py` removes only that (`unmerge`).
+`uninstall.py` removes only that (`unmerge`). A rule an earlier install recorded and the template has since
+dropped is removed on the next install (`retire_rules`) and forgotten by the manifest; a user's own copy,
+never recorded, stays.
 
 hooks is a dict keyed by event type, with each value an array of
 {matcher, hooks} entries. Merge per event type at the inner hook level:
@@ -128,7 +130,8 @@ def merge_permissions(dest, src):
     `allow` and `ask` are merged rather than replaced so a user's own rules survive; a template rule
     for a command the destination lists elsewhere is moved to the template's list, because two lists
     claiming one command is the defect this exists to prevent. `deny` is additive: nothing is ever
-    un-denied by an install.
+    un-denied by an install. `additionalDirectories` is additive too, and `added` records only the
+    directories the destination lacked, so an uninstall keeps the user's own.
     """
     dest_perm = dest.setdefault("permissions", {})
     src_perm = src.get("permissions", {})
@@ -159,12 +162,64 @@ def merge_permissions(dest, src):
         merged = list(dict.fromkeys(existing + incoming))
         if merged != dest_perm.get(name, []):
             dest_perm[name] = merged
-    for rule in src_perm.get("deny", []):
-        if rule not in dest_perm.setdefault("deny", []):
-            dest_perm["deny"].append(rule)
+    for name in ("deny", "additionalDirectories"):
+        for rule in src_perm.get(name, []):
+            if rule not in dest_perm.setdefault(name, []):
+                dest_perm[name].append(rule)
     for note in changed:
         print(f"  permissions: {note}")
     return dest
+
+
+def retire_rules(dest, recorded, src):
+    """Drop from `dest` the rules an earlier install added (`recorded`) that the template no longer has.
+
+    A rule the user held before that install was never recorded, so it stays; a list install created
+    goes once empty. Returns {list: [rule, ...]} of what was dropped, for the manifest to forget.
+    """
+    permissions = dest.get("permissions")
+    template = src.get("permissions", {})
+    dropped = {}
+    if not isinstance(permissions, dict) or not isinstance(recorded, dict):
+        return dropped
+    for name, rules in (recorded.get("rules") or {}).items():
+        current = permissions.get(name)
+        if not isinstance(current, list) or not isinstance(rules, list):
+            continue
+        gone = [rule for rule in rules if rule in current and rule not in template.get(name, [])]
+        if not gone:
+            continue
+        permissions[name] = [rule for rule in current if rule not in gone]
+        dropped[name] = gone
+        for rule in gone:
+            print(f"  permissions: retired {name} rule {rule}")
+        if not permissions[name] and name in recorded.get("lists", []):
+            del permissions[name]
+    return dropped
+
+
+def retire_recorded(manifest_home, dest_path, dest, src):
+    """(manifest section, rules dropped) for a merge recorded under `manifest_home`; (None, {}) without one."""
+    if not manifest_home:
+        return None, {}
+    section = install_blocks.settings_section(Path(manifest_home), Path(dest_path).parent)
+    recorded = (install_blocks.load_manifest(Path(manifest_home)) or {}).get(section)
+    return section, retire_rules(dest, recorded, src)
+
+
+def forget(home: Path, section: str, dropped: dict) -> None:
+    """Remove the retired rules from the manifest's record, so a later rule of the user's spelled the same is theirs."""
+    manifest = install_blocks.load_manifest(home)
+    recorded = (manifest or {}).get(section)
+    if not dropped or not isinstance(recorded, dict) or not isinstance(recorded.get("rules"), dict):
+        return
+    for name, gone in dropped.items():
+        kept = [rule for rule in recorded["rules"].get(name, []) if rule not in gone]
+        if kept:
+            recorded["rules"][name] = kept
+        else:
+            recorded["rules"].pop(name, None)
+    write_json(manifest, home / install_blocks.MANIFEST)
 
 
 def hook_dicts(hooks):
@@ -275,13 +330,28 @@ def drop_hooks(hooks, recorded, warn):
             del hooks[event]
 
 
+def expand_dirs(src, home):
+    """`src` with each `~/` entry of `permissions.additionalDirectories` written as an absolute path under `home`.
+
+    Claude Code's docs do not say that `~` is expanded in that key, so install writes the path itself; the
+    manifest records the expanded string, and uninstall expands the template the same way to match it.
+    """
+    permissions = src.get("permissions") if isinstance(src, dict) else None
+    dirs = permissions.get("additionalDirectories") if isinstance(permissions, dict) else None
+    if not isinstance(dirs, list):
+        return src
+    expanded = [f"{home}/{d[2:]}" if isinstance(d, str) and d.startswith("~/") else d for d in dirs]
+    return {**src, "permissions": {**permissions, "additionalDirectories": expanded}}
+
+
 def read_template(src_path: str, auto_memory_off: bool) -> dict:
-    """The template, plus `AUTO_MEMORY_OFF` when install found no Claude memory entry left to import."""
+    """The template, plus `AUTO_MEMORY_OFF` when install found no Claude memory entry left to import, with its
+    directories expanded under $HOME (`expand_dirs`)."""
     with open(src_path, encoding="utf-8") as f:
         src = json.load(f)
     if auto_memory_off and isinstance(src, dict):
         src = {**AUTO_MEMORY_OFF, **src}
-    return src
+    return expand_dirs(src, os.path.expanduser("~"))
 
 
 def main() -> int:
@@ -333,11 +403,13 @@ def main() -> int:
             dest[key] = value
 
     try:
+        # Before anything is written: an unreadable manifest stops the merge with the file unchanged.
+        section, dropped = retire_recorded(manifest_home, dest_path, dest, src)
         if original:
             install_blocks.backup(Path(dest_path), original)
         write_json(dest, Path(dest_path))
-        if manifest_home:
-            section = install_blocks.settings_section(Path(manifest_home), Path(dest_path).parent)
+        if section:
+            forget(Path(manifest_home), section, dropped)
             install_blocks.record(Path(manifest_home), section, record, present)
     except (OSError, install_blocks.ManifestError) as error:
         print(f"merge_claude_settings: cannot write {dest_path} or its install record: {error}", file=sys.stderr)

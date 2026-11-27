@@ -285,6 +285,32 @@ HOME="$linked" bash "$root/install.sh" --uninstall > "$linked/out"
 grep -q 'no longer has: Bash(retired-tool \*)' "$linked/out"
 test -L "$linked/.claude/settings.json" && test "$(cat "$linked/dotfiles/settings.json")" = '{}'
 
+# A rule an earlier install added and the template dropped (the SPEC.md ask rules) goes on the next install,
+# and the manifest forgets it; the user's own ask rule, never recorded, stays through install and uninstall.
+retire=$(fresh_dir retire)
+HOME="$retire" bash "$root/install.sh" >/dev/null
+python3 - "$retire" <<'PY'
+import json, sys
+home = sys.argv[1]
+old = ["Edit(~/.agent/tasks/*/SPEC.md)", "Write(~/.agent/tasks/*/SPEC.md)"]
+for path, change in ((f"{home}/.agent/install-manifest.json", lambda d: d["claude_settings"].setdefault("rules", {}).__setitem__("ask", list(old))),
+                     (f"{home}/.claude/settings.json", lambda d: d["permissions"].__setitem__("ask", old + ["Edit(~/my/**)"]))):
+    data = json.load(open(path))
+    change(data)
+    json.dump(data, open(path, "w"))
+PY
+HOME="$retire" bash "$root/install.sh" >/dev/null
+python3 - "$retire" <<'PY'
+import json, sys
+home = sys.argv[1]
+ask = json.load(open(f"{home}/.claude/settings.json"))["permissions"].get("ask")
+assert ask == ["Edit(~/my/**)"], ask
+recorded = json.load(open(f"{home}/.agent/install-manifest.json"))["claude_settings"].get("rules", {})
+assert "ask" not in recorded, recorded
+PY
+HOME="$retire" bash "$root/install.sh" --uninstall >/dev/null
+python3 -c 'import json, sys; p = json.load(open(sys.argv[1]))["permissions"]; assert p == {"ask": ["Edit(~/my/**)"]}, p' "$retire/.claude/settings.json"
+
 # An install from before the manifest: the template entries it left are removed unless the oldest
 # backup already held them, so the user's `Bash(git *)` stays and every el-capitan entry goes.
 legacy=$(fresh_dir legacy)
@@ -336,13 +362,21 @@ ln -s "$cfg/dotfiles/my-builder.md" "$cfg/agents/crew-builder.md"
 ln -s "$cfg/dotfiles/skills" "$cfg/skills"
 printf -- '---\nname: synced\n---\n' > "$c2/skills/synced/SKILL.md"
 ln -s "$c2/mine" "$c2/skills/crew-memory"
-python3 -c 'import json, sys; open(sys.argv[1], "w").write(json.dumps({"permissions": {"allow": ["Bash(mine *)"]}}, indent=2) + "\n")' "$cfg/settings.json"
+python3 -c 'import json, sys; open(sys.argv[1], "w").write(json.dumps({"permissions": {"allow": ["Bash(mine *)"], "additionalDirectories": ["~/mine"]}}, indent=2) + "\n")' "$cfg/settings.json"
 pristine_two=$(tree_state "$two")
 pristine_cfg=$(tree_state "$cfg")
 pristine_c2=$(tree_state "$c2")
 CLAUDE_CONFIG_DIR="$cfg" HOME="$two" bash "$root/install.sh" --claude-config-dir "$two/c1" --claude-config-dir "$c2" > "$two.out"
 for dir in "$two/.claude" "$cfg" "$two/c1" "$c2"; do grep -q 'guard/credentials.sh' "$dir/settings.json"; done
 grep -q 'Bash(mine \*)' "$cfg/settings.json"
+# The task directory is merged beside the user's own directory, as an absolute path under HOME, with its
+# Edit rule; the pristine check after uninstall below proves both come out again and the user's `~/mine` stays.
+python3 - "$cfg/settings.json" "$two" <<'PY'
+import json, sys
+permissions = json.load(open(sys.argv[1]))["permissions"]
+assert permissions["additionalDirectories"] == ["~/mine", f"{sys.argv[2]}/.agent/tasks"], permissions
+assert "Edit(~/.agent/tasks/**)" in permissions["allow"], permissions["allow"]
+PY
 # The blocks go into ~/.claude/CLAUDE.md only: Claude Code reads the user CLAUDE.md from there.
 grep -q 'el-capitan:imports' "$two/.claude/CLAUDE.md" && test ! -e "$cfg/CLAUDE.md" && test ! -e "$c2/CLAUDE.md"
 test "$(readlink "$two/c1/agents")" = "$two/.cursor/agents" && test "$(readlink "$two/c1/skills")" = "$two/.cursor/skills"
