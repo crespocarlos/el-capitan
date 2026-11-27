@@ -29,6 +29,7 @@ from task_status import review_file, reviewed_at, typed_tests_problem
 from lib.files import atomic_write
 from lib.git import GitError, head_sha, is_ancestor
 
+CLOSABLE = ("DRAFTING", "APPROVED", "IMPLEMENTING", "ON-HOLD")  # the states `mark-done --force` closes; not ABANDONED
 
 def load_task(task_dir: str | Path) -> TaskState | None:
     if not (Path(task_dir) / "SPEC.md").is_file():
@@ -174,21 +175,33 @@ def record_pr(r: TaskState, pr_url: str) -> None:
 
 
 def mark_done(task_dir: str | Path, pr_url: str, force: bool) -> int:
-    """IMPLEMENTING to DONE with the PR that was opened; a DONE task only gains the PR in its list."""
+    """IMPLEMENTING to DONE with the PR that was opened; with `--force`, DRAFTING, APPROVED, IMPLEMENTING or ON-HOLD
+    to DONE, a free-text note logged as `closed: <note>`. A DONE task only gains the PR in its list."""
     r = load_task(task_dir)
     if r is None:
         return 1
-    if not GITHUB_PR_URL.fullmatch(pr_url) and not force:
+    pr_url = pr_url.strip()
+    is_pr = bool(GITHUB_PR_URL.fullmatch(pr_url))
+    if not is_pr and not force:
         print(f"error: --pr-url {pr_url!r} is not a GitHub PR URL (https://github.com/OWNER/REPO/pull/N); "
               "nothing written (--force records a free-text note instead)", file=sys.stderr)
         return 2
-    if head(r) == "DONE":
+    note = pr_url[len("closed:"):].strip() if pr_url.lower().startswith("closed:") else pr_url
+    if not note:
+        print("error: --pr-url is empty; nothing written (give a PR URL or a note)", file=sys.stderr)
+        return 2
+    state = head(r) or "unset"
+    if state == "DONE":
         print(f"already done: {name(r)}")
         record_pr(r, pr_url)
         return 0
-    if head(r) != "IMPLEMENTING":
-        print(f"error: {name(r)} is {head(r) or 'unset'}, not IMPLEMENTING; nothing written",
-              file=sys.stderr)
+    if state != "IMPLEMENTING" and not (force and state in CLOSABLE):
+        print(f"error: {name(r)} is {state}, not IMPLEMENTING; nothing written"
+              f"{' (--force closes it)' if state in CLOSABLE else ''}", file=sys.stderr)
+        return 1
+    if is_pr and state in ("DRAFTING", "APPROVED"):
+        print(f"error: {name(r)} is {state}: a PR needs an approved spec; nothing written (approve the spec first "
+              "with mark-approved, or close it with a note)", file=sys.stderr)
         return 1
     problems = done_problems(r)
     if problems and not force:
@@ -198,4 +211,5 @@ def mark_done(task_dir: str | Path, pr_url: str, force: bool) -> int:
         print(f"note: {review_location(r.task)}", file=sys.stderr)
         return 1
     print(f"done: {review_location(r.task)}")
-    return 0 if set_status(r, "DONE", f"IMPLEMENTING → DONE (PR opened: {pr_url})") else 1
+    reason = f"PR opened: {pr_url}" if is_pr else f"closed: {note}"
+    return 0 if set_status(r, "DONE", f"{state} → DONE ({reason})") else 1

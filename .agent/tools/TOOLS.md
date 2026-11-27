@@ -403,8 +403,12 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   a `package.diff`.
 - `crew-task.py mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry, and accepts a free-text note (`none (committed to
-  main)`) in place of a PR URL. It exists for a spec whose branch was intentionally rebased or whose
-  work shipped without a PR; it is never used by a skill on its own initiative.
+  main)`) in place of a PR URL, logged as `<from> → DONE (closed: <note>)` (stripped, a leading
+  `closed:` in any case kept once; an empty note is refused). It closes DRAFTING, APPROVED,
+  IMPLEMENTING and ON-HOLD, which also ends an open BLOCKED line; ABANDONED and an unset status are
+  refused. DRAFTING and APPROVED take a note only: a PR URL there is refused until the spec is
+  approved. It exists for a spec whose branch was intentionally rebased, whose work shipped without a
+  PR, or that went stale (the TUI's close move); it is never used by a skill on its own initiative.
 - `crew-lint.py --dead-code` reports catalog commands with no caller. A caller is a reference from a prompt
   (rules, agents, skills, the root `AGENTS.md`, the templates), a hook, `install.sh`, another tool's
   code or a CI workflow; a Python docstring or comment, the tool tree's `.md` docs and the catalog
@@ -501,7 +505,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `stage_start stage=<implement|review>` and `stage_end stage=... tokens_reported=<n|unknown>` (tokens
   only as the harness reported them), prints the cost line, and `crew ls --cost` totals them ("One token
   measure" below); `crew ls
-  --all` shows `landed: yes|no|unknown` for done tasks.
+  --all` shows `landed: yes|no|unknown` for done tasks, or `closed` for one closed with a note and no PR.
 - **Review yield** is defined over accepted `[blocking]` and `[attention]` findings only: the findings
   a review stood behind (disposition `patch` or `decide`) divided by its persona runs, never counting
   `[nit]`, `[concern]`, `[needs more info]`, deferred or dropped findings.

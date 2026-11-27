@@ -98,8 +98,12 @@ def test_landed_decision(case: str, state: str, base: str, sha: str | None, fail
     assert note is ANY or row.get("note") == note, row
 
 
-def test_a_task_with_no_recorded_pr_is_unknown(tmp: Path) -> None:
-    assert ls_data.landed_row(task_with_pr(tmp, None), reader("MERGED", "main"))["landed"] == "unknown"
+def test_a_task_with_no_recorded_pr_is_unknown_or_closed(tmp: Path) -> None:
+    """No PR is `unknown`, unless the DONE transition is a forced close with a note: then `closed`."""
+    assert ls_data.landed_row(task_with_pr(tmp / "a", None), reader("MERGED", "main"))["landed"] == "unknown"
+    closed = task_with_pr(tmp / "b", None)
+    (closed / "PROGRESS.md").write_text("[2026-01-01 00:00:00] TRANSITION: DRAFTING → DONE (closed: stale)\n", encoding="utf-8")
+    assert ls_data.landed_row(closed, reader("MERGED", "main", fail=True)) == {"landed": "closed", "flag": ""}
 
 
 def test_another_repositorys_pr(tmp: Path) -> None:
