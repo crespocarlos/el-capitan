@@ -43,17 +43,24 @@ def gate(args: argparse.Namespace) -> int:
         return mark_approved(args.task_dir)
     if args.command == "mark-implementing":
         return mark_implementing(args.task_dir, args.branch or "")
-    return mark_done(args.task_dir, args.pr_url, args.branch, args.force)
+    return mark_done(args.task_dir, args.pr_url, args.force)
 
 
 def reconcile_tasks(args: argparse.Namespace) -> int:
-    """Report ready, stalled and idle specs; `--apply` writes ON-HOLD for the idle ones."""
+    """Report the specs ready to mark done or open a PR, stalled and idle ones; `--apply` writes the
+    ON-HOLD statuses and the PRs found on GitHub for each IMPLEMENTING task's branch."""
     from ls_data import load_rows
+    from task_prs import CACHE_NAME, branch_prs
     from task_report import reconcile
     from task_state import RulesError
 
+    if args.pr_budget is not None and args.pr_budget <= 0:
+        print("error: --pr-budget must be positive", file=sys.stderr)
+        return 2
+    cache = args.tasks_dir.parent / CACHE_NAME
     try:
-        return reconcile(load_rows(args.tasks_dir), args.apply)
+        return reconcile(load_rows(args.tasks_dir), args.apply,
+                         lambda rows: branch_prs(rows, cache, args.pr_budget, write=args.apply))
     except RulesError as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -81,20 +88,23 @@ def make_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     approved = commands.add_parser("mark-approved", help="Gate 1: DRAFTING to APPROVED")
     implementing = commands.add_parser("mark-implementing", help="APPROVED to IMPLEMENTING when crew implement starts")
-    done = commands.add_parser("mark-done", help="IMPLEMENTING to DONE after crew open pr")
+    done = commands.add_parser("mark-done", help="IMPLEMENTING to DONE once a PR is open; records the PR")
     for sub in (approved, implementing, done):
         sub.add_argument("task_dir", metavar="TASK_DIR")
         sub.set_defaults(run=gate)
-    for sub in (implementing, done):
-        sub.add_argument("--branch", help="current branch; must match the task's branch")
-    done.add_argument("--pr-url", required=True, help="the PR URL to record")
+    implementing.add_argument("--branch", help="the branch being implemented, recorded in .task-id")
+    done.add_argument("--pr-url", required=True,
+                      help="the GitHub PR URL to add to the task's PR list (with --force, any note)")
     done.add_argument("--force", action="store_true", help="skip the evidence checks (user-invoked only)")
-    for name, run, text in (("reconcile", reconcile_tasks, "report ready, stalled and idle specs"),
+    for name, run, text in (("reconcile", reconcile_tasks, "report ready, stalled and idle specs; record branch PRs"),
                             ("normalize-status", normalize, "rewrite legacy lowercase status tokens")):
         sub = commands.add_parser(name, help=text)
         sub.add_argument("--apply", action="store_true", help="write the changes (default: report only)")
         sub.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
         sub.set_defaults(run=run)
+        if name == "reconcile":
+            sub.add_argument("--pr-budget", type=float, default=None, metavar="SECONDS",
+                             help="stop asking GitHub for branch PRs after SECONDS (the session-start hook: 3)")
     collect = commands.add_parser("gc", help="retention: old DONE artifacts and tasks, session files, legacy telemetry "
                                   "(policy: ~/.agent/config.json)")
     collect.add_argument("--apply", action="store_true", help="remove and archive (default: list what would go)")

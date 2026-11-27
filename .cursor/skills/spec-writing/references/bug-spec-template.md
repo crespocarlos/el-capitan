@@ -2,6 +2,7 @@
 
 ## Type: bugfix
 ## Branch: [bugfix/short-description]
+## Issue: [the GitHub issue URL when the spec starts from one; omit otherwise]
 ## Status
 DRAFTING
 

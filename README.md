@@ -37,7 +37,7 @@ Every command is typed into the AI chat. `crew help` prints these tables.
 | `crew spec` issue/URL/description | Draft a SPEC.md, then stop at Gate 1 for approval. |
 | `crew implement` | Orchestrate implementation of an approved SPEC.md. |
 | `crew commit` | Generate a semantic commit message and commit. |
-| `crew open pr` | Push the current branch and open a PR with a generated description. |
+| `crew open pr` | Push the current branch, open a PR with a generated description, and mark the task DONE. |
 | `crew review address` | Work through findings from the most recent crew review inline. |
 | `crew review` [PR #X \| spec \| idea \| changes \| (self)] | Multi-lens review of code, a PR, a spec or an idea. |
 | `crew pr` view\|diff\|repo\|issue | Read a PR, its diff, the repository or an issue through one read-only tool; writes stay `gh`. |
@@ -48,7 +48,7 @@ Every command is typed into the AI chat. `crew help` prints these tables.
 | `crew evals` | Inspect, compare and explain evaluation experiments and scores (Kibana repositories only). |
 | `crew e2e` [PR\|status\|setup] | Start and read a nightshift e2e run for a PR on demand: real browser/API tests of a deployed Kibana PR. |
 | `crew handoff` [resume] | Save or resume working state across a context reset or a new session. |
-| `crew ls` [--all] [--repo R] [--status S] | Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line. |
+| `crew ls` [--all] [--repo R] [--status S] | Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line; `--json` adds each task's issue, PRs, progress and activity. |
 | `crew report` [--since 30d] [--repo R] | Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures. |
 | `crew doctor` | One screen of install health: links, hook registrations, managed blocks, tool versions, `gh` sign-in, state sizes; exit 1 on a problem. |
 | `crew gc` [--apply] | Retention from `~/.agent/config.json`: artifacts of DONE tasks after 14 days, DONE tasks archived after 90, session files after 30, the legacy telemetry; a dry run unless `--apply`. |
@@ -75,8 +75,12 @@ Not a pipeline stage; run it when you need it.
 
 ### Dashboard (optional)
 
-A read-only terminal dashboard of tasks, running workers and locks, and the report; `t`, `w` and
-`p` switch views, `r` refreshes, `g` reads `landed` from GitHub. It needs Textual, pinned in
+A read-only terminal dashboard of tasks, running workers and locks, and the report. Each task shows
+its GitHub issue and PRs (terminal links), its progress (checked over total criteria) and its activity
+(`running <stage>`, `stuck <stage>` for a stage open past 6 hours, or days idle such as `idle 3d`). A task is DONE once a PR
+for it is open: `crew open pr` records the PR and marks it, and the merge comes later. `t`, `w` and
+`p` switch views, `r` refreshes, `g` reads `landed` from GitHub, and `o` and `O` open the selected
+task's issue and PR in the browser. It needs Textual, pinned in
 `tui/requirements.txt` and never installed: from the repository root, run
 `uv run --no-project --with-requirements tui/requirements.txt python3 tui/crew_tui.py`.
 `python3 tui/crew_tui.py --once` prints the same views without Textual, and `crew ls --watch` is

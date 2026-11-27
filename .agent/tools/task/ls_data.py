@@ -21,7 +21,7 @@ from typing import Callable
 import task_bootstrap  # noqa: F401
 
 from task_lock import blocked_lines
-from task_progress import read_text
+from task_progress import GITHUB_PR_URL, pr_urls
 from task_state import TaskState, head, load, name
 
 from lib.files import FENCE
@@ -63,15 +63,15 @@ def matches(base: str, patterns: list[str]) -> bool:
     return any(re.fullmatch(pattern, base) for pattern in patterns)
 
 
-PR_URL = re.compile(r"PR opened: (https?://[^/\s]+/([^/\s]+/[^/\s]+)/pull/(\d+))")
 Reader = Callable[[list[str]], "tuple[int, str]"]
 Reach = Callable[[str, str], "bool | None"]
 
 
 def pr_ref(task: Path) -> tuple[str, str, str] | None:
-    """`(url, owner/repo, number)` from the last `PR opened:` line of PROGRESS.md, or None."""
-    found = PR_URL.findall(read_text(task))
-    return found[-1] if found else None
+    """`(url, owner/repo, number)` of the newest PR in the task's PR list, or None."""
+    urls = pr_urls(task)
+    found = GITHUB_PR_URL.match(urls[-1]) if urls else None
+    return (found.group(0), found.group(1), found.group(2)) if found else None
 
 
 def read_pr_actions(arguments: list[str]) -> tuple[int, str]:

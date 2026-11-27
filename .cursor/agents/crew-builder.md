@@ -100,8 +100,8 @@ Otherwise run steps 1-4 and overwrite `REPORT.md`.
    retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or
    explicit file inspection stated in the criterion).
 4. Leave `## Status` as `IMPLEMENTING`. `DONE` is written only by `crew open pr` when it creates the
-   PR (`crew-task.py mark-done`); the status is not the builder's to change, and a hand-written value
-   skips the gate that proves the review passed.
+   PR (`crew-task.py mark-done`); the status is not the builder's to change, because writing it by
+   hand bypasses that gate.
 
 Then write `REPORT.md`.
 

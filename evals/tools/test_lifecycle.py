@@ -11,6 +11,7 @@ in this process through `cli_runner`; the hook runs under bash.
 """
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import os
@@ -21,6 +22,7 @@ import tarfile
 import time
 from pathlib import Path
 
+import pytest
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,14 +41,15 @@ SPEC = "# Probe task\n\n## Status\nIMPLEMENTING\n\n- [x] one criterion\n"
 STATES = ("DRAFTING", "APPROVED", "IMPLEMENTING", "ON-HOLD", "DONE")
 HOLD = "ON-HOLD (auto-hold: no activity 14d; was {})"
 OLD = 1790812800  # 2026-10-01, far past the 14-day idle window
+PR_ONE, PR_TWO = "https://github.com/acme/widgets/pull/1", "https://github.com/acme/widgets/pull/2"
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
     assert condition, f"{name}: {detail}"
 
 
-def task(*arguments: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    return cli(TASK, *arguments, cwd=cwd)
+def task(*arguments: str, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
+    return cli(TASK, *arguments, cwd=cwd, env=env)
 
 
 def ls(tasks: Path, *arguments: str) -> str:
@@ -112,6 +115,25 @@ def test_status_contract(tmp: Path) -> None:
     check("the listing counts both spellings as done", "2 done" in ls(tmp / "listing"), ls(tmp / "listing"))
 
 
+ISSUE = "https://github.com/acme/widgets/issues/{}"
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("## Issue: " + ISSUE.format(4) + "\n", ISSUE.format(4)),
+    ("Issue: " + ISSUE.format(5) + " (`bug`, `workstream:detection`).\n", ISSUE.format(5)),
+    ("**Issue:** " + ISSUE.format(6) + "\n", ISSUE.format(6)),
+    ("See [#3](" + ISSUE.format(3) + ").\n\nIssue: #7\n", ISSUE.format(7)),
+    ("Issue: other/repo#8\n", "https://github.com/other/repo/issues/8"),
+    ("Tracked by " + ISSUE.format(9) + " and " + ISSUE.format(10) + "\n", ISSUE.format(9)),
+    ("Phase 1 of [Issue #11](" + ISSUE.format(11) + ").\n", ISSUE.format(11)),
+    ("```\nIssue: " + ISSUE.format(1) + "\n```\nPR: https://github.com/acme/widgets/pull/2\n", ""),
+    ("## Issue: [the GitHub issue URL when the spec starts from one]\n", ""),
+])
+def test_issue_spellings(text: str, expected: str) -> None:
+    """The `Issue:` line wins, else the first issue URL outside a fence; `#n` takes the task's repository."""
+    check(repr(text), task_state.issue_url(text, "acme/widgets") == expected, task_state.issue_url(text, "acme/widgets"))
+
+
 def test_reconcile(tmp: Path) -> None:
     """Idle drafts and approvals go on hold; open work, finished work and held work keep their status."""
     tasks = tmp / "tasks"
@@ -175,35 +197,46 @@ def test_gates(tmp: Path) -> None:
     tasks = tmp / "gates"
     check("mark-implementing refuses a draft", refuses(task("mark-implementing", str(spec(tasks / "draft", "DRAFTING", "- [ ] a"))), "not APPROVED"))
     check("mark-implementing and mark-done refuse a missing spec",
-          refuses(task("mark-implementing", str(tasks / "missing")), "no SPEC.md") and refuses(task("mark-done", str(tasks / "missing"), "--pr-url", "x"), "no SPEC.md"))
+          refuses(task("mark-implementing", str(tasks / "missing")), "no SPEC.md") and refuses(task("mark-done", str(tasks / "missing"), "--pr-url", PR_ONE), "no SPEC.md"))
     approved = spec(tasks / "approved", "APPROVED", review="Verdict: warn")
     task("mark-implementing", str(approved))
     check("APPROVED → IMPLEMENTING is written and logged", status_of(approved) == "IMPLEMENTING" and "APPROVED → IMPLEMENTING" in progress_text(approved))
     check("a second mark-implementing says already implementing", "already implementing" in task("mark-implementing", str(approved)).stdout)
-    branch = spec(tasks / "branch", "IMPLEMENTING", review="Verdict: pass")
-    (branch / ".task-id").write_text('{"slug":"branch","branch":"feature/x"}', encoding="utf-8")
-    check("mark-done refuses another branch", refuses(task("mark-done", str(branch), "--pr-url", "x", "--branch", "feature/y"), "current branch is feature/y")
-          and status_of(branch) == "IMPLEMENTING")
-    task("mark-done", str(branch), "--pr-url", "https://example.test/pr/1", "--branch", "feature/x")
-    check("IMPLEMENTING → DONE is written with the PR", status_of(branch) == "DONE"
-          and "IMPLEMENTING → DONE (PR opened: https://example.test/pr/1)" in progress_text(branch))
-    check("a second mark-done says already done", "already done" in task("mark-done", str(branch), "--pr-url", "x").stdout)
+    branch = spec(tasks / "branch", "IMPLEMENTING", review="Verdict: BLOCK", extra="Issue: #12\n\n")
+    (branch / ".task-id").write_text('{"slug":"branch","branch":"feature/x","repo_remote_url":"git@github.com:acme/widgets.git"}', encoding="utf-8")
+    first = task("mark-done", str(branch), "--pr-url", PR_ONE, cwd=ROOT)
+    check("another branch and a blocking verdict still close: IMPLEMENTING → DONE is written with the PR",
+          first.returncode == 0 and status_of(branch) == "DONE" and f"IMPLEMENTING → DONE (PR opened: {PR_ONE})" in progress_text(branch), first)
+    second = task("mark-done", str(branch), "--pr-url", PR_TWO)
+    task("mark-done", str(branch), "--pr-url", PR_TWO)
+    record = json.loads(ls(tasks, "--all", "--json", "--repo", "all"))
+    record = next(r for r in record if r["slug"] == "branch")
+    check("a second PR on a DONE task is appended once to its PR list, and crew ls --json carries the list and the issue",
+          "already done" in second.stdout and task_state.load(branch).prs == [PR_ONE, PR_TWO]
+          and (record["prs"], record["issue"], record["progress"]) == ([PR_ONE, PR_TWO], "https://github.com/acme/widgets/issues/12", "1/1"), record)
     refusals = (
-        ("unchecked", spec(tasks / "open", "IMPLEMENTING", "- [ ] a", "Verdict: pass"), ("--pr-url", "x")),
-        ("need pass or warn", spec(tasks / "rerun", "IMPLEMENTING", review="Verdict: pass\n\nVerdict: BLOCK"), ("--pr-url", "x")),
-        ("not IMPLEMENTING", tasks / "draft", ("--pr-url", "x")),
+        ("unchecked", spec(tasks / "open", "IMPLEMENTING", "- [ ] a", "Verdict: pass"), ("--pr-url", PR_ONE)),
+        ("not IMPLEMENTING", tasks / "draft", ("--pr-url", PR_ONE)),
         ("--pr-url", tasks / "draft", ()),
+        ("not a GitHub PR URL", spec(tasks / "free-text", "IMPLEMENTING"), ("--pr-url", "none (committed to main)")),
         ("cannot verify that review", spec(tasks / "unknown-sha", "IMPLEMENTING", review="Verdict: pass\n\nReviewed at: " + "0123456789abcdef" * 2 + "01234567"),
-         ("--pr-url", "x", "--branch", "main")),
+         ("--pr-url", PR_ONE)),
     )
     for words, directory, extra in refusals:
         before = status_of(directory)
         check(f"mark-done refuses: {words}", refuses(task("mark-done", str(directory), *extra), words) and status_of(directory) == before)
-    task("mark-done", str(tasks / "open"), "--pr-url", "x", "--force")
+    check("a refusal still records the open PR", task_state.load(tasks / "open").prs == [PR_ONE])
+    task("mark-done", str(tasks / "open"), "--pr-url", PR_ONE, "--force")
     check("--force closes an unchecked task", status_of(tasks / "open") == "DONE")
+    note = task("mark-done", str(tasks / "free-text"), "--pr-url", "none (committed to main)", "--force")
+    check("--force accepts a free-text note and records no PR", note.returncode == 0 and status_of(tasks / "free-text") == "DONE"
+          and "(PR opened: none (committed to main))" in progress_text(tasks / "free-text") and task_state.load(tasks / "free-text").prs == [])
+    task("blocked", str(spec(tasks / "quoted", "IMPLEMENTING")), f"waiting: PR opened: {PR_ONE} needs a rebase")
+    check("a BLOCKED reason quoting `PR opened:` adds no PR", task_state.load(tasks / "quoted").prs == [])
+    check("no review closes the task", close(spec(tasks / "unreviewed", "IMPLEMENTING")).returncode == 0 and status_of(tasks / "unreviewed") == "DONE")
     head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     ancestor = spec(tasks / "ancestor", "IMPLEMENTING", review=f"Verdict: pass\n\nReviewed at: {head}")
-    task("mark-done", str(ancestor), "--pr-url", "x", "--branch", "main", cwd=ROOT)
+    task("mark-done", str(ancestor), "--pr-url", PR_ONE, cwd=ROOT)
     check("a review of an ancestor of HEAD passes", status_of(ancestor) == "DONE")
     gate1 = spec(tasks / "gate1", "DRAFTING", "- [ ] a")
     task("mark-approved", str(gate1))
@@ -235,13 +268,111 @@ def test_reconcile_hook(tmp: Path) -> None:
     spec(tasks / "shipped", "done")
     spec(tasks / "ready", "IMPLEMENTING", review="Verdict: pass")
     spec(tasks / "stuck", "IMPLEMENTING", "- [ ] a", old=True)
+    repo, env = tmp / "checkout", {**os.environ, **GIT_ID}
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, env=env)
+
+    def commit(branch: str, start: str = "main") -> str:
+        if branch != "main":
+            subprocess.run(["git", "-C", str(repo), "switch", "-q", "-c", branch, start], check=True, env=env)
+        subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", branch], check=True, env=env)
+        return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+
+    commit("main")
+    tip, elsewhere = commit("feat/x"), commit("other", "main")
+    subprocess.run(["git", "-C", str(repo), "switch", "-q", "main"], check=True, env=env)
+    for name, number, review in (("opened", 1, None), ("covered", 2, f"Verdict: pass\n\nReviewed at: {tip}"),
+                                 ("behind", 3, f"Verdict: pass\n\nReviewed at: {elsewhere}")):
+        directory = spec(tasks / name, "IMPLEMENTING", review=review)
+        (directory / "PROGRESS.md").write_text(f"[2026-01-01T00:00:00Z] PR: {PR_ONE[:-1]}{number}\n", encoding="utf-8")
+        (directory / ".task-id").write_text(json.dumps({"slug": name, "branch": "feat/x"}), encoding="utf-8")
     hook = ROOT / ".claude" / "hooks" / "spec-status-reconcile.sh"
-    out = subprocess.run(["bash", str(hook)], capture_output=True, text=True, env={**os.environ, "HOME": str(home)}).stdout
-    check("the hook reports the hold, the unreviewed done, the ready and the stalled task",
-          all(line in out for line in ("spec-status: idle -> ON-HOLD", "1 done spec(s) lack a review pass", "spec-status: 1 ready to open PR: ready",
-                                       "spec-status: 1 stalled IMPLEMENTING: stuck")), out)
+    out = subprocess.run(["bash", str(hook)], capture_output=True, text=True, env={**os.environ, "HOME": str(home)}, cwd=repo).stdout
+    check("the hook reports the hold, the ready to mark done with each PR and one command (the review checked against the task's "
+          "branch, not the cwd's main), a PR open but not closable with its reason, the ready and the stalled task",
+          all(line in out for line in ("spec-status: idle -> ON-HOLD", "spec-status: 2 ready to mark done: covered (#2), opened (#1)",
+                                       f"spec-status: close one with: ~/.agent/bin/crew-task.py mark-done {tasks / 'covered'} --pr-url {PR_ONE[:-1]}2",
+                                       "spec-status: 1 PR open, not closable: behind (#3: the review does not cover the branch tip",
+                                       "spec-status: 1 ready to open PR: ready", "spec-status: 1 stalled IMPLEMENTING: stuck"))
+          and "review pass" not in out and status_of(tasks / "opened") == "IMPLEMENTING", out)
     missing = subprocess.run(["bash", str(hook)], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp / "no-tool")}).stdout
     check("a missing tool is reported with the fix", "crew-task.py missing; re-run install.sh" in missing, missing)
+
+
+GH_STUB = """#!/bin/sh
+echo "$*" >> "$GH_CALLS"
+[ "$GH_OFFLINE" = 1 ] && exit 1
+case "$*" in
+  "repo view acme/widgets --json defaultBranchRef") echo '{"defaultBranchRef":{"name":"main"}}' ;;
+  "pr list --head feat/x --repo acme/widgets --state all --json url") echo '[{"url":"<PR>"}]' ;;
+  *) echo '[{"url":"https://github.com/acme/widgets/pull/99"}]' ;;
+esac
+""".replace("<PR>", PR_TWO)
+
+
+@pytest.mark.parametrize("offline", [False, True])
+def test_reconcile_finds_prs(tmp: Path, offline: bool) -> None:
+    """Reconcile reads each IMPLEMENTING task's branch PR (read-only, skipped offline), records it, never closes the task."""
+    tasks, stub = tmp / "tasks", tmp / "bin" / "gh"
+    for name, branch, boxes in (("found", "feat/x", "- [x] a"), ("trunk", "main", "- [x] a"), ("draft", "feat/x", "- [ ] a")):
+        spec(tasks / name, "IMPLEMENTING" if name != "draft" else "DRAFTING", boxes)
+        (tasks / name / ".task-id").write_text(json.dumps({"slug": name, "branch": branch, "repo_remote_url": "git@github.com:acme/widgets.git"}))
+    stub.parent.mkdir()
+    stub.write_text(GH_STUB, encoding="utf-8")
+    stub.chmod(0o755)
+    env = {"PATH": f"{stub.parent}{os.pathsep}{os.environ['PATH']}", "GH_CALLS": str(tmp / "calls"), "GH_OFFLINE": "1" if offline else "0"}
+    done = task("reconcile", "--tasks-dir", str(tasks), "--apply", env=env)
+    calls = (tmp / "calls").read_text().splitlines() if (tmp / "calls").exists() else []
+    ready = done.stdout.split("ready to mark done", 1)[-1].split("\n\n")[0].split("ready to open PR")[0]
+    expected = [] if offline else [PR_TWO]
+    check("the branch PR is recorded and reported ready to mark done; the default branch and a draft are never asked; the status stays",
+          done.returncode == 0 and task_state.load(tasks / "found").prs == expected and ("found" in ready) is not offline
+          and all("--head main" not in call for call in calls) and len([c for c in calls if c.startswith("pr list")]) == (0 if offline else 1)
+          and status_of(tasks / "found") == "IMPLEMENTING" and task_state.load(tasks / "trunk").prs == []
+          and ("2 task(s) not checked for a PR yet" in done.stdout) is offline, (done.stdout, done.stderr, calls))
+    again = task("reconcile", "--tasks-dir", str(tasks), "--apply", "--pr-budget", "3", env=env)
+    more = (tmp / "calls").read_text().splitlines()[len(calls):] if (tmp / "calls").exists() else []
+    check("a second run asks gh nothing once every task was answered (cached 24 h), and again when offline left them unchecked",
+          again.returncode == 0 and bool(more) is offline, (again.stdout, more))
+
+
+def test_pr_lookup_budget(tmp: Path) -> None:
+    """Lookups share one budget on an injected clock: a read that outlasts it leaves its task unchecked and uncached;
+    a crashing lookup says why; a cached repository is not asked again."""
+    import threading
+
+    import task_prs
+
+    tasks, release, clock = tmp / "tasks", threading.Event(), [0.0]
+    for name in ("slow", "broken"):
+        spec(tasks / name, "IMPLEMENTING")
+        (tasks / name / ".task-id").write_text(json.dumps({"slug": name, "branch": f"feat/{name}", "repo_remote_url": "git@github.com:acme/widgets.git"}))
+    calls: list[list[str]] = []
+
+    def read(arguments: list[str], timeout: float) -> tuple[int, str]:
+        calls.append(arguments)
+        if arguments[0] == "repo":
+            return 0, '{"defaultBranchRef": {"name": "main"}}'
+        if "feat/broken" in arguments:
+            raise RuntimeError("boom")
+        if not release.is_set():
+            clock[0] = 10.0  # the budget runs out while this read is in flight
+            release.wait()  # held until the search has returned without it
+        return 0, json.dumps([{"url": PR_ONE}])
+
+    slow, broken, cache = task_state.load(tasks / "slow"), task_state.load(tasks / "broken"), tmp / task_prs.CACHE_NAME
+    first = task_prs.branch_prs([slow], cache, budget=3, write=True, read=read, clock=lambda: clock[0])
+    release.set()
+    stored = json.loads(cache.read_text())
+    check("past the budget the in-flight task is counted unchecked and not cached; the repository answer is",
+          first.found == {} and first.unchecked == 1 and stored["tasks"] == {} and stored["repos"]["acme/widgets"][1] == "main", (first, stored))
+    calls.clear()
+    errors = io.StringIO()
+    with contextlib.redirect_stderr(errors):
+        second = task_prs.branch_prs([slow, broken], cache, write=True, read=read)
+    check("with no budget every lookup ends; the cached repository is not asked; a crash is a warning and stays unchecked",
+          second.found == {tasks / "slow": [PR_ONE]} and second.unchecked == 1 and all(call[0] == "pr" for call in calls)
+          and "warning: PR lookup for broken: RuntimeError: boom" in errors.getvalue()
+          and set(json.loads(cache.read_text())["tasks"]) == {"slow"}, (second, calls, errors.getvalue()))
 
 
 def test_bad_transitions(tmp: Path) -> None:
@@ -277,7 +408,7 @@ def temp_review(root: Path, text: str, record_for: Path | None = None) -> Path:
 
 
 def close(directory: Path) -> subprocess.CompletedProcess:
-    return task("mark-done", str(directory), "--pr-url", "https://example.test/pr/1")
+    return task("mark-done", str(directory), "--pr-url", PR_ONE)
 
 
 def test_review_location(tmp: Path) -> None:
@@ -290,12 +421,10 @@ def test_review_location(tmp: Path) -> None:
     check("a passing temp review closes the task and names the file", done.returncode == 0 and status_of(accept).startswith("DONE")
           and f"review read from {directory.resolve()}" in done.stdout, (done.stdout, done.stderr))
     refuse = make_task(tmp / "refuse")
-    temp_review(tmp / "refuse", "Verdict: BLOCK\n", refuse)
+    temp_review(tmp / "refuse", f"Verdict: pass\n\nReviewed at: {'0123456789abcdef' * 2}01234567\n", refuse)
     done = close(refuse)
-    check("a blocking temp review refuses with the verdict and where it was read", done.returncode == 1
-          and "review verdict is BLOCK, need pass or warn" in done.stderr and "review read from" in done.stderr and status_of(refuse) == "IMPLEMENTING")
-    done = close(make_task(tmp / "missing"))
-    check("no review refuses: unknown verdict, none found", done.returncode == 1 and "review verdict is ?" in done.stderr and "no review found" in done.stderr)
+    check("an unverifiable recorded review refuses and says where it was read", done.returncode == 1
+          and "cannot verify that review" in done.stderr and "review read from" in done.stderr and status_of(refuse) == "IMPLEMENTING")
     local = make_task(tmp / "local", "Verdict: pass\n")
     temp_review(tmp / "local", "Verdict: BLOCK\n", local)
     done = close(local)
@@ -303,7 +432,7 @@ def test_review_location(tmp: Path) -> None:
     stale = make_task(tmp / "stale")
     shutil.rmtree(temp_review(tmp / "stale", "Verdict: pass\n", stale))
     done = close(stale)
-    check("a deleted review directory is no review", done.returncode == 1 and "no review found" in done.stderr)
+    check("a deleted review directory is no review: the task closes and says so", done.returncode == 0 and "no review found" in done.stdout)
     not_task = tmp / "not-a-task"
     not_task.mkdir()
     review_workspace.record_task_review(str(not_task), temp_review(tmp / "ignored", "Verdict: pass\n"), "pr")
