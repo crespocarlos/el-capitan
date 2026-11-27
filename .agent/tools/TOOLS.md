@@ -132,12 +132,13 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_progress.py`: PROGRESS.md: append and read every entry (BLOCKED, METRIC, stage cost and PR lines included)
 - `task_gates.py`: the transition gates: approve, implement, close out
 - `task_usage.py`: a subagent run's token usage from its transcript, appended as `agent_end` to the task its `crew-task:` line names
+- `task_live.py`: the TUI's tokens of agents still running: transcripts modified in the last 15 minutes whose first user line names the task, read on from a per-file cache
 - `task_record_pr.py`: `crew-task.py record-pr`, the PR hook: the task of a `gh pr create` PR (from `gh pr view`), marked done, given the PR, or created minimal and DONE
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`
-- `task_report.py`: rendering task state for `crew-ls.py`, the ISSUE, PR, PROGRESS and ACTIVITY cells, and `reconcile`
+- `task_report.py`: rendering task state for `crew-ls.py`, the ISSUE, PR, PROGRESS, ACTIVITY and TOKENS cells, the 120-column fit, and `reconcile`
 - `ls_data.py`: what `crew ls`, `--report` and the TUI read: rows, the repo filter (`--repo`, else `ls.repo` of `~/.agent/config.json`: `here`, `all` or an `owner/name`) and the state filter, stale, the `landed` lines, landing bases, `--watch`
 - `task_prs.py`: the branch PRs reconcile asks GitHub for: due tasks, a fork's parent, the 24-hour cache, the thread pool and its budget
-- `ls_report.py`: `crew-ls.py --report`: opened and closed, verdicts, findings and fixed rate, stage costs and durations, tool failures
+- `ls_report.py`: `crew-ls.py --report`: opened and closed, verdicts, findings and fixed rate, the window's tokens, stage costs and durations, tool failures
 - `task_gc.py`: `~/.agent/config.json` (`gc`, `doctor`, `ls`, and `mcp`: `{"docs": [...], "code_search": [...]}`, the MCP server names `crew-doctor.py` looks for, empty by default so el-capitan names no vendor server; defaults, validation, exit 2 on a bad value), the retention policy, `crew-task.py gc`, the state sizes `crew-doctor.py` checks
 - `task_lock.py`: the worker lock (written, read across the worktrees, removed) and the `crew-task.py lock|blocked` commands
 - `task_artifacts.py`: bounded task artifacts: read one, render the resolved task
@@ -321,7 +322,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `{"items": [...], "returned", "total", "truncated", "what"}` plus a `hint` when bounded, whatever the
   flags; each item adds `issue`, `prs`,
   `progress` and `activity` (`running <stage>`, `stuck <stage>` past 6 hours, or `idle 3d` from the
-  last PROGRESS entry; not the 14-day `stale`) from `task_report.task_cells`, the same cells the TUI shows.
+  last PROGRESS entry; not the 14-day `stale`) from `task_report.task_cells`, the same cells the TUI shows,
+  and `tokens`: `{"new": int|null, "cache_read": int|null, "approximate": bool}` (`task_usage_totals`).
 - **The status token is canonical and normalized on read.** `DRAFTING`, `APPROVED`, `IMPLEMENTING`,
   `ON-HOLD`, `DONE` are the five states; `ABANDONED` is a user-only side state the store may hold.
   `task_status.head` uppercases and strips trailing punctuation, so `done`, `Done`, and `DONE.` are
@@ -497,7 +499,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `worktree`, `verify`, `e2e`) are documented in `.agent/tools/AGENTS.md`. `crew-task.py lock write|remove` owns
   `.crew-worker.lock` and `crew-task.py blocked` writes the `BLOCKED:` line `crew ls` shows. `crew-metric.py` accepts
   `stage_start stage=<implement|review>` and `stage_end stage=... tokens_reported=<n|unknown>` (tokens
-  only as the harness reported them), prints the cost line, and `crew ls --cost` lists them; `crew ls
+  only as the harness reported them), prints the cost line, and `crew ls --cost` totals them ("One token
+  measure" below); `crew ls
   --all` shows `landed: yes|no|unknown` for done tasks.
 - **Review yield** is defined over accepted `[blocking]` and `[attention]` findings only: the findings
   a review stood behind (disposition `patch` or `decide`) divided by its persona runs, never counting
@@ -580,9 +583,17 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   headline. The named directory must sit under `~/.agent/tasks` and hold `SPEC.md`. Each entry carries
   `agent_id`, and only an agent's latest entry counts, so a resumed agent's stops are not added up.
   `task_progress.agent_ends` is the one attribution both views use: an entry belongs to the stage of
-  the `stage_start` before it (else `other`), and per task a stage with any
-  `agent_end` shows their `tokens` total and the summed `output` in `crew ls --cost` and `crew
-  report` instead of `tokens_reported`. A transcript with no usage field records nothing.
+  the `stage_start` before it (else `other`). A transcript with no usage field records nothing.
+- **One token measure.** `task_progress.task_usage_totals` is what `crew ls --cost`, `crew ls --json`,
+  `crew report` and the TUI show: **new** tokens (`input + output + cache_write`) and **cache reads**,
+  each summed over an agent's calls and over the task's agents (each `agent_id` once). Each run of a
+  stage with no `agent_end` adds its `stage_end`'s `tokens_reported` as new, marked `~` (a final
+  context, not a sum). `crew ls --cost` reads `new 106k, cache reads 401k; review: 2 personas, new 106k`;
+  `crew report` labels its line `tokens (last 30 days, all tasks)` because its window includes DONE
+  tasks the tasks view hides. At the window's edge an agent counts when its latest `agent_end` falls
+  inside, with its whole run, so a resumed agent brings the usage from before the window with it. The
+  TUI's TOKENS column and total line sum the rows on screen; running agents' tokens (`task_live.py`)
+  appear only in ACTIVITY and the workers view.
 
 ## Hooks
 

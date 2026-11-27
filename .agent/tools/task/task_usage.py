@@ -35,6 +35,15 @@ def is_task(path: Path) -> bool:
     return resolved.parent == tasks and (resolved / "SPEC.md").is_file()
 
 
+def text_of(content: object) -> str:
+    """The text of a message's content: a string, or its text blocks joined."""
+    if isinstance(content, str):
+        return content
+    blocks = content if isinstance(content, list) else []
+    texts = [block for block in blocks if isinstance(block, dict) and block.get("type") == "text"]
+    return "\n".join(str(block.get("text") or "") for block in texts)
+
+
 def count(value: object) -> int:
     return value if isinstance(value, int) and value > 0 else 0
 

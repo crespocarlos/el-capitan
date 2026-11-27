@@ -36,19 +36,29 @@ ISSUE = "https://github.com/acme/widgets/issues/12"
 PR = "https://github.com/acme/widgets/pull/{}"
 
 
+def agent_end(agent_id: str, new: int, cache_read: int) -> str:
+    """An `agent_end` METRIC whose new tokens (input + output + cache_write) total `new`."""
+    return (f"METRIC: agent_end agent=crew-builder agent_id={agent_id} tokens=99000 input=10 output=990 "
+            f"cache_read={cache_read} cache_write={new - 1000}")
+
+
 def seed(home: Path) -> Path:
     """Tasks: running with an issue and a PR, blocked with a dead stage, stale under a live lock, done with two PRs;
-    worktrees: fresh, stale, malformed, no lock."""
+    worktrees: fresh, stale, malformed, no lock. Tokens: 259k from an agent, `-`, ~259k reported, 1.1M from agents."""
     tasks = home / ".agent" / "tasks"
     specs = (
         ("T1", "running", "IMPLEMENTING", "acme/widgets", f"Issue: {ISSUE}\n\n- [x] a\n- [ ] b\n",
-         [(5, "METRIC: stage_start stage=review"), (4, "METRIC: stage_end stage=review"),
+         [(5, "METRIC: stage_start stage=review"), (4.5, agent_end("a1", 259_000, 401_000)),
+          (4, "METRIC: stage_end stage=review"),
           (2, "METRIC: stage_start stage=implement workers=2"), (2, f"PR: {PR.format(9)}")]),
         ("T2", "blocked", "APPROVED", "acme/gadgets", "",
          [(8, "METRIC: stage_start stage=review"), (1, "BLOCKED: waiting for keys")]),
-        ("T3", "idle", "IMPLEMENTING", "acme/widgets", "", [(20 * 24, "TRANSITION: APPROVED → IMPLEMENTING")]),
+        ("T3", "idle", "IMPLEMENTING", "acme/widgets", "",
+         [(20 * 24 + 1, "METRIC: stage_end stage=implement workers=1 tokens_reported=259000"),
+          (20 * 24, "TRANSITION: APPROVED → IMPLEMENTING")]),
         ("T4", "shipped", "DONE", "acme/widgets", "",
-         [(50, "METRIC: stage_start stage=review"), (49, f"PR opened: {PR.format(7)}"), (49, f"PR: {PR.format(8)}")]),
+         [(50, "METRIC: stage_start stage=review"), (49.5, agent_end("a4", 600_000, 1000)),
+          (49.4, agent_end("a5", 500_000, 2000)), (49, f"PR opened: {PR.format(7)}"), (49, f"PR: {PR.format(8)}")]),
     )
     for uuid, slug, status, repo, body, progress in specs:
         task = tasks / uuid
@@ -72,6 +82,7 @@ def seed(home: Path) -> Path:
 def home(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(tmp))
     monkeypatch.delenv("CREW_MEMORY_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)  # no transcript outside the temp home is read
     monkeypatch.chdir(tmp)
     seed(tmp)
     return tmp
@@ -103,23 +114,161 @@ def test_tasks_view_order_and_done_rows(home: Path, config: str | None, filters:
 
 
 @pytest.mark.parametrize("slug,cells,links", [
-    ("running", ("#12", "#9", "1/2", "running implement", "-", ""), {"ISSUE": ISSUE, "PR": PR.format(9)}),
-    ("blocked", ("-", "-", "-", "stuck review", "-", "BLOCKED: waiting for keys"), {}),
-    ("idle", ("-", "-", "-", "running implement", "-", "stale"), {}),
-    ("shipped", ("-", "2 PRs", "-", "idle 2d", "?", ""), {"PR": PR.format(8)}),
+    ("running", ("#12", "#9", "1/2", "running implement", "259k", "-", ""), {"ISSUE": ISSUE, "PR": PR.format(9)}),
+    ("blocked", ("-", "-", "-", "stuck review", "-", "-", "BLOCKED: waiting for keys"), {}),
+    ("idle", ("-", "-", "-", "running implement", "~259k", "-", "stale"), {}),
+    ("shipped", ("-", "2 PRs", "-", "idle 2d", "1.1M", "?", ""), {"PR": PR.format(8)}),
 ])
 def test_task_cells(home: Path, slug: str, cells: tuple, links: dict) -> None:
-    """ISSUE, PR, PROGRESS, ACTIVITY (an open stage, a live lock, a stage past 6 h, the last entry), LANDED, NOTE."""
+    """ISSUE, PR, PROGRESS, ACTIVITY (an open stage, a live lock, a stage past 6 h, the last entry), TOKENS (agents'
+    new tokens, none, a `tokens_reported` as `~`, millions), LANDED, NOTE."""
     view = views(home, Filters(done=True))["tasks"]
     index = [row[1] for row in view.rows].index(slug)
-    assert view.header[3:] == ("ISSUE", "PR", "PROGRESS", "ACTIVITY", "LANDED", "NOTE")
+    assert view.header[3:] == ("ISSUE", "PR", "PROGRESS", "ACTIVITY", "TOKENS", "LANDED", "NOTE")
     assert (view.rows[index][3:], view.links[index]) == (cells, links)
+
+
+@pytest.mark.parametrize("filters,total", [
+    (Filters(), "tokens: new ~518k, cache reads 401k across 3 tasks shown"),
+    (Filters(done=True), "tokens: new ~1.6M, cache reads 404k across 4 tasks shown"),
+    (Filters(repo="gadgets"), "tokens: new -, cache reads - across 1 tasks shown"),
+])
+def test_the_total_line_sums_the_rows_shown(home: Path, filters: Filters, total: str) -> None:
+    """The total follows the filters: DONE rows and another repository change it."""
+    assert total in views(home, filters)["tasks"].notes
+
+
+CALL = {"input_tokens": 1000, "output_tokens": 1000, "cache_read_input_tokens": 50000, "cache_creation_input_tokens": 0}
+
+
+def iso(minutes_ago: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(NOW - minutes_ago * 60))
+
+
+def transcript(home: Path, agent_id: str, task: str, calls: int, minutes_ago: float = 1, session: str = "s1",
+               said_minutes_ago: float | None = None) -> Path:
+    """A subagent transcript under the temp `~/.claude`: the dispatch prompt naming `task`, then `calls` assistant
+    calls of 2k new tokens each (the first repeated, as one message per content block is), stamped
+    `said_minutes_ago` (default: when the file was last modified)."""
+    folder = home / ".claude" / "projects" / "-repo" / session / "subagents"
+    folder.mkdir(parents=True, exist_ok=True)
+    text = {"type": "text", "text": f"crew-task: {task}\nGo."}
+    prompt = {"type": "user", "message": {"role": "user", "content": [text]}}
+    said = iso(minutes_ago if said_minutes_ago is None else said_minutes_ago)
+    calls_made = [1, *range(1, calls + 1)]
+    turns = [prompt] + [{"type": "assistant", "timestamp": said, "message": {"id": f"m{n}", "usage": CALL}}
+                        for n in calls_made]
+    path = folder / f"agent-{agent_id}.jsonl"
+    path.write_text("".join(json.dumps(turn) + "\n" for turn in turns))
+    os.utime(path, (NOW - minutes_ago * 60,) * 2)
+    return path
+
+
+def test_live_tokens_of_running_agents(home: Path) -> None:
+    """One running agent shows in ACTIVITY and the workers view; two add up; TOKENS and the total never change."""
+    tasks = home / ".agent" / "tasks"
+    transcript(home, "b1", str(tasks / "T1"), 46)
+    before = views(home, Filters())
+    running = before["tasks"].rows[0]
+    assert running[1] == "running" and running[6:8] == ("running implement · 92k", "259k"), running
+    assert ("agent", "running", "agent-b1", "1m", "new 92k, cache reads 2.3M") in before["workers"].rows
+    transcript(home, "b2", str(tasks / "T1"), 44, session="s2")
+    after = views(home, Filters())
+    assert after["tasks"].rows[0][6:8] == ("running implement · 2 · 180k", "259k")
+    assert before["tasks"].notes == after["tasks"].notes, "live figures never reach the total"
+
+
+@pytest.mark.parametrize("case,minutes_ago,said,shown", [
+    ("resumed", 1, 1, True),  # an agent_end 6 minutes ago, a message since
+    ("finished", 10, 10, False),  # the agent_end is newer than the transcript
+    ("finished, written after its agent_end", 5.9, 6.2, False),  # mtime just after the hook, last message before it
+    ("idle", 20, 20, False),  # a transcript quiet for more than 15 minutes
+    ("unreadable", 1, 1, False),
+])
+def test_live_running_agent_rules(home: Path, case: str, minutes_ago: float, said: float, shown: bool) -> None:
+    tasks = home / ".agent" / "tasks"
+    path = transcript(home, "a1", str(tasks / "T2"), 5, minutes_ago=minutes_ago, said_minutes_ago=said)
+    if case.startswith(("resumed", "finished")):
+        progress = tasks / "T2" / "PROGRESS.md"
+        end = "METRIC: agent_end agent=x agent_id=a1 tokens=1 input=1 output=1 cache_read=1 cache_write=1"
+        progress.write_text(progress.read_text() + f"[{stamp(0.1)}] {end}\n")
+    if case == "unreadable":
+        path.chmod(0)
+    try:
+        activity = [row for row in views(home, Filters())["tasks"].rows if row[1] == "blocked"][0][6]
+    finally:
+        path.chmod(0o644)
+    assert activity == ("running review · 10k" if shown else "stuck review"), activity
+
+
+def test_live_reading_is_bounded_and_cached(home: Path) -> None:
+    """A transcript naming another task is read to its first user line and no further. Freshness is the file's own:
+    a fresh file in a session whose directories are an hour old is listed (a long-running agent), a file quiet past
+    15 minutes is not, and a `subagents` dir unchanged past 6 hours is not listed at all. A config dir reached twice
+    (a symlink) counts each transcript once. The cache carries a matching file's offset, so a refresh reads only the
+    lines added since, and drops a file once it is quiet past 15 minutes."""
+    from task_live import running_agents
+
+    tasks = home / ".agent" / "tasks"
+    other = transcript(home, "x1", str(home / "elsewhere"), 30, minutes_ago=2)
+    quiet = transcript(home, "q1", str(tasks / "T1"), 3, minutes_ago=20)
+    long = transcript(home, "l1", str(tasks / "T1"), 3, session="long")
+    ancient = transcript(home, "a1", str(tasks / "T1"), 3, session="ancient")
+    for path, hours in ((long, 1), (ancient, 7)):
+        for folder in (path.parent, path.parent.parent):
+            os.utime(folder, (NOW - hours * HOUR,) * 2)
+    mine = transcript(home, "m1", str(tasks / "T1"), 3)
+    (home / "link").symlink_to(home / ".claude")
+    cache: dict = {}
+    found = running_agents([tasks / "T1"], [home / ".claude", home / "link"], {}, NOW, cache)
+    assert sorted(agent.agent_id for agent in found[tasks / "T1"]) == ["l1", "m1"], found
+    key = os.path.realpath
+    assert cache[key(other)].offset == len(other.read_bytes().splitlines(keepends=True)[0]), "only the first user line"
+    assert key(quiet) not in cache and key(ancient) not in cache
+    partial = '{"type": "assi'
+    with mine.open("a") as handle:
+        handle.write(json.dumps({"type": "assistant", "message": {"id": "m9", "usage": CALL}}) + "\n" + partial)
+    os.utime(mine, (NOW - 30,) * 2)
+    os.utime(other, (NOW - 20 * 60,) * 2)
+    again = running_agents([tasks / "T1"], [home / ".claude"], {}, NOW, cache)
+    assert [agent.new for agent in again[tasks / "T1"] if agent.agent_id == "m1"] == [8000]
+    assert cache[key(mine)].offset == len(mine.read_bytes()) - len(partial)
+    assert key(other) not in cache, "a quiet file leaves the cache, a non-matching one included"
+
+
+@pytest.mark.parametrize("later,fraction,running", [(0, ".700Z", False), (1, ".000Z", True)])
+def test_live_agent_end_in_the_same_second_as_the_last_message(home: Path, later: int, fraction: str,
+                                                                running: bool) -> None:
+    """`agent_end` is stamped to the second and the transcript to the millisecond: a last message in the very second
+    the hook stamped is finished; one in the next second is a resumed agent, running."""
+    from task_live import running_agents
+
+    tasks = home / ".agent" / "tasks"
+    path = transcript(home, "s1", str(tasks / "T1"), 2, minutes_ago=0.5)
+    ended = int(NOW - 60)
+    said = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ended + later)) + fraction
+    path.write_text(path.read_text().replace(iso(0.5), said))
+    os.utime(path, (NOW - 30,) * 2)
+    found = running_agents([tasks / "T1"], [home / ".claude"], {"s1": float(ended)}, NOW)
+    assert bool(found) is running, found
+
+
+def test_live_config_dirs_count_each_real_dir_once(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`~/.claude`, `$CLAUDE_CONFIG_DIR` (here a symlink to it) and the manifest's `config_dirs` (a `~/` entry
+    expanded): each real directory once."""
+    (home / ".claude").mkdir()
+    (home / "other").mkdir()
+    (home / "alias").symlink_to(home / ".claude")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home / "alias"))
+    manifest = {"config_dirs": ["~/other", str(home / ".claude")]}
+    (home / ".agent" / "install-manifest.json").write_text(json.dumps(manifest))
+    assert tui_model.config_dirs(home) == [home / ".claude", home / "other"]
 
 
 def test_the_explicit_landed_read(home: Path) -> None:
     landed = landed_for(home / ".agent" / "tasks", Filters(done=True), reader)
     shipped = [row for row in views(home, Filters(done=True), landed)["tasks"].rows if row[1] == "shipped"]
-    assert shipped[0][7] == "yes"
+    assert shipped[0][8] == "yes"
 
 
 def test_workers_view_lists_running_stages_and_locks(home: Path) -> None:
@@ -186,6 +335,44 @@ def test_once_prints_every_view_without_textual(home: Path) -> None:
     assert done.returncode == 0, done.stderr
     assert all(f"== {name} ==" in done.stdout for name in ("tasks", "workers", "report")) and "running" in done.stdout
     assert " #12 " in done.stdout and "[link" not in done.stdout, "--once prints the issue as plain text"
+    assert " TOKENS " in done.stdout and "tokens: new ~518k, cache reads 401k across 3 tasks shown" in done.stdout
+
+
+def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
+    """At COLUMNS=120 every table line fits; when NOTE alone can absorb the excess, every TASK is printed in full and
+    the cut NOTE ends with `…`; an ON-HOLD task's STATE is `ON-HOLD` and `was APPROVED` starts its NOTE; REPO drops
+    the owner every row shares. `fitted` cuts TASK only once NOTE is down to its header's width."""
+    from task_report import fitted
+
+    tasks = home / ".agent" / "tasks"
+    progress = tasks / "T2" / "PROGRESS.md"
+    progress.write_text(progress.read_text() + f"[{stamp(0.5)}] BLOCKED: {'waiting for the keys ' * 12}\n")
+    held = tasks / "T5"
+    held.mkdir()
+    (held / "SPEC.md").write_text("# held\n\n## Status\nON-HOLD (auto-hold: idle 15d; was APPROVED)\n")
+    (held / ".task-id").write_text(json.dumps({"slug": "the-tokens-of-running-agents-x",
+                                               "repo_remote_url": "git@github.com:acme/el-capitan.git"}))
+    (held / "PROGRESS.md").write_text(f"[{stamp(1)}] TRANSITION: APPROVED → ON-HOLD\n")
+
+    def table(columns: str) -> list[str]:
+        argv = [sys.executable, "-S", str(ENTRY), "--once", "--repo", "all", "--tasks-dir", str(tasks)]
+        done = subprocess.run(argv, capture_output=True, text=True, cwd=home, timeout=60,
+                              env={**os.environ, "TERM": "dumb", "COLUMNS": columns})
+        assert done.returncode == 0, done.stderr
+        return done.stdout.split("\n\n")[0].splitlines()[1:-2]  # the header and the rows, without the note lines
+
+    wide, narrow = table("1000"), table("120")
+    note = wide[0].index("NOTE")
+    assert max(len(line) for line in wide) - 120 <= max(len(line) for line in wide) - note - len("NOTE"), \
+        "the fixture's NOTE alone can absorb the excess"
+    assert max(len(line) for line in narrow) <= 120, narrow
+    for full, cut in zip(wide[1:], narrow[1:]):
+        assert cut[:note].rstrip() == full[:note].rstrip(), "every column before NOTE, TASK included, is untouched"
+        assert full[note:].startswith("was APPROVED") == full.startswith("ON-HOLD ") and "(was" not in full
+        assert cut == full or cut.endswith("…"), (full, cut)
+    assert any(cut.endswith("…") for cut in narrow) and "acme/" not in "\n".join(wide)
+    assert any(line.startswith("ON-HOLD ") for line in wide)
+    assert fitted([("TASK", "NOTE"), ("abcdefgh", "xxxxxxxx")], 12) == [("TASK", "NOTE"), ("abcde…", "xxx…")]
 
 
 def test_app_switches_views_filters_moves_and_never_writes(home: Path) -> None:
@@ -210,6 +397,8 @@ def test_app_switches_views_filters_moves_and_never_writes(home: Path) -> None:
         async with app.run_test() as pilot:
             await pilot.press("o", "O")
             cell = str(app.query_one("#table").get_cell_at((0, 3)))
+            tokens = str(app.query_one("#table").get_cell_at((0, 7)))
+            assert tokens == "259k" and "tokens: new ~518k" in str(app.query_one("#notes").render()), tokens
             for keys in (["r"], ["w"], ["p"], ["t", "a"], ["g"], ["slash", *"status:approved", "enter"]):
                 await pilot.press(*keys)
                 if keys == ["g"]:

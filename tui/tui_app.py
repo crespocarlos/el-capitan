@@ -20,7 +20,7 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
 
-from tui_model import LINKED, Filters, Move, View, collect, landed_for, parse_filter
+from tui_model import LINKED, Filters, Move, Seen, View, collect, landed_for, parse_filter
 
 Runner = Callable[[list[str]], tuple[int, str, str]]
 DIALOG = ("align: center middle; #box { width: 90%; height: auto; max-height: 80%; "
@@ -133,6 +133,7 @@ class CrewApp(App):
         self.view_name = "tasks"
         self.landed: dict[str, str] | None = None
         self.views: dict[str, View] = {}
+        self.live_cache: dict[str, Seen] = {}  # each running agent's transcript offset and sums, kept between refreshes
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -147,7 +148,7 @@ class CrewApp(App):
         self.set_interval(self.interval, self.action_reload)
 
     def action_reload(self) -> None:
-        self.views = collect(self.tasks_dir, self.filters, self.landed)
+        self.views = collect(self.tasks_dir, self.filters, self.landed, live_cache=self.live_cache)
         self.draw()
 
     def draw(self) -> None:

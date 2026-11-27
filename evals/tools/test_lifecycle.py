@@ -784,12 +784,13 @@ def test_agent_end_recorded_by_the_subagent_stop_hook(tmp: Path, case: str) -> N
     (other / "PROGRESS.md").write_text("[2026-11-27T10:00:00Z] METRIC: stage_start stage=implement\n"
                                        "[2026-11-27T11:00:00Z] METRIC: stage_end stage=implement workers=1 tokens_reported=5000\n", encoding="utf-8")
     cost = cli(LS, "--tasks-dir", str(task_dir.parent), "--cost").stdout
-    check("crew ls --cost shows that context and the summed output, and the other task its own report",
-          "built: implement: 1 workers, 43k tokens, 3k output" in cost and "cursor: implement: 1 workers, 5k tokens" in cost, cost)
+    check("crew ls --cost shows the new tokens (input + output + cache_write, 7k) and cache reads, the other task its report",
+          "built: new 7k, cache reads 60k; implement: 1 workers, new 7k" in cost
+          and "cursor: new ~5k, cache reads -; implement: 1 workers, new ~5k" in cost, cost)
     report = cli(LS, "--tasks-dir", str(task_dir.parent), "--report", "--since", "36500d", "--repo", "all", env={"HOME": str(home)}).stdout
-    check("crew report applies the replacement per task: 43k + 5k in one stage, and the agent apart",
-          "stage implement: 1 run(s), 48k tokens, 3k output, from 1 agent(s)" in report
-          and "agent crew-builder: 1 run(s), 43k tokens, 3k output" in report, report)
+    check("crew report applies the replacement per task: 7k + ~5k in one stage, and the agent apart",
+          "stage implement: 1 run(s), new ~12k, cache reads 60k, from 1 agent(s)" in report
+          and "agent crew-builder: 1 run(s), new 7k, cache reads 60k" in report, report)
 
 
 def test_agent_end_counts_a_resumed_agent_once(tmp: Path) -> None:
@@ -803,9 +804,9 @@ def test_agent_end_counts_a_resumed_agent_once(tmp: Path) -> None:
     ends = [line for line in progress_text(task_dir).splitlines() if "agent_end" in line]
     cost = cli(LS, "--tasks-dir", str(task_dir.parent), "--cost").stdout
     report = cli(LS, "--tasks-dir", str(task_dir.parent), "--report", "--since", "36500d", "--repo", "all", env={"HOME": str(home)}).stdout
-    check("three entries, counted as one agent: the last context (4k) and its summed output (3k)",
-          len(ends) == 3 and "built: implement: 1 workers, 4k tokens, 3k output" in cost
-          and "stage implement: 4k tokens, 3k output, from 1 agent(s)" in report, (ends, cost, report))
+    check("three entries, counted as one agent: the latest stop's new tokens (6k input + 3k output)",
+          len(ends) == 3 and "built: new 9k, cache reads 0; implement: 1 workers, new 9k" in cost
+          and "stage implement: new 9k, cache reads 0, from 1 agent(s)" in report, (ends, cost, report))
 
 
 def test_crew_resolve_task_dir_prefers_the_open_task(tmp: Path) -> None:

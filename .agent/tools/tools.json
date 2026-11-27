@@ -638,6 +638,15 @@
       "smoke": "imported by crew-review-findings.py"
     },
     {
+      "name": "task_live.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by tui/tui_model.py: the new tokens and cache reads of agents still running, read from their transcripts with bounded discovery (fresh transcripts in recently changed subagents dirs, the `crew-task:` first user line) and a per-file cache the caller keeps",
+      "smoke": "imported by tui/tui_model.py"
+    },
+    {
       "name": "task_record_pr.py",
       "dir": "task",
       "kind": "module",

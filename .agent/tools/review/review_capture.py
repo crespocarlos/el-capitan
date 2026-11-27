@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from review_render import provenance_path, saved_persona, store_reply
-from task_usage import record_usage
+from task_usage import record_usage, text_of
 
 from lib.files import atomic_write
 
@@ -53,15 +53,6 @@ def entries(path: Path) -> list[dict]:
         if isinstance(item, dict) and isinstance(item.get("message"), dict):
             found.append(item)
     return found
-
-
-def text_of(content: object) -> str:
-    """The text of a message's content: a string, or its text blocks joined."""
-    if isinstance(content, str):
-        return content
-    blocks = content if isinstance(content, list) else []
-    texts = [block for block in blocks if isinstance(block, dict) and block.get("type") == "text"]
-    return "\n".join(str(block.get("text") or "") for block in texts)
 
 
 def first_prompt(found: list[dict]) -> str:

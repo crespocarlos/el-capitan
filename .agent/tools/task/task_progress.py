@@ -1,9 +1,9 @@
 """The one owner of a task's PROGRESS.md: append and read entries, the BLOCKED, METRIC, cost and PR views.
 
-An entry is `[<UTC stamp>] <KIND>: <body>` (`YYYY-MM-DDTHH:MM:SSZ`, `lib.clock`); legacy local stamps
-still parse. `CREW_WORKFLOW`/`CREW_MEMBER` add a JSON suffix to a transition. A stage cost line
-(`stage_start`/`stage_end ... tokens_reported=<n|unknown>`) and `agent_end ... tokens=<n>` are validated here;
-an `agent_end` counts toward the stage of the `stage_start` before it, and replaces that stage's `tokens_reported`.
+An entry is `[<UTC stamp>] <KIND>: <body>` (`YYYY-MM-DDTHH:MM:SSZ`, `lib.clock`); legacy local stamps still parse.
+`CREW_WORKFLOW`/`CREW_MEMBER` add a JSON suffix to a transition. `stage_start`/`stage_end ... tokens_reported=<n>`
+and `agent_end ... tokens=<n>` are validated here; an `agent_end` counts toward the stage of the `stage_start` before
+it and replaces that stage's `tokens_reported`. `task_usage_totals` is the one token measure (new and cache reads).
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,9 +20,9 @@ from lib.clock import parse_stamp, utc_stamp
 
 STAGES = {"implement": "workers", "review": "personas"}
 KEYS = ("stage_start", "stage_end")
-METRIC = re.compile(r"METRIC:\s+(stage_start|stage_end|agent_end)\b(.*)$")
 AGENT_END = "agent_end"
 AGENT_COUNTS = ("tokens", "input", "output", "cache_read", "cache_write")
+NEW_FIELDS = ("input", "output", "cache_write")  # an agent's new tokens: every summed count but the cache reads
 UNSTAGED = "other"  # the stage of an `agent_end` with no `stage_start` before it
 
 
@@ -71,16 +72,86 @@ def cost_line(given: dict[str, str]) -> str:
     return f"{stage}: " + ", ".join(parts)
 
 
-def stage_ends(progress: str) -> dict[str, dict[str, str]]:
-    """The last `stage_end` per stage in a PROGRESS.md."""
-    latest: dict[str, dict[str, str]] = {}
-    for line in progress.splitlines():
-        found = METRIC.search(line)
-        if found and found.group(1) == "stage_end":
-            given = fields(found.group(2).split())
-            if given.get("stage") in STAGES:
-                latest[given["stage"]] = given
-    return latest
+def number(value: object) -> int:
+    """A count field (a digit string or an int) as an int; anything else is 0."""
+    text = str(value)
+    return int(text) if text.isdigit() else 0
+
+
+def new_tokens(counts: Mapping[str, object]) -> int:
+    """An agent's new tokens: input + output + cache_write, each already summed over its calls."""
+    return sum(number(counts.get(key, 0)) for key in NEW_FIELDS)
+
+
+def count_text(value: int | None, approximate: bool = False) -> str:
+    """`1.1M`, `259k` or `512`, `~` first when approximate; `-` when unknown."""
+    if value is None:
+        return "-"
+    text = f"{value / 1e6:.1f}M" if value >= 999_500 else f"{round(value / 1000)}k" if value >= 1000 else str(value)
+    return ("~" if approximate else "") + text
+
+
+def usage_text(usage: Mapping[str, object]) -> str:
+    """`new 106k, cache reads 401k` for a `task_usage_totals` result."""
+    return f"new {count_text(usage['new'], bool(usage['approximate']))}, cache reads {count_text(usage['cache_read'])}"
+
+
+def sum_usage(items: list[Mapping[str, object]]) -> dict:
+    """`new` and `cache_read` summed over `items` (None when no item knows it); approximate when any known `new` is."""
+    news = [item["new"] for item in items if item["new"] is not None]
+    reads = [item["cache_read"] for item in items if item["cache_read"] is not None]
+    return {"new": sum(news) if news else None, "cache_read": sum(reads) if reads else None,
+            "approximate": any(bool(item["approximate"]) for item in items if item["new"] is not None)}
+
+
+def stage_usage(entries: list[Entry], start: datetime | None = None) -> dict[str, dict]:
+    """Per stage: `new`, `cache_read`, `approximate`, `agents` (True when agents' entries counted), and `count`
+    (agents, else the reported workers or personas) with its `noun`.
+
+    A stage's agents (`agent_ends`: each id once) sum their `new_tokens` and `cache_read`. Each run of the stage (a
+    `stage_start` to its `stage_end`) with no `agent_end` adds its `tokens_reported` as `new`, approximate (a final
+    context, not a sum), with no cache reads. `start` keeps only the entries at or after it.
+    """
+    def kept(entry: Entry) -> bool:
+        return start is None or (entry.at is not None and entry.at >= start)
+
+    reported: dict[str, dict] = {}  # stage: the uncovered runs' summed `tokens_reported` and the last count
+    covered: dict[str, bool] = {}  # stage: its current run has an `agent_end`
+    current = UNSTAGED
+    for entry in entries:
+        words = entry.body.split()
+        if entry.kind != "METRIC" or not words:
+            continue
+        given = fields(words)
+        stage, tokens = given.get("stage", ""), given.get("tokens_reported", "")
+        if words[0] == "stage_start" and stage in STAGES:
+            current, covered[stage] = stage, False
+        elif words[0] == AGENT_END and given.get("tokens", "").isdigit():
+            covered[current] = True
+        elif words[0] == "stage_end" and stage in STAGES and kept(entry):
+            run = reported.setdefault(stage, {"new": None, "count": 0})
+            run["count"] = number(given.get(STAGES[stage], 0)) or run["count"]
+            if tokens.isdigit() and not covered.get(stage):
+                run["new"] = (run["new"] or 0) + int(tokens)
+            covered[stage] = False
+    agents = [given for entry, given in agent_ends(entries) if kept(entry)]
+    usage: dict[str, dict] = {}
+    for stage in dict.fromkeys([*reported, *(agent["stage"] for agent in agents)]):
+        mine = [agent for agent in agents if agent["stage"] == stage]
+        run = reported.get(stage, {"new": None, "count": 0})
+        items = [{"new": run["new"], "cache_read": None, "approximate": True}] if run["new"] is not None else []
+        if mine:
+            items.append({"new": sum(new_tokens(agent) for agent in mine), "approximate": False,
+                          "cache_read": sum(number(agent.get("cache_read", 0)) for agent in mine)})
+        usage[stage] = {**sum_usage(items), "agents": bool(mine), "count": len(mine) if mine else run["count"],
+                        "noun": STAGES.get(stage, "workers")}
+    return usage
+
+
+def task_usage_totals(entries: list[Entry], start: datetime | None = None) -> dict:
+    """One task's `{"new", "cache_read", "approximate"}`: its `stage_usage` summed, the one measure `crew ls --cost`,
+    `crew ls --json`, `crew report` and the TUI show."""
+    return sum_usage(list(stage_usage(entries, start).values()))
 
 
 def agent_ends(entries: list[Entry]) -> list[tuple[Entry, dict[str, str]]]:
@@ -102,22 +173,16 @@ def agent_ends(entries: list[Entry]) -> list[tuple[Entry, dict[str, str]]]:
     return list(latest.values())
 
 
-def stage_costs(progress: str) -> dict[str, dict[str, str]]:
-    """The cost fields per stage: the last `stage_end`, its tokens replaced by any `agent_end` total (each agent's
-    final context, never the summed cache reads), with the summed `output` beside it."""
-    costs = stage_ends(progress)
-    agents = [given for _, given in agent_ends([parse_entry(line) for line in progress.splitlines() if line.strip()])]
-    for stage in dict.fromkeys(agent["stage"] for agent in agents):
-        mine = [agent for agent in agents if agent["stage"] == stage]
-        given = {"stage": stage, **costs.get(stage, {}), "tokens_reported": str(sum(int(a["tokens"]) for a in mine)),
-                 "output": str(sum(int(a.get("output", "0")) for a in mine if a.get("output", "0").isdigit()))}
-        given.setdefault(STAGES.get(stage, "workers"), str(len(mine)))
-        costs[stage] = given
-    return costs
-
-
 def task_summary(task_dir: Path) -> str:
-    return "; ".join(cost_line(g) for g in stage_costs(read_text(task_dir)).values())
+    """`new 790k, cache reads 401k; implement: 3 workers, new ~410k; ...`, or "" when no stage recorded tokens."""
+    stages = stage_usage(read_entries(task_dir))
+    if not stages:
+        return ""
+    parts = [usage_text(sum_usage(list(stages.values())))]
+    for stage, data in stages.items():
+        count = [f"{data['count']} {data['noun']}"] if data["count"] else []
+        parts.append(f"{stage}: " + ", ".join([*count, f"new {count_text(data['new'], data['approximate'])}"]))
+    return "; ".join(parts)
 
 
 def print_cost(tasks_dir: Path) -> int:

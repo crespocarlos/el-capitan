@@ -408,7 +408,8 @@ def seeded(tasks: Path, slug: str, state: str, repo: str | None, days: float, li
 def listing_home(tmp: Path) -> tuple[Path, Path]:
     """Four tasks and a checkout whose origin is acme/widgets: the cwd a default `--repo` reads."""
     tasks, repo = tmp / "tasks", tmp / "checkout"
-    seeded(tasks, "active", "IMPLEMENTING", "acme/widgets", 2, mtime_days=40)
+    seeded(tasks, "active", "IMPLEMENTING", "acme/widgets", 2, mtime_days=40,
+           lines=((2.5, "METRIC: agent_end agent_id=a tokens=9 input=1 output=2 cache_read=3 cache_write=4"),))
     seeded(tasks, "quiet", "IMPLEMENTING", "acme/widgets", 20)
     seeded(tasks, "other", "DRAFTING", "acme/gadgets", 1)
     seeded(tasks, "local", "DRAFTING", None, 1)
@@ -444,10 +445,44 @@ def test_crew_ls_age_comes_from_progress(tmp: Path) -> None:
     check("activity and stale follow PROGRESS; the repo is recorded",
           (records["active"]["activity_days"], records["active"]["stale"], records["quiet"]["activity_days"], records["quiet"]["stale"])
           == (2, False, 20, True) and records["quiet"]["repo"] == "acme/widgets" and records["local"]["repo"] == "", records)
+    check("tokens is the one measure, null when nothing was recorded",
+          (records["active"]["tokens"], records["quiet"]["tokens"]) == ({"new": 7, "cache_read": 3, "approximate": False},
+                                                                        {"new": None, "cache_read": None, "approximate": False}), records)
     check("--md ends the table with a blank line before the stale line", "|\n\nstale: 1 IMPLEMENTING" in ls("--md").stdout)
     typo = ls("--status", "implmenting")
     check("an unknown --status exits 2 naming the allowed states", typo.returncode == 2 and "IMPLEMENTING" in typo.stderr, typo)
     check("an unmatched --repo says --repo all lists every task", "--repo all" in ls("--repo", "nowhere").stderr)
+
+
+END = "METRIC: agent_end agent=x agent_id={} tokens=99000 input={} output=1000 cache_read={} cache_write=5000"
+
+
+@pytest.mark.parametrize("lines, usage, text", [
+    (("METRIC: stage_start stage=review", END.format("a1", 100000, 401000)),
+     {"new": 106000, "cache_read": 401000, "approximate": False}, "new 106k, cache reads 401k"),
+    (("METRIC: stage_end stage=implement workers=1 tokens_reported=259000",),
+     {"new": 259000, "cache_read": None, "approximate": True}, "new ~259k, cache reads -"),
+    (("METRIC: stage_end stage=implement workers=1 tokens_reported=259000", "METRIC: stage_start stage=review",
+      END.format("a1", 100000, 401000)), {"new": 365000, "cache_read": 401000, "approximate": True}, "new ~365k, cache reads 401k"),
+    (("METRIC: stage_start stage=review", END.format("a1", 4000, 1000), END.format("a1", 100000, 401000)),
+     {"new": 106000, "cache_read": 401000, "approximate": False}, "new 106k, cache reads 401k"),
+    (("METRIC: stage_start stage=review", "METRIC: stage_end stage=review personas=2 tokens_reported=unknown"),
+     {"new": None, "cache_read": None, "approximate": False}, "new -, cache reads -"),
+    (("METRIC: stage_start stage=implement", "METRIC: stage_end stage=implement workers=1 tokens_reported=200000",
+      "METRIC: stage_start stage=implement", "METRIC: stage_end stage=implement workers=1 tokens_reported=59000",
+      "METRIC: stage_start stage=implement", END.format("a1", 100000, 401000),
+      "METRIC: stage_end stage=implement workers=1 tokens_reported=99000"),
+     {"new": 365000, "cache_read": 401000, "approximate": True}, "new ~365k, cache reads 401k"),
+], ids=["agent_end only", "tokens_reported only", "both in different stages", "a resumed agent counted once", "nothing recorded",
+        "re-runs add their tokens_reported unless an agent_end covers the run"])
+def test_task_usage_totals(lines: tuple, usage: dict, text: str) -> None:
+    """One measure: new (input + output + cache_write) and cache reads summed over each agent's latest `agent_end`;
+    a stage with only `tokens_reported` adds that final context as `new`, approximate."""
+    import task_progress
+
+    entries = [task_progress.parse_entry(f"[2026-11-27T10:0{i}:00Z] {line}") for i, line in enumerate(lines)]
+    found = task_progress.task_usage_totals(entries)
+    check("the totals and their text", (found, task_progress.usage_text(found)) == (usage, text), found)
 
 
 def test_crew_ls_report(tmp: Path) -> None:
@@ -456,9 +491,10 @@ def test_crew_ls_report(tmp: Path) -> None:
     seeded(tasks, "built", "IMPLEMENTING", "acme/widgets", 1, review="pass",
            lines=((2.5, "METRIC: stage_start stage=implement"), (1.5, "METRIC: stage_end stage=implement workers=2 tokens_reported=4000")),
            outcomes=(("blocking", "fixed"), ("nit", "deferred"), ("blocking", "fixed")))
-    seeded(tasks, "shipped", "DONE", "acme/gadgets", 5, review="warn", lines=((5, "TRANSITION: IMPLEMENTING → DONE"),),
-           outcomes=(("blocking", "rejected"),))
-    seeded(tasks, "ancient", "DONE", "acme/widgets", 60, lines=((60, "TRANSITION: IMPLEMENTING → DONE"),), outcomes=(("nit", "fixed"),))
+    seeded(tasks, "shipped", "DONE", "acme/gadgets", 5, review="warn", outcomes=(("blocking", "rejected"),),
+           lines=((5.5, "METRIC: agent_end agent_id=s tokens=9 input=1 output=2 cache_read=3 cache_write=4"), (5, "TRANSITION: IMPLEMENTING → DONE")))
+    seeded(tasks, "ancient", "DONE", "acme/widgets", 60, outcomes=(("nit", "fixed"),),
+           lines=((60.5, "METRIC: agent_end agent_id=a tokens=9 input=100 output=0 cache_read=0 cache_write=0"), (60, "TRANSITION: IMPLEMENTING → DONE")))
     (memory / ".sessions").mkdir(parents=True)
     (memory / ".sessions" / "s.jsonl").write_text("".join(json.dumps({"ts": ago(d), "tool": tool, "failure": failed}) + "\n"
                                                          for d, tool, failed in ((1, "Bash", True), (1, "Read", False), (90, "Bash", True))))
@@ -471,13 +507,18 @@ def test_crew_ls_report(tmp: Path) -> None:
     check("the 30-day report counts what happened in the window and nothing older",
           (data["opened"], data["closed"], data["verdicts"], data["findings"]) == (2, 1, {"pass": 1, "warn": 1},
                                                                                      {"blocking": {"fixed": 2, "rejected": 1}, "nit": {"deferred": 1}})
-          and data["stages"]["implement"]["tokens"] == 4000 and abs(data["stages"]["implement"]["median_seconds"] - 86400) <= 2
+          and data["stages"]["implement"]["new"] == 4000 and abs(data["stages"]["implement"]["median_seconds"] - 86400) <= 2
           and data["tools"] == {"calls": 2, "failures": 1, "by_tool": {"Bash": 1}}, data)
     narrowed = json.loads(report("--json", "--repo", "acme/widgets", "--since", "3d").stdout)
     check("--repo and --since narrow it", (narrowed["opened"], narrowed["closed"], narrowed["findings"])
           == (1, 0, {"blocking": {"fixed": 2}, "nit": {"deferred": 1}}), narrowed)
     text = report()
     check("the text report renders one line per section", text.returncode == 0 and len(text.stdout.splitlines()) >= 7, text)
+    listed = cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), "--repo", "all", env={"HOME": str(tmp)}, cwd=tmp).stdout
+    check("the report's tokens state their own scope: the window over every task, the DONE one the tasks view hides",
+          data["tokens"] == {"new": 4007, "cache_read": 3, "approximate": True}
+          and "tokens (last 30 days, all tasks): new ~4k, cache reads 3" in text.stdout
+          and " built " in listed and " shipped " not in listed, (data["tokens"], text.stdout, listed))
     check("a window past the retention policy says what it cannot count",
           json.loads(report("--json", "--since", "200d").stdout)["retention_note"] and not data["retention_note"])
     check("a bad --since is refused with exit 2", report("--since", "a month").returncode == 2)

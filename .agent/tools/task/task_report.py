@@ -1,8 +1,8 @@
 """Rendering task state for `crew-ls.py` (table, JSON, the landed section, the task cells) and `reconcile`.
 
 Rendering never writes, so a listing failure is a display problem; `reconcile` applies holds and
-statuses through `task_state` and records branch PRs through `task_progress`. The ISSUE, PR, PROGRESS
-and ACTIVITY cells are shared by `crew ls --json` (always one `lib.output.json_envelope` object) and the TUI.
+statuses through `task_state` and records branch PRs through `task_progress`. The ISSUE, PR, PROGRESS,
+ACTIVITY and TOKENS cells are shared by `crew ls --json` (one `lib.output.json_envelope` object) and the TUI.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 from ls_data import STALE_DAYS, landed_lines, landed_rows, snapshot, stale
 from ls_report import stage_pairs
 from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
-from task_progress import Entry, append_pr, blocked_reason, read_entries
+from task_progress import Entry, append_pr, blocked_reason, count_text, read_entries, task_usage_totals
 from task_state import TaskState, decide, done_blockers, head, load_rules, name, set_status
 from task_status import STATUS, StatusError, token
 
@@ -28,11 +28,15 @@ from lib.output import json_envelope, print_lines, rows_limit
 OPEN_ORDER = ["IMPLEMENTING", "APPROVED", "DRAFTING", "ON-HOLD"]
 
 
+def held_from(r: TaskState) -> str:
+    """The state an ON-HOLD task was in (`was APPROVED` in its status), or ""."""
+    was = re.search(r"was ([A-Za-z-]+)", r.status) if head(r) == "ON-HOLD" else None
+    return was.group(1) if was else ""
+
+
 def state_label(r: TaskState) -> str:
-    if head(r) == "ON-HOLD":
-        was = re.search(r"was ([A-Za-z-]+)", r.status)
-        return f"ON-HOLD (was {was.group(1)})" if was else "ON-HOLD"
-    return head(r) or "?"
+    was = held_from(r)
+    return f"ON-HOLD (was {was})" if was else head(r) or "?"
 
 
 def ordered_rows(rows: list[TaskState], show_done: bool) -> list[TaskState]:
@@ -65,9 +69,19 @@ def progress_cell(r: TaskState) -> str:
     return f"{r.done}/{r.done + r.open}" if r.done + r.open else "-"
 
 
-def activity_cell(r: TaskState, entries: list[Entry], locks: list[Lock], now: float) -> str:
+def live_suffix(base: str, live: list[int]) -> str:
+    """ACTIVITY with the running agents' new tokens: `running review · 92k`, `running review · 2 · 180k`; a stage
+    that looked stuck is running again, and an agent with no open stage is `running · 92k`."""
+    label = base if base.startswith("running") else "running"
+    label += base[len("stuck"):] if base.startswith("stuck") else ""
+    total = count_text(sum(live))
+    return f"{label} · {total}" if len(live) == 1 else f"{label} · {len(live)} · {total}"
+
+
+def activity_cell(r: TaskState, entries: list[Entry], locks: list[Lock], now: float,
+                  live: list[int] | None = None) -> str:
     """`running <stage>` for an open stage or a live worker lock, `stuck <stage>` for a stage open past 6 h,
-    else `idle Nd`.
+    else `idle Nd`; `live` (the new tokens of each agent still running, `task_live`) adds `· <tokens>`.
 
     A stage is open from its `stage_start` until its `stage_end`; the lock is the one `crew implement`
     writes, live while younger than the guard's threshold. A DONE task is never running. `stuck` is not
@@ -78,18 +92,27 @@ def activity_cell(r: TaskState, entries: list[Entry], locks: list[Lock], now: fl
         opened = sorted(((at.timestamp(), stage) for stage, (at, _) in open_starts.items()), reverse=True)
         fresh = [stage for at, stage in opened if now - at < LOCK_STALE_SECONDS]
         if fresh:
-            return f"running {fresh[0]}"
-        if any(lock.task == r.uuid and now - lock.started < LOCK_STALE_SECONDS for lock in locks):
-            return "running implement"
-        if opened:
-            return f"stuck {opened[0][1]}"
+            base = f"running {fresh[0]}"
+        elif any(lock.task == r.uuid and now - lock.started < LOCK_STALE_SECONDS for lock in locks):
+            base = "running implement"
+        else:
+            base = f"stuck {opened[0][1]}" if opened else f"idle {r.activity}d"
+        return live_suffix(base, live) if live else base
     return f"idle {r.activity}d"
 
 
-def task_cells(r: TaskState, entries: list[Entry], locks: list[Lock], now: float) -> dict[str, str]:
-    """The ISSUE, PR, PROGRESS and ACTIVITY cells of one task."""
+def tokens_cell(usage: dict) -> str:
+    """The TOKENS cell of a `task_usage_totals` result: new tokens, `~` when approximate, `-` for none."""
+    return count_text(usage["new"], usage["approximate"])
+
+
+def task_cells(r: TaskState, entries: list[Entry], locks: list[Lock], now: float,
+               live: list[int] | None = None, usage: dict | None = None) -> dict[str, str]:
+    """The ISSUE, PR, PROGRESS, ACTIVITY and TOKENS cells of one task; `usage` is its `task_usage_totals` when the
+    caller already has it."""
+    usage = task_usage_totals(entries) if usage is None else usage
     return {"ISSUE": number_cell(r.issue), "PR": pr_cell(r), "PROGRESS": progress_cell(r),
-            "ACTIVITY": activity_cell(r, entries, locks, now)}
+            "ACTIVITY": activity_cell(r, entries, locks, now, live), "TOKENS": tokens_cell(usage)}
 
 
 def aligned(table: list[tuple[str, ...]]) -> list[str]:
@@ -98,11 +121,30 @@ def aligned(table: list[tuple[str, ...]]) -> list[str]:
     return ["  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip() for row in table]
 
 
+def cut(text: str, width: int) -> str:
+    """`text` cut to `width` characters, its last one `…` when anything was dropped."""
+    return text if len(text) <= width else text[:width - 1] + "…"
+
+
+def fitted(table: list[tuple[str, ...]], width: int,
+           order: tuple[str, ...] = ("NOTE", "TASK")) -> list[tuple[str, ...]]:
+    """`table` (header first) with the `order` columns cut, first to last, until its `aligned` lines fit `width`;
+    a column keeps at least its header's width, so a table that cannot fit stays as narrow as that allows."""
+    header = table[0]
+    widths = [max(len(row[i]) for row in table) for i in range(len(header))]
+    excess = sum(widths) + 2 * (len(widths) - 1) - width
+    for column in order:
+        if excess <= 0 or column not in header:
+            continue
+        index = header.index(column)
+        keep = max(len(column), widths[index] - excess)
+        excess -= widths[index] - keep
+        widths[index] = keep
+    return [header, *(tuple(cut(cell, widths[i]) for i, cell in enumerate(row)) for row in table[1:])]
+
+
 def table_rows(rows: list[TaskState], show_done: bool, markdown: bool) -> list[tuple[str, ...]]:
     """The table header plus one row per displayed spec, longest-lived first within each state."""
-    def cut(text: str, width: int) -> str:
-        return text if len(text) <= width else text[:width - 1] + "…"
-
     return [("STATE", "TASK", "REPO", "BRANCH", "REVIEW", "AGE")] + [
         (state_label(r),
          name(r) if markdown else cut(name(r), 50),
@@ -148,13 +190,15 @@ def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
 
 def json_row(r: TaskState, locks: list[Lock], now: float) -> dict:
     """One task as machine-readable state: the fields an agent branches on, plus the ISSUE, PR, PROGRESS
-    and ACTIVITY cells (`activity` is `running <stage>`, `stale` or `idle Nd`)."""
+    and ACTIVITY cells (`activity` is `running <stage>`, `stale` or `idle Nd`), and `tokens`
+    (`task_usage_totals`: `new`, `cache_read`, each None when unrecorded, and `approximate`)."""
+    entries = read_entries(r.task)
     return {"slug": name(r), "directory": str(r.task), "status": r.status or "",
             "state": head(r) or "", "repo": r.repo, "branch": r.branch_name(""), "verdict": r.verdict,
             "age_days": r.age, "activity_days": r.activity, "stale": stale(r),
             "open": r.open, "done": r.done, "blocked": blocked_reason(r.task),
             "issue": r.issue, "prs": list(r.prs), "progress": progress_cell(r),
-            "activity": activity_cell(r, read_entries(r.task), locks, now)}
+            "activity": activity_cell(r, entries, locks, now), "tokens": task_usage_totals(entries)}
 
 
 def landed_section(landed: list[str]) -> list[str]:

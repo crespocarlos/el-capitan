@@ -176,5 +176,5 @@ def test_crew_ls_cost_reads_the_same_lines(tmp: Path) -> None:
     (tmp / "tasks" / "empty").mkdir()
     listed = cli(LS_CLI, "--tasks-dir", str(tmp / "tasks"), "--cost")
     assert listed.returncode == 0, listed.stderr
-    assert listed.stdout.strip() == "abc: implement: 3 workers, 410k tokens; review: 4 personas, 380k tokens", \
-        listed.stdout
+    assert listed.stdout.strip() == ("abc: new ~790k, cache reads -; implement: 3 workers, new ~410k; "
+                                     "review: 4 personas, new ~380k"), listed.stdout

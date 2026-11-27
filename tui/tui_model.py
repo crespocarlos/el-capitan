@@ -1,12 +1,14 @@
 """The crew TUI's view model: the tasks, workers and report views as plain rows, with no terminal.
 
-`collect` reads the task directory, the worker locks and the report through `ls_data`/`ls_report`;
-`build` turns what was read into views; `render` prints a view as text (`--once`); `moves` lists the
-`crew-task.py` calls a task's state allows. Nothing here writes, runs a command, calls a model or reads
+`collect` reads the task directory, the worker locks, the report (`ls_data`/`ls_report`) and running agents'
+transcripts (`task_live`); `build` turns that into views; `render` prints a view as text (`--once`); `moves` lists
+the `crew-task.py` calls a task's state allows. Nothing here writes, runs a command, calls a model or reads
 GitHub, except `landed_for`, which the front end calls on a key.
 """
 from __future__ import annotations
 
+import json
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -19,9 +21,10 @@ from ls_data import landed_rows, load_rows, repo_filter, select, stale
 from ls_report import gather as gather_report
 from ls_report import render as render_report
 from ls_report import stage_pairs
+from task_live import Live, Seen, ended_at, running_agents
 from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
-from task_progress import blocked_reason, read_entries
-from task_report import aligned, ordered_rows, state_label, task_cells
+from task_progress import blocked_reason, count_text, read_entries, sum_usage, task_usage_totals, usage_text
+from task_report import aligned, fitted, held_from, ordered_rows, task_cells
 from task_state import TaskState, head, name
 from task_status import StatusError, token
 
@@ -124,22 +127,44 @@ def ago(seconds: float) -> str:
     return f"{minutes // 60}h" if minutes < 24 * 60 else f"{minutes // (24 * 60)}d"
 
 
-def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], scope: str,
-               entries: dict[Path, list], locks: list[Lock], now: float) -> View:
-    """STATE, TASK, REPO, ISSUE, PR, PROGRESS, ACTIVITY (`task_report.task_cells`), LANDED and a NOTE (the
-    BLOCKED reason, or `stale` past 14 idle days) per task, in `crew ls` order."""
-    view = View("tasks", ("STATE", "TASK", "REPO", "ISSUE", "PR", "PROGRESS", "ACTIVITY", "LANDED", "NOTE"))
-    for r in ordered_rows(rows, show_done):
-        reason = blocked_reason(r.task)
-        note = f"BLOCKED: {reason}" if reason else ("stale" if stale(r) else "")
+@dataclass(frozen=True)
+class Snapshot:
+    """What both the tasks and the workers view read: each task's PROGRESS entries, the worker locks, the moment, and
+    the running agents per task (`task_live`)."""
+
+    entries: dict[Path, list]
+    locks: list[Lock]
+    now: float
+    live: dict[Path, list[Live]] = field(default_factory=dict)
+
+
+def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], scope: str, seen: Snapshot) -> View:
+    """STATE, TASK, REPO, ISSUE, PR, PROGRESS, ACTIVITY, TOKENS (`task_report.task_cells`), LANDED and a NOTE (`was
+    <state>` of an ON-HOLD task, the BLOCKED reason, or `stale` past 14 idle days) per task, in `crew ls` order, then
+    the tokens of the rows shown. REPO drops the owner every shown row shares, so TASK keeps the width.
+    Live agents add their tokens to ACTIVITY only: TOKENS and the total are what the task recorded."""
+    view = View("tasks", ("STATE", "TASK", "REPO", "ISSUE", "PR", "PROGRESS", "ACTIVITY", "TOKENS", "LANDED", "NOTE"))
+    shown = ordered_rows(rows, show_done)
+    owners = {r.repo.split("/", 1)[0] for r in shown if "/" in r.repo}
+    shared = len(owners) == 1 and all("/" in r.repo for r in shown if r.repo)
+    totals = []
+    for r in shown:
+        reason, held = blocked_reason(r.task), held_from(r)
+        note = "; ".join(filter(None, [f"was {held}" if held else "",
+                                       f"BLOCKED: {reason}" if reason else ("stale" if stale(r) else "")]))
         done = head(r) == "DONE"
-        cells = task_cells(r, entries.get(r.task, []), locks, now)
-        view.rows.append((state_label(r), name(r), r.repo or "-", *(cells[key] for key in view.header[3:7]),
+        repo = (r.repo.split("/", 1)[1] if shared and "/" in r.repo else r.repo) or "-"
+        entries = seen.entries.get(r.task, [])
+        totals.append(task_usage_totals(entries))
+        cells = task_cells(r, entries, seen.locks, seen.now, [agent.new for agent in seen.live.get(r.task, [])],
+                           totals[-1])
+        view.rows.append((head(r) or "?", name(r), repo, *(cells[key] for key in view.header[3:8]),
                           landed.get(str(r.task), NOT_READ) if done else "-", note))
         view.links.append({key: url for key, url in (("ISSUE", r.issue), ("PR", r.prs[-1] if r.prs else "")) if url})
         view.moves.append(moves(head(r), r.task, r.prs))
     open_count = sum(1 for r in rows if head(r) != "DONE")
     view.notes.append(f"{len(rows)} tasks: {open_count} open, {len(rows) - open_count} done; scope: {scope}")
+    view.notes.append(f"tokens: {usage_text(sum_usage(totals))} across {len(shown)} tasks shown")
     if show_done and any(head(r) == "DONE" and str(r.task) not in landed for r in rows):
         view.notes.append(f"LANDED {NOT_READ}: not read yet; the GitHub key reads each DONE task's PR")
     return view
@@ -157,9 +182,11 @@ def open_stages(rows: list[TaskState], entries: dict[Path, list]) -> list[tuple[
     return found
 
 
-def workers_view(rows: list[TaskState], entries: dict[Path, list], locks: list[Lock], now: float) -> View:
-    """Running stages (from PROGRESS) and worker locks, each with its age; past 6 h either is stale."""
+def workers_view(rows: list[TaskState], seen: Snapshot) -> View:
+    """Running stages (from PROGRESS) and worker locks, each with its age (past 6 h either is stale), then each
+    running agent (`task_live`) with the time since its transcript last moved and its tokens so far."""
     view = View("workers", ("KIND", "TASK", "WHAT", "AGE", "NOTE"))
+    entries, locks, now, live = seen.entries, seen.locks, seen.now, seen.live
     for task, stage, at, detail in open_stages(rows, entries):
         age = now - at.timestamp()
         note = "; ".join(filter(None, [detail, "stale: no stage_end" if age >= STAGE_STALE_SECONDS else ""]))
@@ -169,8 +196,13 @@ def workers_view(rows: list[TaskState], entries: dict[Path, list], locks: list[L
         age = now - lock.started
         view.rows.append(("lock", slugs.get(lock.task, lock.task), str(lock.tree), ago(age),
                           "stale: the guard ignores it" if age >= LOCK_STALE_SECONDS else "live"))
+    tasks = {r.task: name(r) for r in rows}
+    for agent in sorted((agent for agents in live.values() for agent in agents), key=lambda a: a.modified):
+        used = f"new {count_text(agent.new)}, cache reads {count_text(agent.cache_read)}"
+        view.rows.append(("agent", tasks.get(agent.task, str(agent.task)), f"agent-{agent.agent_id}",
+                          ago(now - agent.modified), used))
     if not view.rows:
-        view.notes.append("no stage running and no worker lock in this repository's worktrees")
+        view.notes.append("no stage, worker lock or agent running in this repository's worktrees")
     return view
 
 
@@ -180,13 +212,32 @@ def report_view(report: dict, scope: str) -> View:
 
 
 def build(rows: list[TaskState], filters: Filters, scope: str, *, entries: dict[Path, list], locks: list[Lock],
-          report: dict, landed: dict[str, str] | None = None, now: float | None = None) -> dict[str, View]:
+          report: dict, landed: dict[str, str] | None = None, now: float | None = None,
+          live: dict[Path, list[Live]] | None = None) -> dict[str, View]:
     """Every view from data already read; pure."""
     show_done = filters.done or "DONE" in filters.states
-    moment = time.time() if now is None else now
-    return {"tasks": tasks_view(rows, show_done, landed or {}, scope, entries, locks, moment),
-            "workers": workers_view(rows, entries, locks, moment),
+    seen = Snapshot(entries, locks, time.time() if now is None else now, live or {})
+    return {"tasks": tasks_view(rows, show_done, landed or {}, scope, seen),
+            "workers": workers_view(rows, seen),
             "report": report_view(report, scope)}
+
+
+def config_dirs(home: Path | None = None) -> list[Path]:
+    """The Claude config dirs whose transcripts hold running agents: `~/.claude`, `$CLAUDE_CONFIG_DIR`, and the
+    `config_dirs` of `~/.agent/install-manifest.json` (read as JSON; an unreadable manifest adds none). Each real
+    directory once, as `memory_claude.default_config_dirs` counts them."""
+    home = Path.home() if home is None else home
+    named = os.environ.get("CLAUDE_CONFIG_DIR", "")
+    try:
+        manifest = json.loads((home / ".agent" / "install-manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        manifest = {}
+    recorded = manifest.get("config_dirs", []) if isinstance(manifest, dict) else []
+    found: dict[str, Path] = {}
+    for directory in [home / ".claude", *([named] if named else []), *(i for i in recorded if isinstance(i, str))]:
+        path = Path(directory).expanduser()
+        found.setdefault(os.path.realpath(path), path)
+    return list(found.values())
 
 
 def scope_of(repos: set[str] | None) -> str:
@@ -201,14 +252,19 @@ def load(tasks_dir: Path, filters: Filters, here: Callable[[], dict[str, str]] |
 
 
 def collect(tasks_dir: Path, filters: Filters, landed: dict[str, str] | None = None, trees: list[Path] | None = None,
-            here: Callable[[], dict[str, str]] | None = None, now: float | None = None) -> dict[str, View]:
-    """Read everything the views show (files and `git worktree list` only), then `build`."""
+            here: Callable[[], dict[str, str]] | None = None, now: float | None = None,
+            claude_dirs: list[Path] | None = None, live_cache: dict[str, Seen] | None = None) -> dict[str, View]:
+    """Read everything the views show (files, `git worktree list`, and the running agents' transcripts in
+    `claude_dirs`, default `config_dirs()`), then `build`. `live_cache` is the front end's per-file cache."""
     rows, scope = load(tasks_dir, filters, here)
     moment = time.time() if now is None else now
     report = gather_report(rows, filters.days, now=datetime.fromtimestamp(moment, timezone.utc))
-    return build(rows, filters, scope, entries={r.task: read_entries(r.task) for r in rows},
-                 locks=read_locks(worktree_paths() if trees is None else trees), report=report,
-                 landed=landed, now=moment)
+    entries = {r.task: read_entries(r.task) for r in rows}
+    running = [r.task for r in rows if head(r) != "DONE"]
+    ended = {agent: at for task in running for agent, at in ended_at(entries[task]).items()}
+    live = running_agents(running, config_dirs() if claude_dirs is None else claude_dirs, ended, moment, live_cache)
+    return build(rows, filters, scope, entries=entries, locks=read_locks(worktree_paths() if trees is None else trees),
+                 report=report, landed=landed, now=moment, live=live)
 
 
 def landed_for(tasks_dir: Path, filters: Filters, reader: Callable | None = None) -> dict[str, str]:
@@ -219,6 +275,8 @@ def landed_for(tasks_dir: Path, filters: Filters, reader: Callable | None = None
     return {str(task): row["landed"] for task, row in zip(done, found)}
 
 
-def render(view: View) -> list[str]:
-    """A view as aligned plain text: the title, the table, the notes."""
-    return [f"== {view.title} ==", *aligned([view.header, *view.rows]), *view.notes]
+def render(view: View, width: int = 0) -> list[str]:
+    """A view as aligned plain text: the title, the table (cut to `width` columns, NOTE first and then TASK, when
+    `width` is set), the notes."""
+    table = [view.header, *view.rows]
+    return [f"== {view.title} ==", *aligned(fitted(table, width) if width > 0 else table), *view.notes]
