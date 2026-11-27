@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Memory maintenance: init, reindex, doctor, stats, and consolidate.
+"""Memory maintenance: init and consolidate.
 
-Store lifecycle and the bulk operations that report on the whole store. Ingesting external
-Markdown, inbox drafting and importing are `memory_inbox`, because each has its own failure modes.
+Store lifecycle and the bulk report over the whole store. Inbox drafting and importing are
+`memory_inbox`, because each has its own failure modes.
 """
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from memory_search import is_stale
 from memory_store import (
     ensure_store,
     initialize_database,
-    mutate,
     refresh,
     run_git,
 )
@@ -42,34 +41,6 @@ def init_store() -> int:
     if not (root / ".git").exists():
         run_git(["init", "-q"])
     initialize_database()
-    return 0
-
-
-def reindex(args: argparse.Namespace) -> int:
-    ensure_store()
-
-    def change():
-        return []
-    code = mutate("mem: reindex", change)
-    if code == 0:
-        print("reindexed")
-    return code
-
-
-def doctor(args: argparse.Namespace) -> int:
-    ensure_store()
-    conn = refresh()
-    result = conn.execute("SELECT count(*) FROM units").fetchone()[0]
-    print(f"memory: healthy ({result} units)")
-    return 0
-
-
-def stats(args: argparse.Namespace) -> int:
-    ensure_store()
-    conn = refresh()
-    total = conn.execute("SELECT count(*) FROM units").fetchone()[0]
-    active = conn.execute("SELECT count(*) FROM units WHERE status = 'active'").fetchone()[0]
-    print(json.dumps({"units": total, "active": active}, sort_keys=True))
     return 0
 
 

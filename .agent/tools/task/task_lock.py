@@ -1,7 +1,7 @@
 """`crew-task.py lock`: the worker lock a live builder holds on its tree, and the BLOCKED line.
 
 `<tree>/.crew-worker.lock` holds `task=<id>` and integer `started=<epoch>` (read by the bash guard
-`worker-tree.sh`; stale after `STALE_SECONDS`), excluded through `.git/info/exclude`. The orchestrator
+`worker-tree.sh`, stale after its `STALE_SECONDS`), excluded through `.git/info/exclude`. The orchestrator
 writes it (`lock write <tree> --task <id>`), the builder removes it (`lock remove <tree>`).
 `blocked <TASK_DIR> "<reason>"` appends one BLOCKED line; `blocked_lines` is what `crew ls` shows.
 """
@@ -18,7 +18,6 @@ from lib.clock import utc_stamp
 from lib.git import GitError, output
 
 LOCK_NAME = ".crew-worker.lock"
-STALE_SECONDS = 6 * 60 * 60
 BLOCKED = "BLOCKED: "
 
 
@@ -53,16 +52,6 @@ def remove_lock(tree: Path) -> bool:
     existed = lock.is_file()
     lock.unlink(missing_ok=True)
     return existed
-
-
-def is_fresh(tree: Path, now: float | None = None) -> bool:
-    """True when `tree` holds a lock started less than `STALE_SECONDS` ago."""
-    try:
-        fields = dict(line.split("=", 1) for line in (tree / LOCK_NAME).read_text(encoding="utf-8").splitlines()
-                      if "=" in line)
-        return (time.time() if now is None else now) - int(fields["started"]) < STALE_SECONDS
-    except (OSError, KeyError, ValueError):
-        return False
 
 
 def blocked_lines(tasks: list[tuple[str, Path]]) -> list[str]:

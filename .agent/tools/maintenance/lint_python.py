@@ -15,7 +15,7 @@ from lint_files import rel
 
 MAX_MODULE_LINES = 400
 EDGES_BLOCK = re.compile(r"^```package-edges[ \t]*\n(.*?)^```", re.M | re.S)
-SINGLE_OWNER_FUNCTIONS = ("atomic_write", "gh", "read_json", "read_json_object", "slug_from_url", "utc_stamp",
+SINGLE_OWNER_FUNCTIONS = ("atomic_write", "gh", "read_json_object", "slug_from_url", "utc_stamp",
                           "parse_stamp")
 # A string in code (not a docstring) only its owner may hold: the PROGRESS.md path, a remote-URL regex.
 SINGLE_OWNER_TEXT = (

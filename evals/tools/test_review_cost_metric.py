@@ -17,7 +17,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+from cli_runner import run as cli
+
+ROOT =Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
 PERSONAS = ("adversarial", "architecture")
 
@@ -34,10 +36,10 @@ def review_dir(tmp: Path, packages: dict[str, str], name: str = "20260101000000"
 def persist(directory: Path, tmp: Path, extra: list[str] | None = None) -> subprocess.CompletedProcess:
     report = tmp / "report.md"
     report.write_text("## Review: changes\n\nVerdict: PASS\n", encoding="utf-8")
-    return subprocess.run(
-        [sys.executable, str(TOOL), "persist", "--review-dir", str(directory),
-         "--report", str(report), "--files", "a.ts", "--personas", *PERSONAS, *(extra or [])],
-        capture_output=True, text=True)
+    findings = tmp / "findings.json"
+    findings.write_text("[]", encoding="utf-8")
+    return cli(TOOL, "persist", "--review-dir", str(directory), "--report", str(report), "--files", "a.ts",
+               "--findings", str(findings), "--personas", *PERSONAS, *(extra or []))
 
 
 def task(tmp: Path, packages: dict[str, str] | None = None) -> Path:
@@ -141,7 +143,7 @@ LS_CLI = ROOT / ".agent" / "tools" / "task" / "crew-ls.py"
 
 
 def metric(owner: Path, *words: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(METRIC_CLI), str(owner), *words], capture_output=True, text=True)
+    return cli(METRIC_CLI, str(owner), *words)
 
 
 def test_stage_keys_parse_and_stage_end_prints_the_cost_line(tmp: Path) -> None:
@@ -173,8 +175,7 @@ def test_crew_ls_cost_reads_the_same_lines(tmp: Path) -> None:
     metric(owner, "stage_end", "stage=implement", "workers=3", "tokens_reported=410000")
     metric(owner, "stage_end", "stage=review", "personas=4", "tokens_reported=380000")
     (tmp / "tasks" / "empty").mkdir()
-    listed = subprocess.run([sys.executable, str(LS_CLI), "--tasks-dir", str(tmp / "tasks"), "--cost"],
-                            capture_output=True, text=True)
+    listed = cli(LS_CLI, "--tasks-dir", str(tmp / "tasks"), "--cost")
     assert listed.returncode == 0, listed.stderr
     assert listed.stdout.strip() == "abc: implement: 3 workers, 410k tokens; review: 4 personas, 380k tokens", \
         listed.stdout

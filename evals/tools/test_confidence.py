@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""The per-finding confidence score: the field, its scale, its floor, its render, and its report.
+"""The per-finding confidence score: the field, its scale, its floor, its render, and its outcome record.
 
 Confidence was removed once on the reasoning that nothing gated on it, which was wrong in one way:
 it was ungated but read. The form removed could not be measured either — one percentage per review,
 joinable to nothing. This suite pins the replacement: a 1-5 score per finding with named bands, a
 floor for anything the review asks the author to act on, a report line that carries the number, and
-a corpus report that leaves unscored history unbanded instead of inventing a zero-filled shape.
+an outcome record that keeps the score a decision was made under.
 """
 from __future__ import annotations
 
@@ -15,19 +15,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+from cli_runner import run as cli
+
+ROOT =Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
-STATS = ROOT / ".agent" / "tools" / "review" / "crew-review-stats.py"
 
 BANDS = {5: "confirmed", 4: "strong", 3: "likely", 2: "uncertain", 1: "suspicion"}
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True)
-
-
-def stats(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(STATS), *args], capture_output=True, text=True)
+    return cli(TOOL, *args)
 
 
 def base(**overrides: object) -> dict:
@@ -195,7 +192,7 @@ def test_a_routed_finding_keeps_its_original_score(tmp: Path) -> None:
               "line": 9, "kind": "reliability", "confidence": 2, "disposition": "decide",
               "reason": "whether the guard fires before the retry is unread"}
     listed = ("## Review: changes\n\n1. [needs more info · 2] **`a.ts — line 9`**"
-              " — Retry loop may double-fire\n\nVerdict: PASS\n")
+              " — Retry loop may double-fire\n\nprobe: skipped no-runtime: no runner here\n\nVerdict: PASS\n")
     result = persist(tmp, [routed], listed)
     assert result.returncode == 0, result.stderr
     written = (tmp / "task" / "review" / "ts" / "REVIEW.md").read_text()
@@ -206,28 +203,14 @@ def test_a_routed_finding_keeps_its_original_score(tmp: Path) -> None:
     assert stored["confidence"] == 2 and "confidence_from" not in stored, stored
 
 
-def test_the_decision_score_wins_the_band_join(tmp: Path) -> None:
-    """A score raised at address time lands in the band it was acted under, not the one it arrived in."""
-    tasks = tmp / "corpus"
-    directory = tasks / "task-1" / "review" / "20261122120000"
-    directory.mkdir(parents=True)
-    (directory / "consolidation.json").write_text(json.dumps({"findings": [
-        {"title": "c", "label": "attention", "confidence": 4, "fingerprint": "c3"}]}))
-    with (directory.parent / "outcomes.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"fingerprint": "c3", "outcome": "fixed", "review_dir": str(directory),
-                                 "confidence": 5, "confidence_from": 4,
-                                 "validation": "read the caller; the guard is absent"}) + "\n")
-    payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
-    # The finding arrived at 4 and was acted on at 5, so only a join that reads the journal puts it in 5.
-    assert payload["confidence"]["5"]["fixed"] == 1, payload["confidence"]
-    assert "4" not in payload["confidence"], payload["confidence"]
-    # The outcome command refuses half a raise, so a record cannot claim one without the other.
-    partial = run_outcome(directory, "--confidence", "5")
+def test_an_outcome_refuses_half_a_raise(tmp: Path) -> None:
+    """The outcome command refuses half a raise, so a record cannot claim one without the other."""
+    partial = run_outcome(review_dir(tmp), "--confidence", "5")
     assert partial.returncode == 2 and "go together" in partial.stderr, partial.stderr
 
 
 def test_a_raise_logged_as_an_outcome_needs_the_read_that_settled_it(tmp: Path) -> None:
-    """`scored()` trusts this journal, so its raise carries the same two halves a persisted one does."""
+    """The outcome journal records a raise with the same two halves a persisted finding does."""
     directory = review_dir(tmp)
     unevidenced = run_outcome(directory, "--confidence", "4", "--confidence-from", "2")
     assert unevidenced.returncode == 2 and "--validation" in unevidenced.stderr, unevidenced.stderr
@@ -240,24 +223,6 @@ def test_a_raise_logged_as_an_outcome_needs_the_read_that_settled_it(tmp: Path) 
     record = json.loads(evidenced.stdout)
     assert record["confidence"] == 4 and record["confidence_from"] == 2, record
     assert "guard shadows" in record["validation"], record
-
-
-def test_one_reviews_score_does_not_band_a_sibling_reviews_finding(tmp: Path) -> None:
-    """The task-level journal is shared, so a record is read only by the review it names."""
-    tasks = tmp / "corpus"
-    first = tasks / "task-1" / "review" / "20261122120000"
-    second = tasks / "task-1" / "review" / "20261123120000"
-    for directory in (first, second):
-        directory.mkdir(parents=True)
-        (directory / "consolidation.json").write_text(json.dumps({"findings": [
-            {"title": "guard", "label": "attention", "confidence": 2, "fingerprint": "shared"}]}))
-    (first.parent / "outcomes.jsonl").write_text(json.dumps(
-        {"fingerprint": "shared", "outcome": "fixed", "review_dir": str(first),
-         "confidence": 5, "confidence_from": 2, "validation": "read src/a.ts:1-9"}) + "\n")
-    payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
-    # The raised record belongs to the first review; the second review's finding keeps its own 2.
-    assert payload["confidence"]["5"]["findings"] == 1, payload["confidence"]
-    assert payload["confidence"]["2"]["findings"] == 1, payload["confidence"]
 
 
 def test_a_duplicate_keeps_the_highest_score_in_either_order(tmp: Path) -> None:
@@ -335,97 +300,6 @@ def test_the_deferred_line_and_the_coverage_table_carry_the_score(tmp: Path) -> 
     deferred = (tmp / "task" / "DEFERRED.md").read_text()
     assert "[attention · 3] Old bug" in deferred, deferred
 
-
-# --- the measurement --------------------------------------------------------
-
-
-def corpus(tmp: Path) -> Path:
-    """Two reviews with known scores and outcomes: 5 fixed, 4 rejected, 4 unrecorded, 3 fixed, legacy."""
-    tasks = tmp / "corpus"
-    directory = tasks / "task-1" / "review" / "20261122120000"
-    directory.mkdir(parents=True)
-    findings = [
-        {"title": "a", "label": "attention", "confidence": 5, "fingerprint": "a1"},
-        {"title": "b", "label": "attention", "confidence": 4, "fingerprint": "b2"},
-        {"title": "c", "label": "attention", "confidence": 4, "fingerprint": "c3"},
-        {"title": "d", "label": "attention", "confidence": 3, "fingerprint": "d4"},
-        {"title": "e", "label": "nit", "fingerprint": "e5"},
-    ]
-    (directory / "consolidation.json").write_text(json.dumps({"findings": findings}))
-    journal = directory.parent / "outcomes.jsonl"
-    journal.write_text("".join(json.dumps({"fingerprint": key, "outcome": outcome,
-                                           "review_dir": str(directory)}) + "\n"
-                               for key, outcome in [("a1", "fixed"), ("b2", "rejected"),
-                                                    ("d4", "fixed")]))
-    return tasks
-
-
-def test_the_report_states_the_distribution_and_the_fix_rate_per_band(tmp: Path) -> None:
-    """Each band reports its count and its fix rate over the findings that were decided."""
-    tasks = corpus(tmp)
-    payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
-    bands = payload["confidence"]
-    assert set(bands) == {"5", "4", "3", "unscored"}, bands
-    assert bands["5"]["findings"] == 1 and bands["5"]["fixed"] == 1, bands["5"]
-    assert bands["5"]["precision"] == 1.0, bands["5"]
-    # Two findings at 4, one rejected and one unrecorded: the fix rate's base is the one decision.
-    assert bands["4"]["findings"] == 2 and bands["4"]["rejected"] == 1, bands["4"]
-    assert bands["4"]["unrecorded"] == 1 and bands["4"]["precision"] == 0.0, bands["4"]
-    assert bands["3"]["fixed"] == 1 and bands["3"]["precision"] == 1.0, bands["3"]
-    # A legacy finding is counted on its own, never folded into a band.
-    assert bands["unscored"]["findings"] == 1, bands["unscored"]
-    table = stats("--tasks-dir", str(tasks)).stdout
-    assert "5 confirmed: 1 findings; fix rate 1.00 over 1 decided" in table, table
-    assert "unscored: 1 findings" in table, table
-
-
-def test_an_all_legacy_corpus_reports_unscored_and_no_fabricated_zero(tmp: Path) -> None:
-    """The honest output for history is `unscored: 719`, not five bands of zero."""
-    tasks = tmp / "corpus"
-    directory = tasks / "task-1" / "review" / "20261122120000"
-    directory.mkdir(parents=True)
-    (directory / "consolidation.json").write_text(json.dumps({"findings": [
-        {"title": f"f{index}", "label": "attention", "fingerprint": f"h{index}"}
-        for index in range(3)]}))
-    payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
-    assert set(payload["confidence"]) == {"unscored"}, payload["confidence"]
-    assert payload["confidence"]["unscored"]["findings"] == 3
-    assert payload["gaps"]["confidence"] == 3, payload["gaps"]
-    table = stats("--tasks-dir", str(tasks)).stdout
-    assert "unscored: 3 findings" in table, table
-    for score, name in BANDS.items():
-        assert f"{score} {name}:" not in table, f"a band of zero was printed: {table}"
-    assert "no band has a fix rate yet" in table, table
-
-
-def test_a_stored_value_outside_the_scale_is_unscored_not_a_new_band(tmp: Path) -> None:
-    """A hand-edited corpus file cannot invent a band; a bad score is history like any other."""
-    tasks = tmp / "corpus"
-    directory = tasks / "task-1" / "review" / "20261122120000"
-    directory.mkdir(parents=True)
-    (directory / "consolidation.json").write_text(json.dumps({"findings": [
-        {"title": "a", "label": "attention", "confidence": 9, "fingerprint": "a1"},
-        {"title": "b", "label": "attention", "confidence": "high", "fingerprint": "b2"},
-        {"title": "c", "label": "attention", "confidence": 4, "fingerprint": "c3"},
-    ]}))
-    payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
-    assert set(payload["confidence"]) == {"4", "unscored"}, payload["confidence"]
-    assert payload["confidence"]["unscored"]["findings"] == 2, payload["confidence"]
-    # The row does not claim the cause it cannot know: an out-of-scale value is not pre-score history.
-    table = stats("--tasks-dir", str(tasks)).stdout
-    assert "written before the score existed" not in table, table
-    assert "value outside 1-5" in table, table
-
-
-def test_a_scored_finding_with_a_fixed_outcome_joins_to_its_band(tmp: Path) -> None:
-    """The whole point of per finding: the score has to be joinable to what happened to it."""
-    tasks = corpus(tmp)
-    payload = json.loads(stats("--tasks-dir", str(tasks), "--json").stdout)
-    assert payload["confidence"]["5"]["fixed"] == 1
-    assert payload["confidence"]["5"]["recorded"] == 1
-    # And the join is by fingerprint, so a band's counts sum to the corpus it describes.
-    total = sum(row["findings"] for row in payload["confidence"].values())
-    assert total == payload["totals"]["findings"], payload["confidence"]
 
 
 def main() -> int:

@@ -56,7 +56,8 @@ the report's `### Guidance applied` section. If an applicable file defines a tes
 command, use it as the default verify command in step 5 when the task's own verify line does not
 specify one; treat forbidden patterns as task failures.
 
-**Testing procedure.** Apply `personal.mdc` Testing. Before a behavioral task, keep a concise
+**Testing procedure.** Apply `personal.mdc` Testing, detailed in
+[testing policy](~/.cursor/agents/references/testing-policy.md). Before a behavioral task, keep a concise
 mapping from its acceptance criterion or contract to repository test coverage and verification
 command for `REPORT.md`. For a fixed regression, add or update the regression test and show it
 failing before changing implementation, then passing afterward. When that policy calls for an
@@ -93,7 +94,7 @@ When every top-level `- [ ]` under `## Tasks` is `- [x]`:
 criteria) is `[x]` and `REPORT.md` is newer than `SPEC.md`, stop — do not re-run anything.
 Otherwise run steps 1-4 and overwrite `REPORT.md`.
 
-1. **Reconcile test evidence.** Prune added tests per `personal.mdc` Testing, rerun the narrowest
+1. **Reconcile test evidence.** Prune added tests per the testing policy, rerun the narrowest
    verify command, and update the contract mapping for retained evidence.
 2. **Run quality gates.** Run every command under the spec's `## Tests` section, then the lint and
    type-check commands from project guidance, scoped to changed files or their package when the tool

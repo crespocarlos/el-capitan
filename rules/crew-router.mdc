@@ -17,32 +17,23 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | Trigger | Crew member |
 |---|---|
 | `crew spec` issue/URL/description | crew-specwriter |
-| `crew quick` description | crew-quick skill |
 | `crew implement` | crew-implement → @crew-builder |
-| `crew test` | crew-test skill |
 | `crew commit` | crew-commit |
 | `crew open pr` | crew-open-pr |
 | `crew review address` | crew-address-review skill — not crew-reviewer |
 | `crew review` [PR #X \| spec \| idea \| changes \| (self)] | crew-reviewer — `changes`: staged; `idea`: proposal |
-| `crew review-stats` | `~/.agent/bin/crew-review-stats.py` |
 | `crew pr` view\|diff\|repo\|issue | `~/.agent/bin/crew-pr-actions.py`; writes stay `gh` |
 | `crew resolve PR` #X or URL | crew-pr-resolver |
 | `crew log` | crew-log |
 | `crew remember` text | crew-memory skill |
-| `crew memory` seed\|consolidate\|doctor\|journal | crew-memory skill |
-| `crew recall`: question | crew-recall |
+| `crew memory` seed\|consolidate\|journal | crew-memory skill |
 | `crew create issue` description | crew-create-issue |
-| `crew cleanup` | crew-cleanup |
 | `crew evals` | crew-evals skill |
-| `crew explain` PR\|URL | crew-explain skill |
 | `crew e2e` [PR\|status\|setup] | crew-e2e skill |
-| `crew idp` | crew-idp skill |
-| `crew diagnose` transcript | crew-diagnose skill |
-| `crew debug` symptom | crew-debug skill |
 | `crew handoff` [resume] | crew-handoff skill |
 | `crew ls` [--all] | `~/.agent/bin/crew-ls.py --md [--all]` |
 | `crew prune` | `~/.agent/bin/crew-prune.py` |
-| `crew inbox` | `~/.agent/bin/crew-inbox.py` inline; `--drain` clears it |
+| `crew idp` | crew-idp skill (quarterly, not a stage) |
 
 **This table is authoritative**: no judgment-call overrides.
 

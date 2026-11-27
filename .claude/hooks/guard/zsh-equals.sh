@@ -31,6 +31,7 @@ fi
 # still be checked, so the body is removed rather than the whole command exempted. `<<-` strips
 # leading tabs from its terminator, so the comparison strips them too; an exact compare left the
 # state open forever and silently stopped checking every line after it.
+command -v awk >/dev/null 2>&1 || hook_fail "awk is not installed; cannot parse the shell command"
 body=$(printf '%s\n' "$cmd" | awk '
   {
     line = $0

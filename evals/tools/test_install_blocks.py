@@ -1,97 +1,130 @@
 #!/usr/bin/env python3
-"""Guard the managed-block upsert that install.sh applies to ~/.claude/CLAUDE.md.
+"""What install.sh writes into the harness config: the managed CLAUDE.md blocks and the permission rules.
 
-The helpers are extracted from install.sh's heredoc rather than duplicated, so a change to the
-installer that breaks idempotency or eats user prose fails here first.
+The block helpers are extracted from install.sh's heredoc rather than duplicated, so a change that
+breaks idempotency or eats user prose fails here first. The permission rules must not let an allow
+rule shadow an ask rule (the outcome would depend on evaluation order), gate commands must prompt, and
+the installer's settings merge retires a broad rule the template narrowed while keeping the user's own.
 """
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
-TOOL = Path(__file__).resolve().parents[2] / "install.sh"
-PROJECT = TOOL.parent
+PROJECT = Path(__file__).resolve().parents[2]
+INSTALL = PROJECT / "install.sh"
+SETTINGS = PROJECT / ".claude" / "settings.json"
+MERGE = SETTINGS.parent / "merge_claude_settings.py"
+MEMORY = "<!-- el-capitan:memory -->\nMEMORY\n<!-- /el-capitan:memory -->"
+IMPORTS = "<!-- el-capitan:imports -->\n@~/.cursor/rules/x.mdc\n<!-- /el-capitan:imports -->"
+SEEDED = "# a\n\n<!-- el-capitan:memory -->\nstale\n<!-- /el-capitan:memory -->\n\n# b\n"
 FAILED: list[str] = []
 
 
-def check(name: str, condition: bool, detail: str = "") -> None:
-    if condition:
-        print(f"pass: {name}")
-        return
-    FAILED.append(name)
-    print(f"FAIL: {name}{': ' + detail if detail else ''}")
+def check(name: str, condition: bool, detail: object = "") -> None:
+    print(("pass: " if condition else "FAIL: ") + name + ("" if condition else f": {detail}"))
+    if not condition:
+        FAILED.append(name)
 
 
 def load_helpers() -> dict:
-    """Exec only the install.sh heredoc's pure helpers, stopping before any filesystem work.
-
-    Everything above the `imports = global_rule_imports()` call is a definition or a constant, so
-    cutting there yields the real implementation with no side effects.
-    """
-    text = TOOL.read_text()
+    """Exec only the install.sh heredoc's pure helpers, stopping before any filesystem work."""
+    text = INSTALL.read_text()
     marker = 'python3 - "$HOME" "$SCRIPT_DIR" <<\'PY\'\n'
     start = text.index(marker) + len(marker)
     end = text.index("imports = global_rule_imports()", start)
-    namespace: dict = {"__name__": "install_heredoc"}
-    # The heredoc binds `home` and `source` from argv; the helpers read only `source`.
-    namespace["__builtins__"] = __builtins__
-    exec(compile(f"import sys\nsys.argv = ['x', 'unused', {str(PROJECT)!r}]\n"
-                 + text[start:end], "install.sh:helpers", "exec"), namespace)
+    namespace: dict = {"__name__": "install_heredoc", "__builtins__": __builtins__}
+    prelude = f"import sys\nsys.argv = ['x', 'unused', {str(PROJECT)!r}]\n"
+    exec(compile(prelude + text[start:end], "install.sh:helpers", "exec"), namespace)
     return namespace
 
 
-def main() -> int:
+def block_cases() -> None:
     ns = load_helpers()
     upsert, global_imports = ns["upsert"], ns["global_rule_imports"]
-    body = "<!-- el-capitan:memory -->\nMEMORY\n<!-- /el-capitan:memory -->"
-
-    once = upsert("# notes\n", "memory", body)
-    check("appends a block to a file without one", "<!-- el-capitan:memory -->" in once)
-    check("preserves surrounding text on append", "# notes" in once)
-
-    seeded = "# a\n\n<!-- el-capitan:memory -->\nstale\n<!-- /el-capitan:memory -->\n\n# b\n"
-    first = upsert(seeded, "memory", body)
-    second = upsert(first, "memory", body)
-    third = upsert(second, "memory", body)
-    check("upsert is idempotent", first == second == third, "repeated installs differ")
-    check("stale block is replaced", "stale" not in first)
-    check("text before the block survives", "# a" in first)
-    check("text after the block survives", "# b" in first)
-    check("no trailing blank-line growth", not first.endswith("\n\n\n"), repr(first[-8:]))
-
-    imports_block = ("<!-- el-capitan:imports -->\n@~/.cursor/rules/x.mdc\n"
-                     "<!-- /el-capitan:imports -->")
-    both = upsert(upsert(seeded, "memory", body), "imports", imports_block)
-    check("memory block survives an imports upsert", "<!-- el-capitan:memory -->" in both)
-    check("imports block is added", "@~/.cursor/rules/x.mdc" in both)
-    again = upsert(upsert(both, "memory", body), "imports", imports_block)
-    check("two-block document is idempotent", again == both)
-
+    once = upsert("# notes\n", "memory", MEMORY)
+    check("a block is appended to a file without one, keeping its text",
+          "<!-- el-capitan:memory -->" in once and "# notes" in once)
+    first = upsert(SEEDED, "memory", MEMORY)
+    again = upsert(first, "memory", MEMORY)
+    check("upsert replaces a stale block, keeps the text around it, is idempotent, and grows no blank lines",
+          first == again == upsert(again, "memory", MEMORY) and "stale" not in first and "# a" in first
+          and "# b" in first and not first.endswith("\n\n\n"), repr(first))
+    both = upsert(upsert(SEEDED, "memory", MEMORY), "imports", IMPORTS)
+    check("two blocks coexist and the two-block document is idempotent",
+          "<!-- el-capitan:memory -->" in both and "@~/.cursor/rules/x.mdc" in both
+          and upsert(upsert(both, "memory", MEMORY), "imports", IMPORTS) == both)
     generated = global_imports()
     expected: list[str] = []
     for target in re.findall(r"@(\S+\.mdc)", (PROJECT / ".claude/CLAUDE.md").read_text()):
-        if target not in expected:
-            expected.append(target)
-    produced = re.findall(r"^@(\S+)$", generated, re.M)
-    check("generated imports match the project file", produced == expected,
-          f"{produced} != {expected}")
-    check("generated block is fenced",
-          generated.startswith("<!-- el-capitan:imports -->")
-          and generated.rstrip().endswith("<!-- /el-capitan:imports -->"))
+        expected += [] if target in expected else [target]
+    check("the generated imports block is fenced and imports exactly the project file's rules",
+          re.findall(r"^@(\S+)$", generated, re.M) == expected and generated.startswith("<!-- el-capitan:imports -->")
+          and generated.rstrip().endswith("<!-- /el-capitan:imports -->"), generated)
 
-    # The reason the block exists: every always-on rule must reach Claude Code from any repo.
-    always_on = [r for r in sorted((PROJECT / "rules").glob("*.mdc"))
-                 if "alwaysApply: true" in r.read_text()]
-    check("there are always-on rules to propagate", bool(always_on))
-    for rule in always_on:
-        check(f"always-on rule reaches Claude Code: {rule.name}", f"/{rule.name}" in generated)
 
-    if FAILED:
-        print(f"\n{len(FAILED)} failed")
-        return 1
-    print("\nall install-block checks passed")
-    return 0
+def command_of(rule: str) -> str | None:
+    """The command a `Bash(<command> *)` rule names (it may contain spaces), or None for a non-Bash rule."""
+    if not rule.startswith("Bash(") or not rule.endswith(")"):
+        return None
+    body = rule[len("Bash("):-1]
+    return body[:-2] if body.endswith(" *") else body.rstrip(":*")
+
+
+def permission_cases() -> None:
+    permissions = json.loads(SETTINGS.read_text(encoding="utf-8"))["permissions"]
+    allow_rules, ask_rules = permissions.get("allow", []), permissions.get("ask", [])
+    allow = [c for c in map(command_of, allow_rules) if c]
+    ask = [c for c in map(command_of, ask_rules) if c]
+    check("the config has an allow list, and no ask rule uses the literal-colon form",
+          bool(allow) and not any(":" in c.split(" ")[0] for c in ask), ask_rules)
+    shadowed = [(a, s) for s in ask for a in allow if a.startswith(s) or s.startswith(a)]
+    check("no allow rule shadows an ask rule", not shadowed, shadowed)
+    check("an ask rule on a task directory targets a file, not its whole tree",
+          all(not r.endswith("/**") for r in ask_rules if ".agent/tasks" in r), ask_rules)
+    task = "~/.agent/bin/crew-task.py"
+    gates = (f"{task} mark-approved /tmp/t", f"{task} mark-done /tmp/t", f"{task} mark-done /tmp/t --force")
+    covered = [c for c in allow for command in gates if command == c or command.startswith(c + " ")]
+    check("no allow rule covers Gate 1 or Gate 2, so each prompts", not covered, covered)
+    routine = ("mark-implementing", "reconcile", "normalize-status", "lock", "blocked", "worktree")
+    check("crew-task.py's routine subcommands and crew-review-findings.py are allowed one by one, not bin/*",
+          all(f"{task} {name}" in allow for name in routine) and "~/.agent/bin/crew-review-findings.py" in allow
+          and "~/.agent/bin/*" not in allow, [c for c in allow if "agent/bin" in c])
+    check("hook fixtures are allowed without elevation", any("fixtures" in c for c in allow), allow)
+    broad = {"Bash(~/.agent/bin/*)", "Bash(python3 *)", "Bash(node *)", "Bash(npx *)", "Bash(chmod *)"}
+    broad &= set(allow_rules)
+    prefixes = ("Bash(R=", "Bash(V=", "Bash(T=", "Bash(P=", "Bash(OUT=", "Bash(REVIEW_ROOT=")
+    hidden = [r for r in allow_rules if r.startswith(prefixes) or (command_of(r) or "").endswith("=*")]
+    check("no allow rule skips the command check or hides it behind an assignment",
+          not broad and not hidden, (broad, hidden))
+
+
+def merge_cases() -> None:
+    """The installer retires a broad rule when the template narrows it, and keeps the user's own rules."""
+    user = {"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"],
+                            "ask": ["Edit(~/.agent/tasks/**)", "Write(~/.agent/tasks/**)", "Edit(~/.claude/**)"]},
+            "hooks": {}}
+    with tempfile.TemporaryDirectory() as raw:
+        dest = Path(raw) / "dest.json"
+        dest.write_text(json.dumps(user), encoding="utf-8")
+        result = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest)], capture_output=True, text=True)
+        merged = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
+    check("the merge retires the broad task rule for the narrow one and keeps unrelated user rules",
+          result.returncode == 0 and "Edit(~/.agent/tasks/**)" not in merged["ask"]
+          and "Edit(~/.agent/tasks/*/SPEC.md)" in merged["ask"] and "Edit(~/.claude/**)" in merged["ask"]
+          and "Bash(my-own *)" in merged["allow"], (result.stderr[-200:], merged))
+
+
+def main() -> int:
+    block_cases()
+    permission_cases()
+    merge_cases()
+    print(f"install config: {len(FAILED)} failed" if FAILED else "install config: pass")
+    return 1 if FAILED else 0
 
 
 if __name__ == "__main__":

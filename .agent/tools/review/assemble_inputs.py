@@ -41,9 +41,9 @@ def read_artifact(path: Path, what: str) -> dict:
         fail(f"assemble-packages: {what}: {error}")
 
 
-def read_config(review_dir: Path, config: Path | None) -> dict:
-    """The run config, or an empty mapping when the directory carries none."""
-    path = config or review_dir / "assemble.json"
+def read_config(review_dir: Path) -> dict:
+    """The run config `<review_dir>/assemble.json`, or an empty mapping when the directory carries none."""
+    path = review_dir / "assemble.json"
     if not path.is_file():
         return {}
     return read_artifact(path, "the run config")

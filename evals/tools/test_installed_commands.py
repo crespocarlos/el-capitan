@@ -3,9 +3,9 @@
 
 `install.sh` links each `kind: command` entry of `.agent/tools/tools.json` into `~/.agent/bin`, and
 callers run the link from whatever repository they are in. Each command therefore runs here through
-a symlink in a temporary bin directory, from a cwd outside this repository, with a throwaway HOME:
-once with `--help` and once with a read-only invocation from `READS`. A command passes when the exit
-code is one its table entry expects and stderr carries no traceback (an import that only works from
+a symlink in a temporary bin directory, from a cwd outside this repository, with a throwaway HOME,
+with a read-only invocation from `READS` (`--help` is checked by `test_command_names.py`). A command
+passes when the exit code is one its table entry expects and stderr carries no traceback (an import that only works from
 the source tree fails here). Source-only scripts are sourced by bash instead of executed.
 
 The interpreter is the `python3` first on PATH, the one each command's shebang resolves to.
@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,14 +39,12 @@ READS = {
     "crew-pr-actions.py": (["reply", "--repo", "o/r", "--pr", "1", "--thread-id", "T",
                             "--comment-id", "C", "--body", "b"], {0}),
     "crew-review-findings.py": (["select", "--mode", "self"], {0}),
-    "crew-review-stats.py": (["--json", "--tasks-dir", "{tasks}"], {0}),
     "crew-review-hunks.py": (["{diff}", "--out", "{tmp}/hunks"], {0}),
     "crew-assemble-packages.py": (["{task}"], {2}),
     "crew-nightshift-e2e.py": (["worktrees", "--help"], {0}),
     "crew-evals-compare.py": (["runs", "--help"], {0}),
     "crew-evals-inspect.py": (["latest"], {2}),
     "crew-metric.py": (["{task}", "probe=1"], {0}),
-    "crew-next.py": (["--stages"], {0}),
     "crew-progress.py": (["{task}", "APPROVED → IMPLEMENTING"], {0}),
     "crew-verify.py": (["report-check", "{task}/REPORT.md"], {0, 1}),
     "crew-task.py": (["normalize-status", "--tasks-dir", "{tasks}"], {0}),
@@ -138,15 +137,17 @@ def run_all(tmp: Path) -> list[str]:
     link_commands(entries, tmp / "bin")
     mem = invoke(tmp / "bin" / "crew-mem.py", ["init"], places["repo"], env)
     failures.append(verdict("crew-mem.py", "init", mem, {0}))
+    jobs = []
     for entry in entries:
-        name = entry["name"]
-        link = tmp / "bin" / name
-        if name not in SOURCE_ONLY:
-            failures.append(verdict(name, "--help", invoke(link, ["--help"], places["repo"], env), {0}))
-        args, accepted = READS.get(name, ([], {0}))
-        filled = [arg.format(**places) for arg in args]
-        failures.append(verdict(name, " ".join(["read"] + args), invoke(link, filled, places["repo"], env),
-                                accepted))
+        args, accepted = READS.get(entry["name"], ([], {0}))
+        jobs.append((entry["name"], args, [arg.format(**places) for arg in args], accepted))
+    def read(job: tuple) -> str:
+        name, args, filled, accepted = job
+        done = invoke(tmp / "bin" / name, filled, places["repo"], env)
+        return verdict(name, " ".join(["read", *args]), done, accepted)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        failures += pool.map(read, jobs)
     return [failure for failure in failures if failure]
 
 

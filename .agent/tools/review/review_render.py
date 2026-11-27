@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from review_models import Finding
-from review_vocabulary import ABSENT, ASSESSMENT_ORDER, canonical_personas, persona_outcome, verdict
+from review_vocabulary import ABSENT, ASSESSMENT_ORDER, PROBE, canonical_personas, persona_outcome, verdict
 
 from lib.clock import utc_stamp
 from lib.files import atomic_write
@@ -173,7 +173,7 @@ def footer(findings: list[Finding], head: str, mode: str, next_step: str = "",
     file takes the last `Verdict:` it finds.
 
     The next step comes from `next-steps.json` keyed by this mode's stage and the verdict just
-    derived, so the persisted report's `> Next:` and `crew-next.py` cannot disagree. A caller may pass
+    derived, so the persisted report's `> Next:` and the table cannot disagree. A caller may pass
     `next_step` to override it, which is what `persist --next` does. A skill's own trailer is written
     prose that `lint_handoff` holds to the router; it does not read this table.
     """
@@ -262,8 +262,10 @@ def add_save_out_parser(commands) -> None:
 
 
 def save_out(args: argparse.Namespace) -> int:
-    """Write the raw reply and its provenance record; warn, without refusing, on a digest."""
-    (persona,) = canonical_personas([args.persona], split_commas=False)
+    """Write the raw reply and its provenance record; warn, without refusing, on a digest. `--persona probe`
+    saves the reviewer-probe reply as `probe.out.md`, which the probe gate of `persist` reads."""
+    named = args.persona.strip().lower().removeprefix("reviewer-")
+    (persona,) = [PROBE] if named == PROBE else canonical_personas([args.persona], split_commas=False)
     if not args.review_dir.is_dir():
         raise ValueError(f"no such review directory: {args.review_dir}")
     raw = sys.stdin.buffer.read()
@@ -280,7 +282,7 @@ def save_out(args: argparse.Namespace) -> int:
     }
     atomic_write(provenance_path(args.review_dir, persona), json.dumps(record, indent=2) + "\n")
     outcome = persona_outcome(target)
-    if outcome in ("summarized", "unknown"):
+    if outcome in ("summarized", "unknown") and persona != PROBE:
         print(f"warning: {target.name} reads as `{outcome}`; persist will refuse it unless it is "
               "the persona's real reply", file=sys.stderr)
     print(json.dumps({"saved": str(target), "sha256": record["sha256"], "outcome": outcome}))

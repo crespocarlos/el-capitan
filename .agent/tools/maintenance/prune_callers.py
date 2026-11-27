@@ -1,31 +1,29 @@
 """The caller set for a catalog command: which files reference it, and where.
 
-Callers are prompts (rules, agents, skills, always-loaded guidance), hooks, `install.sh` and other
-tools. `TOOLS.md` and `tools.json` name every command by construction, so they are not callers;
-tests are counted in their own column and never decide the verdict.
+Callers are prompts (rules, agents, skills, always-loaded guidance), hooks, `install.sh`, other
+tools and the CI workflows. `TOOLS.md`, `tools.json` and the tool tree's `.md` docs describe commands, so they are not
+callers, and neither is a Python docstring or comment; tests are counted apart and never decide.
 """
 from __future__ import annotations
 
+import io
 import json
+import tokenize
 from pathlib import Path
-
-from task_progress import PROGRESS_FILE
 
 PROMPT_PATTERNS = (
     "rules/*.mdc",
     ".cursor/rules/*.mdc",
     ".cursor/agents/**/*.md",
     ".cursor/skills/**/*.md",
-    ".agent/tools/AGENTS.md",
     ".agent/_*TEMPLATE.md",
     "AGENTS.md",
     "CLAUDE.md",
     ".claude/CLAUDE.md",
 )
 HOOK_PATTERNS = (".claude/hooks/**/*.sh",)
-TOOL_PATTERNS = (".agent/tools/**/*.py", ".agent/tools/**/*.sh")
+TOOL_PATTERNS = (".agent/tools/**/*.py", ".agent/tools/**/*.sh", ".github/workflows/*.yml")
 TEST_PATTERNS = ("evals/**/*.py",)
-GROUPS = ("prompts", "hooks", "install", "tools", "tests")
 # The catalog page names every command, so it is the one document that cannot be a caller. `README.md`
 # is not a caller either: it describes the surface to a human and never asks the pipeline to run one.
 EXCLUDED = {"TOOLS.md", "README.md"}
@@ -55,14 +53,37 @@ def sources(root: Path, patterns: tuple[str, ...], exclude: Path | None = None) 
                   if path.name not in EXCLUDED and (exclude is None or path != exclude))
 
 
+def python_code(source: str) -> str:
+    """The module's tokens without comments and docstrings (any string standing alone as a statement)."""
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return source
+    skip = {tokenize.NL, tokenize.COMMENT}
+    kept = []
+    for index, token in enumerate(tokens):
+        if token.type == tokenize.COMMENT:
+            continue
+        if token.type == tokenize.STRING:
+            before = next((t for t in reversed(tokens[:index]) if t.type not in skip), None)
+            after = next((t for t in tokens[index + 1:] if t.type not in skip), None)
+            starts = before is None or before.type in (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT,
+                                                        tokenize.ENCODING)
+            if starts and after is not None and after.type in (tokenize.NEWLINE, tokenize.ENDMARKER):
+                continue
+        kept.append(token.string)
+    return " ".join(kept)
+
+
 def read(paths: list[Path]) -> list[tuple[Path, str]]:
-    """Each file with its text; an unreadable file is skipped rather than counted as a caller."""
+    """Each file with the text that can call a command; an unreadable file is skipped, not counted."""
     texts = []
     for path in paths:
         try:
-            texts.append((path, path.read_text(encoding="utf-8", errors="replace")))
+            text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        texts.append((path, python_code(text) if path.suffix == ".py" else text))
     return texts
 
 
@@ -78,16 +99,6 @@ def caller_texts(root: Path) -> dict[str, list[tuple[Path, str]]]:
     }
 
 
-def count(name: str, texts: list[tuple[Path, str]], exclude: Path | None = None) -> int:
-    """How many files reference `name`, ignoring the file that defines it."""
-    return sum(1 for path, text in texts if path != exclude and name in text)
-
-
-def telemetry(name: str, texts: list[tuple[Path, str]]) -> int:
-    """How many task journals name the command, reported as a hint rather than a verdict."""
-    return count(name, texts)
-
-
 def verdict(counts: dict[str, int]) -> str:
     """Called when any caller group names it; test-only when only a test does; else uncalled.
 
@@ -97,9 +108,3 @@ def verdict(counts: dict[str, int]) -> str:
     if sum(counts[group] for group in ("prompts", "hooks", "install", "tools")):
         return "called"
     return "test-only" if counts["tests"] else "uncalled"
-
-
-def journal_texts(tasks_dir: Path | None) -> list[tuple[Path, str]]:
-    if tasks_dir is None or not tasks_dir.is_dir():
-        return []
-    return read(sorted(tasks_dir.glob(f"*/{PROGRESS_FILE}")))

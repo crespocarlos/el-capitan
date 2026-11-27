@@ -300,6 +300,12 @@ if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
       else
         echo "  Removing stale skill: $(basename "$d")"
         rm -f "$skill_md"
+        # Its reference links went with it: drop the dangling ones (repo-owned only), then any folder left empty.
+        for sub in "${d%/}" "$d"*/; do
+          prune_broken_symlinks "${sub%/}"
+        done
+        shopt -s nullglob
+        for sub in "$d"*/; do rmdir "$sub" 2>/dev/null || true; done
         rmdir "$d" 2>/dev/null || true
       fi
     fi

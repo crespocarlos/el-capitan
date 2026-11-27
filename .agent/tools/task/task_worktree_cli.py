@@ -116,7 +116,7 @@ def prune_stale(dry_run: bool) -> None:
         print(f"Pruned stale worktree: {entry['path']} ({entry['branch']})", file=sys.stderr)
         if not entry["merged"]:
             print(f"Kept local branch {entry['branch']} (remote gone, not merged). "
-                  "Run `crew cleanup` to review it.", file=sys.stderr)
+                  "Delete it with `git branch -D` once reviewed.", file=sys.stderr)
         elif "branch " in message:
             print(f"Deleted local branch: {entry['branch']}", file=sys.stderr)
 

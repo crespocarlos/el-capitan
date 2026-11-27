@@ -86,21 +86,21 @@ then this file. Hard constraints always apply.
 
 ## Testing
 
+Detail: `~/.cursor/agents/references/testing-policy.md`.
+
 - **Test what can regress** — new behavior, a fixed bug, or a changed contract only; not docs, config,
-  mechanical refactors, renames, type-only changes, or coverage numbers. Prompt changes get targeted
-  evals instead. Scale the rest of this section to the change.
+  mechanical refactors, renames, type-only changes, or coverage numbers. Prompt changes: `crew-lint`
+  and the prompt-quality review. Scale the rest to the change.
 - **Contract first** — map each acceptance criterion or changed contract to the lowest-layer test that
-  proves it and runs in normal CI, and state any gap. For a bug, write the failing regression test
-  first.
+  proves it and runs in normal CI, and state any gap; for a bug, write the failing test first.
 - **Test behavior, not implementation** — assert observable behavior through public interfaces; not
   private functions, mock call counts (unless the call is the contract), or large snapshots.
-- **Probes are not tests** — for cross-system evidence, use an external probe through a public
-  interface, kept in task artifacts and out of the diff.
+- **Probes are not tests** — cross-system evidence comes from an external probe through a public
+  interface, kept in task artifacts, not the diff.
 - **Keep the suite honest** — never delete, skip, or weaken a test to make it pass; fix the cause or
-  report the failure.
-- **Report evidence** — run the narrowest tests that cover the change, and record for each kept test
-  the protected behavior, failure mode, verification command, and CI coverage. Report removed tests,
-  probes, and gaps.
+  report it.
+- **Report evidence** — run the narrowest covering tests; for each kept test record the protected
+  behavior, failure mode, command, and CI coverage; report removed tests, probes, and gaps.
 
 ## Scoped rules
 

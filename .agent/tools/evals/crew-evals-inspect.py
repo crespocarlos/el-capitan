@@ -18,9 +18,10 @@ import urllib.request
 
 import evals_bootstrap  # noqa: F401
 
+from evals_query import es_url
+
 from lib.output import DEFAULT_MAX_CHARS, bounded_json
 
-URL = os.environ.get("ES_URL", "http://localhost:9200").rstrip("/")
 MAX_DOCS = 500
 
 
@@ -34,7 +35,7 @@ def search(index: str, query: dict) -> dict:
         ).decode()
         headers["Authorization"] = f"Basic {token}"
     request = urllib.request.Request(
-        f"{URL}/{index}/_search", data=json.dumps(query).encode(), headers=headers
+        f"{es_url()}/{index}/_search", data=json.dumps(query).encode(), headers=headers
     )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:

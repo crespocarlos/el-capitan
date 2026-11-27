@@ -151,11 +151,12 @@ stop: first run `crew-task.py blocked "$TASK_DIR" "<reason>"`. End with the `cre
 Follow [consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.md); its commands
 (`consolidate`, `normalize --repo --head`, `consolidate --render`): [consolidate run](~/.cursor/agents/references/consolidate-run.md).
 
-A finding a read cannot settle — below `ACTED_CONFIDENCE`, headed for `Ask`, or genuinely torn — goes
-to a probe rather than to a question: collect every unsettled finding in this review and dispatch one
-`reviewer-probe` run carrying all of them, then set each score from what it observed. PR mode never
-does this; its findings keep `[needs more info]` and name the blocked probe. Follow [probing an
-unsettled claim](~/.cursor/agents/references/probing.md).
+A finding a read cannot settle — below `ACTED_CONFIDENCE`, headed for `Ask`, or torn — goes to a
+probe, not a question: dispatch one `reviewer-probe` run carrying every unsettled finding, then set
+each score from what it observed. PR mode never does this; its findings keep `[needs more info]` and
+name the blocked probe. Follow [probing an unsettled claim](~/.cursor/agents/references/probing.md).
+In self and changes mode `persist` refuses an emitted `[needs more info]` or 1-2 finding until the
+reply is saved per probing.md "Saving the reply"; a skip needs a listed reason and settles nothing.
 
 ## Step 8: output and persistence
 

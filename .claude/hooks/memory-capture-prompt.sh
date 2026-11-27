@@ -64,7 +64,7 @@ message = (
     + ". Review it for at most three durable, non-derivable lessons, then draft each as one `.md` "
       "file in `~/.agent/memory/.inbox/` with the usual frontmatter. A subagent cannot ask the user, "
       "so do not end your turn with a question about importing them: the drafts are already queued "
-      "and `crew inbox` lists them at the next session start or when the user asks. If nothing "
+      "and the next session start lists them. If nothing "
       "qualifies, write nothing."
 )
 finish({"followup_message": message})

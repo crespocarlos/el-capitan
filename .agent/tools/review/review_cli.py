@@ -79,7 +79,7 @@ def add_normalize_parsers(commands) -> None:
 
 
 def add_map_parsers(commands) -> None:
-    """`coverage` and `validate-map`: the layer map's two gates."""
+    """`coverage`: the layer map's gate."""
     coverage_parser = commands.add_parser(
         "coverage", help="fail on a hunk nobody was asked to read")
     coverage_parser.add_argument("--hunks", required=True, type=Path,
@@ -87,13 +87,6 @@ def add_map_parsers(commands) -> None:
     coverage_parser.add_argument("--layers", required=True, type=Path,
                                  help="layers.json written by the reviewer-layers pre-pass")
     coverage_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
-                                 help="bound the printed JSON")
-    validate_parser = commands.add_parser("validate-map", help="check a whole review.json map")
-    validate_parser.add_argument("--review", required=True, type=Path,
-                                 help="review.json written by crew explain")
-    validate_parser.add_argument("--hunks", required=True, type=Path,
-                                 help="hunks.json the map was built from")
-    validate_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
                                  help="bound the printed JSON")
 
 

@@ -120,7 +120,7 @@ explicit documentation task as the final task. Flag if the change is behavioral 
 doc task is present. You may waive this if no existing documentation mentions the affected concept.
 
 ### Test section presence
-crew-builder's Completion Protocol and `crew test` run the commands under `## Tests`. If the spec
+crew-builder's Completion Protocol runs the commands under `## Tests`. If the spec
 has no `## Tests` section, no automated layer runs after the tasks.
 
 **Severity: Critical** — **Spec** — missing `## Tests` section when the change needs automated

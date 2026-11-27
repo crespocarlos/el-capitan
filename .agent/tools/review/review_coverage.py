@@ -3,19 +3,23 @@
 Coverage: each dispatched persona produced output. A `<persona>.in.md` carries no builder sections of
 the spec (Product Flow excepted) and no generated-file hunks. Persist always checks persona evidence;
 `--strict` adds the diff gates (layer map, hunk references, package rules). An absent input is skipped.
+The probe gate: an unsettled self or changes finding needs the saved probe reply or a valid skip line.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
 from pathlib import Path
 
 from review_layers import check_coverage, check_hunk_refs, hunk_ids, layer_coverage
+from review_render import read_record
 from review_vocabulary import (
     ASSESSMENT_WORDS,
     CODE_MODES,
+    PROBE,
     SELECT_RULES,
     assessment_of,
     canonical_personas,
@@ -296,3 +300,50 @@ def strict_gates(args: argparse.Namespace, owner: Path, findings: list[dict]) ->
         if violations:
             raise ValueError("; ".join(violations))
     return coverage_section, coverage_gap
+
+
+PROBE_RECORD = f"{PROBE}.out.md"
+# Only "the probe cannot run here" excuses a missing probe; any other reason is the gate being skipped.
+PROBE_SKIP_REASONS = ("no-runtime", "no-network", "pr-only", "external-service")
+PROBE_SKIPPED = re.compile(r"^[ \t>*-]*probe: skipped\b[ \t]*(?P<rest>.*)$", re.MULTILINE | re.IGNORECASE)
+PROBE_SKIP_VALID = re.compile(r"(?:" + "|".join(PROBE_SKIP_REASONS) + r"):[ \t]*\S", re.IGNORECASE)
+SAVE_PROBE = "`crew-review-findings.py save-out --review-dir <dir> --persona probe --harness <name>`"
+
+
+def probe_saved(review_dir: Path) -> str:
+    """'' when `probe.out.md` is a non-empty reply matching its save-out record, else what is wrong."""
+    reply = review_dir / PROBE_RECORD
+    if not reply.is_file() or not reply.read_bytes().strip():
+        return "missing"
+    record = read_record(review_dir, PROBE)
+    if record is None or hashlib.sha256(reply.read_bytes()).hexdigest() != record["sha256"]:
+        return f"{PROBE_RECORD} has no matching provenance record; save the reply with {SAVE_PROBE}"
+    return ""
+
+
+def check_probe(review_dir: Path, report: str, findings: list, mode: str) -> None:
+    """A self or changes review emitting an unsettled finding (`[needs more info]`, score 1-2) shows its
+    probe: the reply saved by `save-out --persona probe`, or a `probe: skipped <reason>: <detail>` line
+    whose reason says the probe cannot run here, with every unsettled finding left `[needs more info]`.
+    PR mode never probes."""
+    if mode not in ("self", "changes"):
+        return
+    unsettled = [f for f in findings if f.is_emitted() and (
+        f.label == "needs more info" or (isinstance(f.confidence, int) and f.confidence <= 2))]
+    saved = probe_saved(review_dir) if unsettled else ""
+    if not saved:
+        return
+    skips = [match.group("rest") for match in PROBE_SKIPPED.finditer(report)]
+    if not skips and saved != "missing":
+        raise ValueError(saved)
+    reasons = f"`probe: skipped <reason>: <detail>`, reason one of {', '.join(PROBE_SKIP_REASONS)}"
+    if not skips:
+        raise ValueError(f"unsettled finding(s) {', '.join(repr(f.title) for f in unsettled)} need the reviewer-probe "
+                         f"run: save its reply with {SAVE_PROBE}, or, when the probe cannot run here, state {reasons}")
+    invalid = [rest for rest in skips if not PROBE_SKIP_VALID.match(rest)]
+    if invalid:
+        raise ValueError(f"`probe: skipped {invalid[0]}` is not a reason the probe cannot run; "
+                         f"write {reasons}, or run the probe")
+    settled = [f.title for f in unsettled if f.label != "needs more info"]
+    if settled:
+        raise ValueError(f"a skipped probe settles nothing: label {', '.join(map(repr, settled))} `[needs more info]`")

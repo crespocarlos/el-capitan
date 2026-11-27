@@ -148,7 +148,8 @@ outcome line, and one it leaves alone gets none.
 Only after the user responds.
 
 **Code mode:** apply each approved edit, reading the file immediately before editing if it wasn't
-already loaded. After each edit lands, log it with the Step 3b command and `--outcome fixed`; a failed
+already loaded; a fix that adds or changes tests follows the
+[testing policy](~/.cursor/agents/references/testing-policy.md). After each edit lands, log it with the Step 3b command and `--outcome fixed`; a failed
 edit is logged `skipped` with a reason starting `edit-failed:`, so failures are distinguishable from
 user decisions. Never reach the summary with a decision unrecorded.
 

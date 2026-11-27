@@ -34,7 +34,7 @@ Derive from, in order:
 1. SPEC **Summary** and **high-signal** bullets under **Acceptance criteria** — distill to reviewer-sized checks.
 2. **Diff risk** — what changed files or behaviors a reviewer should spot-check (UI path, config knob, API response shape).
 
-**Automated:** Typed commands under SPEC `## Tests` (`### Unit` / `### Integration` / `### E2E` / `### Validation`) are run via **`crew test`** (and CI when applicable). One line in the PR body is enough, e.g. "Automated: `crew test` passes in the worktree."
+**Automated:** Typed commands under SPEC `## Tests` (`### Unit` / `### Integration` / `### E2E` / `### Validation`) are run by the builder's quality gates (and CI when applicable). One line in the PR body is enough, e.g. "Automated: the `## Tests` commands pass in the worktree."
 
 **Do not:** Invent steps.
 
@@ -52,4 +52,4 @@ If no SPEC.md exists, keep this section brief or omit it. Never invent steps.
 - Avoid layer-grouped section headers or long bullet inventories of renamed fields/files in the
   Summary.
 - **How to test** = **reviewer-only** manual bullets (capped) from SPEC Summary / Acceptance
-  criteria / diff risk, plus one **automated** line pointing at `crew test` / CI.
+  criteria / diff risk, plus one **automated** line pointing at the `## Tests` commands / CI.

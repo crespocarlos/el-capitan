@@ -152,9 +152,8 @@ for them once per run instead of once per persona. A subagent loads only its own
 persona file, so a rule living in a reference file reaches it only if the package carries it.
 Composing by hand is how one run delivered a reviewer a prebuilt header instead of the contract, and
 `check-packages` passed anyway, because it checks the rules whose absence is detectable rather than
-that two reviewers read the same evidence. The eval harness composes the same contract
-(`load_persona_prompt` in `evals/reviewer/run.py`), which keeps the measured prompt and the dispatched
-prompt the same shape.
+that two reviewers read the same evidence. `evals/tools/test_assemble_packages.py` checks that every
+package opens with the same contract and hunk reference.
 
 In spec and idea reviews there is no diff, so the tool does not apply: compose by hand in the same
 order, contract first.

@@ -31,6 +31,7 @@ ACTED_CONFIDENCE = 3
 OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}
 PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prompt-quality", "explorer"}
 LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs still normalize
+PROBE = "probe"  # the reviewer-probe reply: saved with provenance like a persona's, never a lens
 CODE_MODES = {"self", "changes", "pr"}
 PERSONA_STATUSES = {"failed", "skipped", "truncated"}
 # Tiered output cap, counted separately so polish cannot evict severity: a nit has a 4-slot budget

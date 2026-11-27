@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""`landed` in `crew ls`: a DONE task is `yes`, `no`, or `unknown`, from the PR record.
+"""`crew ls`: `landed` from the PR record, and `--watch` redrawing the table read-only.
+
+`ls_data` (shared with a TUI) is driven with stubbed readers, an injected sleep and clock; a real
+`crew-ls.py --watch` is read until it has drawn twice, then interrupted. A DONE task is `yes`, `no`,
+or `unknown`, from the PR record.
 
 `DONE` means a draft PR was opened. Stacked PRs merged into their parents looked merged and never
 reached the default branch, so the verdict reads the PR record (base, state, merge commit) and not
@@ -310,8 +314,139 @@ def backport_end_to_end(tmp: Path) -> None:
     check("--json carries landed yes and the note", data[0].get("landed") == "yes" and data[0].get("note") == "backport to 9.x", data)
 
 
+# --- crew ls --watch: the table redrawn every N seconds, read-only -------------------------------
+
+CLEAR = "\x1b[2J\x1b[H"
+
+
+def make_tasks(base: Path) -> Path:
+    tasks = base / "tasks"
+    for uuid, slug, status in (("11111111-1111-1111-1111-111111111111", "shipped", "DONE"),
+                               ("22222222-2222-2222-2222-222222222222", "building", "IMPLEMENTING")):
+        task = tasks / uuid
+        task.mkdir(parents=True)
+        (task / "SPEC.md").write_text(f"# Spec: {slug}\n\n## Status\n{status}\n\n- [x] one\n- [ ] two\n", encoding="utf-8")
+        (task / ".task-id").write_text(json.dumps({"slug": slug, "branch": f"feat/{slug}"}), encoding="utf-8")
+        (task / "PROGRESS.md").write_text("BLOCKED: waiting\n" if slug == "building" else "", encoding="utf-8")
+    return tasks
+
+
+def digest(tasks: Path) -> str:
+    return "".join(f"{path}:{path.read_bytes()!r}" for path in sorted(tasks.rglob("*")) if path.is_file())
+
+
+def gathering(tmp: Path) -> None:
+    """`ls_data.gather`, shared with a TUI: every row, the BLOCKED lines, landed reads only for shown DONE tasks."""
+    tasks = make_tasks(tmp)
+    snapshot = ls_data.gather(tasks, show_done=False)
+    check("gather returns every task row and the open tasks' BLOCKED lines, and reads no landed state",
+          sorted(r.task.name[:8] for r in snapshot.rows) == ["11111111", "22222222"]
+          and any("BLOCKED: waiting" in line for line in snapshot.blocked) and snapshot.landed == [], snapshot)
+    seen: list[list[str]] = []
+    shown = ls_data.gather(tasks, show_done=True, landed=lambda rows: seen.append([n for n, _ in rows]) or ["  shipped  landed: unknown"])
+    check("with done tasks shown, only DONE tasks are read for landed", seen == [["shipped"]] and shown.landed == ["  shipped  landed: unknown"], seen)
+    check("a directory with no tasks gathers nothing", ls_data.gather(tmp / "empty", False).rows == [])
+
+
+def limit_and_cache(tmp: Path) -> None:
+    """`--limit` bounds the landed reads, a repository is asked once, and a watch loop re-reads on a TTL."""
+    tasks = tmp / "tasks"
+    for index in range(4):
+        task = tasks / f"{index:08d}-1111-1111-1111-111111111111"
+        task.mkdir(parents=True)
+        (task / "SPEC.md").write_text(f"# Spec: d{index}\n\n## Status\nDONE\n\n- [x] one\n", encoding="utf-8")
+        (task / ".task-id").write_text(json.dumps({"slug": f"d{index}", "branch": f"feat/d{index}"}), encoding="utf-8")
+        (task / "PROGRESS.md").write_text(f"[2026-01-01 00:00:00] TRANSITION: IMPLEMENTING → DONE (PR opened: https://github.com/acme/w/pull/{index + 1})\n",
+                                          encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def stub(rows: list) -> list[str]:
+        seen.append([n for n, _ in rows])
+        return [f"  {n}  landed: no" for n, _ in rows]
+
+    ls_data.gather(tasks, show_done=True, landed=stub, limit=2)
+    ls_data.gather(tasks, show_done=True, landed=stub)
+    check("--limit is applied before the landed reads; without one every DONE task is read", [len(s) for s in seen] == [2, 4], seen)
+    calls: list[list[str]] = []
+
+    def read(arguments: list[str]) -> tuple[int, str]:
+        calls.append(arguments)
+        if arguments[0] == "view":
+            return 0, json.dumps({"state": "OPEN", "baseRefName": "main", "mergeCommit": None})
+        return 0, json.dumps({"defaultBranchRef": {"name": "main"}})
+
+    pairs = [(f"d{i}", t) for i, t in enumerate(sorted(tasks.iterdir()))]
+    ls_data.landed_lines(pairs, read, lambda s, d: None, [], lambda: {"acme/w": "origin"})
+    check("`repo view` is asked once per repository in one snapshot", [c[0] for c in calls].count("repo") == 1 and [c[0] for c in calls].count("view") == 4, calls)
+    now, reads = [0.0], []
+    cache = ls_data.LandedCache(ttl=60.0, clock=lambda: now[0], landed=lambda rows: reads.append([n for n, _ in rows]) or [f"  {n}  landed: no" for n, _ in rows])
+    first = cache.lines(pairs)
+    now[0] = 30.0
+    cache.lines(pairs)
+    check("inside the TTL the cached lines are reused, in order", len(reads) == 1 and first == [f"  d{i}  landed: no" for i in range(4)], reads)
+    now[0] = 61.0
+    cache.lines(pairs[:2])
+    check("past the TTL only the stale tasks are read again", len(reads) == 2 and reads[1] == ["d0", "d1"], reads)
+
+
+def loop() -> None:
+    """`ls_data.watch` with an injected sleep and clear: render into a buffer, clear, sleep; Ctrl-C is exit 0."""
+    events: list[str] = []
+    code = ls_data.watch(lambda: events.append("render"), interval=2.5, sleep=lambda s: events.append(f"sleep {s}"),
+                         clear=lambda: events.append("clear"), max_iterations=3)
+    check("the loop renders, clears only when ready, sleeps, and stops at max_iterations; the default interval is 3 s",
+          events == ["render", "clear", "sleep 2.5"] * 2 + ["render", "clear"] and code == 0 and ls_data.DEFAULT_INTERVAL == 3.0, events)
+
+    def interrupted(_seconds: float) -> None:
+        raise KeyboardInterrupt
+
+    def raising() -> None:
+        raise KeyboardInterrupt
+
+    events.clear()
+    check("Ctrl-C during the wait or a render ends the loop with exit 0",
+          ls_data.watch(lambda: events.append("render"), sleep=interrupted, clear=lambda: None) == 0 and events == ["render"]
+          and ls_data.watch(raising, sleep=lambda s: None, clear=lambda: None) == 0)
+    check("zero iterations draw nothing", ls_data.watch(lambda: events.append("x"), max_iterations=0, clear=lambda: events.append("c")) == 0
+          and "x" not in events)
+
+
+def watch_command(tmp: Path) -> None:
+    """A real `crew-ls.py --watch` draws twice, takes a SIGINT, exits 0, and leaves the task files alone."""
+    import selectors
+    import signal
+
+    tasks = make_tasks(tmp)
+    before = digest(tasks)
+    command = [sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks)]
+    child = subprocess.Popen([*command, "--watch", "--interval", "0.05"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    drawn, selector = b"", selectors.DefaultSelector()
+    selector.register(child.stdout, selectors.EVENT_READ)
+    while drawn.count(CLEAR.encode()) < 2 and selector.select(timeout=20):
+        drawn += os.read(child.stdout.fileno(), 65536)
+    child.send_signal(signal.SIGINT)
+    try:
+        out, err = child.communicate(timeout=20)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        out, err = child.communicate()
+    text = (drawn + out).decode()
+    check("Ctrl-C exits 0 with no traceback, after clearing before each draw of the same table",
+          child.returncode == 0 and b"Traceback" not in err and text.count(CLEAR) >= 2 and "building" in text and "BLOCKED: waiting" in text,
+          (child.returncode, err[-300:], text[:300]))
+    check("watching is read-only", digest(tasks) == before)
+    plain = subprocess.run(command, capture_output=True, text=True)
+    check("without --watch nothing is cleared", "\x1b[2J" not in plain.stdout and "building" in plain.stdout, plain.stdout)
+    missing = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--cost", "--tasks-dir", str(tmp / "nowhere")], capture_output=True, text=True)
+    check("--cost with no tasks directory prints the error on stderr, exit 2",
+          missing.returncode == 2 and missing.stdout == "" and "no tasks directory" in missing.stderr, missing)
+    for bad in (["--watch", "--interval", "0"], ["--watch", "--json"], ["--interval", "5"]):
+        check(f"{' '.join(bad)} is refused", subprocess.run([*command, *bad], capture_output=True, text=True).returncode == 2)
+
+
 def main() -> int:
     closing_text_case()
+    loop()
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         backport_cases(tmp / "backport")
@@ -328,6 +463,9 @@ def main() -> int:
         except (RuntimeError, subprocess.SubprocessError, OSError) as error:
             check("stale origin fixture", False, error)
         end_to_end_case(tmp / "e2e-run")
+        gathering(tmp / "gather")
+        limit_and_cache(tmp / "limit")
+        watch_command(tmp / "watch")
     for name in FAILED:
         print(f"failed: {name}", file=sys.stderr)
     return 1 if FAILED else 0

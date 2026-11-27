@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """List crew task state (read only) without failing on malformed task metadata.
 
-Modes: the table, `--md`, `--tsv`, `--json`, `--watch [--interval N]`; `--all` adds done specs with
+Modes: the table, `--md`, `--json`, `--watch [--interval N]`; `--all` adds done specs with
 `landed: yes | no | unknown`; `--limit`/`--max-chars` bound it; `--status-file SPEC.md` prints one
 status; `--reconcile` reports ready, stalled and idle specs (`transitions.json`). Writes: `crew-task.py`.
 """
@@ -20,14 +20,12 @@ from task_state import RulesError
 
 from lib.output import DEFAULT_MAX_CHARS
 
-SUMMARY = "List task state: table, --md, --tsv, or --json; --reconcile reports. Writes: crew-task.py."
+SUMMARY = "List task state: table, --md, or --json; --reconcile reports. Writes: crew-task.py."
 
 
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=SUMMARY)
     parser.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
-    parser.add_argument("--tsv", action="store_true",
-                        help="tab-separated slug, branch, status, verdict, age")
     parser.add_argument("--md", action="store_true", help="Markdown table, for pasting into chat")
     parser.add_argument("--json", action="store_true",
                         help="machine-readable JSON array on stdout, diagnostics on stderr")
@@ -61,8 +59,8 @@ def main() -> int:
         return print_cost(args.tasks_dir)
     if args.interval is not None and not args.watch:
         parser.error("--interval requires --watch")
-    if args.watch and (args.json or args.tsv or args.reconcile or (args.interval is not None and args.interval <= 0)):
-        parser.error("--watch redraws the table: no --json, --tsv or --reconcile, and --interval must be positive")
+    if args.watch and (args.json or args.reconcile or (args.interval is not None and args.interval <= 0)):
+        parser.error("--watch redraws the table: no --json or --reconcile, and --interval must be positive")
     try:
         if args.watch:
             signal.signal(signal.SIGINT, signal.default_int_handler)

@@ -118,7 +118,7 @@ fails one whose trailer is missing from the end, duplicated, or names a verb `cr
 row for, so a handoff that survives review is one a session can act on by pasting it.
 
 A stage with several outcomes quotes one trailer per outcome in its own documentation instead of
-emitting an unquoted one — `crew-test` prints a different line for PASS, WARN, and FAIL, and each of
+emitting an unquoted one — `crew-address-review` prints a different line per mode, and each of
 those sits inside backticks. A `Next:` outside a quoted trailer, or anywhere in a file that emits no
 trailer at all, is not a handoff: the lint reports it, because a reader cannot tell it from one.
 

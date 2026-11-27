@@ -22,7 +22,7 @@ from lib.files import atomic_write, read_json_object
 from lib.git import gh
 from lib.output import bounded_json
 
-DEFAULT_QUERY = Path.home() / ".agent/bin/pr-review-threads.graphql"
+INSTALLED_QUERY = ".agent/bin/pr-review-threads.graphql"  # under HOME, read at call time
 RESOLVE_QUERY = ("mutation($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) "
                  "{ thread { isResolved } } }")
 
@@ -34,8 +34,9 @@ def default_query() -> Path:
     preferred when present, because a plan printed for an operator to run
     by hand should name the stable path they will find.
     """
-    if DEFAULT_QUERY.is_file():
-        return DEFAULT_QUERY
+    installed = Path.home() / INSTALLED_QUERY
+    if installed.is_file():
+        return installed
     return Path(__file__).resolve().with_name("pr-review-threads.graphql")
 
 

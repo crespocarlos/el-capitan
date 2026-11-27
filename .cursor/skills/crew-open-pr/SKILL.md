@@ -84,7 +84,7 @@ Read these sources (in order of priority):
 
 1. **SPEC.md** — use the returned SPEC.md when present for goal, context, and **Acceptance
    criteria** to distill **reviewer-sized** "How to test" bullets (max 3–5). Read typed `## Tests`
-   subsection headings only to mention automation (`crew test` / CI).
+   subsection headings only to mention automation (the builder's quality gates / CI).
 2. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
 3. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if
    the stat is small enough (<30 files)

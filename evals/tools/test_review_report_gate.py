@@ -15,11 +15,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+from cli_runner import run as cli
+
+ROOT =Path(__file__).resolve().parents[2]
 TOOL = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
-
-HEAD = "0123456789abcdef0123456789abcdef01234567"
-
 
 def local_commit() -> str:
     """A commit this checkout really contains, which a non-PR `--head` must resolve to."""
@@ -29,7 +28,7 @@ def local_commit() -> str:
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True)
+    return cli(TOOL, *args)
 
 
 def attention(**overrides: object) -> dict:
@@ -395,8 +394,9 @@ def test_each_lens_line_carries_its_own_reason(tmp: Path) -> None:
             f"Assessment: {word} — {clause}\n### Findings: none\n")
     report = tmp / "report-reasons.md"
     report.write_text("## Review: changes\n")
-    result = run("persist", "--review-dir", str(directory), "--report", str(report),
-                 "--files", "a.ts", "--personas", "adversarial", "architecture")
+    (tmp / "findings.json").write_text("[]")
+    result = run("persist", "--review-dir", str(directory), "--report", str(report), "--findings",
+                 str(tmp / "findings.json"), "--files", "a.ts", "--personas", "adversarial", "architecture")
     assert result.returncode == 0, failure(result)
     persisted = (tmp / "task" / "REVIEW.md").read_text()
     assert "#### Each lens, and why" in persisted, persisted
@@ -435,8 +435,9 @@ def test_a_persona_that_declared_a_failure_is_not_asked_for_a_judgement(tmp: Pat
         "status: truncated\nreason: harness cut the reply\nfinding: none\n")
     report = tmp / "report-failed.md"
     report.write_text("## Review: changes\n")
-    result = run("persist", "--review-dir", str(directory), "--report", str(report),
-                 "--files", "a.ts", "--personas", "adversarial", "code-quality")
+    (tmp / "findings.json").write_text("[]")
+    result = run("persist", "--review-dir", str(directory), "--report", str(report), "--findings",
+                 str(tmp / "findings.json"), "--files", "a.ts", "--personas", "adversarial", "code-quality")
     assert result.returncode == 0, failure(result)
     persisted = (tmp / "task" / "REVIEW.md").read_text()
     assert "**approve** — adversarial" in persisted, persisted

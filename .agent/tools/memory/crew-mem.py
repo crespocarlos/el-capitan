@@ -10,11 +10,11 @@ import sys
 
 import memory_bootstrap  # noqa: F401
 
-from memory_add import add, archive, cite, listing, show, supersede
+from memory_add import add, cite, listing, show, supersede
 from memory_frontmatter import STATUSES, TYPES
-from memory_inbox import import_inbox, ingest
+from memory_inbox import import_inbox
 from memory_journal import journal_add, journal_import
-from memory_maintenance import consolidate, doctor, init_store, reindex, stats
+from memory_maintenance import consolidate, init_store
 from memory_paths import MemoryStoreError
 from memory_search import context, search
 
@@ -50,8 +50,6 @@ def add_read_parsers(commands) -> None:
     context_parser.add_argument("--query", default="")
     context_parser.add_argument("--paths", nargs="*", default=[])
     context_parser.add_argument("--mode", choices=["session", "plan", "implement", "review", "debug"], default="plan")
-    context_parser.add_argument("--budget-tokens", type=int, default=1500)
-    context_parser.add_argument("--min-score", type=float, default=0.35)
     context_parser.add_argument("--include-observations", action="store_true")
     context_parser.add_argument("--json", action="store_true")
     context_parser.add_argument("--limit", type=int, default=None, help="print at most N results")
@@ -64,7 +62,7 @@ def add_read_parsers(commands) -> None:
 
 
 def add_write_parsers(commands) -> None:
-    """The unit mutations that are not `add`: list, supersede, archive, and cite."""
+    """The unit mutations that are not `add`: list, supersede, and cite."""
     list_parser = commands.add_parser("list", help="list units; --json for machines")
     list_parser.add_argument("--scope")
     list_parser.add_argument("--status", choices=sorted(STATUSES))
@@ -75,25 +73,15 @@ def add_write_parsers(commands) -> None:
     supersede_parser = commands.add_parser("supersede")
     supersede_parser.add_argument("old")
     supersede_parser.add_argument("new")
-    archive_parser = commands.add_parser("archive")
-    archive_parser.add_argument("id")
     cite_parser = commands.add_parser("cite")
     cite_parser.add_argument("ids", nargs="+")
     cite_parser.add_argument("--outcome", required=True, choices=["used", "helped", "misled"])
 
 
 def add_maintenance_parsers(commands) -> None:
-    """Store lifecycle and bulk operations: reindex, doctor, stats, consolidate, and ingest."""
-    commands.add_parser("reindex")
-    commands.add_parser("doctor")
-    commands.add_parser("stats")
+    """Bulk operations: consolidate and import-inbox."""
     consolidate_parser = commands.add_parser("consolidate")
     consolidate_parser.add_argument("--dry-run", action="store_true")
-    ingest_parser = commands.add_parser("ingest")
-    ingest_parser.add_argument("--source", required=True, choices=["claude", "codex"])
-    ingest_parser.add_argument("--path", required=True)
-    ingest_parser.add_argument("--repo")
-    ingest_parser.add_argument("--dry-run", action="store_true")
     inbox_parser = commands.add_parser("import-inbox")
     inbox_parser.add_argument("--all", action="store_true",
                               help="take every draft; a bare call refuses, because the inbox may "
@@ -130,9 +118,8 @@ def main() -> int:
     args = make_parser().parse_args()
     handlers = {
         "init": lambda _: init_store(), "add": add, "search": search, "context": context,
-        "show": show, "list": listing, "supersede": supersede, "archive": archive,
-        "cite": cite, "reindex": reindex, "doctor": doctor, "stats": stats,
-        "ingest": ingest, "import-inbox": import_inbox, "consolidate": consolidate,
+        "show": show, "list": listing, "supersede": supersede, "cite": cite,
+        "import-inbox": import_inbox, "consolidate": consolidate,
     }
     try:
         if args.command == "journal":

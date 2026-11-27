@@ -285,6 +285,10 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 | `crew commit` | Propose and apply a semantic commit message |
 | `crew open pr` | Push the branch and open a draft PR |
 
+Worktrees are plain commands, not crew verbs: `~/.agent/bin/crew-worktree.py --list` shows each one with its
+branch and whether it merged, `~/.agent/bin/crew-worktree.py fetch` refreshes the remote's refs, and
+`~/.agent/bin/crew-worktree.py --remove <worktree path> --branch <branch>` removes a finished worktree and its branch.
+
 ### Respond workflow
 
 | Command | What it does |
@@ -308,24 +312,27 @@ All commands start with `crew`. Type them in the AI chat — not your terminal.
 | Command | What it does |
 |---|---|
 | `crew log` | Record the session as a memory observation |
-| `crew recall: <question>` | Search persistent memory by keyword |
 
 ### Utilities
 
 | Command | What it does |
 |---|---|
 | `crew create issue: <description>` | Structure a rough idea into a GitHub issue and file it |
-| `crew cleanup` | Remove stale worktrees, branches, and task directories |
-| `crew test` | Discover and run tests scoped to the current diff |
-| `crew quick <description>` | Small change (≤3 files, no public contract) without a spec: implement, review staged changes |
-| `crew debug <symptom>` | Evidence-first root-cause loop with a three-fix limit |
 | `crew handoff` / `crew handoff resume` | Save or resume working state across a context reset |
+
+### Standalone
+
+Not a pipeline stage; run it when you need it.
+
+| Command | What it does |
+|---|---|
+| `crew idp` | Quarterly: draft Impact Connection / IDP answers from time-bounded GitHub and Slack activity |
 
 ---
 
 ## The crew
 
-4 orchestrator agents, 10 persona subagents, 17 skills (including the portable `spec-writing` skill, usable without crew).
+4 orchestrator agents, 11 persona subagents, 12 skills (including the portable `spec-writing` skill, usable without crew).
 
 **Orchestrators** dispatch persona subagents in parallel for multi-lens analysis. **Skills** run inline for interactive pipeline steps. All agents are markdown files — readable, editable, version-controlled.
 
@@ -340,7 +347,7 @@ Drafts a `SPEC.md` from a GitHub issue or plain description. Sends the explorer 
 
 **Persona subagents:** `specwriter-scope`, `specwriter-adversarial`, `specwriter-explorer`
 
-**Skills:** `crew-implement`, `crew-commit`, `crew-open-pr`, `crew-create-issue`, `crew-cleanup`, `crew-address-review`
+**Skills:** `crew-implement`, `crew-commit`, `crew-open-pr`, `crew-create-issue`, `crew-address-review`
 
 ### 🔨 crew-builder
 
@@ -391,8 +398,7 @@ el-capitan/
 │   ├── agents/              # Agent protocols (.md) — canonical source
 │   │   ├── crew-*.md               # Orchestrator agents
 │   │   ├── reviewer-*.md           # Reviewer personas
-│   │   ├── specwriter-*.md         # Specwriter personas
-│   │   └── tester-*.md             # Tester personas
+│   │   └── specwriter-*.md         # Specwriter personas
 │   └── skills/              # Inline skill protocols — canonical source
 │       ├── crew-<name>/SKILL.md
 │       └── spec-writing/        # Portable spec skill + references/ spec templates
@@ -479,7 +485,6 @@ install time:
 | `UserPromptSubmit` | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
 | `SessionStart` | Session begins | Loads bounded memory context, applies the spec status policy, and refreshes the anchor (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
-| `SessionEnd` / `Stop` | Session ends | `session-event.sh <start\|end\|session>` records session telemetry |
 
 Every hook follows one contract: blocking is exit `2` with one line on stderr (Cursor's shell events
 get their own JSON deny), no objection is exit `0` and no output, and a hook that cannot read its
@@ -515,13 +520,8 @@ rule records it.
 
 ### Persistent memory
 
-`crew recall` searches typed memory units through the SQLite FTS5 index:
-
-```bash
-crew recall: how did we handle the retry logic in kibana?
-```
-
-Journal entries are indexed as `observation` evidence and included in `search`
+Agents retrieve typed memory units through the SQLite FTS5 index (`crew-mem.py search` and
+`context`). Journal entries are indexed as `observation` evidence and included in `search`
 and ranked `context` retrieval. Use `crew memory seed` to turn durable lessons into approval-gated
 memory candidates.
 
@@ -572,10 +572,7 @@ instructions for Cursor, Claude Code, and Codex.
 After that, no routine setup is needed: agents retrieve relevant memory at task
 start. Use `crew remember: <lesson>` only for a durable fact that is not
 derivable from code or project rules. Use `crew memory seed` to draft
-user-approved candidates from the journal, or `crew memory doctor` to check
-the store. Existing Claude or Codex memory can be imported read-only with
-`crew-mem.py ingest --source claude|codex --path <directory>`; the import never
-modifies the source directory.
+user-approved candidates from the journal.
 
 Implementation completion, review-address completion, and `crew log` draft up
 to three evidence-backed candidates into the inbox automatically. Lightweight

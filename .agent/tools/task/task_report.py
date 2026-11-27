@@ -1,4 +1,4 @@
-"""Rendering task state for `crew-ls.py` (table, `--tsv`, JSON, the landed section) and `reconcile`.
+"""Rendering task state for `crew-ls.py` (table, JSON, the landed section) and `reconcile`.
 
 Rendering never writes, so a listing failure is a display problem; `reconcile` applies holds and
 statuses through `task_state`.
@@ -100,14 +100,6 @@ def print_listing(rows: list[TaskState], args, landed=None) -> None:
             for (record, _), found in zip(kept, landed_rows([r.task for _, r in kept])):
                 record.update(found)
         print(json_payload(records, args.limit, args.max_chars, what="tasks"))
-        return
-    if args.tsv:
-        printed, marker = rows_limit(rows, args.limit)
-        lines = ["\t".join([name(r), r.branch_name("?"), r.status or "?",
-                            r.verdict, f"{r.age}d"]) for r in printed]
-        if marker:
-            lines.append(marker)
-        print_lines(lines, args.max_chars, what="task rows", flag="--limit")
         return
     data = snapshot(rows, args.all, landed or landed_lines, args.limit)
     print_lines(table_lines(rows, args.all, args.md, args.limit) + data.blocked + landed_section(data.landed),

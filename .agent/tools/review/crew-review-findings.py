@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Normalize review findings, persist review reports, and append outcome records.
 
-Subcommands: `normalize`, `persist`, `select`, `coverage`, `validate-map`, `spec-context`,
+Subcommands: `normalize`, `persist`, `select`, `coverage`, `spec-context`,
 `check-packages`, `outcome`, `outcomes`, `review-dir`, `save-out`, `consolidate`. Entry point only:
 logic in `review_findings`, `review_cli`, `review_coverage`, `review_layers`, `review_report`.
 Contract (fields, fingerprints, evidence gates, `--files`, `--head`): `.agent/tools/TOOLS.md`.
@@ -42,7 +42,6 @@ from review_layers import (
     coverage,
     hunk_ids,
     layer_coverage,
-    validate_map,
 )
 from review_models import fingerprint
 from review_pr_plan import check_map, comments
@@ -117,7 +116,7 @@ def main() -> int:
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
-                "validate-map": validate_map, "spec-context": spec_context,
+                "spec-context": spec_context,
                 "check-packages": check_packages, "review-dir": review_dir_command,
                 "prior-review": prior_review, "save-out": save_out, "consolidate": consolidate,
                 "comments": comments, "check-map": check_map}

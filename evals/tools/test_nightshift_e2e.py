@@ -20,6 +20,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from cli_runner import run as cli
+
 TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-nightshift-e2e.py"
 KEY = "elastic__kibana__12345"
 TESTED_HEAD = "0123456789ab"  # arbitrary: the tool must pass `meta.headSha` through unchanged
@@ -67,7 +69,8 @@ class Stub:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        # A short poll: shutdown() waits up to one poll interval (0.5 s by default) on every close.
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
 
     def route(self, method: str, path: str, status: int, payload: object) -> None:
         self.routes[(method, path)] = (status, payload)
@@ -87,10 +90,10 @@ class Stub:
 
 
 def run(stub: Stub | None, *args: str, checkout: str = "") -> subprocess.CompletedProcess:
-    env = {**os.environ,
-           "NIGHTSHIFT_URL": stub.url if stub else "http://127.0.0.1:9",
-           "NIGHTSHIFT_PR_HELPER_DIR": checkout or os.environ.get("_STUB_DIR", "/nonexistent-checkout")}
-    return subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, env=env)
+    """The CLI in this process; the stub server answers on its own thread."""
+    helper = checkout or os.environ.get("_STUB_DIR", "/nonexistent-checkout")
+    url = stub.url if stub else "http://127.0.0.1:9"
+    return cli(TOOL, *args, env={"NIGHTSHIFT_URL": url, "NIGHTSHIFT_PR_HELPER_DIR": helper})
 
 
 def fake_checkout(tmp: Path) -> Path:

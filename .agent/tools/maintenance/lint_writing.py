@@ -19,13 +19,31 @@ from lint_files import line_no, rel
 from lib.git import run_git
 
 Finding = tuple[str, int, str, str]
-# Forms removed from the command surface, each with its replacement.
-# Words may wrap onto the next line, as they do in hard-wrapped prose.
+# Forms removed from the command surface, each with its replacement (None: removed outright).
+# Words may wrap onto the next line, as they do in hard-wrapped prose. Up to three of the command's own
+# arguments may come first: an option (with its value), a quoted word, a `$VAR`, a `<placeholder>` or a path.
+# A bare word is none of these, so in `crew-verify.py and git log --since` the flag is not the command's.
+_VALUE = r"(?:\"[^\"]*\"|'[^']*'|[^\s;|&`'\"]+)"
+_ARG = r"(?:--?[\w-]+(?:=\S+|\s+(?!-)" + _VALUE + r")?|\"[^\"]*\"|'[^']*'|\$\{?\w+\}?|<[\w-]+>|[\w~$-]*[/.][^\s;|&`]*)"
+_ARGS = r"(?:\s+" + _ARG + r"){0,3}?\s+"
 REMOVED_FORMS = (
     (re.compile(r"crew-progress(?:\.py)?\s+(?:verify|report-check)\b"), "crew-verify.py"),
     (re.compile(r"crew-progress(?:\.py)?\s+(?:lock|blocked|worktree)\b"), "crew-task.py"),
-    (re.compile(r"crew-ls(?:\.py)?(?:\s+(?:--[\w-]+|\"[^\"]*\"|\$\w+|[\w./~$-]+)){0,3}?\s+"
-                r"--(?:mark-approved|mark-implementing|mark-done|normalize-status|apply)\b"), "crew-task.py"),
+    (re.compile(r"crew-ls(?:\.py)?" + _ARGS
+                + r"--(?:mark-approved|mark-implementing|mark-done|normalize-status|apply)\b"), "crew-task.py"),
+    (re.compile(r"crew-ls(?:\.py)?" + _ARGS + r"--tsv\b"), "`crew-ls.py --json`"),
+    (re.compile(r"crew-assemble-packages(?:\.py)?" + _ARGS + r"--config\b"), "`<review-dir>/assemble.json`"),
+    (re.compile(r"crew-mem(?:\.py)?\s+context\b" + _ARGS + r"--(?:budget-tokens|min-score)\b"), None),
+    (re.compile(r"crew-verify(?:\.py)?" + _ARGS + r"--since\b"), "`crew-verify.py --wait <file>`"),
+    (re.compile(r"crew-mem(?:\.py)?\s+(?:reindex|ingest|archive|stats|doctor)\b|\bcrew memory doctor\b"), None),
+    (re.compile(r"crew-next(?:\.py)?\b|crew-review-stats(?:\.py)?\b|\bcrew review-stats\b"), None),
+    (re.compile(r"\bcrew[ -](?:test|cleanup|diagnose|debug|recall|quick|explain)\b|\bcrew inbox\b"), None),
+    (re.compile(r"\btester-explorer\b|\bsession-event\.sh\b"), None),
+    (re.compile(r"crew-review-findings(?:\.py)?\s+validate-map\b|`validate-map`"),
+     "`crew-review-findings.py coverage`"),
+    (re.compile(r"evals/prompts/|evals/reviewer/(?:run|replay|mutate)\.py|evals/reviewer/fixtures\.json"), None),
+    (re.compile(r"crew-prune(?:\.py)?" + _ARGS + r"--tasks-dir\b"), None),
+    (re.compile(r"\.claude/hooks/fixtures/run\.sh\b|\btest_hooks_contract\.py\b"), "`evals/tools/test_hook_cases.py`"),
 )
 MAX_MODULE_DOCSTRING_LINES = 6
 # Phrases that narrate what code or a run once did, rather than state what holds now. A present
@@ -39,7 +57,8 @@ NARRATION = re.compile(
     r"|\bfor days\b|\bonce shipped\b")
 SCANNED = ("rules/*.mdc", ".cursor/**/*.md", ".claude/**/*.sh", ".claude/**/*.md", ".agent/tools/**/*.py",
            ".agent/tools/**/*.md", ".agent/tools/**/*.json", "README.md", "AGENTS.md", "install.sh",
-           "evals/tasks.json", "evals/prompts/cases/*.json")
+           "evals/tasks.json", "evals/*.md", ".github/workflows/*.yml", ".claude/settings.json",
+           ".cursor/hooks.template.json")
 
 
 def scanned_files(root: Path) -> list[Path]:
@@ -58,7 +77,8 @@ def lint_removed_forms(root: Path) -> list[Finding]:
         text = path.read_text(encoding="utf-8", errors="replace")
         for pattern, replacement in REMOVED_FORMS:
             found.extend((name, line_no(text, match.start()), "removed-command-form",
-                          f"`{' '.join(match.group(0).split())}` no longer exists; use {replacement}")
+                          f"`{' '.join(match.group(0).split())}` no longer exists"
+                          + (f"; use {replacement}" if replacement else ""))
                          for match in pattern.finditer(text))
     return found
 

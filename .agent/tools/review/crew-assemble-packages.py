@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compose one reviewer context package per persona from a review run's artifacts.
 
-Usage: crew-assemble-packages.py <review-dir> [--config <file>]. Each package is the shared head
+Usage: crew-assemble-packages.py <review-dir>. Each package is the shared head
 (contract, mode, hunk reference, memory), the whole `package.diff`, then the per-persona tail, so
 every reviewer reads the same evidence and a cached prefix is paid once. Per-run judgement comes
 from `assemble.json` (keys and rules: `.agent/tools/TOOLS.md`); inputs `assemble_inputs`, build `assemble_build`.
@@ -25,11 +25,9 @@ def main(argv: list[str] | None = None) -> int:
                "docstring for every key.",
     )
     parser.add_argument("review_dir", type=pathlib.Path, help="<task>/review/<timestamp>")
-    parser.add_argument("--config", type=pathlib.Path,
-                        help="config file, default <review_dir>/assemble.json")
     args = parser.parse_args(argv)
     review_dir = args.review_dir.resolve()
-    config = read_config(review_dir, args.config.resolve() if args.config else None)
+    config = read_config(review_dir)
     problem = check_inputs(review_dir, config)
     if problem:
         print(f"assemble-packages: {problem}", file=sys.stderr)

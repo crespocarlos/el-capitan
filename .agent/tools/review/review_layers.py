@@ -1,7 +1,7 @@
 """The layer map: its validation (hunk ids, one hunk in exactly one layer) and the reports over it.
 
 A hunk nobody was asked to read is a coverage hole no persona output reveals, so a missing or
-duplicated id is an error. The same check serves `validate-map` and the persist gate; this module
+duplicated id is an error. The same check serves `coverage` and the persist gate; this module
 also checks that findings cite hunks and reports what each layer yielded.
 """
 from __future__ import annotations
@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 from review_models import Finding
@@ -116,8 +115,8 @@ def check_layers(known: list[str], layers: object) -> tuple[list[str], list[str]
 def check_coverage(hunks_path: Path, layers_path: Path) -> dict:
     """Every hunk id lands in exactly one layer, and no layer invents an id.
 
-    Shared with `validate-map`, so a map that validates for `crew explain` cannot then be
-    rejected by the persist gate.
+    Shared with the `coverage` command, so a map that passes there cannot then be rejected by the
+    persist gate.
     """
     known = hunk_ids(hunks_path)
     layers = read_json_object(layers_path, "layers")["layers"]
@@ -147,9 +146,6 @@ def parse_map_block(reply: str) -> dict:
     if not isinstance(payload, dict) or not isinstance(payload.get("layers"), list):
         raise ValueError("the layers reply must be a JSON object carrying a `layers` array")
     return payload
-
-
-SEVERITIES = {"high", "medium", "low", "nit"}
 
 
 def check_hunk_refs(findings: list[Finding], known: list[str]) -> None:
@@ -195,70 +191,3 @@ def coverage(args: argparse.Namespace) -> int:
     """Print the coverage summary, or fail on a hunk in no layer."""
     print(bounded_json(check_coverage(args.hunks, args.layers), args.max_chars, what="coverage"))
     return 0
-
-
-def validate_map(args: argparse.Namespace) -> int:
-    """Check a whole review map (summary, layers, concerns) against the hunk index.
-
-    The contract `crew explain` writes and `crew review` reads, in one place, so a map
-    that renders also passes the persist coverage gate.
-    """
-    review = read_json_object(args.review, "layers")
-    known = hunk_ids(args.hunks)
-    errors, warnings = check_layers(known, review["layers"])
-    errors.extend(map_header_errors(review))
-    errors.extend(concern_errors(review.get("concerns") or [], known))
-    warnings.extend(reference_warnings(review.get("references") or []))
-    for warning in warnings:
-        print(f"warning: {warning}", file=sys.stderr)
-    if errors:
-        for error in errors:
-            print(f"review-findings: {error}", file=sys.stderr)
-        return 1
-    print(bounded_json({"ok": True, "hunks": len(known),
-                        "layers": len(review["layers"]), "warnings": len(warnings)},
-                       args.max_chars, what="map validation"))
-    return 0
-
-
-def map_header_errors(review: dict) -> list[str]:
-    """The map-level fields the contract requires beyond its layers."""
-    errors = []
-    if not isinstance(review.get("summary"), str) or not review["summary"].strip():
-        errors.append("summary must be a non-empty markdown string")
-    if "context" in review and not isinstance(review["context"], str):
-        errors.append("context must be a markdown string")
-    if review.get("risk") is not None and review["risk"] not in ("low", "medium", "high"):
-        errors.append("risk must be low, medium, or high")
-    return errors
-
-
-def concern_errors(concerns: list, known: list[str]) -> list[str]:
-    """The per-concern fields, including a hunk id that must exist in the index."""
-    errors = []
-    for index, concern in enumerate(concerns, 1):
-        where = f"concerns[{index}]"
-        if not isinstance(concern, dict):
-            errors.append(f"{where} is not an object")
-            continue
-        if not isinstance(concern.get("severity"), str) or concern["severity"] not in SEVERITIES:
-            errors.append(f"{where}.severity must be one of {', '.join(sorted(SEVERITIES))}")
-        for field in ("title", "detail"):
-            if not isinstance(concern.get(field), str) or not concern[field].strip():
-                errors.append(f"{where}.{field} is missing")
-        if concern.get("hunk") is not None and (
-                not isinstance(concern["hunk"], str) or concern["hunk"] not in known):
-            errors.append(f"{where}.hunk {concern['hunk']!r} is not a hunk in the index")
-    return errors
-
-
-def reference_warnings(references: list) -> list[str]:
-    """A reference with neither a url nor a path is a warning, not an error."""
-    warnings = []
-    for index, reference in enumerate(references, 1):
-        where = f"references[{index}]"
-        if not isinstance(reference, dict) or not isinstance(reference.get("title"), str):
-            warnings.append(f"{where}.title is missing")
-        elif not reference.get("url") and not reference.get("path"):
-            warnings.append(f"{where} has neither url nor path")
-    return warnings
