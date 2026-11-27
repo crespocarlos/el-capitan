@@ -290,7 +290,8 @@ ENV = [
 # A denial a row expects from these guards must say (first) and must not say (second) these words.
 MESSAGES = {
     # The denied agent cannot tell a live worker from a crashed one: no task id, no removal command.
-    "worker-tree": (("ask the user before removing the lock", "1 min old"), ("T-1", "lock remove")),
+    # The age grows while the suite runs (slow runners pass a minute), so only its presence is checked.
+    "worker-tree": (("ask the user before removing the lock", " min old)"), ("T-1", "lock remove")),
 }
 
 # `(fields, cwd, by)` sent to every `Write|Edit` hook: a write outside the boundary is denied after
