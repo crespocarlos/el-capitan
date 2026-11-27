@@ -14,7 +14,8 @@ numbered list is typed by hand. `REVIEW_ROOT` is the review directory.
    "$REVIEW_ROOT/hunks.json" --files <changed paths> --repo <repo root> --head <reviewed head sha>
    --output "$REVIEW_ROOT/consolidation.json"`. `--repo` and `--head` let a finding about a tracked
    file outside the diff stand as a non-hunk anchor (a `[blocking]` one needs `line_read: true`); an
-   untracked path is refused. A hand-set `anchor` in the input is ignored.
+   untracked path is refused. A hand-set `anchor` in the input is ignored. In PR mode the head commit
+   is not in the local checkout: leave out `--repo` and `--head`, so every finding anchors in the diff.
 4. `~/.agent/bin/crew-review-findings.py consolidate --review-dir "$REVIEW_ROOT" --render --mode
    <mode>` writes `report.md` from `consolidation.json`: the numbered list `persist` compares to the
    findings. Reply with that file, then persist per [pipeline

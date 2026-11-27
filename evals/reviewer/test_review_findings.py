@@ -1276,6 +1276,9 @@ def test_an_anchor_outside_the_diff_must_be_tracked_and_blocking_needs_a_read_li
     assert normalize_with({**doc, "label": "blocking", "line_read": True}).returncode == 0
     source.write_text(json.dumps([doc]))
     assert run("normalize", str(source), "--files", "a.ts").returncode == 2, "without --repo the old rule stands"
+    # A PR head the checkout does not hold: the refusal names the PR-mode call.
+    absent = run("normalize", str(source), "--files", "a.ts", "--repo", str(repo), "--head", "f" * 40)
+    assert absent.returncode == 2 and "leave out --repo and --head" in absent.stderr, absent.stderr
 
 
 def probe_persist(tmp: Path, label: str = "needs more info", tail: str = "", *extra: str) -> subprocess.CompletedProcess:
