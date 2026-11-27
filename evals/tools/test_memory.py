@@ -340,8 +340,12 @@ def claude_store(tmp: Path) -> dict[str, Path]:
                                        entry.format(kind="feedback", body="In gadgets, renames drop the old name."))
     paths["duplicate"] = claude_entry(config, cebola, "project_dup.md",
                                       entry.format(kind="project", body="Stored before the import."))
-    (paths["user"].parent / "MEMORY.md").write_text("- [u](user_user-note.md) — a note\n- [o](feedback_other.md)\n",
-                                                     encoding="utf-8")
+    # Naming its own repo as well as another is not a misfiled entry.
+    paths["both repos"] = claude_entry(config, cebola, "feedback_both.md",
+                                       entry.format(kind="feedback", body="cebola-fit follows the gadgets naming."))
+    # A heading is index structure, not a fact.
+    (paths["user"].parent / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [u](user_user-note.md) — a note\n- [o](feedback_other.md)\n", encoding="utf-8")
     (paths["worktree"].parent / "MEMORY.md").write_text("- [d](reference_dashboard.md)\n", encoding="utf-8")
     paths["index text"] = claude_entry(config, gadget, "MEMORY.md", "A fact written inline, in no entry.\n")
     (tmp / "elsewhere.md").write_text(entry.format(kind="feedback", body="Linked in."), encoding="utf-8")
@@ -369,8 +373,8 @@ def test_import_claude(tmp: Path) -> None:
     stored = mem("add", "--type", "project", "--scope", "cebola-fit", "--title", "Stored", stdin="Stored before the import.\n")
     claude = ("import-claude", "--config-dir", str(paths["config"]))
     dry = mem(*claude, "--dry-run")
-    check("the dry run names five drafts and writes none",
-          (stored.returncode, dry.stdout.count("would draft"), list((tmp / "memory" / ".inbox").glob("*.md"))) == (0, 5, []),
+    check("the dry run names six drafts and writes none",
+          (stored.returncode, dry.stdout.count("would draft"), list((tmp / "memory" / ".inbox").glob("*.md"))) == (0, 6, []),
           dry.stdout)
     done = mem(*claude)
     drafts = [path.read_text(encoding="utf-8") for path in (tmp / "memory" / ".inbox").glob("*.md")]
@@ -378,6 +382,8 @@ def test_import_claude(tmp: Path) -> None:
     for kind in ("user", "feedback", "project"):
         check(f"a {kind} entry becomes a {kind} draft in the dashed repo's scope",
               f"type: {kind}\nscope: repo:cebola-fit\n" in by_source.get(str(paths[kind]), ""), by_source.keys())
+    check("an entry naming its own repo and another stays in its own scope",
+          "scope: repo:cebola-fit\n" in by_source.get(str(paths["both repos"]), ""), done.stdout)
     check("a worktree's folder resolves to its repo's remote name",
           "type: reference\nscope: repo:gadgets\n" in by_source.get(str(paths["worktree"]), ""), done.stdout)
     injected = by_source.get(str(paths["injected"]), "")
@@ -394,8 +400,8 @@ def test_import_claude(tmp: Path) -> None:
     again = mem(*claude)
     imported = mem("import-inbox", "--all")
     check("a second run drafts nothing; every draft passes import-inbox",
-          "drafted " not in again.stdout and again.stdout.count("already drafted") == 5
-          and (imported.returncode, len(imported.stdout.split())) == (0, 5), (again.stdout, imported.stdout, imported.stderr))
+          "drafted " not in again.stdout and again.stdout.count("already drafted") == 6
+          and (imported.returncode, len(imported.stdout.split())) == (0, 6), (again.stdout, imported.stdout, imported.stderr))
     check_claude_archive(tmp, mem, claude, paths)
 
 
@@ -415,7 +421,7 @@ def check_claude_archive(tmp: Path, mem: Callable[..., subprocess.CompletedProce
           dry.stdout)
     done = mem(*claude, "--archive")
     names = sorted(p.name for p in (tmp / "home" / ".agent" / "archive").rglob("*.md"))
-    moved = ("feedback", "project", "worktree", "injected", "duplicate")
+    moved = ("feedback", "project", "worktree", "injected", "duplicate", "both repos")
     check("archive moves imported and already-stored entries and a link-only MEMORY.md; it keeps the rest, saying why",
           names == sorted(["MEMORY.md", *(paths[k].name for k in moved)])
           and all(os.path.lexists(paths[k]) for k in ("user", *(case for case, _ in CLAUDE_REVIEW)))

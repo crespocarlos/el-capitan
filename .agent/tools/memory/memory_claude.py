@@ -62,9 +62,9 @@ def short_hash(source: str) -> str:
 
 
 def index_text(path: Path) -> list[str]:
-    """The lines of a `MEMORY.md` that are not `- [..](x.md)` links (a link line may carry a description)."""
+    """The lines of a `MEMORY.md` besides headings and `- [..](x.md)` links (a link may carry a description)."""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return [line for line in lines if line.strip() and not LINK_LINE.match(line)]
+    return [line for line in lines if line.strip() and not line.lstrip().startswith("#") and not LINK_LINE.match(line)]
 
 
 def memory_files(config_dirs: list[Path]) -> tuple[list[Path], list[Entry]]:
@@ -180,7 +180,9 @@ def title_of(path: Path, kind: str) -> str:
 
 
 def other_repo(text: str, own: str, known: set[str]) -> str | None:
-    """A known repository key other than `own` that the text names as a word, or None."""
+    """A known repository key other than `own` that the text names as a word, or None when it names `own` too."""
+    if re.search(rf"(?<![\w-]){re.escape(own)}(?![\w-])", text, re.I):
+        return None
     for key in sorted(known - {own}):
         if len(key) >= MIN_REPO_KEY and re.search(rf"(?<![\w-]){re.escape(key)}(?![\w-])", text, re.I):
             return key
