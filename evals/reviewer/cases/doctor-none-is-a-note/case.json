@@ -1,0 +1,37 @@
+{
+  "id": "doctor-none-is-a-note",
+  "lens": "product-flow",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 2D916668, review 20261127143927, adversarial finding 5",
+  "summary": "`crew doctor` checks that every agent can reach the owner's configured MCP servers (code search, docs) from each Claude Code config dir it finds; the owner runs it after install to learn whether agents will have those tools. `claude_files` returns the primary config dir (`~/.claude`, or `CLAUDE_CONFIG_DIR`) first, then any other config dir install covers. A WARN line makes `crew doctor` exit non-zero; a note does not.",
+  "defect": "A config dir that reaches none of the configured servers is now only a note, even the primary config dir the owner works in: doctor exits 0 and the owner is never told the agents have no code search or docs.",
+  "locations": [
+    {
+      "file": ".agent/tools/maintenance/doctor_mcp.py",
+      "line": 18
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "note*"
+    ],
+    [
+      "warn*",
+      "primary",
+      "silent*",
+      "exit code",
+      "exits 0",
+      "never told",
+      "not told",
+      "hidden",
+      "hides",
+      "downgrad*"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/maintenance/doctor_mcp.py": "NONE_IN_DIR = \"Claude Code {}: no configured MCP server is reachable from this config dir\"\n\n\ndef check_mcp(home: Path, wanted: dict[str, list[str]] | None, cwd: Path, environ: dict[str, str]) -> list[Line]:\n    \"\"\"One line per capability (code search, docs) and Claude config dir: ok, or a WARN naming what is missing.\n    A config dir that reaches none of the configured servers gets one note instead of a WARN per capability.\"\"\"\n    capabilities = [(label, set(wanted.get(key) or [])) for key, label in CAPABILITIES if wanted and wanted.get(key)]\n    if not capabilities:\n        return [Line(\"note\", \"mcp\", MCP_HOWTO)]\n    repo, remotes = repo_root(cwd), crew_remotes(home)\n    configured = set().union(*(names for _, names in capabilities))\n    lines = []\n    for directory, config_file in claude_files(home, environ):\n        settings = read_object(directory / \"settings.json\")\n        plugins = plugin_servers(directory, settings, configured)\n        user, reach = available(read_object(config_file), settings, repo, plugins, remotes)\n        if not (user | set().union(*reach.values())) & configured:\n            lines.append(Line(\"note\", \"mcp\", NONE_IN_DIR.format(tilde(directory, home))))\n            continue\n        lines += [claude_capability(f\"Claude Code {tilde(directory, home)}: {label} ({', '.join(sorted(names))})\",\n                                    names, user, reach) for label, names in capabilities]\n    return lines\n"
+  }
+}

@@ -1,0 +1,49 @@
+diff --git a/.agent/tools/task/task_ship.py b/.agent/tools/task/task_ship.py
+new file mode 100644
+--- /dev/null
++++ b/.agent/tools/task/task_ship.py
+@@ -0,0 +1,44 @@
++"""`crew-task.py ship`: each step records `SHIP: <step> <value>` and a re-run resumes (excerpt)."""
++from __future__ import annotations
++
++from pathlib import Path
++
++
++def open_pr(ship: Ship) -> str:
++    listed = gh("pr", "list", "--repo", ship.target, "--head", ship.branch, "--state", "open", "--json", "url",
++                "--jq", ".[0].url // empty")
++    existing = pr_url(listed.stdout) if listed.returncode == 0 else ""
++    if existing:
++        print(f"ship: a PR is already open: {existing}")
++        return existing
++    created = gh("pr", "create", "--draft", "--title", ship.title, "--body-file", str(ship.body_file),
++                 "--base", ship.base, "--repo", ship.target, "--head", ship.head_ref)
++    url = pr_url(created.stdout)
++    if created.returncode or not url:
++        raise Stop(f"gh pr create failed: {(created.stderr or created.stdout).strip() or 'no PR URL printed'}")
++    print(f"ship: opened {url}")
++    return url
++
++
++def push_holds(ship: Ship, _: str) -> bool:
++    try:
++        return rev_parse(ship.tree, f"refs/remotes/origin/{ship.branch}") == head_sha(ship.tree)
++    except GitError:
++        return False
++
++
++STEP_RUNS = {"stage": stage, "commit": commit, "merge": merge, "test": test, "push": push, "pr": open_pr, "done": done}
++STEP_HOLDS = {"stage": stage_holds, "commit": commit_holds, "merge": merge_holds, "test": test_holds,
++              "push": push_holds, "pr": lambda _, value: bool(value), "done": done_holds}
++
++
++def run(ship: Ship) -> int:
++    """Re-check each recorded step in order; run from the first that is missing or no longer holds."""
++    recorded = recorded_steps(ship.task.task)
++    for step, action in STEP_RUNS.items():
++        if step in recorded and STEP_HOLDS[step](ship, recorded[step]):
++            print(f"ship: {step} already done ({recorded[step] or 'ok'})")
++            continue
++        value = action(ship)
++        append_entry(ship.task.task, "SHIP", f"{step} {value}".strip())
++    return 0

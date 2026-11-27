@@ -1,0 +1,29 @@
+diff --git a/.agent/tools/maintenance/doctor_mcp.py b/.agent/tools/maintenance/doctor_mcp.py
+--- a/.agent/tools/maintenance/doctor_mcp.py
++++ b/.agent/tools/maintenance/doctor_mcp.py
+@@ -1,12 +1,22 @@
++NONE_IN_DIR = "Claude Code {}: no configured MCP server is reachable from this config dir"
++
++
+ def check_mcp(home: Path, wanted: dict[str, list[str]] | None, cwd: Path, environ: dict[str, str]) -> list[Line]:
+-    """One line per capability (code search, docs) and Claude config dir: ok, or a WARN naming what is missing."""
++    """One line per capability (code search, docs) and Claude config dir: ok, or a WARN naming what is missing.
++    A config dir that reaches none of the configured servers gets one note instead of a WARN per capability."""
+     capabilities = [(label, set(wanted.get(key) or [])) for key, label in CAPABILITIES if wanted and wanted.get(key)]
+     if not capabilities:
+         return [Line("note", "mcp", MCP_HOWTO)]
+-    repo = repo_root(cwd)
++    repo, remotes = repo_root(cwd), crew_remotes(home)
++    configured = set().union(*(names for _, names in capabilities))
+     lines = []
+     for directory, config_file in claude_files(home, environ):
+-        user, reach = available(read_object(config_file), read_object(directory / "settings.json"), repo)
++        settings = read_object(directory / "settings.json")
++        plugins = plugin_servers(directory, settings, configured)
++        user, reach = available(read_object(config_file), settings, repo, plugins, remotes)
++        if not (user | set().union(*reach.values())) & configured:
++            lines.append(Line("note", "mcp", NONE_IN_DIR.format(tilde(directory, home))))
++            continue
+         lines += [claude_capability(f"Claude Code {tilde(directory, home)}: {label} ({', '.join(sorted(names))})",
+                                     names, user, reach) for label, names in capabilities]
+     return lines

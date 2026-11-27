@@ -1,0 +1,6 @@
+{
+  "exit": 0,
+  "tainted": [
+    "Read /Users/someone/el-capitan/.agent/tools/lib/git.py"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "status-guard-cr-heading",
+  "lens": "adversarial",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 82FCCD58, review 20261127141048, adversarial finding 1 (a)",
+  "summary": "Install now allows every Edit and Write under `~/.agent/tasks` without a prompt, so background builders can write task files. To keep Gate 1 with the user, the existing SPEC.md owner hook now also denies an Edit or Write that changes the value under `## Status`; only `crew-task.py` moves the status, and `task_status.read_status` is what every tool reads.",
+  "defect": "The hook reads Status with its own awk, which does not match a `## Status\\r` heading; `read_status` accepts `\\r?\\n`, so inserting `## Status\\r\\nAPPROVED` before the real heading sets APPROVED while the hook still sees DRAFTING.",
+  "locations": [
+    {
+      "file": ".claude/hooks/check-task-spec-owner.sh",
+      "line": 27
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "carriage return*",
+      "CR",
+      "CRLF",
+      "lone CR"
+    ],
+    [
+      "heading*",
+      "awk",
+      "reader*",
+      "parser",
+      "parses",
+      "regex*",
+      "re-implement*"
+    ]
+  ],
+  "context": {
+    ".agent/tools/task/task_status.py": "\"\"\"Task status: the one reader of a spec's `## Status` (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport re\nfrom pathlib import Path\n\n# The one reader of `## Status`; hooks and tools must not re-implement it.\nSTATUS = re.compile(r\"^(## Status[ \\t]*\\r?\\n)([^\\n#][^\\n]*?)[ \\t]*$\", re.M)\nSTATES = (\"DRAFTING\", \"APPROVED\", \"IMPLEMENTING\", \"ON-HOLD\", \"DONE\")\n# A user-only side state: not a transition, but a value the store legitimately holds.\nSIDE_STATES = (\"ABANDONED\",)\n\n\ndef read_status(path: Path | str) -> str | None:\n    \"\"\"Return the status value, \"\" when unset, or None when the file is unreadable.\"\"\"\n    try:\n        text = Path(path).read_text(encoding=\"utf-8\")\n    except OSError:\n        return None\n    match = STATUS.search(text)\n    return match.group(2).strip() if match else \"\"\n"
+  },
+  "after": {
+    ".claude/hooks/check-task-spec-owner.sh": "#!/usr/bin/env bash\n# Guard: a task SPEC.md is written only by the task that owns it (the `.task-id` slug).\n#\n# It also guards the Status line. Install allows every edit under `~/.agent/tasks` without a prompt, so\n# an Edit or Write that changes the value under `## Status` of an existing task SPEC.md is denied: the\n# status moves only through `crew-task.py`, which keeps Gate 1 and Gate 2 with the user. A Write is\n# compared with the file on disk; an Edit is applied to the file on disk and the result compared.\nset -euo pipefail\nHOOK_NAME=check-task-spec-owner\n# shellcheck source=lib/hook.sh\n. \"$(dirname \"$0\")/lib/hook.sh\"\n\npath=$(hook_field file_path)\ntasks_root=\"$HOME/.agent/tasks\"\ncase \"$path\" in */SPEC.md) ;; *) hook_allow ;; esac\ntask_dir=$(dirname \"$path\")\ncase \"$task_dir\" in \"$tasks_root\"/*) ;; *) hook_allow ;; esac\n# `<tasks>/<uuid>/SPEC.md` only: a nested path such as `<uuid>/review/.../SPEC.md` is not a task spec.\n[ \"$(dirname \"$task_dir\")\" = \"$tasks_root\" ] || hook_allow\n\n# Nothing to protect: a directory with no SPEC.md cannot lose one, and this is where every new task\n# starts.\n[ -f \"$task_dir/SPEC.md\" ] || hook_allow\n\n# The first non-blank line under `## Status`, trimmed; empty when the document has no such section.\nstatus_of() {\n  printf '%s\\n' \"$1\" | awk '/^## Status[ \\t]*$/ { f = 1; next } f && /^#/ { exit } f && NF { gsub(/^[ \\t]+|[ \\t]+$/, \"\"); print; exit }'\n}\nold_string=$(hook_field old_string)\nwritten=\"\"\nif [ -n \"$old_string\" ]; then\n  disk=$(cat \"$task_dir/SPEC.md\") || hook_fail \"cannot read $task_dir/SPEC.md\"\n  new_string=$(hook_field new_string)\n  if [ \"$(hook_field replace_all)\" = true ]; then written=${disk//\"$old_string\"/\"$new_string\"}; else written=${disk/\"$old_string\"/\"$new_string\"}; fi\nelse\n  written=$(hook_field content)\n  if [ -n \"$written\" ]; then disk=$(cat \"$task_dir/SPEC.md\") || hook_fail \"cannot read $task_dir/SPEC.md\"; fi\nfi\nif [ -n \"$written\" ]; then\n  before=$(status_of \"$disk\")\n  after=$(status_of \"$written\")\n  [ \"$before\" = \"$after\" ] \\\n    || hook_deny \"Task spec guard: this changes the Status of $task_dir/SPEC.md from '${before:-none}' to '${after:-none}'. The status moves only through crew-task.py mark-approved | mark-implementing | mark-done.\"\nfi\n\nmetadata=\"$task_dir/.task-id\"\n[ -f \"$metadata\" ] || hook_allow\nowner=$(jq -r '.slug // empty' \"$metadata\" 2>/dev/null) || hook_allow\n[ -n \"$owner\" ] || hook_allow\ntitle=$(head -1 \"$task_dir/SPEC.md\" | sed 's/^# Spec: //')\n[ \"$(slugify \"$title\")\" = \"$owner\" ] \\\n  || hook_deny \"Task spec guard: $task_dir belongs to '$owner'; write your own task's SPEC.md.\"\nhook_allow\n"
+  }
+}

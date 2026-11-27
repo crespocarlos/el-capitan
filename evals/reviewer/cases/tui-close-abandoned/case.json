@@ -1,0 +1,27 @@
+{
+  "id": "tui-close-abandoned",
+  "lens": "product-flow",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 285059E1, review 20261127153222, adversarial finding 1",
+  "summary": "The task dashboard gains a \"close as done\" move for stale tasks: DRAFTING, APPROVED, ON-HOLD, or IMPLEMENTING without a PR. The owner picks it from a task row and types a short note. ABANDONED is a side state only the owner sets, meaning \"dropped, never to be finished\" (see `.agent/tools/task/task_status.py` in the working directory).",
+  "defect": "The move is offered for every state but DONE, so an ABANDONED row also offers \"close as done\": one keypress turns the owner's \"abandoned\" decision into DONE, counted as finished work.",
+  "locations": [
+    {
+      "file": "tui/tui_model.py",
+      "line": 21
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "abandon*"
+    ]
+  ],
+  "context": {
+    ".agent/tools/task/task_status.py": "\"\"\"Task status: the one reader of a spec's `## Status` (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport re\nfrom pathlib import Path\n\n# The one reader of `## Status`; hooks and tools must not re-implement it.\nSTATUS = re.compile(r\"^(## Status[ \\t]*\\r?\\n)([^\\n#][^\\n]*?)[ \\t]*$\", re.M)\nSTATES = (\"DRAFTING\", \"APPROVED\", \"IMPLEMENTING\", \"ON-HOLD\", \"DONE\")\n# A user-only side state: not a transition, but a value the store legitimately holds.\nSIDE_STATES = (\"ABANDONED\",)\n\n\ndef read_status(path: Path | str) -> str | None:\n    \"\"\"Return the status value, \"\" when unset, or None when the file is unreadable.\"\"\"\n    try:\n        text = Path(path).read_text(encoding=\"utf-8\")\n    except OSError:\n        return None\n    match = STATUS.search(text)\n    return match.group(2).strip() if match else \"\"\n"
+  },
+  "after": {
+    "tui/tui_model.py": "\"\"\"What the TUI shows and the moves it offers (excerpt).\"\"\"\nfrom __future__ import annotations\n\nFORCE_NOTE = \"closed: stale\"  # the `--pr-url` note of the close move, `mark-done --force`\n# The gates of `crew-task.py` and the one state each moves from; the CLI refuses any other.\nGATES = ((\"mark-approved\", \"DRAFTING\", \"approve\"), (\"mark-implementing\", \"APPROVED\", \"start\"),\n         (\"mark-done\", \"IMPLEMENTING\", \"mark done\"))\n\n\ndef moves(state: str, task: Path, prs: list[str]) -> list[Move]:\n    \"\"\"The calls `crew-task.py` accepts from `state`: its gate (mark done with the newest PR from IMPLEMENTING),\n    then, for any task not DONE, `blocked` with a reason and close as done (`mark-done --force` with a note), which\n    an IMPLEMENTING task with a PR does not get. The CLI still checks every gate.\"\"\"\n    found = []\n    for command, source, label in GATES:\n        if state == source and (command != \"mark-done\" or prs):\n            pr = (\"--pr-url\", prs[-1]) if command == \"mark-done\" else ()\n            found.append(Move(f\"{label}{f' with PR {prs[-1]}' if pr else ''} ({command})\", (command, str(task), *pr)))\n    if state != \"DONE\":\n        found.append(Move(\"blocked with a reason (blocked)\", (\"blocked\", str(task)), ask=\"reason\"))\n    if state != \"DONE\" and not (state == \"IMPLEMENTING\" and prs):\n        found.append(Move(\"close as done (mark-done --force)\", (\"mark-done\", str(task), \"--force\", \"--pr-url\"),\n                          ask=\"note\", default=FORCE_NOTE))\n    return found\n"
+  }
+}

@@ -1,0 +1,21 @@
+diff --git a/evals/tools/test_lint_rules.py b/evals/tools/test_lint_rules.py
+--- a/evals/tools/test_lint_rules.py
++++ b/evals/tools/test_lint_rules.py
+@@ -7,6 +7,17 @@
+ 
+ ROOT = Path(__file__).resolve().parents[2]
+ 
++# (orchestrator file, the words of its rule): a dispatch that ends with no reply is resumed once with "deliver now".
++RESUME_RULES = ((".cursor/agents/references/dispatch.md", "A dispatch that ends with no reply is resumed once, never re-dispatched"),
++                (".cursor/agents/crew-specwriter.md", "A critic that returns no reply gets one\n   resume, never a second dispatch"))
++
++
++@pytest.mark.parametrize("path, rule", RESUME_RULES, ids=[row[0] for row in RESUME_RULES])
++def test_a_silent_dispatch_is_resumed_once(path: str, rule: str) -> None:
++    """crew-reviewer (through dispatch.md) and crew-specwriter resume a reply-less persona with `deliver now`."""
++    text = (ROOT / path).read_text(encoding="utf-8")
++    assert rule in text and "`deliver now: " in text, path
++
+ 
+ @pytest.mark.parametrize("case,files,rule", HANDOFFS, ids=[case for case, _, _ in HANDOFFS])
+ def test_handoff(case: str, files: dict[str, str], rule: str | None, tmp: Path) -> None:

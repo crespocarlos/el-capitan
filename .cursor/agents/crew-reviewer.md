@@ -98,6 +98,8 @@ per persona with the tool. Follow
 [packaging](~/.cursor/agents/crew-reviewer/references/packaging.md) for the layer map, the
 `## Hunk reference` section built from `hunks.index.md`, and `assemble.json`.
 
+Write each persona's lens questions (packaging, "Questions for each lens").
+
 Every persona package carries `~/.cursor/agents/references/reviewer-contract.md`, which owns the
 output; a persona file never restates it.
 
@@ -116,24 +118,21 @@ returns stdout only; follow the evidence rules in the shared dispatch instructio
 `$REVIEW_ROOT/<persona>.in.md` for the personas `select` returned, then run
 `~/.agent/bin/crew-review-findings.py check-packages --review-dir "$REVIEW_ROOT" --mode
 <selector-mode> --personas <names>`. Dispatch only on exit 0; otherwise rewrite the named package and
-check again. The generated-hunk rule applies in every mode; the Tasks/Hints rule (see "Spec in every
-code-mode package" in context tiers) applies in code modes only. The output lists any check skipped
-for a missing `SPEC.md` or `hunks.json`, and a skipped check is not a pass. `persist` repeats
-the check for a directory holding a `package.diff`.
+check again. The generated-hunk rule applies in every mode, the questions rule to packages the tool
+assembled; the Tasks/Hints rule (see "Spec in every code-mode package" in context tiers) applies in
+code modes only. The output lists any check skipped for a missing `SPEC.md` or `hunks.json`, and a
+skipped check is not a pass. `persist` repeats the generated-hunk and Tasks/Hints checks, not the
+questions rule, for a directory holding a `package.diff`.
 
-**In PR mode, append the PR-head excerpts before that check.** `mode_kind: "pr"` refuses the consumer
-and prompt extras, so the assembled package is a diff with no surrounding code; the excerpts that
-replace them are fetched by hand and appended, and [packaging](~/.cursor/agents/crew-reviewer/references/packaging.md)
-under "The PR-head excerpt pass" owns that step: without them a package passes every rule and still
-cannot ground a claim about scope, a consumer, or an absence.
+**In PR mode, append the PR-head excerpts before that check** ([packaging](~/.cursor/agents/crew-reviewer/references/packaging.md),
+"The PR-head excerpt pass"): `mode_kind: "pr"` refuses the consumer and prompt extras, and without the
+excerpts a package passes every rule and still cannot ground a claim about scope, a consumer, or an absence.
 
 **Persist both artifacts at dispatch time.** The package is the `.in.md` just checked, delivered per
 the shared dispatch instructions. Save each reply as it returns with `crew-review-findings.py
 save-out` (raw bytes on stdin plus provenance; see [saving
 replies](~/.cursor/agents/references/dispatch.md)), never a digest or a later reconstruction:
 `persist` needs both files and checks the hash.
-
-**Degraded fallback:** see [saving replies](~/.cursor/agents/references/dispatch.md) (`save-out`).
 
 **Routing and stops.** A user message during a persona run: the routing line in [worker
 dispatch](~/.cursor/skills/crew-implement/references/worker-dispatch.md). An autonomous pause or

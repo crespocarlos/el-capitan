@@ -1,0 +1,56 @@
+diff --git a/.agent/tools/task/task_record_pr.py b/.agent/tools/task/task_record_pr.py
+new file mode 100644
+--- /dev/null
++++ b/.agent/tools/task/task_record_pr.py
+@@ -0,0 +1,51 @@
++"""`record-pr`: after `gh pr create`, record the PR on its task and run the DONE gate (excerpt)."""
++from __future__ import annotations
++
++import contextlib
++import io
++import os
++from pathlib import Path
++
++
++def branch_tree(branch: str) -> Path | None:
++    """The worktree that has `branch` checked out, so `mark_done` checks the review against that branch's HEAD."""
++    try:
++        return next((path for path, name in worktrees() if name == branch), None)
++    except GitError:
++        return None
++
++
++def close(r: TaskState, url: str, branch: str) -> list[str]:
++    """Append the PR, then run the DONE gate from the branch's worktree when one exists; its words are the output."""
++    append_pr(r.task, url)
++    lines = [f"record-pr: {r.slug}: recorded PR {url}"]
++    out, saved = io.StringIO(), os.getcwd()
++    tree = branch_tree(branch)
++    try:
++        if tree is not None:
++            os.chdir(tree)
++        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
++            code = mark_done(r.task, url, False)
++    finally:
++        os.chdir(saved)
++    lines += [f"record-pr: {line}" for line in out.getvalue().splitlines() if line.strip()]
++    if code != 0:
++        lines.append(f"record-pr: {r.slug} stays {head(r)}; after fixing it run: {MARK_DONE.format(dir=r.task, url=url)}")
++    return lines
++
++
++def record(payload: dict, tasks_dir: Path, read: Reader = gh_read) -> list[str]:
++    """Record the PR of one hook payload; the printed lines, empty when the payload is not a PR creation."""
++    urls = created_urls(payload)
++    if len(urls) != 1:
++        return []
++    saved, cwd = os.getcwd(), payload.get("cwd")
++    try:
++        if isinstance(cwd, str) and Path(cwd).is_dir():
++            os.chdir(cwd)
++        found = pull(urls[0], read)
++        if found is None:
++            return [f"record-pr: cannot read {urls[0]} with gh pr view; reconcile records it at the next session start"]
++        return place(found, tasks_dir)
++    finally:
++        os.chdir(saved)

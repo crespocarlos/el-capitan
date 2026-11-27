@@ -1,0 +1,36 @@
+{
+  "id": "install-prune-user-folders",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 2D916668, review 20261127143927, adversarial finding 8",
+  "summary": "`install.sh` links each skill's files from this checkout into `~/.cursor/skills/<skill>/`, a folder the user may also keep their own files and folders in. When a skill file is deleted or moved in the repo, install now prunes the dangling links it left at any depth, not only a whole skill's SKILL.md, and removes the folders that pruning left empty.",
+  "defect": "Once one dangling link is pruned, `find -empty -delete` removes every empty folder under the skill, including folders the user created by hand that install never owned.",
+  "locations": [
+    {
+      "file": "install.sh",
+      "line": 27
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "empty"
+    ],
+    [
+      "user*",
+      "by hand",
+      "unrelated",
+      "not pruned",
+      "never created",
+      "did not create",
+      "didn't create",
+      "install never owned",
+      "not install's"
+    ]
+  ],
+  "context": {},
+  "after": {
+    "install.sh": "if [ -d \"$SCRIPT_DIR/.cursor/skills\" ]; then\n  shopt -s nullglob\n  for skill in \"$SCRIPT_DIR\"/.cursor/skills/*/; do\n    name=$(basename \"$skill\")\n    run mkdir -p ~/.cursor/skills/$name\n    run ln -sf \"$SCRIPT_DIR/.cursor/skills/$name/SKILL.md\" ~/.cursor/skills/$name/SKILL.md\n    link_dir_files \"$SCRIPT_DIR/.cursor/skills/$name/references\" ~/.cursor/skills/$name/references\n  done\n  # A file deleted or moved in the repo leaves a dangling link in its skill folder, at any depth (a whole\n  # skill, or one reference). Drop the dangling links into this checkout, then the folders that left empty.\n  # `find` does not follow links, and a link elsewhere or a regular file is the user's, so both stay.\n  for d in ~/.cursor/skills/*/; do\n    [[ -L \"${d%/}\" ]] && continue\n    pruned=0\n    while IFS= read -r link; do\n      target=$(readlink \"$link\")\n      [[ \"$target\" == \"$SCRIPT_DIR\"/* && ! -e \"$link\" ]] || continue\n      pruned=1\n      if [ \"$DRY_RUN\" -eq 1 ]; then\n        echo \"  [dry-run] remove broken symlink: $link -> $target\"\n      else\n        echo \"  Removing stale symlink: ${link#\"$HOME\"/}\"\n        rm -f \"$link\"\n      fi\n    done < <(find \"$d\" -type l)\n    if [ \"$pruned\" -eq 1 ] && [ \"$DRY_RUN\" -eq 0 ]; then\n      find \"$d\" -depth -type d -empty -delete\n    fi\n  done\n  shopt -u nullglob\nfi\n"
+  }
+}

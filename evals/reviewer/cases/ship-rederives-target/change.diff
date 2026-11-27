@@ -1,0 +1,39 @@
+diff --git a/.agent/tools/task/task_ship.py b/.agent/tools/task/task_ship.py
+new file mode 100644
+--- /dev/null
++++ b/.agent/tools/task/task_ship.py
+@@ -0,0 +1,34 @@
++"""`crew-task.py ship`: stage, commit, merge the base, re-run the spec's tests, push, open a draft PR (excerpt)."""
++from __future__ import annotations
++
++from pathlib import Path
++
++
++def where_to(task: TaskState, tree: Path) -> tuple[str, str, str, str]:
++    """(remote, base, target, head ref): a fork's PR targets `upstream`; the base is the spec's `## Base:` or the
++    remote's default branch. Raises `Stop` when the target repository cannot be named."""
++    remote = "upstream" if remote_url(tree, "upstream") else "origin"
++    named = SPEC_BASE.search(task.text)
++    base = named.group(1) if named else default_branch(tree, remote)
++    target = slug_from_url(remote_url(tree, remote)) or (task.repo if remote == "origin" else "")
++    if not target:
++        raise Stop(f"cannot name the GitHub repository of '{remote}' or of the task")
++    branch = current_branch(tree)
++    if remote == "origin":
++        return remote, base, target, branch
++    owner = (slug_from_url(remote_url(tree, "origin")) or "").split("/")[0]
++    return remote, base, target, f"{owner}:{branch}" if owner else branch
++
++
++def prepare(task_dir: Path, title: str, body_file: Path) -> Ship | str:
++    """The ship context, or why it cannot start (exit 2)."""
++    task = load(task_dir)
++    branch, recorded = task.meta.get("branch") or "", task.meta.get("worktree") or ""
++    tree = Path(recorded) if recorded else None
++    if tree is None or not tree.is_dir():
++        return f"{name(task)}: the recorded worktree {recorded or '(none)'} is missing; run mark-implementing --root"
++    actual = current_branch(tree)
++    if not branch or actual != branch:
++        return f"{name(task)}: {tree} is on {actual}, not the task's branch {branch or '(none recorded)'}"
++    remote, base, target, head_ref = where_to(task, tree)
++    return Ship(task, tree, branch, remote, base, target, head_ref, title, body_file)

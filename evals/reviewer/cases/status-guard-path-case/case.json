@@ -1,0 +1,42 @@
+{
+  "id": "status-guard-path-case",
+  "lens": "adversarial",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 82FCCD58, review 20261127141048, adversarial finding 2",
+  "summary": "Background builders cannot answer prompts, so install allows every Edit and Write under `~/.agent/tasks` and drops the ask rule for task SPEC.md files. The SPEC.md owner hook (`.claude/hooks/check-task-spec-owner.sh`, unchanged, in the working directory) still guards each task SPEC.md.",
+  "defect": "With the ask rule gone the hook is the only gate, and it matches the raw path case-sensitively: `spec.md` on a case-insensitive disk, `..`, `//` or a symlink skip it, so the write goes through with no prompt.",
+  "locations": [
+    {
+      "file": ".claude/hooks/check-task-spec-owner.sh",
+      "line": 10
+    },
+    {
+      "file": ".claude/hooks/check-task-spec-owner.sh",
+      "line": 14
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "case-insensitive*",
+      "case insensitive*",
+      "lowercase",
+      "lower-case",
+      "lower case",
+      "realpath",
+      "normali*",
+      "APFS",
+      "symlink*",
+      "canonical path*",
+      "dot-dot",
+      "double slash"
+    ]
+  ],
+  "context": {
+    ".claude/hooks/check-task-spec-owner.sh": "#!/usr/bin/env bash\n# Guard: a task SPEC.md is written only by the task that owns it (the `.task-id` slug).\nset -euo pipefail\nHOOK_NAME=check-task-spec-owner\n# shellcheck source=lib/hook.sh\n. \"$(dirname \"$0\")/lib/hook.sh\"\n\npath=$(hook_field file_path)\ntasks_root=\"$HOME/.agent/tasks\"\ncase \"$path\" in */SPEC.md) ;; *) hook_allow ;; esac\ntask_dir=$(dirname \"$path\")\ncase \"$task_dir\" in \"$tasks_root\"/*) ;; *) hook_allow ;; esac\n# `<tasks>/<uuid>/SPEC.md` only: a nested path such as `<uuid>/review/.../SPEC.md` is not a task spec.\n[ \"$(dirname \"$task_dir\")\" = \"$tasks_root\" ] || hook_allow\n\nmetadata=\"$task_dir/.task-id\"\n[ -f \"$metadata\" ] || hook_allow\n# Nothing to protect: a directory with no SPEC.md cannot lose one, and this is where every new task\n# starts.\n[ -f \"$task_dir/SPEC.md\" ] || hook_allow\nowner=$(jq -r '.slug // empty' \"$metadata\" 2>/dev/null) || hook_allow\n[ -n \"$owner\" ] || hook_allow\ntitle=$(head -1 \"$task_dir/SPEC.md\" | sed 's/^# Spec: //')\n[ \"$(slugify \"$title\")\" = \"$owner\" ] \\\n  || hook_deny \"Task spec guard: $task_dir belongs to '$owner'; write your own task's SPEC.md.\"\nhook_allow\n"
+  },
+  "after": {
+    ".claude/settings.json": "{\n  \"permissions\": {\n    \"allow\": [\n      \"Read(~/.agent/**)\",\n      \"Edit(~/.agent/tasks/**)\",\n      \"Write(~/.agent/tasks/**)\"\n    ],\n    \"additionalDirectories\": [\"~/.agent/tasks\"]\n  },\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\"matcher\": \"Write|Edit\", \"hooks\": [{\"type\": \"command\", \"command\": \"~/.claude/hooks/check-task-spec-owner.sh\"}]}\n    ]\n  }\n}\n"
+  }
+}

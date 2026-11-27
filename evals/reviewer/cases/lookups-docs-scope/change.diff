@@ -1,0 +1,66 @@
+diff --git a/.cursor/agents/references/lookups.md b/.cursor/agents/references/lookups.md
+new file mode 100644
+--- /dev/null
++++ b/.cursor/agents/references/lookups.md
+@@ -0,0 +1,30 @@
++# Lookups
++
++How an agent finds code it cannot name and checks a product or API fact. Your own file still
++sets your budget, your tools and where a note goes in your output; this file sets which lookup to
++make and what to do when it cannot be made.
++
++The servers are the ones named in `~/.agent/config.json` `mcp`: `code_search` for the code index,
++`docs` for the docs server.
++
++## Code you cannot locate
++
++Search the code index before a text search: it ranks by relevance across whole repositories, so it
++finds implementations you could not have guessed the words for. When you already know the file and
++line, read it directly; the index is for discovery.
++
++When the index is not in your tools, or a call fails, use the equivalent `Grep`/`Glob`/`Read` call and
++say so in one line of your output: `code search unreachable: used text search`. Your own file says
++where that line goes; without such a place, put it at the end. The reader needs it to know the
++results were not ranked.
++
++## Product and API facts
++
++Any claim about product, API, query-language or configuration behaviour that your work depends on
++(writing it, reviewing it, or answering a comment about it) is checked on the docs server and cited
++by URL. Search the docs (`search_internal_docs`), then fetch the page you cite. Never settle such a
++claim from memory: a guessed option reads the same as a verified one.
++
++With no docs server in your tools, or a failed lookup, mark the claim
++`unverified (docs server unreachable)` and leave it unsettled rather than deciding it from code or
++memory.
+diff --git a/.cursor/agents/references/reviewer-contract.md b/.cursor/agents/references/reviewer-contract.md
+--- a/.cursor/agents/references/reviewer-contract.md
++++ b/.cursor/agents/references/reviewer-contract.md
+@@ -4,13 +4,8 @@
+ 
+ ## Evidence
+ 
+-Search the code index before reaching for a text search: it finds implementations you could not
+-have guessed the words for. When the index is unreachable, say `code search unreachable: used text
+-search` on the line after your `Assessment:` line.
+-
+-## Product facts (opt-in: applies when the package says the artifact has content for the docs server's product)
+-
+-Check a claim about that product's API or configuration on the docs server and cite the page.
++Lookups: follow `~/.cursor/agents/references/lookups.md` when you need code you cannot locate or a product or API fact.
++Its `code search unreachable` line goes on the line after your `Assessment:` line.
+ 
+ ## Labels
+ 
+diff --git a/rules/crew-router.mdc b/rules/crew-router.mdc
+--- a/rules/crew-router.mdc
++++ b/rules/crew-router.mdc
+@@ -1,6 +1,8 @@
+ # Crew router
+ 
+ Every main session in every repository loads this rule.
++
++Lookups: follow `~/.cursor/agents/references/lookups.md` when you need code you cannot locate or a product or API fact.
+ 
+ ## Routing
+ 

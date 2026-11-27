@@ -1,0 +1,39 @@
+{
+  "id": "test-pins-prose",
+  "lens": "code-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 1D001C12, review 20261127163032, code-quality finding 4",
+  "summary": "crew-reviewer and crew-specwriter must resume a persona that ended with no reply once, with `deliver now`, and never dispatch it a second time. A test row checks that each orchestrator file carries the rule.",
+  "defect": "The test pins exact prose, including a line break and three spaces of list indentation: reflowing the paragraph breaks it while behaviour is unchanged, and a file that states the sentence but re-dispatches anyway still passes.",
+  "locations": [
+    {
+      "file": "evals/tools/test_lint_rules.py",
+      "line": 12
+    },
+    {
+      "file": "evals/tools/test_lint_rules.py",
+      "line": 19
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "prose",
+      "wording",
+      "sentence*",
+      "reflow*",
+      "exact text",
+      "exact string",
+      "whitespace",
+      "indentation",
+      "line break*",
+      "line wrap*",
+      "rewrap*"
+    ]
+  ],
+  "context": {},
+  "after": {
+    "evals/tools/test_lint_rules.py": "\"\"\"Lint rule rows (excerpt).\"\"\"\nfrom __future__ import annotations\n\nfrom pathlib import Path\n\nimport pytest\n\nROOT = Path(__file__).resolve().parents[2]\n\n# (orchestrator file, the words of its rule): a dispatch that ends with no reply is resumed once with \"deliver now\".\nRESUME_RULES = ((\".cursor/agents/references/dispatch.md\", \"A dispatch that ends with no reply is resumed once, never re-dispatched\"),\n                (\".cursor/agents/crew-specwriter.md\", \"A critic that returns no reply gets one\\n   resume, never a second dispatch\"))\n\n\n@pytest.mark.parametrize(\"path, rule\", RESUME_RULES, ids=[row[0] for row in RESUME_RULES])\ndef test_a_silent_dispatch_is_resumed_once(path: str, rule: str) -> None:\n    \"\"\"crew-reviewer (through dispatch.md) and crew-specwriter resume a reply-less persona with `deliver now`.\"\"\"\n    text = (ROOT / path).read_text(encoding=\"utf-8\")\n    assert rule in text and \"`deliver now: \" in text, path\n\n\n@pytest.mark.parametrize(\"case,files,rule\", HANDOFFS, ids=[case for case, _, _ in HANDOFFS])\ndef test_handoff(case: str, files: dict[str, str], rule: str | None, tmp: Path) -> None:\n    root = write(tmp, {\"rules/crew-router.mdc\": ROUTER, **files})\n    assert rules_of(lint_handoffs(root)) == ([rule] if rule else []), case\n"
+  }
+}

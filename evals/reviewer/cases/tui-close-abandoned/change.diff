@@ -1,0 +1,40 @@
+diff --git a/tui/tui_model.py b/tui/tui_model.py
+--- a/tui/tui_model.py
++++ b/tui/tui_model.py
+@@ -1,26 +1,24 @@
+ """What the TUI shows and the moves it offers (excerpt)."""
+ from __future__ import annotations
+ 
+-FORCE_NOTE = "none (committed to main)"  # the `--pr-url` note of `mark-done --force` for a task with no PR
++FORCE_NOTE = "closed: stale"  # the `--pr-url` note of the close move, `mark-done --force`
+ # The gates of `crew-task.py` and the one state each moves from; the CLI refuses any other.
+ GATES = (("mark-approved", "DRAFTING", "approve"), ("mark-implementing", "APPROVED", "start"),
+          ("mark-done", "IMPLEMENTING", "mark done"))
+ 
+ 
+ def moves(state: str, task: Path, prs: list[str]) -> list[Move]:
+-    """The calls `crew-task.py` accepts from `state`: its gate (mark done with the newest PR, or `--force` and a
+-    note without one), and `blocked` with a reason for any task not DONE. The CLI still checks every gate."""
++    """The calls `crew-task.py` accepts from `state`: its gate (mark done with the newest PR from IMPLEMENTING),
++    then, for any task not DONE, `blocked` with a reason and close as done (`mark-done --force` with a note), which
++    an IMPLEMENTING task with a PR does not get. The CLI still checks every gate."""
+     found = []
+     for command, source, label in GATES:
+-        if state != source:
+-            continue
+-        if command != "mark-done":
+-            found.append(Move(f"{label} ({command})", (command, str(task))))
+-        elif prs:
+-            found.append(Move(f"{label} with PR {prs[-1]} ({command})", (command, str(task), "--pr-url", prs[-1])))
+-        else:
+-            found.append(Move(f"{label} without a PR ({command} --force)", (command, str(task), "--force", "--pr-url"),
+-                              ask="note recorded as the PR", default=FORCE_NOTE))
++        if state == source and (command != "mark-done" or prs):
++            pr = ("--pr-url", prs[-1]) if command == "mark-done" else ()
++            found.append(Move(f"{label}{f' with PR {prs[-1]}' if pr else ''} ({command})", (command, str(task), *pr)))
+     if state != "DONE":
+         found.append(Move("blocked with a reason (blocked)", ("blocked", str(task)), ask="reason"))
++    if state != "DONE" and not (state == "IMPLEMENTING" and prs):
++        found.append(Move("close as done (mark-done --force)", ("mark-done", str(task), "--force", "--pr-url"),
++                          ask="note", default=FORCE_NOTE))
+     return found

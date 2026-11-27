@@ -1,0 +1,44 @@
+{
+  "id": "lint-budget-allowlist",
+  "lens": "code-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 1D001C12, review 20261127163032, code-quality finding 3",
+  "summary": "Every reviewer persona and spec critic must declare its tool-call budget as `tool_budget:` with `maxTurns` at least two above it; the shared reviewer contract no longer states a fallback number, so a persona without the key has no budget. A new `persona-turn-budget` lint rule enforces this.",
+  "defect": "The rule only requires the key from a hand-maintained tuple: a new `reviewer-*` or `specwriter-*` persona nobody adds to `BUDGETED_AGENTS` passes the lint with no budget at all.",
+  "locations": [
+    {
+      "file": ".agent/tools/maintenance/lint_prompts.py",
+      "line": 10
+    },
+    {
+      "file": ".agent/tools/maintenance/lint_prompts.py",
+      "line": 28
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "new persona",
+      "new agent",
+      "new reviewer",
+      "new critic",
+      "added persona",
+      "adds a persona",
+      "remember*",
+      "forget*",
+      "forgot*",
+      "exempt*",
+      "opt-in",
+      "opt in",
+      "hand-maintained",
+      "hardcoded",
+      "hard-coded",
+      "allowlist"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/maintenance/lint_prompts.py": "\"\"\"Prompt lint rules over `.cursor/agents` (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport re\nfrom pathlib import Path\n\nTOOLS_LINE = re.compile(r\"^tools:[ \\t]*(.*)$\", re.MULTILINE)\n# The review lenses and spec critics declare their tool-call budget once (`tool_budget:`), say it in their text,\n# and get two turns past it, so the reply never competes with a tool call for the last turn.\nBUDGETED_AGENTS = (\"reviewer-adversarial\", \"reviewer-architecture\", \"reviewer-code-quality\", \"reviewer-product-flow\",\n                   \"reviewer-prompt-quality\", \"specwriter-adversarial\", \"specwriter-scope\")\nREPLY_TURNS = 2\nSTATED_BUDGET = re.compile(r\"stop calling tools at (\\d+)\\b\", re.IGNORECASE)\n\n\ndef lint_turn_budget(root: Path) -> Findings:\n    \"\"\"Each budgeted agent declares `tool_budget: N` with `maxTurns` at least N + 2 and states \"stop calling tools\n    at N\" once in its text; any other agent that declares a budget is held to the same two checks.\"\"\"\n    findings: Findings = []\n    for path in sorted((root / \".cursor/agents\").glob(\"*.md\")):\n        text = path.read_text(errors=\"replace\")\n        frontmatter_text, _, error = parse_frontmatter(text)\n        if error:\n            continue\n        name, body = rel(root, path), text.split(\"\\n---\\n\", 1)[1]\n        budget = re.search(r\"^tool_budget:[ \\t]*(\\d+)[ \\t]*$\", frontmatter_text, re.MULTILINE)\n        if not budget:\n            if path.stem in BUDGETED_AGENTS:\n                findings.append((name, 1, \"persona-turn-budget\", \"declare tool_budget: N in the frontmatter\"))\n            continue\n        calls = int(budget.group(1))\n        turns = re.search(r\"^maxTurns:[ \\t]*(\\d+)[ \\t]*$\", frontmatter_text, re.MULTILINE)\n        if not turns or int(turns.group(1)) < calls + REPLY_TURNS:\n            findings.append((name, 1, \"persona-turn-budget\", f\"set maxTurns to at least {calls + REPLY_TURNS}\"))\n        if STATED_BUDGET.findall(body) != [str(calls)]:\n            findings.append((name, 1, \"persona-turn-budget\", f\"say the budget once: \\\"stop calling tools at {calls}\\\"\"))\n    return findings\n\n\ndef lint_native_tool_ids(root: Path, native: set[str]) -> Findings:\n    \"\"\"Each native id of an agent's `tools:` line is in `native_tools`, so a typo fails.\"\"\"\n    findings: Findings = []\n    for path in sorted((root / \".cursor/agents\").glob(\"*.md\")):\n        line = TOOLS_LINE.search(path.read_text(errors=\"replace\"))\n        for tool in (line.group(1).split(\",\") if line else []):\n            if tool.strip() and tool.strip() not in native:\n                findings.append((rel(root, path), 1, \"tool-id-unknown\", f\"{tool.strip()} is not a native tool\"))\n    return findings\n"
+  }
+}

@@ -844,14 +844,50 @@ def test_spec_context_keeps_builder_sections_for_product_flow_only(tmp: Path) ->
     assert "Tasks and Hints omitted" in other.stdout
 
 
-def write_packages(tmp: Path, packages: dict[str, str]) -> Path:
+# The section every package ends with; the helper appends it so each row tests only its own rule.
+QUESTIONS = "\n---\n\n## Questions for this lens\n\n1. Can an empty token reach parseToken?\n2. Who catches EmptyTokenError?\n"
+
+
+def write_packages(tmp: Path, packages: dict[str, str], stamped: bool = True) -> Path:
+    """Packages as the current assembler leaves them: the questions section, and the stamp in manifest.json."""
     task = tmp / "task"
     review_dir = task / "review" / "20261118150000"
     review_dir.mkdir(parents=True)
     (task / "SPEC.md").write_text(SPEC)
     for persona, text in packages.items():
-        (review_dir / f"{persona}.in.md").write_text(text)
+        (review_dir / f"{persona}.in.md").write_text(text + QUESTIONS)
+    if stamped:
+        (review_dir / "manifest.json").write_text(json.dumps({"personas": {"questions_rule": True}}))
     return review_dir
+
+
+@pytest.mark.parametrize("questions, problem", [
+    ("", "has no `## Questions for this lens` section"),
+    ("\n## Questions for this lens\n\n1. Only one?\n\n## Next\n- not a question\n", "asks 1 question(s)"),
+    ("\n## Questions for this lens\n\n" + "".join(f"- q{n}?\n" for n in range(6)), "asks 6 question(s)"),
+    # A pasted prompt quoting the heading comes first; the section the assembler appends last is the one counted.
+    ("\n## Questions for this lens\n\n1. a?\n2. b?\n\n# Prompt tier\n\n## Questions for this lens\n\n1. only?\n",
+     "asks 1 question(s)"),
+    # Nested bullets belong to their question, so this is 2 questions, not 6.
+    ("\n## Questions for this lens\n\n1. a?\n   - x\n   - y\n2. b?\n   - z\n   - w\n", None),
+])
+def test_check_packages_requires_two_to_five_lens_questions(tmp: Path, questions: str, problem: str | None) -> None:
+    review_dir = write_packages(tmp, {})
+    (review_dir / "adversarial.in.md").write_text("## Spec\nshort\n" + questions)
+    result = run("check-packages", "--review-dir", str(review_dir), "--personas", "adversarial")
+    if problem is None:
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode == 1 and problem in result.stderr, result.stderr
+
+
+def test_check_packages_passes_an_unstamped_directory_with_a_note(tmp: Path) -> None:
+    """A review packaged before the questions rule (a resume, say) still dispatches; the skip is reported."""
+    review_dir = write_packages(tmp, {}, stamped=False)
+    (review_dir / "adversarial.in.md").write_text("## Spec\nshort\n")
+    result = run("check-packages", "--review-dir", str(review_dir), "--personas", "adversarial")
+    assert result.returncode == 0, result.stderr
+    assert "not stamped" in json.loads(result.stdout)["skipped"]["questions"]
 
 
 def test_check_packages_rejects_copied_tasks_outside_product_flow(tmp: Path) -> None:
@@ -886,7 +922,7 @@ def test_check_packages_rejects_generated_hunks_and_persist_strict_agrees(tmp: P
     strict = run(*persist)
     assert strict.returncode == 2 and "generated file yarn.lock" in strict.stderr
     collapsed = lock.split("@@")[0] + "# yarn.lock: likely generated, +1/-1 lines omitted (h1)\n"
-    (review_dir / "adversarial.in.md").write_text(collapsed)
+    (review_dir / "adversarial.in.md").write_text(collapsed + QUESTIONS)
     assert run("check-packages", "--review-dir", str(review_dir),
                "--personas", "adversarial").returncode == 0
 

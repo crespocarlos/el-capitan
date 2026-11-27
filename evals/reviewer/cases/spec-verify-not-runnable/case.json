@@ -1,0 +1,45 @@
+{
+  "id": "spec-verify-not-runnable",
+  "lens": "specwriter-scope",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded, modelled on task 1D001C12's ship command",
+  "summary": "A spec that adds a command to push and open a draft PR for a task.",
+  "defect": "Task 3's verify pushes to the real repository, opens a real PR on github.com and needs a manual close: the builder cannot run it hermetically, it has external side effects, and it is not a command with a pass or fail.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 24
+    }
+  ],
+  "refs": [
+    "Task 3",
+    "T3"
+  ],
+  "keywords": [
+    [
+      "network",
+      "github.com",
+      "real PR",
+      "real repo*",
+      "manual*",
+      "by hand",
+      "side effect*",
+      "hermetic*",
+      "stub*",
+      "cannot run",
+      "can't run",
+      "not runnable",
+      "credential*",
+      "auth*"
+    ],
+    [
+      "verif*",
+      "end to end",
+      "end-to-end",
+      "Task 3"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

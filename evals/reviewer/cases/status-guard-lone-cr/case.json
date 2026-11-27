@@ -1,0 +1,41 @@
+{
+  "id": "status-guard-lone-cr",
+  "lens": "adversarial",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 82FCCD58, review 20261127150524, adversarial finding 1",
+  "summary": "The Status guard moves from awk to Python and reads the value with the canonical `task_status.STATUS`, so the hook and every tool agree on a spec's Status; a write that leaves two `## Status` headings is refused.",
+  "defect": "The guard compares raw text (`newline=\"\"`, and the payload as sent) while `read_status` reads with universal newlines: a lone `\\r` after the heading hides a first Status section from the guard's regex and HEADING count, yet `read_status` sees it and returns APPROVED.",
+  "locations": [
+    {
+      "file": ".claude/hooks/lib/spec_guard.py",
+      "line": 42
+    },
+    {
+      "file": ".claude/hooks/lib/spec_guard.py",
+      "line": 34
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "universal newline*",
+      "lone CR",
+      "lone carriage",
+      "carriage return*",
+      "bare CR"
+    ],
+    [
+      "newline*",
+      "raw",
+      "read_text",
+      "reader*"
+    ]
+  ],
+  "context": {
+    ".agent/tools/task/task_status.py": "\"\"\"Task status: the one reader of a spec's `## Status` (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport re\nfrom pathlib import Path\n\n# The one reader of `## Status`; hooks and tools must not re-implement it.\nSTATUS = re.compile(r\"^(## Status[ \\t]*\\r?\\n)([^\\n#][^\\n]*?)[ \\t]*$\", re.M)\nSTATES = (\"DRAFTING\", \"APPROVED\", \"IMPLEMENTING\", \"ON-HOLD\", \"DONE\")\n# A user-only side state: not a transition, but a value the store legitimately holds.\nSIDE_STATES = (\"ABANDONED\",)\n\n\ndef read_status(path: Path | str) -> str | None:\n    \"\"\"Return the status value, \"\" when unset, or None when the file is unreadable.\"\"\"\n    try:\n        text = Path(path).read_text(encoding=\"utf-8\")\n    except OSError:\n        return None\n    match = STATUS.search(text)\n    return match.group(2).strip() if match else \"\"\n"
+  },
+  "after": {
+    ".claude/hooks/lib/spec_guard.py": "#!/usr/bin/env python3\n\"\"\"The task-directory half of `check-task-spec-owner.sh`: one Write, Edit or MultiEdit payload on stdin.\n\nPrints `skip`, `ok <path>` or `deny <message>`. The Status value is read with the one reader,\n`task_status.STATUS`, before and after the write, and a write that leaves more than one `## Status`\nheading is refused, since only the first is read.\n\"\"\"\nfrom __future__ import annotations\n\nimport importlib.util\nimport json\nimport os\nimport re\nimport sys\nfrom pathlib import Path\n\n\ndef canonical_reader() -> re.Pattern:\n    \"\"\"`task_status.STATUS`, loaded by path from the checkout this hook links into.\"\"\"\n    source = Path(__file__).resolve().parents[3] / \".agent\" / \"tools\" / \"task\" / \"task_status.py\"\n    spec = importlib.util.spec_from_file_location(\"task_status\", source)\n    if spec is None or spec.loader is None:\n        raise ImportError(f\"cannot load {source}\")\n    module = importlib.util.module_from_spec(spec)\n    spec.loader.exec_module(module)\n    return module.STATUS\n\n\nSTATUS = canonical_reader()\nHEADING = re.compile(r\"^## Status[ \\t]*\\r?$\", re.M)\n\n\ndef status(text: str) -> str:\n    match = STATUS.search(text)\n    return match.group(2).strip() if match else \"\"\n\n\ndef verdict(path: str, after: str) -> str:\n    \"\"\"`ok <path>` when the write leaves the Status value alone, else `deny <message>`.\"\"\"\n    if not os.path.exists(path):\n        return f\"ok {path}\"\n    with open(path, encoding=\"utf-8\", newline=\"\") as handle:\n        disk = handle.read()\n    if len(HEADING.findall(after)) > 1:\n        return f\"deny Task spec guard: this leaves more than one '## Status' heading in {path}.\"\n    before, now = status(disk), status(after)\n    if before != now:\n        return (f\"deny Task spec guard: this changes the Status of {path} from '{before or 'none'}' \"\n                f\"to '{now or 'none'}'. The status moves only through crew-task.py.\")\n    return f\"ok {path}\"\n\n\ndef main() -> int:\n    payload = json.loads(sys.stdin.read() or \"{}\")\n    fields = payload.get(\"tool_input\") or {}\n    print(verdict(fields.get(\"file_path\", \"\"), fields.get(\"content\", \"\")))\n    return 0\n\n\nif __name__ == \"__main__\":\n    sys.exit(main())\n"
+  }
+}
