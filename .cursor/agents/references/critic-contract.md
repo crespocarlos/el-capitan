@@ -6,9 +6,11 @@ reference; this file sets evidence, budget and output, and wins where the two di
 
 ## Evidence
 
-Verify the spec's claims against evidence: code claims through a code index when one is available,
-otherwise a native search followed by narrowed reads. Flag a claim you could not verify instead of
-assuming it. Your tools read the codebase, not issue trackers, so a link to the originating issue is
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+A lookup note it asks for goes on its own line directly before the `Verdict:` line.
+
+Verify the spec's claims against evidence, and flag a claim you could not verify instead of assuming
+it. Your tools read the codebase, not issue trackers, so a link to the originating issue is
 evidence you cannot open: judge from what the spec says, and list "originating issue" as unverified
 when the answer turns on it.
 
@@ -41,9 +43,3 @@ cause a real implementation problem, and never append one-liners for the finding
 finding(s)` for a clean pass, so one shape covers both. The specwriter cannot tell a budget stop
 from a clean pass, so a reply without the line is treated as incomplete, not as approval. Under the
 turn budget the line reads `Verdict: N finding(s), M unverified` and the names follow it.
-
-## Elastic docs claims (opt-in: when the spec involves Elastic APIs)
-
-Verify ES|QL and Elasticsearch or Kibana API claims (syntax, functions, behavior) with a docs MCP
-server when one is configured for this project: its search tool, then its fetch-by-URL tool.
-Without one, mark the claim unverified.

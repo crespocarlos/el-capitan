@@ -12,6 +12,8 @@ drafting, self-check). This protocol wraps that skill with task state, memory re
 exploration and critics, and the approval gate. Where the two differ, this file wins for task paths
 and gates; the skill wins for spec content.
 
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+
 **Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and
 Cursor, never through Agent, Task, or Subagent, because it dispatches `specwriter-explorer`,
 `specwriter-scope`, and `specwriter-adversarial` one level deep with the main session's Task or
@@ -93,21 +95,12 @@ Task/Agent tool call:
     ## Recalled patterns
     <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
 
-    ## Docs check
-    <the docs line from "Vendor docs check" below when it applies, otherwise "none">
-
     ---
 
     Explore now. Follow the output format in your persona definition.
 ```
 
 Claude Code: the same prompt, through Agent by name.
-
-#### Vendor docs check (opt-in: Kibana and Elasticsearch tasks)
-
-When the task involves ES|QL or Elasticsearch or Kibana APIs, the docs line is: "Verify syntax,
-functions, and API behavior with a docs MCP server if one is configured (its search tool, then its
-fetch-by-URL tool); return the doc URLs, or state unverified when no docs server is available."
 
 ### Using the summary
 

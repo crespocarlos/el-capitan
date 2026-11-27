@@ -21,19 +21,9 @@ with no index, search first and read only what search narrowed.
 
 </critical_rules>
 
-The flow is index search to discover, then text search and reads only to drill into what search
-already found.
-
-| Task | Preferred | Fallback (scope already known) |
-| --- | --- | --- |
-| Explore a concept, find implementations | `sourcerer_code_search`, then `sourcerer_files_tree` on a directory it names | — |
-| Find an identifier, error string, or config key | `sourcerer_code_grep` | text search (Cursor `Grep`) |
-| Outline one known directory | `sourcerer_files_tree` | path search (Cursor `Glob`) |
-| Read a file search found | `sourcerer_files_read_lines` (a range) or `sourcerer_files_cat` (whole) | a targeted file read (Cursor `Read`) |
-| Which repositories hold the code | `sourcerer_repos_search`, or `sourcerer_repos_list` | — |
-| Which branch or tag is indexed | `sourcerer_refs_list` | — |
-| Orientation prose about a repo or module | `sourcerer_ki_search` | — |
-| Verify an exact string once you know the file | — | text search (Cursor `Grep`) |
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+It holds which tool fits which task and the fallback when the index is unreachable; this rule adds
+the Sourcerer detail below.
 
 ## Tool selection
 
@@ -89,8 +79,7 @@ Cross-file consistency (schema vs mapping): sourcerer_code_grep('fieldName') →
 Impact ("what breaks if I change X?"):     sourcerer_code_grep('X') for every call site → sourcerer_files_read_lines on each
 ```
 
-Without an index in the current invocation, fall back to the harness's own search, then read only the
-range it identified, and name the fallback as the Availability section below says.
+Without an index in the current invocation, follow the fallback in `lookups.md`.
 
 ## Availability and fallback
 
@@ -110,16 +99,13 @@ range it identified, and name the fallback as the Availability section below say
 - `sourcerer_repos_list` is the index inventory; `sourcerer_repos_search` is the "which repo is this"
   query. If the trail leads into a dependency, check whether that repo is indexed before concluding
   the answer is not findable.
-- A rejected call, or no code-search tool at all, means the server is unreachable in this invocation:
-  fall back to the harness's own search and name the fallback in the reply (`code search unreachable:
-  used text search`), never silently; there is no in-session re-authentication step.
+- A rejected call means the server is unreachable for the rest of this invocation: there is no
+  in-session re-authentication step.
 
 ## Elastic setup and ES|QL (opt-in: Kibana and Elasticsearch work)
 
 - Sourcerer is self-hosted on an Elasticsearch and Kibana deployment (v9.5.0+), with a configured
   `sourcerer` MCP server and credentials.
-- For any ES|QL query or Elasticsearch/Kibana docs question, also use a docs MCP server if one is
-  configured: its search tool to find the command, function, or syntax, then its fetch-by-URL tool to
-  confirm it. When it is unreachable, follow the Elastic docs section of
-  `~/.cursor/agents/references/reviewer-contract.md`, which holds that rule once. Use the code index
-  only to find how Kibana code builds or consumes the query.
+- An ES|QL query or an Elasticsearch/Kibana API claim is a product fact: the "Product and API facts"
+  section of `~/.cursor/agents/references/lookups.md` holds that rule once. Use the code index only to
+  find how Kibana code builds or consumes the query.

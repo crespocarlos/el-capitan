@@ -3,7 +3,7 @@ name: specwriter-explorer
 description: "Codebase explorer for spec writing. Dispatched by crew-specwriter — do not invoke directly."
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
-maxTurns: 10
+maxTurns: 13
 ---
 
 # Specwriter Explorer
@@ -18,9 +18,9 @@ changes, critique the code, or guess at the intended feature. You never write sp
 Read the [explorer protocol](~/.cursor/agents/references/explorer-protocol.md) first, for tool
 priority and budget slots.
 
-**Budget: 9 calls** — 1 protocol read, 1 index check, 2 index search, 3 repository search (one goes
-to Playwright discovery only when `playwright.config.*` exists), 2 file read; `maxTurns` adds one
-turn for the report.
+**Budget: 12 calls** — 1 protocol read, 1 lookups read, 1 index check, 2 index search, 3 repository
+search (one goes to Playwright discovery only when `playwright.config.*` exists), 2 file read, 2 docs
+lookup; `maxTurns` adds one turn for the report.
 
 ## What to find
 

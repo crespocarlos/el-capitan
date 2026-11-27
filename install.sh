@@ -373,29 +373,27 @@ if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
     run ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.cursor/skills/$name/SKILL.md
     link_dir_files "$SCRIPT_DIR/.cursor/skills/$name/references" ~/.cursor/skills/$name/references
   done
-  shopt -u nullglob
-  # Prune skill subdirs whose SKILL.md symlink is broken (skill was deleted from source)
-  shopt -s nullglob
+  # A file deleted or moved in the repo leaves a dangling link in its skill folder, at any depth (a whole
+  # skill, or one reference). Drop the dangling links into this checkout, then each folder a removal left
+  # empty, walking up to the skill folder. `find` does not follow links; a link elsewhere, a regular file
+  # and a folder no removal emptied are the user's, so they stay.
   for d in ~/.cursor/skills/*/; do
-    skill_md="$d/SKILL.md"
-    [[ -L "$skill_md" ]] || continue
-    target=$(readlink "$skill_md")
-    [[ "$target" == "$SCRIPT_DIR"* ]] || continue
-    if [ ! -e "$skill_md" ]; then
+    skill="${d%/}"
+    [[ -L "$skill" ]] && continue
+    while IFS= read -r link; do
+      target=$(readlink "$link")
+      [[ "$target" == "$SCRIPT_DIR"/* && ! -e "$link" ]] || continue
       if [ "$DRY_RUN" -eq 1 ]; then
-        echo "  [dry-run] remove stale skill dir: $d"
-      else
-        echo "  Removing stale skill: $(basename "$d")"
-        rm -f "$skill_md"
-        # Its reference links went with it: drop the dangling ones (repo-owned only), then any folder left empty.
-        for sub in "${d%/}" "$d"*/; do
-          prune_broken_symlinks "${sub%/}"
-        done
-        shopt -s nullglob
-        for sub in "$d"*/; do rmdir "$sub" 2>/dev/null || true; done
-        rmdir "$d" 2>/dev/null || true
+        echo "  [dry-run] remove broken symlink: $link → $target"
+        continue
       fi
-    fi
+      echo "  Removing stale symlink: ${link#"$HOME"/}"
+      rm -f "$link"
+      parent=$(dirname "$link")
+      while [[ "$parent" == "$skill" || "$parent" == "$skill"/* ]] && rmdir "$parent" 2>/dev/null; do
+        parent=$(dirname "$parent")
+      done
+    done < <(find "$skill" -type l)
   done
   shopt -u nullglob
 fi

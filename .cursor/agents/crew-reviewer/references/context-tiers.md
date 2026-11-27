@@ -181,7 +181,7 @@ summary).
 
 ## Package section order
 
-`crew-assemble-packages.py` emits one order: shared head (contract, mode, `## Hunk reference`,
+`crew-assemble-packages.py` emits one order: shared head (contract, lookups, mode, `## Hunk reference`,
 `# Repo memory`), then `# Diff` with `package.diff` in full, then the per-persona tail (`# Size gate`,
 `## Spec`, `## Reading map`, `# Repository guidance`, prior-round block, consumers, `# Prompt tier`).
 Sections that do not apply are omitted; the rest keep this order. The head and the diff are identical

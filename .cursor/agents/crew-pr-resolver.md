@@ -44,6 +44,8 @@ Call `crew-agent-context.py` once with every path the PR touches, never per thre
 path governs every thread on it. `crew-task-context.py` is context for the branch, not authority over
 the PR or the user's instructions.
 
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+
 ### Step 2: Fetch review threads
 
 Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER` (a flat

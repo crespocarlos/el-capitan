@@ -143,7 +143,7 @@ path is reporting this pass, not a defect in the PR.
 
 ## Why the tool, not the hand
 
-The tool writes the shared contract, mode block, hunk reference and memory first, then
+The tool writes the shared contract, `lookups.md`, mode block, hunk reference and memory first, then
 `package.diff` in full, then the per-persona material — size gate, spec, reading map, guidance,
 prior-round block, consumers, and prompt extras — in one fixed order, listed in
 [context tiers](context-tiers.md#package-section-order). The shared head and the diff come first
@@ -156,7 +156,7 @@ that two reviewers read the same evidence. `evals/tools/test_assemble_packages.p
 package opens with the same contract and hunk reference.
 
 In spec and idea reviews there is no diff, so the tool does not apply: compose by hand in the same
-order, contract first.
+order, contract and `lookups.md` first.
 
 ## The reply marker (Claude Code)
 
@@ -166,13 +166,3 @@ of the dispatch prompt, unchanged. It writes `<persona>.expect` with a random no
 `SubagentStop` hook saves the reply when the marker's nonce matches, then removes the file. Cursor
 has no such hook, so it saves with `save-out`. With a task, the next line is `crew-task: <TASK_DIR>`,
 so the hook records the persona's token usage on it, in any harness's prompt.
-
-## Elastic docs trigger (opt-in: artifacts with ES|QL or Elasticsearch/Kibana API claims)
-
-Every persona already carries the docs rule from `~/.cursor/agents/references/reviewer-contract.md`;
-the trigger only tells the persona this artifact needs it. When the reviewed content contains ES|QL
-(`FROM … |` queries, `.esql` files, `esql` identifiers) or Elasticsearch/Kibana API claims, add to
-every persona's package: "This artifact contains ES|QL or Elasticsearch API claims; the reviewer
-contract's Elastic docs section applies." That section holds the rule, including what to write when
-the docs server is unreachable. A persona dispatched by its agent type has the docs server when
-install rendered it into the persona's allowlist ([dispatch](~/.cursor/agents/references/dispatch.md)).

@@ -13,6 +13,8 @@ group those hunks into layers a reviewer can read in order, and to write one JSO
 The whole point is coverage. Every hunk id appears in exactly one layer. A hunk you leave out is a
 part of the diff nobody was told to read, and `crew-review-findings.py coverage` fails the review.
 
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+
 ## How to build layers
 
 A layer is a coherent group of hunks that serves one purpose. Order layers **bottom-up**, so that by

@@ -95,6 +95,8 @@ CLASS_FIXTURES = tuple(row for name, native, readonly, extra in CLASSES for row 
 SKILL = ".cursor/skills/{}/SKILL.md"
 RULE, RULE_HEAD = "rules/fixture.mdc", "---\ndescription: \"Fixture rule\"\nalwaysApply: false\n---\n"
 PASSAGE = "The reviewer reads every changed file once and records the anchor it used for each finding.\n"
+POINTER = ("Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not "
+           "already know, or rely on a product or API fact.")
 # (case, files, {rule: findings expected}): a rule absent from the map must not fire at all.
 FIXTURES = (
     ("a wrong native id", dict([agent("reviewer-a", f"readonly: true\ntools: Read, Grap, Glob{MCP_PLACEHOLDER}\n")]),
@@ -138,6 +140,10 @@ FIXTURES = (
      {SKILL.format("a"): PASSAGE, SKILL.format("b"): PASSAGE, ".cursor/skills/spec-writing/references/spec-template.md": PASSAGE,
       ".cursor/skills/spec-writing/references/bug-spec-template.md": PASSAGE},
      {"duplicate-passages": 5}),
+    ("the lookups pointer sentence is shared by design",
+     {SKILL.format(n): POINTER + "\n" for n in "ab"}, {}),
+    ("text after the pointer sentence is still scanned",
+     {SKILL.format(n): POINTER + " " + PASSAGE for n in "ab"}, {"duplicate-passages": 1}),
     ("a glossary missing a term",
      {".agent/tools/AGENTS.md": "## Glossary\n\n| Term | Meaning |\n| --- | --- |\n"
       + "".join(f"| {term} | x |\n" for term in ("persona", "worker", "gate"))}, {"glossary-terms": 1}),
