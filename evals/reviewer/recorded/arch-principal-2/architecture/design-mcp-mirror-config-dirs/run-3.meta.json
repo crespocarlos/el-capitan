@@ -1,0 +1,22 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-mcp-mirror-config-dirs-hc3wvxka",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".claude/install_blocks.py"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/config.json"
+    },
+    {
+      "name": "Grep",
+      "pattern": "mcp_mirror|def record|def config_dirs|MANIFEST|uninstall",
+      "path": "."
+    }
+  ],
+  "num_turns": 4
+}

@@ -1,0 +1,17 @@
+diff --git a/.agent/tools/review-findings.py b/.agent/tools/review-findings.py
+--- a/.agent/tools/review-findings.py
++++ b/.agent/tools/review-findings.py
+@@ -24,9 +24,11 @@
+                 "(or path:line@headSHA), "
+                 "or downgrade to 'needs more info'"
+             )
+-        if files:
++        if files and isinstance(evidence, str) and evidence:
+             # Shape is not enough: evidence must point at something under review, or a
+-            # finding about an untouched file is reported as verified.
++            # finding about an untouched file is reported as verified. A finding with no
++            # evidence is allowed here — `blocking`/`attention` were already required to have
++            # it above, and a nit may stay unanchored, so there is nothing to check.
+             location = evidence.split("@", 1)[0].rsplit(":", 1)[0]
+             matches = [name for name in files
+                        if name == location or name.endswith("/" + location) or location.endswith("/" + name)]

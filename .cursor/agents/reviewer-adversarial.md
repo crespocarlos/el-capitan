@@ -73,9 +73,6 @@ path but leaves its siblings unguarded is still a bug.
 <critical_rules>
 
 1. Nits are rare in this lens. More nits than blocking and attention findings means re-evaluate.
-2. **Verify absence claims before emitting.** Before asserting that something does not exist (no
-   guard, no constraint, no check), read the file: absence from the diff is not absence from the
-   file. Search to find it, then read the relevant region.
 
 </critical_rules>
 

@@ -1,0 +1,11 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": "install.sh"
+    }
+  ],
+  "num_turns": 2
+}

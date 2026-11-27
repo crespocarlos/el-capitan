@@ -1,0 +1,46 @@
+{
+  "id": "task-review-import-cycle",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 0995426A, review 20261126213054, architecture finding 1",
+  "summary": "Sibling tools stop shelling out to each other. `crew ls` reads a PR through `review_pr_reads` in process instead of running `crew-pr-actions.py`, and a review records its cost line through `task_progress.append_metric` instead of running `crew-metric.py`.",
+  "defect": "The two edits make the task and review packages import each other: `task/ls_data.py` now imports `review_pr_reads` and `review/review_records.py` imports `task_progress`. Every bootstrap puts all packages on `sys.path`, and the documented dependency order lists only chains inside one package, so no rule states which package may import which and the next cross import can close a real cycle. The shared read belongs in `lib`, with the allowed package edges declared and checked.",
+  "locations": [
+    {
+      "file": ".agent/tools/task/ls_data.py",
+      "line": 26
+    },
+    {
+      "file": ".agent/tools/review/review_records.py",
+      "line": 11
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "cycle",
+      "cycles",
+      "cyclic",
+      "circular*",
+      "each other",
+      "mutual*",
+      "both directions",
+      "two-way",
+      "bidirectional",
+      "package direction",
+      "dependency direction",
+      "layering",
+      "package edge*",
+      "cross-package"
+    ]
+  ],
+  "context": {
+    ".agent/tools/task/task_bootstrap.py": "\"\"\"Make `.agent/tools` and its package directories importable, found from this file's real path.\n\nAn entry point runs through a symlink in `~/.agent/bin` from any cwd; Python puts the resolved\nscript directory first on `sys.path`, so `import <package>_bootstrap` finds this file. Every package\nhas a byte-identical copy; see \"Imports\" in `.agent/tools/AGENTS.md`.\nSmall on purpose: it runs before any other import, so it can depend on nothing.\n\"\"\"\nfrom __future__ import annotations\n\nimport sys\nfrom pathlib import Path\n\nTOOLS = Path(__file__).resolve().parents[1]\nPACKAGES = (\"task\", \"review\", \"memory\", \"evals\", \"maintenance\")\n\nfor _entry in (TOOLS, *(TOOLS / name for name in PACKAGES)):\n    if str(_entry) not in sys.path:\n        sys.path.insert(1, str(_entry))\n",
+    ".agent/tools/TOOLS.md": "# Tools (excerpt)\n\n`crew-mem.py`, `crew-review-findings.py`, `crew-ls.py`, `crew-task-context.py`, `crew-evals-compare.py`,\nand `crew-lint.py` are argparse entry points over their modules: each parses the command line and\ndispatches, and holds no command logic. Modules import each other by their namespaced name in\ndependency order (`memory_paths` → `memory_frontmatter` → `memory_store` → `memory_add`/`memory_search`/\n`memory_journal`/`memory_inbox` → `memory_maintenance`; `review_vocabulary` → `review_models` →\n`review_findings` → `review_render`/`review_layers` → `review_coverage` → `review_report`; `task_status`\n→ `task_progress` → `task_state` → `task_resolve`/`task_gates`/`ls_data` → `task_report`; `evals_query` →\n`evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_catalog`/`lint_prompts`/\n`lint_references`/`lint_writing`/`lint_python`), so a module never imports back\ninto one that imports it. Every entry point and every module that reaches another package imports its\npackage's `<package>_bootstrap.py` first, which puts `.agent/tools` (so `lib` imports) and the package\ndirectories on `sys.path`; nothing else touches it (see \"Imports\" in `AGENTS.md`).\n"
+  },
+  "after": {
+    ".agent/tools/task/ls_data.py": "\"\"\"What `crew ls` shows: the `landed` read of a DONE task's PR (excerpt).\n\n`landed` comes from the PR record, not branch ancestry, through the read half of `crew-pr-actions.py`.\n\"\"\"\nfrom __future__ import annotations\n\nimport argparse\nimport json\nimport re\nimport subprocess\nfrom typing import Callable\n\nimport task_bootstrap  # noqa: F401\n\nfrom lib.git import gh\n\nPR_URL = re.compile(r\"PR opened: (https?://[^/\\s]+/([^/\\s]+/[^/\\s]+)/pull/(\\d+))\")\nReader = Callable[[list[str]], \"tuple[int, str]\"]\n\n\ndef read_pr_actions(arguments: list[str]) -> tuple[int, str]:\n    \"\"\"One `crew-pr-actions.py` read (`view` or `repo` argv), in process; a missing gh or a timeout fails.\n\n    The review package is imported here, not at module load, so a listing that reads no PR never loads it.\n    \"\"\"\n    from review_pr_reads import add_read_parser, read_argv\n\n    parser = argparse.ArgumentParser(add_help=False)\n    commands = parser.add_subparsers(dest=\"command\", required=True)\n    for command in (\"view\", \"repo\"):\n        add_read_parser(commands, command)\n    try:\n        args = parser.parse_args(arguments)\n        done = gh(*read_argv(args.command, args), timeout=45)\n    except (OSError, subprocess.SubprocessError, SystemExit):\n        return 1, \"\"\n    return done.returncode, done.stdout\n\n\ndef record_of(arguments: list[str], read: Reader) -> dict | None:\n    \"\"\"The JSON record a read printed, or None when the read failed or printed no object.\"\"\"\n    code, text = read(arguments)\n    if code:\n        return None\n    try:\n        record = json.loads(text)\n    except ValueError:\n        return None\n    return record if isinstance(record, dict) else None\n",
+    ".agent/tools/review/review_records.py": "\"\"\"Review records: deferred and dropped findings beside the report, and the review's cost line (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport sys\nfrom pathlib import Path\n\nimport review_bootstrap  # noqa: F401\n\nfrom review_models import Finding\nfrom review_vocabulary import PERSONAS, canonical_personas\nfrom task_progress import append_metric, has_metric\n\n\ndef record_cost(owner: Path | None, review_dir: Path, mapped: bool) -> str:\n    \"\"\"Append the cost line through `task_progress.append_metric`; \"\" when the run has no task directory.\n\n    `append_metric` is the one METRIC writer (`crew-metric.py` calls it too). Nothing here may fail a\n    review that already persisted, so a rejected payload or a failed write is reported and swallowed.\n    \"\"\"\n    if owner is None or not owner.is_dir():\n        return \"\"\n    personas = [persona for persona in canonical_personas(PERSONAS, split_commas=False) if persona != \"explorer\"]\n    if not personas:\n        return \"\"\n    payload = cost_line(review_dir, personas, mapped)\n    if has_metric(owner, f\"review run={review_dir.name} \"):\n        return payload\n    try:\n        append_metric(owner, payload)\n    except (OSError, ValueError) as error:\n        print(f\"warning: cost metric not recorded: {error}\", file=sys.stderr)\n    return payload\n"
+  }
+}

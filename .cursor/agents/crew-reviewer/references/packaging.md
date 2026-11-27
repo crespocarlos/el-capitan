@@ -114,10 +114,10 @@ whole file. A prefix matching no section fails the run and lists the available o
 
 Every package ends with `## Questions for this lens`: 2 to 5 questions you write for that persona from
 the diff and the spec's risks. Each names a concrete input, path or claim and asks what happens, in the
-persona's lens: an input that breaks the change (Adversarial), a consumer or contract (Architecture),
-the user's next step (Product Flow), a rule that collides or fires too late (Prompt Quality), a test a
-wrong implementation would pass (Code Quality). A question the diff already answers spends the
-persona's budget.
+persona's lens: an input that breaks the change (Adversarial), the approach against its alternatives
+and a consumer (Architecture), the user's next step (Product Flow), a rule that collides or fires
+too late (Prompt Quality), a test a wrong implementation would pass (Code Quality). A question the
+diff answers wastes the budget.
 
 Diff modes put them in `assemble.json` `questions`; the tool renders them last, after the evidence,
 and stamps the run in `manifest.json`. Spec and idea packages append them by hand. `check-packages`

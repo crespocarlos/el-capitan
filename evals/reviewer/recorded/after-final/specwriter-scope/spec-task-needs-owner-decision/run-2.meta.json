@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*{tui,test.sh}*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "METRIC: stage="
+    }
+  ],
+  "num_turns": 3
+}

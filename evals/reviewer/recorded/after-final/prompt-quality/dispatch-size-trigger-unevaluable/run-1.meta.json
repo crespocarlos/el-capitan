@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "check-packages|Package delivery|too large|REVIEW_ROOT",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

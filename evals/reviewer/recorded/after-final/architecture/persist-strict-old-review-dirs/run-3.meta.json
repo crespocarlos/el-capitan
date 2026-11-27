@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "spec-context|package_violations|def canonical_personas|def read_json_object|args\\.personas|--strict|owner =",
+      "path": "."
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/review-findings.py"
+    }
+  ],
+  "num_turns": 3
+}

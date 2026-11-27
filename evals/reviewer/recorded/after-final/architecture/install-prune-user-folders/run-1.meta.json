@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "link_dir_files|DRY_RUN=",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

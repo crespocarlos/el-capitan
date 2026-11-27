@@ -1056,6 +1056,35 @@ def persist_dir(review_dir: Path, report: Path, personas: tuple[str, ...], *extr
                "--findings", str(findings), "--personas", *personas, *extra)
 
 
+CONTRACT_REPLY = """Assessment: request-changes — the new reader drops the field its only consumer still parses.
+Read beyond the package: `src/consumer.py`, `tests/test_reader.py`
+
+1. [attention · 4] **`src/reader.py:12`** — the parser no longer returns `owner`
+```
+return {"name": name}
+```
+`src/consumer.py` reads `owner` from every record, so a record read after this change raises KeyError.
+Fix: keep `owner` in the returned record.
+
+2. [needs more info · 2] **`src/reader.py:30`** — is the empty-file branch meant to return `None`?
+A caller that iterates the result fails on `None`; which callers expect an empty list?
+Handoff to adversarial: src/reader.py:40 — a partial write leaves the cache file truncated
+"""
+
+
+def test_persist_accepts_the_read_beyond_and_handoff_lines(tmp: Path) -> None:
+    """The reviewer contract puts `Read beyond the package:` after the Assessment line and a `Handoff to <lens>:`
+    line after the findings; neither is a finding, and a reply holding both still saves and persists."""
+    from review_vocabulary import LABEL_LINE, LABELED_FINDING
+
+    review_dir, report = provenance_review(tmp, ("architecture",))
+    assert save_out(review_dir, "architecture", CONTRACT_REPLY).returncode == 0
+    done = persist_dir(review_dir, report, ("architecture",), "--strict")
+    assert done.returncode == 0, done.stderr
+    handoff = next(line for line in CONTRACT_REPLY.splitlines() if line.startswith("Handoff to "))
+    assert not LABELED_FINDING.search(handoff) and not LABEL_LINE.search(handoff), "a handoff is not a finding"
+
+
 def test_save_out_stores_the_raw_reply_with_provenance(tmp: Path) -> None:
     """The reply passes through byte for byte; the record carries who, when and a content hash."""
     review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))

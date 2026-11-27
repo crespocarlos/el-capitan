@@ -1,0 +1,49 @@
+{
+  "id": "persist-strict-old-review-dirs",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task C5D81C7C, review 20261118150640, architecture finding 2",
+  "summary": "Persona packages get smaller: the orchestrator now embeds `package.diff` (generated files collapsed) instead of `diff.patch`, and every lens but product-flow gets the spec without its Tasks and Hints. `package_violations` checks the written `<persona>.in.md` files, and `persist --strict` runs it so a package that broke the rules cannot reach REVIEW.md.",
+  "defect": "`persist --strict` now applies a packaging rule to the `<persona>.in.md` files already on disk. Every review directory written before this change embedded `diff.patch` and the full spec, so re-persisting one (the documented re-run after a partial failure) fails on packaging unrelated to its findings, after the review cost is spent. The check belongs at dispatch, or only where `package.diff` exists.",
+  "locations": [
+    {
+      "file": ".agent/tools/review-findings.py",
+      "line": 94
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "existing review*",
+      "old review*",
+      "older review*",
+      "earlier review*",
+      "pre-existing",
+      "previous review*",
+      "written before",
+      "legacy",
+      "backward*",
+      "re-persist*",
+      "rerun*",
+      "re-run*",
+      "historical",
+      "already on disk",
+      "prior review*",
+      "old director*",
+      "existing director*"
+    ],
+    [
+      "fail*",
+      "refus*",
+      "reject*",
+      "break*",
+      "raise*",
+      "abort*"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/review-findings.py": "\"\"\"`review-findings.py`: persist a review directory, and the gates `--strict` adds (excerpt).\n\n`persist` writes REVIEW.md from the inputs already in the review directory (`<persona>.in.md`,\n`<persona>.out.md`, `hunks.json`, the findings), so it can be re-run on the same directory after a\npartial failure and produces the same report.\n\"\"\"\nfrom __future__ import annotations\n\nimport argparse\nimport re\nfrom pathlib import Path\n\nHUNKS_FILE = \"hunks.json\"\nCODE_MODES = frozenset({\"self\", \"changes\", \"pr\"})\n\n# Implementation steps in a spec. Product Flow checks them against the diff; every other lens\n# judges the change against the summary and acceptance criteria, so these sections are pure cost\n# in its package (18 KB of a measured 156 KB package, sent to every persona).\nSPEC_BUILDER_SECTION = re.compile(r\"^## (Tasks|Hints)\\b\")\nSPEC_FULL_PERSONAS = frozenset({\"product-flow\"})\n# A copied task line is long; a shorter line could match the diff by accident.\nSPEC_LINE_MIN = 40\n\n\ndef spec_sections(spec: str) -> tuple[list[str], list[str]]:\n    \"\"\"Split a spec into the lines every persona gets and the builder-section lines it does not.\"\"\"\n    kept: list[str] = []\n    builder: list[str] = []\n    in_fence = in_builder = False\n    for line in spec.splitlines():\n        if line.lstrip().startswith(\"```\"):\n            in_fence = not in_fence\n        elif not in_fence and line.startswith(\"## \"):\n            in_builder = bool(SPEC_BUILDER_SECTION.match(line))\n        (builder if in_builder else kept).append(line)\n    return kept, builder\n\n\ndef package_violations(review_dir: Path, personas: list[str], mode: str,\n                       spec_path: Path | None, hunks_path: Path | None) -> list[str]:\n    \"\"\"Packaging rules a persona package must meet before it is worth dispatching.\"\"\"\n    errors: list[str] = []\n    builder_lines: set[str] = set()\n    if mode in CODE_MODES and spec_path and spec_path.is_file():\n        builder_lines = {line.strip() for line in spec_sections(spec_path.read_text(encoding=\"utf-8\"))[1]\n                         if len(line.strip()) >= SPEC_LINE_MIN and not line.startswith(\"## \")}\n    generated: set[str] = set()\n    if hunks_path and hunks_path.is_file():\n        generated = {entry[\"path\"] for entry in read_json_object(hunks_path, \"files\")[\"files\"]\n                     if entry.get(\"generated\")}\n    for persona in canonical_personas(personas, split_commas=False):\n        package = review_dir / f\"{persona}.in.md\"\n        if not package.is_file():\n            continue\n        lines = package.read_text(encoding=\"utf-8\", errors=\"replace\").splitlines()\n        if persona not in SPEC_FULL_PERSONAS and builder_lines:\n            copied = builder_lines.intersection(line.strip() for line in lines)\n            if len(copied) >= 2:\n                errors.append(f\"{package.name} carries the spec's Tasks/Hints ({len(copied)} lines); \"\n                              \"build its spec with `review-findings.py spec-context`\")\n        current = \"\"\n        for line in lines:\n            if line.startswith(\"diff --git \"):\n                current = next((path for path in generated if line.endswith(f\" b/{path}\")), \"\")\n            elif current and line.startswith(\"@@\"):\n                errors.append(f\"{package.name} embeds hunks of generated file {current}; \"\n                              \"embed package.diff instead of diff.patch\")\n                current = \"\"\n    return errors\n\n\ndef persist(args: argparse.Namespace) -> int:\n    owner = args.review_dir.parent.parent\n    findings = read_findings(args.findings) if args.findings else []\n    # Persona evidence is not a strict-only gate: every call names the personas that produced the\n    # review. --strict only adds the diff gates (hunk coverage, evidence paths) that need a clean\n    # tree to check.\n    if not args.personas:\n        raise ValueError(\n            \"--personas is required: a persisted review must name the personas that produced it\"\n        )\n    missing = [\n        f\"{persona}.{kind}.md\"\n        for persona in canonical_personas(args.personas, split_commas=False)\n        for kind in (\"in\", \"out\")\n        if not (args.review_dir / f\"{persona}.{kind}.md\").is_file()\n    ]\n    if missing:\n        raise ValueError(f\"missing persona artifacts in {args.review_dir}: {', '.join(missing)}\")\n    hunks_path = args.review_dir / HUNKS_FILE\n    if args.strict:\n        if hunks_path.is_file():\n            check_hunk_refs(findings, hunk_ids(hunks_path))\n        violations = package_violations(args.review_dir, args.personas, args.mode,\n                                        owner / \"SPEC.md\", hunks_path)\n        if violations:\n            raise ValueError(\"; \".join(violations))\n    report = args.report.read_text()\n    write_review(args.review_dir, report, findings)\n    return 0\n"
+  }
+}

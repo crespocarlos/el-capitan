@@ -1,0 +1,47 @@
+{
+  "id": "dispatch-size-trigger-unevaluable",
+  "lens": "prompt-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task C5D81C7C, review 20261119135001, prompt-quality finding 5",
+  "summary": "Large review packages were embedded in every dispatch prompt, so the orchestrator re-emitted hundreds of KB. The shared dispatch instructions now allow delivering a checked package by path, under three conditions, when it is too large to embed.",
+  "defect": "The trigger for path delivery is \"when embedding would push the orchestrator's own output past what the harness accepts\", a bound the reader does not know and nothing supplies; the 640 KB figure is an anecdote, not a threshold. Two models decide differently: one inlines a package that then gets truncated, another adds a file read for a small one. It needs a checkable condition (a size in KB, or inline first and re-dispatch by path on truncation).",
+  "locations": [
+    {
+      "file": ".cursor/agents/references/dispatch.md",
+      "line": 26
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "threshold",
+      "bound",
+      "no number",
+      "no size",
+      "KB",
+      "checkable",
+      "evaluat*",
+      "cannot know",
+      "can't know",
+      "does not know",
+      "doesn't know",
+      "unknowable",
+      "observable",
+      "undefined",
+      "vague*",
+      "ambiguous",
+      "anecdot*"
+    ],
+    [
+      "harness*",
+      "trigger*",
+      "condition*",
+      "when to"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".cursor/agents/references/dispatch.md": "# Shared dispatch instructions (excerpt)\n\nRun orchestrators inline. Dispatch personas only from the main session: use Cursor Task or Claude\nAgent, preserve inherited model selection, and use the documented fallback only when native dispatch\nis unavailable.\n\nReviewer personas may run read-only: Cursor Ask mode, or a Claude Code read-only subagent, where\nartifact writes are unavailable, and the `claude -p` fallback likewise returns only stdout. Dispatch\nprompts must carry the immutable evidence needed for the assigned lens: diff, contract, relevant file\nexcerpts, and explorer findings; deliver it inline, or by path under **Package delivery** below.\nNever rely on a persona writing its own artifact.\n\n**Package delivery: inline by default, by path when a package is too large to embed.** Inline means\nthe package is the dispatch prompt; a path to a diff file on its own is not evidence, because the\npersona may have no file access at all. Reading the written `<persona>.in.md` back is a sanctioned\nalternative when all three hold:\n\n1. The package was written to `$REVIEW_ROOT` and passed the `check-packages` gate of\n   `crew-reviewer`'s dispatch step, so the file read is byte-for-byte the package the protocol checked.\n2. The persona can read files — Cursor, or Claude Code with `Read` (a `readonly` subagent still\n   reads). A run with no file access, such as the `claude -p` fallback, must embed.\n3. The dispatch prompt names the absolute package path, states that this file is the persona's whole\n   package and must be read in full before judging, and repeats only the delivery-independent\n   instructions: reply text only, no artifact writes, the finding shape, and the mode.\n\nUse it when embedding would push the orchestrator's own output past what the harness accepts —\none measured five-persona review was 640 KB, roughly 160k tokens of duplicate output. A package\ndelivered by path is still the audit artifact: `<persona>.in.md` and `<persona>.out.md` stay the pair\n`persist --strict` requires, and the recorded package remains the one the persona read.\n\n**PR mode:** the package is the only repository evidence a persona may use. Every code excerpt must\nidentify `path:line@headSHA7` and come from `gh api` at that head. A persona must not use the local\ncheckout — no file reads, repository search, semantic search, or Explorer output, whatever the\nharness names those tools — to verify a PR claim. It may return `[needs more info]` only when it\nnames the missing PR-head path or excerpt.\n"
+  }
+}

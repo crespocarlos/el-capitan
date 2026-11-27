@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-lookups-critic-verdict-qpl_jrp8",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".cursor/agents/references/critic-contract.md"
+    },
+    {
+      "name": "Grep",
+      "pattern": "code_search|search_internal_docs|unreachable|unverified|lookups",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

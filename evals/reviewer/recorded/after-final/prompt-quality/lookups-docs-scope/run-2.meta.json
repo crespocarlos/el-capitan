@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "lookups|code search unreachable|docs server|search_internal_docs",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

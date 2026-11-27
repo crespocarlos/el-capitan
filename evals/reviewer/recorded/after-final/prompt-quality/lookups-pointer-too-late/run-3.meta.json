@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "lookups|code search unreachable|docs server|Product facts",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

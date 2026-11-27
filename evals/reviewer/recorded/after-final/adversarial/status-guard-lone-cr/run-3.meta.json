@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_status.py"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/check-task-spec-owner.sh"
+    }
+  ],
+  "num_turns": 3
+}

@@ -1,0 +1,15 @@
+**Critical**
+
+**Acceptance criteria, first bullet ("a per-test timeout of 60 s for every test")** — The uniform 60 s limit contradicts the Summary. The Summary says the install and upgrade tests "allow themselves up to 300 s ... since a cold CI runner is slow." A global `--timeout 60` will kill those tests on a slow runner, even though they are healthy. The suite would then fail flakily, and people would probably raise or remove the limit, which defeats the guard. The spec also never says which tests get the 300 s budget, or whether the e2e rows get a longer per-test override such as a marker or a tiered timeout. The fix is to define a tiered limit: a short default for unit rows, and an explicit per-test or marker override above the 300 s subprocess timeouts for the install and upgrade tests. It should also state which tests count as e2e.
+
+**Important**
+
+**Acceptance criteria, second bullet ("A deliberately sleeping fixture fails within the timeout")** — The criterion doesn't prove the guard works in the real suite. A sleeping test that fails by design would turn `evals/test.sh` red permanently. The spec doesn't say how it is isolated, for example by running it in a subprocess pytest and asserting on the output, or by marking it xfail or opt-in. It also doesn't say whether the test must pass under `-n auto`. Add a criterion for how the sleeper runs without failing the normal suite, and for how "within the timeout" is asserted (a numeric bound).
+
+**Tests, `### Unit` block (`bash evals/test.sh -n auto`)** — The only test layer is Unit, but the change targets end-to-end behavior. Nothing checks that the install and upgrade e2e tests still pass under the new limit, and that is the main regression risk. Add an Integration/E2E entry that runs the install and upgrade tests under the timeout and, ideally, simulates a slow runner.
+
+**Acceptance criteria, first bullet ("pinned like `pytest-xdist`")** — Neither the pin mechanism nor the timeout method is specified. I found no matching file in the case directory (grep found only SPEC.md), so I couldn't verify where `pytest-xdist` is pinned. Under xdist, the default signal method may not work on every platform, and a hung `subprocess` child may outlive the kill. The spec should state the pin location and the timeout method (signal or thread). It should also state that child processes are cleaned up.
+
+**Summary ("A hung test ran for 23 minutes before anyone noticed")** — The motivating problem is that a hang went unnoticed. The spec only fails a test after 60 s and adds no CI-level or whole-suite limit. It also doesn't say whether the 23-minute hang was in a test that a per-test timeout would have caught, since it could have been in setup, a fixture, or the shell script. Add a criterion or open question on whether fixture/setup hangs and a suite-level cap are in scope.
+
+Verdict: 5 finding(s), 1 unverified (where `pytest-xdist` is pinned; `evals/test.sh` and the test files are not in the case directory)

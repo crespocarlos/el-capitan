@@ -1,0 +1,32 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-task-review-import-cycle-94pw2dhz",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_bootstrap.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def (append_metric|has_metric|add_read_parser|read_argv|gh)\\b|^import task_bootstrap|^from task_progress|^import review_bootstrap|sys.path",
+      "path": "."
+    },
+    {
+      "name": "Grep",
+      "pattern": "crew-metric|crew-pr-actions|task_bootstrap|sibling",
+      "path": ".agent/tools/TOOLS.md"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*.py",
+      "path": "."
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/TOOLS.md"
+    }
+  ],
+  "num_turns": 6
+}

@@ -1,0 +1,51 @@
+{
+  "id": "findings-evidence-type-skips-gate",
+  "lens": "code-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task C5D81C7C, review 20261118141118, code-quality finding 1",
+  "summary": "A nit may stay unanchored, but `persist --strict --files` crashed with an AttributeError on a nit that has no `evidence`. The reviewed-file gate in `check_strict` now runs only when the finding carries evidence.",
+  "defect": "The fix folds the type check into the skip condition: a nit whose `evidence` is not a string (`true`, `{}`, a list) skips the reviewed-file gate and persists as clean with exit 0. A nit's evidence type is validated nowhere else; it should be checked once, so a malformed value fails instead of passing, and the gate should then test only presence.",
+  "locations": [
+    {
+      "file": ".agent/tools/review-findings.py",
+      "line": 27
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "non-string",
+      "not a string",
+      "isn't a string",
+      "is not a string",
+      "wrong type",
+      "bool*",
+      "true",
+      "dict*",
+      "object",
+      "malformed",
+      "type check*",
+      "type validation",
+      "invalid type",
+      "type of"
+    ],
+    [
+      "skip*",
+      "silent*",
+      "bypass*",
+      "exit 0",
+      "unchecked",
+      "escap*",
+      "slips",
+      "never checked",
+      "never validated",
+      "passes the gate",
+      "persists"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/review-findings.py": "\"\"\"`review-findings.py`: the gate `persist --strict` runs over consolidated findings (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport re\n\nLABELS = {\"blocking\", \"attention\", \"nit\", \"needs more info\", \"concern\"}\nMAX_FINDINGS = 12\nMAX_NITS = 4\nEMITTED = {\"patch\", \"decide\"}\nEVIDENCE_LOCATION = re.compile(r\"^[^:\\s][^:]*:\\d+(?:@[0-9a-f]{7,40})?$\")\n\n\ndef check_strict(findings: list[dict], files: list[str] | None = None) -> None:\n    emitted = [f for f in findings if f.get(\"disposition\") in EMITTED]\n    for f in emitted:\n        evidence = f.get(\"evidence\")\n        if f[\"label\"] in {\"blocking\", \"attention\"} and not (\n            f.get(\"verified\") is True\n            and isinstance(evidence, str)\n            and EVIDENCE_LOCATION.fullmatch(evidence)\n        ):\n            raise ValueError(\n                f\"unverified {f['label']} finding {f['title']!r}: set verified=true with evidence as path:line \"\n                \"(or path:line@headSHA), \"\n                \"or downgrade to 'needs more info'\"\n            )\n        if files and isinstance(evidence, str) and evidence:\n            # Shape is not enough: evidence must point at something under review, or a\n            # finding about an untouched file is reported as verified. A finding with no\n            # evidence is allowed here — `blocking`/`attention` were already required to have\n            # it above, and a nit may stay unanchored, so there is nothing to check.\n            location = evidence.split(\"@\", 1)[0].rsplit(\":\", 1)[0]\n            matches = [name for name in files\n                       if name == location or name.endswith(\"/\" + location) or location.endswith(\"/\" + name)]\n            if not matches:\n                raise ValueError(\n                    f\"finding {f['title']!r} cites {location}, which is not in the reviewed file set\"\n                )\n    nits = [f for f in emitted if f[\"label\"] == \"nit\"]\n    findings_only = len(emitted) - len(nits)\n    # Counted separately: a nit must never consume a severity slot, so the two budgets do not\n    # trade against each other.\n    if findings_only > MAX_FINDINGS:\n        raise ValueError(\n            f\"{findings_only} emitted non-nit findings exceed the cap of {MAX_FINDINGS}; \"\n            \"drop the lowest severity or route pre-existing findings to 'defer'\"\n        )\n    if len(nits) > MAX_NITS:\n        raise ValueError(\n            f\"{len(nits)} emitted nits exceed the cap of {MAX_NITS}; keep the ones with a stated cost \"\n            \"and drop the rest, so polish cannot occupy a severity slot\"\n        )\n"
+  }
+}

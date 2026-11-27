@@ -1,0 +1,43 @@
+{
+  "id": "lint-fence-mask-length",
+  "lens": "code-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 0995426A, review 20261127032459, code-quality finding 1",
+  "summary": "crew-lint gains a writing-standard module for prompt files. Its first rule reports capitals used as emphasis in prose; frontmatter, fenced code blocks and inline code are masked first so commands and constants are not flagged.",
+  "defect": "The fence mask captures only the first three backticks (`\\2` is ``` even when the opener is four), and the closer accepts any trailing text: a four-backtick fence that shows a nested ```lang block closes at the inner opener, after which the mask is inverted for the rest of the file (prose hidden, code linted). The closer must be the same character, at least as long, with nothing but whitespace after.",
+  "locations": [
+    {
+      "file": ".agent/tools/maintenance/lint_style.py",
+      "line": 35
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "four",
+      "4-backtick",
+      "four-backtick",
+      "nested",
+      "fence length",
+      "length",
+      "longer",
+      "info string",
+      "info-string",
+      "quadruple",
+      "three backticks",
+      "3 backticks"
+    ],
+    [
+      "clos*",
+      "terminat*",
+      "ends the fence",
+      "end of the fence",
+      "invert*"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/maintenance/lint_style.py": "\"\"\"The writing standard for prompt files: rules, agents, skills and their references (excerpt).\n\nProse is read with frontmatter and fenced code masked (inline code too): capitals used as emphasis\nare reported, so a rule gives its reason in one sentence instead of shouting. Code is exempt, since\na command or a constant is spelled the way the tool spells it.\n\"\"\"\nfrom __future__ import annotations\n\nimport re\nfrom pathlib import Path\n\nfrom lint_files import line_no, rel\n\nFindings = list[tuple[str, int, str, str]]\nPROMPT_GLOBS = (\"rules/*.mdc\", \".cursor/agents/**/*.md\", \".cursor/skills/**/*.md\", \".claude/CLAUDE.md\",\n                \"AGENTS.md\", \".agent/tools/AGENTS.md\")\nSHOUTING = re.compile(\n    r\"\\b(?:MUST|NEVER|ALWAYS|NOT(?! VERIFIED)|ONLY|DO|DON'T|NO|CRITICAL|IMPORTANT|MANDATORY|REQUIRED\"\n    r\"|STOP|ALL|ANY|EVERY|EXACTLY|IMMEDIATELY)\\b|(?i:\\bmandatory\\b|\\bno exceptions\\b|\\bprotocol violation\\b)\")\nFRONTMATTER = re.compile(r\"\\A---\\n.*?\\n---\\n\", re.S)\n\n\ndef prompt_files(root: Path) -> list[Path]:\n    found = {path for pattern in PROMPT_GLOBS for path in root.glob(pattern) if path.is_file()}\n    return sorted(path for path in found if \"fixtures\" not in path.parts)\n\n\ndef blank(match: re.Match) -> str:\n    return re.sub(r\"[^\\n]\", \" \", match.group(0))\n\n\ndef mask(text: str, inline: bool = True) -> str:\n    \"\"\"Frontmatter and fenced code (and inline code when `inline`) as spaces; offsets and lines stay put.\"\"\"\n    text = FRONTMATTER.sub(blank, text)\n    text = re.sub(r\"^(\\s*)(```|~~~).*?^\\s*\\2[^\\n]*$\", blank, text, flags=re.S | re.M)\n    return re.sub(r\"`[^`\\n]+`\", blank, text) if inline else text\n\n\ndef lint_style(root: Path) -> Findings:\n    \"\"\"The no-shouting rule over every prompt file's prose.\"\"\"\n    found: Findings = []\n    for path in prompt_files(root):\n        name, text = rel(root, path), path.read_text(encoding=\"utf-8\", errors=\"replace\")\n        prose = mask(text)\n        found += [(name, line_no(prose, m.start()), \"no-shouting\",\n                   f\"`{m.group(0)}` is emphasis; give the reason in one sentence\") for m in SHOUTING.finditer(prose)]\n    return found\n"
+  }
+}

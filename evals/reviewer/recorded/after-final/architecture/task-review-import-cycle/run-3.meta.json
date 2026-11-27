@@ -1,0 +1,20 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "^\\s*(from|import) (review_|task_|ls_data|lib)|def (append_metric|has_metric)",
+      "path": "."
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_bootstrap.py"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    }
+  ],
+  "num_turns": 4
+}

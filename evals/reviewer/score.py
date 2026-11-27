@@ -26,14 +26,19 @@ WINDOW = 5  # lines between a finding's anchor and the defect; a range wider tha
 GENERIC_TERMS = frozenset({"every", "any", "all", "before", "after", "not yet", "status", "first", "another", "files",
                            "instead of", "default"})
 RUN_FILE = re.compile(r"^run-(\d+)\.md$")
+NOISE_GROWTH = 1.5  # unmatched findings per reply may grow by at most 50% unless recall rises with them ...
+NOISE_FLOOR = 0.5  # ... or by this many per reply, whichever allows more
 SEVERITY = r"(?:blocking|attention|concern|nit|needs more info)"
 BULLET = r"[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]*)?"
 # A finding starts at a severity label (the reviewer contract) or a bold reference followed by a dash (the critic
 # contract); the text before the first one (the assessment, notes) is not a finding.
-FINDING_START = re.compile(rf"^{BULLET}(?:\*\*[ \t]*)?\[{SEVERITY}\b|^{BULLET}\*\*[^*\n]+\*\*[ \t]*[—–-]", re.I | re.M)
+# The bold reference may hold `*` (a quoted glob such as `**/api/**`): it ends at the first `**` followed by a dash,
+# or by a colon, a variant critics write; the scorer only measures, so it reads both.
+FINDING_START = re.compile(rf"^{BULLET}(?:\*\*[ \t]*)?\[{SEVERITY}\b|^{BULLET}\*\*[^\n]+?\*\*[ \t]*[—–:-]", re.I | re.M)
 # The last finding ends at the blank line after its `Fix:` paragraph, or at a closing line that is not a finding.
 FIX_LINE = re.compile(r"^(?:\*\*)?(?:Suggested fix|Fix/Response|Fix)\b", re.M)
-CLOSING_LINE = re.compile(r"^(?:Verdict:|#{1,6} |Files\b|---\s*$)", re.M)
+# A reviewer's one-line handoff to another lens follows its findings and is not part of the last one.
+CLOSING_LINE = re.compile(r"^(?:Verdict:|#{1,6} |Files\b|---\s*$|Handoff to )", re.M)
 PATH_ANCHOR = re.compile(r"(?P<path>[\w.~/@+-]*\w)(?::|#L)(?P<start>\d+)(?:\s*[-–]\s*L?(?P<end>\d+))?")
 LINE_ANCHOR = re.compile(r"\b(?:lines?|L)\s*(?P<start>\d+)(?:\s*[-–]\s*(?P<end>\d+))?", re.I)
 FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,}).*?^[ \t]*\1[ \t]*$", re.M | re.S)
@@ -57,6 +62,9 @@ class Case:
     context: dict
     after: dict
     directory: Path
+    # A design case (hand-seeded, its defect names an approach): the reply names the better mechanism in code
+    # spans, so its keywords also match inside code. Set in `case.json` as `"match_code": true`.
+    match_code: bool = False
 
     def text(self) -> str:
         """The diff, or the spec, the persona reviews."""
@@ -70,7 +78,7 @@ def load_case(directory: Path) -> Case:
                 refs=tuple(data.get("refs") or ()), keywords=tuple(tuple(group) for group in data["keywords"]),
                 hand_seeded=bool(data.get("hand_seeded")), source=data["source"], summary=data["summary"],
                 defect=data["defect"], context=data.get("context") or {}, after=data.get("after") or {},
-                directory=directory)
+                directory=directory, match_code=bool(data.get("match_code")))
 
 
 def load_cases(root: Path = CASES_DIR) -> list[Case]:
@@ -140,13 +148,32 @@ def term_in(term: str, text: str) -> bool:
 
 
 def keyed(block: str, case: Case) -> bool:
-    words = prose(block)
+    """Every keyword group in the finding's prose; for a `match_code` case, in its code spans too."""
+    words = block if case.match_code else prose(block)
     return all(any(term_in(term, words) for term in group) for group in case.keywords)
 
 
+def preamble(reply: str) -> str:
+    """The text before the first finding: the assessment and, for a design reviewer, its approach verdict."""
+    match = FINDING_START.search(reply)
+    return reply[:match.start()] if match else reply
+
+
 def catches(reply: str, case: Case) -> bool:
-    """True when one finding of `reply` names the case's defect: its place and its keywords."""
+    """True when one finding of `reply` names the case's defect: its place and its keywords. An approach is judged
+    for the whole change, not at a line, so a `match_code` (design) case also counts its keywords in the preamble."""
+    if case.match_code and keyed(preamble(reply), case):
+        return True
     return any(located(block, case) and keyed(block, case) for block in findings(reply))
+
+
+def volume(reply: str, case: Case) -> tuple[int, int]:
+    """`(findings, unmatched)` in one reply: how many findings it holds, and how many anchor at no case location.
+
+    Recall alone rewards a persona that sprays findings; these two counts make that visible.
+    """
+    blocks = findings(reply)
+    return len(blocks), sum(not located(block, case) for block in blocks)
 
 
 def replies(run_dir: Path, persona: str, case: Case) -> dict[int, tuple[str, list[str]]]:
@@ -174,6 +201,8 @@ def tally(run_dir: Path, cases: list[Case]) -> dict[str, dict]:
     listed under `tainted`, so a failed or leaky dispatch lowers the rate visibly instead of shrinking the
     denominator or inflating the numerator.
     """
+    from live import FAILED  # imported here: `live` imports this module at its top
+
     result: dict[str, dict] = {}
     for persona in PERSONAS:
         own = [case for case in cases if case.lens == persona]
@@ -184,9 +213,14 @@ def tally(run_dir: Path, cases: list[Case]) -> dict[str, dict]:
         caught = {case.id: [n in recorded[case.id] and not recorded[case.id][n][1]
                             and catches(recorded[case.id][n][0], case) for n in runs] for case in own}
         rates = [sum(caught[case.id][index] for case in own) / len(own) for index in range(len(runs))]
+        # The same replies recall scores: a failure record holds no findings, and a tainted run is not counted.
+        counts = [volume(reply, case) for case in own for reply, tainted in recorded[case.id].values()
+                  if not tainted and not reply.startswith(FAILED)]
         result[persona] = {
             "runs": [round(rate, 3) for rate in rates], "mean": round(sum(rates) / len(rates), 3),
             "spread": round(max(rates) - min(rates), 3), "cases": caught,
+            "findings": round(sum(total for total, _ in counts) / len(counts), 2) if counts else 0.0,
+            "unmatched": round(sum(stray for _, stray in counts) / len(counts), 2) if counts else 0.0,
             "missing": [f"{case.id} run-{n}" for case in own for n in runs if n not in recorded[case.id]],
             "tainted": [f"{case.id} run-{n}" for case in own for n in runs
                         if n in recorded[case.id] and recorded[case.id][n][1]],
@@ -198,7 +232,9 @@ def compare(baseline: dict[str, dict], candidate: dict[str, dict]) -> dict[str, 
     """The bar a rewritten persona must clear, per persona: `[]` when it holds, else the reasons it does not.
 
     The candidate has at least as many runs as the baseline, its mean is at least the baseline mean minus one
-    baseline run's spread, and it catches every case the baseline caught in all of its runs.
+    baseline run's spread, it catches every case the baseline caught in all of its runs, and it does not buy its
+    rate with noise: unless its mean rises by more than the baseline's spread, its unmatched findings per reply
+    stay within `noise_allowed` of the baseline's.
     """
     verdicts: dict[str, list[str]] = {}
     for persona, before in baseline.items():
@@ -216,8 +252,27 @@ def compare(baseline: dict[str, dict], candidate: dict[str, dict]) -> dict[str, 
         for case_id, hits in before["cases"].items():
             if hits and all(hits) and not all(after["cases"].get(case_id) or [False]):
                 problems.append(f"{case_id}: caught in every baseline run, missed in a candidate run")
+        stray_before, stray_after = before.get("unmatched", 0.0), after.get("unmatched", 0.0)
+        recall_rose = after["mean"] > before["mean"] + before["spread"]
+        if not recall_rose and stray_after > noise_allowed(stray_before):
+            problems.append(f"unmatched findings per reply rose from {stray_before} to {stray_after} (allowed "
+                            f"{noise_allowed(stray_before)}) while the mean did not rise past one baseline spread "
+                            f"({before['mean']} -> {after['mean']})")
         verdicts[persona] = problems
     return verdicts
+
+
+def noise_allowed(stray_before: float) -> float:
+    """The most unmatched findings per reply a candidate may have: 50% more than the baseline, and never less than
+    `NOISE_FLOOR` above it, so a baseline that happened to be clean does not demand zero noise forever."""
+    return round(max(stray_before * NOISE_GROWTH, stray_before + NOISE_FLOOR), 2)
+
+
+def noise(baseline: dict[str, dict], candidate: dict[str, dict]) -> dict[str, dict]:
+    """Per persona in both runs: findings and unmatched findings per reply, as `[baseline, candidate]`."""
+    keys = ("findings", "unmatched")
+    return {persona: {key: [before.get(key, 0.0), candidate[persona].get(key, 0.0)] for key in keys}
+            for persona, before in baseline.items() if persona in candidate}
 
 
 def render(result: dict[str, dict]) -> str:
@@ -225,7 +280,8 @@ def render(result: dict[str, dict]) -> str:
     lines = []
     for persona, row in result.items():
         runs = ", ".join(f"{rate:.2f}" for rate in row["runs"])
-        lines.append(f"{persona:<24} mean {row['mean']:.2f}  runs [{runs}]  spread {row['spread']:.2f}")
+        lines.append(f"{persona:<24} mean {row['mean']:.2f}  runs [{runs}]  spread {row['spread']:.2f}  "
+                     f"findings/reply {row.get('findings', 0.0):.2f}  unmatched/reply {row.get('unmatched', 0.0):.2f}")
         for case_id, hits in row["cases"].items():
             lines.append(f"  {case_id:<32} {sum(hits)}/{len(hits)}")
         for key in ("missing", "tainted"):
@@ -246,19 +302,23 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     cases = load_cases()
     result = tally(args.run_dir, cases)
-    verdicts = None
+    verdicts, volumes = None, None
     if args.against:
         baseline = tally(args.against, cases)
         if not baseline:
             print(f"score: {args.against} holds no recorded replies; there is no baseline to compare with",
                   file=sys.stderr)
             return 2
-        verdicts = compare(baseline, result)
+        verdicts, volumes = compare(baseline, result), noise(baseline, result)
     if args.json:
-        print(json.dumps({"tally": result, "bar": verdicts}, indent=2))
+        print(json.dumps({"tally": result, "bar": verdicts, "noise": volumes}, indent=2))
     else:
         print(render(result))
         for persona, problems in (verdicts or {}).items():
+            counts = (volumes or {}).get(persona)
+            if counts:
+                print(f"noise {persona}: findings/reply {counts['findings'][0]} -> {counts['findings'][1]}, "
+                      f"unmatched/reply {counts['unmatched'][0]} -> {counts['unmatched'][1]}")
             print(f"bar {persona}: " + ("holds" if not problems else "; ".join(problems)))
     return 1 if verdicts and any(verdicts.values()) else 0
 

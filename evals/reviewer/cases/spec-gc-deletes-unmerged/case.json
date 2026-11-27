@@ -1,0 +1,54 @@
+{
+  "id": "spec-gc-deletes-unmerged",
+  "lens": "specwriter-adversarial",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded, modelled on task 558C4091 (DONE means a PR is open) and task 0995426A's gc command",
+  "summary": "A spec that adds a retention command deleting finished task directories.",
+  "defect": "DONE only means a PR was opened, not that it merged: a task whose PR is still in review after 30 days, or was closed unmerged, is selected and its directory (spec, reviews, progress) deleted for good. The selection must require `landed: yes` (or skip `no` and `unknown`), or archive instead of delete; no criterion covers an open or unmerged PR.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 18
+    },
+    {
+      "file": "SPEC.md",
+      "line": 20
+    }
+  ],
+  "refs": [
+    "criterion 1",
+    "AC 1",
+    "AC1",
+    "criterion 2",
+    "AC 2",
+    "AC2",
+    "--apply"
+  ],
+  "keywords": [
+    [
+      "merged",
+      "merge",
+      "landed",
+      "unmerged",
+      "still open",
+      "open PR",
+      "closed PR",
+      "never merged",
+      "not merged",
+      "in review"
+    ],
+    [
+      "delet*",
+      "remov*",
+      "garbage",
+      "retention",
+      "lose*",
+      "lost",
+      "archiv*",
+      "irreversib*"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

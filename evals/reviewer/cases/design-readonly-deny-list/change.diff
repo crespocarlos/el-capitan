@@ -1,0 +1,53 @@
+diff --git a/.agent/tools/maintenance/lint_prompts.py b/.agent/tools/maintenance/lint_prompts.py
+--- a/.agent/tools/maintenance/lint_prompts.py
++++ b/.agent/tools/maintenance/lint_prompts.py
+@@ -5,20 +5,31 @@
+ from pathlib import Path
+ 
+ TOOLS_LINE = re.compile(r"^tools:[ \t]*(.*)$", re.MULTILINE)
++DENY_LINE = re.compile(r"^disallowedTools:[ \t]*(.*)$", re.MULTILINE)
+ # Agents that only read and report: reviewer personas, explorers and spec critics.
+ READONLY_AGENTS = ("reviewer-adversarial", "reviewer-architecture", "reviewer-code-quality", "reviewer-product-flow",
+                    "reviewer-prompt-quality", "reviewer-layers", "specwriter-adversarial", "specwriter-scope",
+                    "specwriter-explorer", "reviewer-explorer")
+-READONLY_TOOLS = ("Read", "Grep", "Glob")
++# In Claude Code an explicit `tools:` list shuts every MCP server out, so read-only agents carry no `tools:` line and
++# inherit the session's tools, the docs and code-search servers included. This one list denies what writes or acts
++# outside the review; the search servers are read-only and stay available.
++READONLY_AGENT_DENY = ("Write", "Edit", "NotebookEdit", "Bash", "Agent", "Skill", "SendMessage", "TaskStop",
++                       "EnterWorktree", "ExitWorktree", "Artifact", "ArtifactData", "ArtifactComments",
++                       "mcp__github__*", "mcp__gitlab__*", "mcp__slack__*", "mcp__linear__*", "mcp__jira__*",
++                       "mcp__notion__*", "mcp__filesystem__*")
+ 
+ 
+ def lint_readonly_tools(root: Path) -> Findings:
+-    """Each read-only agent declares exactly the native read tools."""
++    """Each read-only agent has no `tools:` line, so it inherits the MCP servers, and denies exactly
++    `READONLY_AGENT_DENY`."""
+     findings: Findings = []
+     for stem in READONLY_AGENTS:
+         path = root / ".cursor/agents" / f"{stem}.md"
+-        line = TOOLS_LINE.search(path.read_text(errors="replace"))
+-        tools = tuple(tool.strip() for tool in line.group(1).split(",")) if line else ()
+-        if tools != READONLY_TOOLS:
+-            findings.append((rel(root, path), 1, "readonly-tools", f"declare tools: {', '.join(READONLY_TOOLS)}"))
++        text = path.read_text(errors="replace")
++        if TOOLS_LINE.search(text):
++            findings.append((rel(root, path), 1, "agents-inherit-tools", "drop the tools: line so MCP is inherited"))
++        deny = DENY_LINE.search(text)
++        listed = tuple(tool.strip() for tool in deny.group(1).split(",")) if deny else ()
++        if listed != READONLY_AGENT_DENY:
++            findings.append((rel(root, path), 1, "agents-inherit-tools", "set disallowedTools to READONLY_AGENT_DENY"))
+     return findings
+diff --git a/.cursor/agents/specwriter-scope.md b/.cursor/agents/specwriter-scope.md
+--- a/.cursor/agents/specwriter-scope.md
++++ b/.cursor/agents/specwriter-scope.md
+@@ -2,7 +2,7 @@
+ name: specwriter-scope
+ description: "Spec scope and implementer critic for PR boundaries, task granularity, and builder compatibility. Dispatched by crew-specwriter — do not invoke directly."
+ readonly: true
+-tools: Read, Grep, Glob
++disallowedTools: Write, Edit, NotebookEdit, Bash, Agent, Skill, SendMessage, TaskStop, EnterWorktree, ExitWorktree, Artifact, ArtifactData, ArtifactComments, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__notion__*, mcp__filesystem__*
+ maxTurns: 14
+ ---
+ 

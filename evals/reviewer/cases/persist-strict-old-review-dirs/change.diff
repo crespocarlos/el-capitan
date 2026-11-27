@@ -1,0 +1,76 @@
+diff --git a/.agent/tools/review-findings.py b/.agent/tools/review-findings.py
+--- a/.agent/tools/review-findings.py
++++ b/.agent/tools/review-findings.py
+@@ -12,6 +12,61 @@
+ 
+ HUNKS_FILE = "hunks.json"
+ CODE_MODES = frozenset({"self", "changes", "pr"})
++
++# Implementation steps in a spec. Product Flow checks them against the diff; every other lens
++# judges the change against the summary and acceptance criteria, so these sections are pure cost
++# in its package (18 KB of a measured 156 KB package, sent to every persona).
++SPEC_BUILDER_SECTION = re.compile(r"^## (Tasks|Hints)\b")
++SPEC_FULL_PERSONAS = frozenset({"product-flow"})
++# A copied task line is long; a shorter line could match the diff by accident.
++SPEC_LINE_MIN = 40
++
++
++def spec_sections(spec: str) -> tuple[list[str], list[str]]:
++    """Split a spec into the lines every persona gets and the builder-section lines it does not."""
++    kept: list[str] = []
++    builder: list[str] = []
++    in_fence = in_builder = False
++    for line in spec.splitlines():
++        if line.lstrip().startswith("```"):
++            in_fence = not in_fence
++        elif not in_fence and line.startswith("## "):
++            in_builder = bool(SPEC_BUILDER_SECTION.match(line))
++        (builder if in_builder else kept).append(line)
++    return kept, builder
++
++
++def package_violations(review_dir: Path, personas: list[str], mode: str,
++                       spec_path: Path | None, hunks_path: Path | None) -> list[str]:
++    """Packaging rules a persona package must meet before it is worth dispatching."""
++    errors: list[str] = []
++    builder_lines: set[str] = set()
++    if mode in CODE_MODES and spec_path and spec_path.is_file():
++        builder_lines = {line.strip() for line in spec_sections(spec_path.read_text(encoding="utf-8"))[1]
++                         if len(line.strip()) >= SPEC_LINE_MIN and not line.startswith("## ")}
++    generated: set[str] = set()
++    if hunks_path and hunks_path.is_file():
++        generated = {entry["path"] for entry in read_json_object(hunks_path, "files")["files"]
++                     if entry.get("generated")}
++    for persona in canonical_personas(personas, split_commas=False):
++        package = review_dir / f"{persona}.in.md"
++        if not package.is_file():
++            continue
++        lines = package.read_text(encoding="utf-8", errors="replace").splitlines()
++        if persona not in SPEC_FULL_PERSONAS and builder_lines:
++            copied = builder_lines.intersection(line.strip() for line in lines)
++            if len(copied) >= 2:
++                errors.append(f"{package.name} carries the spec's Tasks/Hints ({len(copied)} lines); "
++                              "build its spec with `review-findings.py spec-context`")
++        current = ""
++        for line in lines:
++            if line.startswith("diff --git "):
++                current = next((path for path in generated if line.endswith(f" b/{path}")), "")
++            elif current and line.startswith("@@"):
++                errors.append(f"{package.name} embeds hunks of generated file {current}; "
++                              "embed package.diff instead of diff.patch")
++                current = ""
++    return errors
+ 
+ 
+ def persist(args: argparse.Namespace) -> int:
+@@ -36,6 +91,10 @@
+     if args.strict:
+         if hunks_path.is_file():
+             check_hunk_refs(findings, hunk_ids(hunks_path))
++        violations = package_violations(args.review_dir, args.personas, args.mode,
++                                        owner / "SPEC.md", hunks_path)
++        if violations:
++            raise ValueError("; ".join(violations))
+     report = args.report.read_text()
+     write_review(args.review_dir, report, findings)
+     return 0

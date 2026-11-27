@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-findings-evidence-type-skips-gate-egx0l5vl",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/review-findings.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "check_strict|evidence",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

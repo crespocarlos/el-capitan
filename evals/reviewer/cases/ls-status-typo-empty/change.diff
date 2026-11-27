@@ -1,0 +1,51 @@
+diff --git a/.agent/tools/task/crew-ls.py b/.agent/tools/task/crew-ls.py
+--- a/.agent/tools/task/crew-ls.py
++++ b/.agent/tools/task/crew-ls.py
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env python3
+ """List crew task state (read only) without failing on malformed task metadata (excerpt).
+ 
+-Modes: the table, `--md`, `--json`; `--all` adds done specs. Writes: `crew-task.py`.
++Modes: the table, `--md`, `--json`; `--status` filters; `--all` adds done specs. Writes: `crew-task.py`.
+ """
+ from __future__ import annotations
+ 
+@@ -11,7 +11,7 @@
+ 
+ import task_bootstrap  # noqa: F401
+ 
+-from ls_data import load_rows
++from ls_data import load_rows, select
+ from task_report import print_listing
+ 
+ 
+@@ -21,13 +21,15 @@
+     parser.add_argument("--json", action="store_true",
+                         help="machine-readable JSON array on stdout, diagnostics on stderr")
+     parser.add_argument("--all", action="store_true", help="list done specs too")
++    parser.add_argument("--status", action="append", metavar="STATE",
++                        help="only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded")
+     parser.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
+     return parser
+ 
+ 
+ def main() -> int:
+     args = make_parser().parse_args()
+-    print_listing(load_rows(args.tasks_dir), args)
++    print_listing(select(load_rows(args.tasks_dir), args.status), args)
+     return 0
+ 
+ 
+diff --git a/.agent/tools/task/ls_data.py b/.agent/tools/task/ls_data.py
+--- a/.agent/tools/task/ls_data.py
++++ b/.agent/tools/task/ls_data.py
+@@ -9,3 +9,9 @@
+ def load_rows(tasks_dir: Path) -> list[TaskState]:
+     """Every task under `tasks_dir`; a malformed one is still a row, so the listing never dies on it."""
+     return [load(path) for path in sorted(tasks_dir.iterdir()) if path.is_dir()]
++
++
++def select(rows: list[TaskState], states: list[str] | None = None) -> list[TaskState]:
++    """The rows whose status is one of `states` (every row when none is given)."""
++    wanted = {state.upper() for state in states or []}
++    return [r for r in rows if not wanted or head(r) in wanted]

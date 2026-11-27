@@ -1,0 +1,13 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-ship-rederives-target-dps9aktf",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".task-id"
+    }
+  ],
+  "num_turns": 2
+}

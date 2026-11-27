@@ -1,0 +1,54 @@
+{
+  "id": "ls-status-typo-empty",
+  "lens": "product-flow",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 0995426A, review 20261127040122, product-flow finding 4",
+  "summary": "`crew ls` gains `--status STATE` (repeatable), so the owner can list only the tasks in one state, for example `--status implementing` to see every IMPLEMENTING task.",
+  "defect": "A mistyped state (`--status implmenting`) matches no row: the listing prints an empty table, \"0 tasks\", and exits 0, which reads exactly like \"there are no such tasks\". The value should be checked with `task_status.token`, which exists so a typo fails where it is written, and rejected with exit 2 naming the accepted states.",
+  "locations": [
+    {
+      "file": ".agent/tools/task/ls_data.py",
+      "line": 16
+    },
+    {
+      "file": ".agent/tools/task/crew-ls.py",
+      "line": 24
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "typo*",
+      "mistyp*",
+      "misspel*",
+      "unknown state*",
+      "unknown status*",
+      "invalid",
+      "unrecogni*",
+      "not a valid",
+      "no such state",
+      "bad value",
+      "wrong state"
+    ],
+    [
+      "empty",
+      "0 tasks",
+      "zero tasks",
+      "no tasks",
+      "no rows",
+      "exit 0",
+      "exits 0",
+      "silent*",
+      "indistinguishable",
+      "looks like"
+    ]
+  ],
+  "context": {
+    ".agent/tools/task/task_status.py": "\"\"\"Task status: the one reader of a spec's `## Status` (excerpt).\"\"\"\nfrom __future__ import annotations\n\nSTATES = (\"DRAFTING\", \"APPROVED\", \"IMPLEMENTING\", \"ON-HOLD\", \"DONE\")\n# A user-only side state: not a transition, but a value the store legitimately holds.\nSIDE_STATES = (\"ABANDONED\",)\nACCEPTED = STATES + SIDE_STATES\n\n\nclass StatusError(ValueError):\n    \"\"\"A status value that is not one of `ACCEPTED`.\"\"\"\n\n\ndef head(value: str | None) -> str:\n    \"\"\"The first word of a status value, upper case; \"\" when unset.\"\"\"\n    return ((value or \"\").split() or [\"\"])[0].upper()\n\n\ndef token(value: str | None) -> str:\n    \"\"\"The contract token of a status value, raising `StatusError` for anything unknown.\n\n    The reader stays lenient — a listing must render a malformed task instead of dying on it — but\n    a value that becomes authoritative is checked, so a typo fails where it is written rather than\n    silently matching no transition rule.\n    \"\"\"\n    candidate = head(value)\n    if candidate and candidate not in ACCEPTED:\n        raise StatusError(f\"status {value.strip()!r} is not one of {', '.join(ACCEPTED)}\")\n    return candidate\n"
+  },
+  "after": {
+    ".agent/tools/task/crew-ls.py": "#!/usr/bin/env python3\n\"\"\"List crew task state (read only) without failing on malformed task metadata (excerpt).\n\nModes: the table, `--md`, `--json`; `--status` filters; `--all` adds done specs. Writes: `crew-task.py`.\n\"\"\"\nfrom __future__ import annotations\n\nimport argparse\nimport sys\nfrom pathlib import Path\n\nimport task_bootstrap  # noqa: F401\n\nfrom ls_data import load_rows, select\nfrom task_report import print_listing\n\n\ndef make_parser() -> argparse.ArgumentParser:\n    parser = argparse.ArgumentParser(prog=\"crew-ls.py\", description=__doc__.splitlines()[0])\n    parser.add_argument(\"--md\", action=\"store_true\", help=\"a markdown table\")\n    parser.add_argument(\"--json\", action=\"store_true\",\n                        help=\"machine-readable JSON array on stdout, diagnostics on stderr\")\n    parser.add_argument(\"--all\", action=\"store_true\", help=\"list done specs too\")\n    parser.add_argument(\"--status\", action=\"append\", metavar=\"STATE\",\n                        help=\"only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded\")\n    parser.add_argument(\"--tasks-dir\", type=Path, default=Path.home() / \".agent/tasks\")\n    return parser\n\n\ndef main() -> int:\n    args = make_parser().parse_args()\n    print_listing(select(load_rows(args.tasks_dir), args.status), args)\n    return 0\n\n\nif __name__ == \"__main__\":\n    sys.exit(main())\n",
+    ".agent/tools/task/ls_data.py": "\"\"\"What `crew ls` shows: the task rows, gathered once (excerpt).\"\"\"\nfrom __future__ import annotations\n\nfrom pathlib import Path\n\nfrom task_state import TaskState, head, load\n\n\ndef load_rows(tasks_dir: Path) -> list[TaskState]:\n    \"\"\"Every task under `tasks_dir`; a malformed one is still a row, so the listing never dies on it.\"\"\"\n    return [load(path) for path in sorted(tasks_dir.iterdir()) if path.is_dir()]\n\n\ndef select(rows: list[TaskState], states: list[str] | None = None) -> list[TaskState]:\n    \"\"\"The rows whose status is one of `states` (every row when none is given).\"\"\"\n    wanted = {state.upper() for state in states or []}\n    return [r for r in rows if not wanted or head(r) in wanted]\n"
+  }
+}

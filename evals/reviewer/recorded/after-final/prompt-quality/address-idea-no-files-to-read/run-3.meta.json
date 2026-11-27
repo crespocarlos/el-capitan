@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Read",
+      "path": ".cursor/skills/crew-address-review/SKILL.md"
+    }
+  ],
+  "num_turns": 3
+}

@@ -1,0 +1,24 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-persist-strict-old-review-dirs-zcyptm4w",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "spec-context|package_violations|canonical_personas|def read_json_object|owner\\s*=",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*",
+      "path": "."
+    },
+    {
+      "name": "Grep",
+      "pattern": "^import|^from|spec.context|add_parser|\"--strict\"|read_json_object|canonical_personas",
+      "path": ".agent/tools/review-findings.py"
+    }
+  ],
+  "num_turns": 4
+}

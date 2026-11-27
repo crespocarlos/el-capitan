@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-ship-manual-chain-c8ben76o",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "mark-done|crew commit|crew open pr|\\.task-id"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*crew*"
+    }
+  ],
+  "num_turns": 3
+}

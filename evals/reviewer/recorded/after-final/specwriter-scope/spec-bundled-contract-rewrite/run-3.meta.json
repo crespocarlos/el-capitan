@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*{review-hunks,review-findings,reviewer-contract,crew-reviewer,test_review}*"
+    },
+    {
+      "name": "Glob",
+      "pattern": "evals/test.sh"
+    }
+  ],
+  "num_turns": 3
+}

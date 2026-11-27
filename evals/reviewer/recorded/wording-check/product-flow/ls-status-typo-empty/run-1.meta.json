@@ -1,0 +1,29 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-ls-status-typo-empty-x1lrqw00",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_status.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def head|def print_listing|import.*head|nothing|No tasks|IMPLEMENTING|stale|fold",
+      "path": ".agent/tools/task"
+    },
+    {
+      "name": "Grep",
+      "pattern": "head|class TaskState|status",
+      "path": ".agent/tools/task/task_state.py",
+      "error": true
+    },
+    {
+      "name": "Grep",
+      "pattern": "def print_listing",
+      "path": ".agent/tools/task"
+    }
+  ],
+  "num_turns": 5
+}

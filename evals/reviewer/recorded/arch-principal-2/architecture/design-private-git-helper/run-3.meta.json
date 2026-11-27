@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-private-git-helper-txtksv1q",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/lib/git.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "doctor|TASKS|\\.agent/tasks|def _slug|slug",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

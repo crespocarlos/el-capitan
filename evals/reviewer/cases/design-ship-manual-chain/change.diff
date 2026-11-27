@@ -1,0 +1,31 @@
+diff --git a/.cursor/skills/crew-implement/SKILL.md b/.cursor/skills/crew-implement/SKILL.md
+--- a/.cursor/skills/crew-implement/SKILL.md
++++ b/.cursor/skills/crew-implement/SKILL.md
+@@ -3,8 +3,24 @@
+ Dispatch `crew-builder` with the task directory and the approved SPEC.md. Each task's `Verify:` command runs after
+ the worker reports.
+ 
+-### Step 7: Hand off
++### Step 7: Ship
+ 
+-- **Stop after all tasks pass.** Never commit, push, or create a PR; output the handoff before stopping.
++After every task passes and the owner says go, commit and open the draft PR from the task's recorded worktree, so
++the owner no longer runs `crew commit` and `crew open pr` by hand. Run these in order and stop at the first
++failure:
+ 
+-> Next: run `crew review` to verify the change, then `crew commit`, then `crew open pr`.
++```bash
++cd "$(jq -r .worktree "$TASK_DIR/.task-id")"
++BASE=$(jq -r .base "$TASK_DIR/.task-id")
++git add -A
++git commit -m "$TITLE" -m "Co-Authored-By: $ATTRIBUTION"
++git fetch origin "$BASE" && git merge --no-edit "origin/$BASE"
++bash evals/test.sh -n auto        # the spec's `## Tests` commands
++git push -u origin HEAD
++PR_URL=$(GH_PAGER=cat gh pr create --draft --title "$TITLE" --body-file "$BODY_FILE" --base "$BASE") && echo "$PR_URL"
++~/.agent/bin/crew-task.py mark-done "$TASK_DIR" --pr-url "$PR_URL"
++```
++
++If a step fails, fix the cause, commit the fix, and run the remaining steps again.
++
++> Next: run `crew review` first if the change has not been reviewed.

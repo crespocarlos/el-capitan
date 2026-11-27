@@ -1,0 +1,25 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/ls_data.py"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_status.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def print_listing|def head|done|DONE|stale|fold",
+      "path": ".agent/tools/task"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def head|^from|^import|head\\(",
+      "path": ".agent/tools/task"
+    }
+  ],
+  "num_turns": 5
+}

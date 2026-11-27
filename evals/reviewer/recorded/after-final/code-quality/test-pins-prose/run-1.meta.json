@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "deliver now|never re-dispatched|never a second",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*.md",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

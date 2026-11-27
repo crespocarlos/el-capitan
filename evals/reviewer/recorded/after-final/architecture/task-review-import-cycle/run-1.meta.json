@@ -1,0 +1,25 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "^(import|from) |def append_metric|def has_metric",
+      "path": ".agent/tools/task/task_progress.py"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_bootstrap.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "review_pr_reads|task_progress|review_records|ls_data",
+      "path": ".agent/tools"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/TOOLS.md"
+    }
+  ],
+  "num_turns": 5
+}

@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def line_no|def rel|lint_style"
+    }
+  ],
+  "num_turns": 3
+}

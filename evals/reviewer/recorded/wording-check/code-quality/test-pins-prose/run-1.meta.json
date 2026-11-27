@@ -1,0 +1,24 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-test-pins-prose-l66_uwrb",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "deliver now|resumed once|no reply",
+      "path": "."
+    },
+    {
+      "name": "Grep",
+      "pattern": "dispatch\\.md",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*.md",
+      "path": "."
+    }
+  ],
+  "num_turns": 4
+}

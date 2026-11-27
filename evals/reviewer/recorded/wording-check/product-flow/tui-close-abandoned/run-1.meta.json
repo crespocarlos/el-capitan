@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-tui-close-abandoned-s_zig4hg",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_status.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "force|ABANDONED",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

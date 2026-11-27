@@ -1,0 +1,13 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-doctor-none-is-a-note-4m6iv68i",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "NONE_IN_DIR|def claude_capability|def claude_files"
+    }
+  ],
+  "num_turns": 2
+}

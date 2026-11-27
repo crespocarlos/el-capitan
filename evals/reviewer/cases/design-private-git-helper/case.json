@@ -1,0 +1,89 @@
+{
+  "id": "design-private-git-helper",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": true,
+  "source": "hand-seeded from task D2673565 SPEC.md (Centralize git access in one library: private git helpers and hand-rolled subprocess calls routed through lib/git.py)",
+  "summary": "`crew doctor` gains a check that every task's recorded worktree (`.task-id` `worktree`) still exists, is on the task's branch, and has the task's repository (`repo_remote_url`) as `origin`. The new module reads git through a small `_git` helper and compares remotes by their `owner/name`. The tools' shared git module is in the working directory as `.agent/tools/lib/git.py`.",
+  "defect": "The check re-implements git access the shared library already provides: `current_branch`, `remote_url` and `slug_from_url` in `lib/git.py`, all raising `GitError`. The private `_git` ignores git's failure (`check=False`, no timeout) and reads empty output as an answer (no origin becomes an empty slug, a detached HEAD becomes the branch 'HEAD'), and `_slug` is a second URL parser. History (task D2673565) centralized git in `lib/git.py` precisely to remove private helpers with their own failure modes; new code calls the library.",
+  "locations": [
+    {
+      "file": ".agent/tools/maintenance/doctor_worktrees.py",
+      "line": 11
+    },
+    {
+      "file": ".agent/tools/maintenance/doctor_worktrees.py",
+      "line": 34
+    },
+    {
+      "file": ".agent/tools/maintenance/doctor_worktrees.py",
+      "line": 17
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "instead",
+      "rather than",
+      "unnecessary",
+      "not needed",
+      "needless*",
+      "no need",
+      "redundant",
+      "replace*",
+      "over-engineer*",
+      "overengineer*",
+      "overbuilt",
+      "over-built",
+      "reinvent*",
+      "re-implement*",
+      "reimplement*",
+      "hand-roll*",
+      "duplicat*",
+      "parallel",
+      "wrong approach",
+      "wrong layer",
+      "wrong place",
+      "redirect*",
+      "rethink",
+      "reconsider",
+      "heavyweight",
+      "too heavy",
+      "machinery",
+      "not the right",
+      "better approach",
+      "better fit",
+      "belongs in",
+      "should live",
+      "should be a",
+      "should be one",
+      "move this",
+      "move it",
+      "prefer*",
+      "don't build",
+      "do not build"
+    ],
+    [
+      "librar*",
+      "existing helper*",
+      "shared helper*",
+      "shared module",
+      "git module",
+      "centrali*",
+      "already provides",
+      "already provided",
+      "already exists",
+      "already exist",
+      "reuse*",
+      "re-use*",
+      "one door"
+    ]
+  ],
+  "context": {
+    ".agent/tools/lib/git.py": "\"\"\"The one door to git for the Python tools (excerpt). Every helper raises `GitError` when git cannot answer;\nempty output is never read as an answer.\"\"\"\nfrom __future__ import annotations\n\nimport subprocess\nfrom pathlib import Path\n\nLOCAL_TIMEOUT = 10\n\n\nclass GitError(RuntimeError):\n    \"\"\"Git could not answer: not a repository, a missing ref or remote, a timeout.\"\"\"\n\n\ndef run_git(root: Path | None, arguments: list[str], timeout: float = LOCAL_TIMEOUT) -> subprocess.CompletedProcess[str]:\n    try:\n        return subprocess.run([\"git\", *arguments], cwd=root, capture_output=True, text=True, timeout=timeout, check=True)\n    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:\n        raise GitError(f\"git {' '.join(arguments)}: {error}\") from error\n\n\ndef output(root: Path | None, arguments: list[str]) -> str:\n    return run_git(root, arguments).stdout.strip()\n\n\ndef current_branch(root: Path | None) -> str:\n    \"\"\"The checked-out branch; raises `GitError` on a detached HEAD.\"\"\"\n    branch = output(root, [\"rev-parse\", \"--abbrev-ref\", \"HEAD\"])\n    if branch == \"HEAD\":\n        raise GitError(f\"{root}: detached HEAD\")\n    return branch\n\n\ndef remote_url(root: Path | None, name: str = \"origin\") -> str | None:\n    \"\"\"The remote's URL, or None when the repository has no such remote.\"\"\"\n    if name not in output(root, [\"remote\"]).split():\n        return None\n    return output(root, [\"remote\", \"get-url\", name])\n\n\ndef slug_from_url(url: str | None) -> str | None:\n    \"\"\"`owner/name` of a GitHub remote URL (ssh or https), or None.\"\"\"\n    if not url:\n        return None\n    tail = url.strip().rstrip(\"/\").removesuffix(\".git\")\n    parts = tail.replace(\":\", \"/\").split(\"/\")\n    return \"/\".join(parts[-2:]) if len(parts) >= 2 else None\n"
+  },
+  "match_code": true,
+  "after": {
+    ".agent/tools/maintenance/doctor_worktrees.py": "\"\"\"Doctor: each task's recorded worktree exists, is on the task's branch, and has the task's repository as origin.\"\"\"\nfrom __future__ import annotations\n\nimport json\nimport subprocess\nfrom pathlib import Path\n\nTASKS = Path.home() / \".agent\" / \"tasks\"\n\n\ndef _git(tree: Path, *args: str) -> str:\n    \"\"\"One git read in `tree`: its stripped stdout.\"\"\"\n    result = subprocess.run([\"git\", \"-C\", str(tree), *args], capture_output=True, text=True, check=False)\n    return result.stdout.strip()\n\n\ndef _slug(url: str) -> str:\n    \"\"\"`owner/name` of a remote URL, ssh or https.\"\"\"\n    tail = url.rstrip(\"/\").removesuffix(\".git\")\n    return \"/\".join(tail.replace(\":\", \"/\").split(\"/\")[-2:])\n\n\ndef check_worktrees(tasks: Path = TASKS) -> list[tuple[str, str]]:\n    \"\"\"One WARN row per task whose recorded worktree is missing, on another branch, or from another repository.\"\"\"\n    rows = []\n    for meta_path in sorted(tasks.glob(\"*/.task-id\")):\n        meta = json.loads(meta_path.read_text())\n        if not meta.get(\"worktree\"):\n            continue\n        tree, name = Path(meta[\"worktree\"]), meta.get(\"slug\", meta_path.parent.name)\n        if not tree.is_dir():\n            rows.append((\"WARN\", f\"{name}: the recorded worktree {tree} is missing\"))\n            continue\n        branch = _git(tree, \"rev-parse\", \"--abbrev-ref\", \"HEAD\")\n        if branch != meta.get(\"branch\"):\n            rows.append((\"WARN\", f\"{name}: {tree} is on {branch}, not {meta.get('branch')}\"))\n        origin = _git(tree, \"remote\", \"get-url\", \"origin\")\n        if _slug(origin) != _slug(meta.get(\"repo_remote_url\", \"\")):\n            rows.append((\"WARN\", f\"{name}: {tree} has origin {origin or '(none)'}, not the task's repository\"))\n    return rows\n"
+  }
+}

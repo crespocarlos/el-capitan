@@ -111,24 +111,72 @@ def outside(path: str, roots: tuple[str, ...]) -> bool:
     return not any(resolved == root or resolved.startswith(root + os.sep) for root in roots)
 
 
-def read_stream(stdout: str, roots: tuple[str, ...]) -> tuple[str, list[str]]:
-    """The final reply from `stream-json` output, and every tool call whose path leaves the scratch root."""
-    reply, tainted = "", []
+def relative(value: str, roots: tuple[str, ...]) -> str:
+    """A path under the scratch root as a path relative to it, so a recorded call reads the same on every run."""
+    for root in roots:
+        if value == root:
+            return "."
+        if value.startswith(root + os.sep):
+            return value[len(root) + 1:]
+    return value
+
+
+def audit_call(item: dict, roots: tuple[str, ...]) -> dict:
+    """One tool call for the audit trail: its name and the path or pattern it was given."""
+    call = {"name": str(item.get("name"))}
+    for key, value in item["input"].items():
+        if isinstance(value, str) and key == "pattern":
+            call["pattern"] = value
+        elif isinstance(value, str) and key in PATH_KEYS:
+            call["path"] = relative(value, roots)
+    return call
+
+
+def stream_events(stdout: str) -> list[dict]:
+    events = []
     for line in stdout.splitlines():
         try:
             event = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(event, dict):
-            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def content_items(event: dict, kind: str) -> list[dict]:
+    """The `kind` items (`tool_use`, `tool_result`) of an assistant or user message event."""
+    content = (event.get("message") or {}).get("content")
+    return [item for item in content if isinstance(item, dict) and item.get("type") == kind] \
+        if isinstance(content, list) else []
+
+
+def read_stream(stdout: str, roots: tuple[str, ...]) -> tuple[str, dict]:
+    """The final reply from `stream-json` output, and its audit: every tool call (`calls`, with `error` when its
+    result was an error), the session's `num_turns`, and the calls whose path leaves the scratch root.
+
+    A call outside the root whose result was an error read nothing (a mistyped or missing path), so it is listed
+    under `outside_failed`; every other call outside the root, including one whose result never arrived, is
+    `tainted`.
+    """
+    events = stream_events(stdout)
+    failed = {item.get("tool_use_id") for event in events if event.get("type") == "user"
+              for item in content_items(event, "tool_result") if item.get("is_error")}
+    reply, audit = "", {"tainted": [], "outside_failed": [], "calls": [], "num_turns": None}
+    for event in events:
         if event.get("type") == "result":
             reply = str(event.get("result") or "")
-        content = (event.get("message") or {}).get("content") if event.get("type") == "assistant" else None
-        for item in content if isinstance(content, list) else []:
-            if isinstance(item, dict) and item.get("type") == "tool_use" and isinstance(item.get("input"), dict):
-                tainted += [f"{item.get('name')} {value}" for key, value in item["input"].items()
-                            if key in PATH_KEYS and isinstance(value, str) and outside(value, roots)]
-    return reply, tainted
+            turns = event.get("num_turns")
+            audit["num_turns"] = turns if isinstance(turns, int) else None
+        for item in content_items(event, "tool_use") if event.get("type") == "assistant" else []:
+            if not isinstance(item.get("input"), dict):
+                continue
+            call, errored = audit_call(item, roots), item.get("id") in failed
+            audit["calls"].append({**call, "error": True} if errored else call)
+            leaks = [f"{item.get('name')} {value}" for key, value in item["input"].items()
+                     if key in PATH_KEYS and isinstance(value, str) and outside(value, roots)]
+            audit["outside_failed" if errored else "tainted"] += leaks
+    return reply, audit
 
 
 def dispatch(claude: str, case: Case, timeout: int) -> tuple[str, dict]:
@@ -142,13 +190,18 @@ def dispatch(claude: str, case: Case, timeout: int) -> tuple[str, dict]:
                                   text=True, timeout=timeout, check=False, env=env)
         except subprocess.TimeoutExpired as error:
             partial = error.stdout.decode(errors="replace") if isinstance(error.stdout, bytes) else error.stdout or ""
-            return f"{FAILED} — no reply within {timeout} s\n\n{partial}", {"exit": None, "tainted": []}
+            _, audit = read_stream(partial, roots)
+            return (f"{FAILED} — no reply within {timeout} s\n\n{partial}",
+                    {"exit": None, "scratch": Path(scratch).name, **audit})
         except OSError as error:  # FileNotFoundError, PermissionError
-            return f"{FAILED} — could not start {claude}: {error}\n", {"exit": None, "tainted": []}
-        reply, tainted = read_stream(done.stdout, roots)
-        tainted += [f"cited {match.group('path')}" for match in PATH_ANCHOR.finditer(reply)
-                    if outside(match.group("path"), roots)]
-    meta = {"exit": done.returncode, "tainted": tainted}
+            return (f"{FAILED} — could not start {claude}: {error}\n",
+                    {"exit": None, "scratch": Path(scratch).name, "tainted": [], "outside_failed": [], "calls": [],
+                     "num_turns": None})
+        reply, audit = read_stream(done.stdout, roots)
+        audit["tainted"] += [f"cited {match.group('path')}" for match in PATH_ANCHOR.finditer(reply)
+                             if outside(match.group("path"), roots)]
+    # `scratch` names the run's root, so a recorded path outside it can be compared with the real one.
+    meta = {"exit": done.returncode, "scratch": Path(scratch).name, **audit}
     if done.returncode or not reply.strip():
         return (f"{FAILED} — exit {done.returncode}: {(done.stderr or '').strip()[:500]}\n\n"
                 f"{reply or done.stdout}"), meta

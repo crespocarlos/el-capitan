@@ -1,0 +1,21 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-dispatch-size-trigger-unevaluable-2kz70ewk",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "check-packages|too large|REVIEW_ROOT"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Read",
+      "path": ".cursor/agents/references/dispatch.md"
+    }
+  ],
+  "num_turns": 4
+}

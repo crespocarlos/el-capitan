@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "read_object",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

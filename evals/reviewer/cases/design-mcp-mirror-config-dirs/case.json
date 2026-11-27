@@ -1,0 +1,91 @@
+{
+  "id": "design-mcp-mirror-config-dirs",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": true,
+  "source": "hand-seeded from task D01FEE1F (spec abandoned and deleted; its drafts are in the session record of task 2D916668), replaced by task 2D916668 SPEC.md (Summary, the lookups criteria, Hints: copying servers between Claude config dirs is out of scope)",
+  "summary": "The owner already has their MCP servers installed (docs servers and a code-search plugin) and names them in `~/.agent/config.json` `mcp` (a copy is in the working directory as `.agent/config.json`). Install renders those servers into the read-only agents' `tools:` lists, which works for sessions on `~/.claude`. A session on a second Claude config dir, such as `~/.claude-work`, has no MCP servers, so its crew agents fall back to text search. Install now mirrors the configured servers: it copies each definition from `~/.claude.json` into every other recorded config dir's `.claude.json`, at the same scope, records each copy in the install manifest, and never overwrites a server the user defined there.",
+  "defect": "The wrong fix for the need. Copying server definitions into Claude Code's own state file (`<dir>/.claude.json`) duplicates the owner's configuration (headers, env, per-dir OAuth sign-in), drifts from the source, needs manifest bookkeeping and uninstall, and still misses plugin-provided servers, which live under `<dir>/plugins/`, not in `.claude.json`. The servers are already installed and the agents already have them in their tool lists; what was missing is instructions telling every working agent when and how to use them. History abandoned the mirroring spec: no copying; one shared lookups reference that each crew agent points to, plus doctor fixes (detect plugin servers, check only projects with crew work, report without telling the owner to configure Claude).",
+  "locations": [
+    {
+      "file": ".claude/install_blocks.py",
+      "line": 30
+    },
+    {
+      "file": ".claude/install_blocks.py",
+      "line": 49
+    },
+    {
+      "file": "install.sh",
+      "line": 7
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "instead",
+      "rather than",
+      "unnecessary",
+      "not needed",
+      "needless*",
+      "no need",
+      "redundant",
+      "replace*",
+      "over-engineer*",
+      "overengineer*",
+      "overbuilt",
+      "over-built",
+      "reinvent*",
+      "re-implement*",
+      "reimplement*",
+      "hand-roll*",
+      "duplicat*",
+      "parallel",
+      "wrong approach",
+      "wrong layer",
+      "wrong place",
+      "redirect*",
+      "rethink",
+      "reconsider",
+      "heavyweight",
+      "too heavy",
+      "machinery",
+      "not the right",
+      "better approach",
+      "better fit",
+      "belongs in",
+      "should live",
+      "should be a",
+      "should be one",
+      "move this",
+      "move it",
+      "prefer*",
+      "don't build",
+      "do not build"
+    ],
+    [
+      "instruction*",
+      "lookups",
+      "guidance",
+      "doctor",
+      "already installed",
+      "already available",
+      "already reach*",
+      "already in their tool*",
+      "already in the tool*",
+      "out of scope",
+      "owner's config*",
+      "user's config*",
+      "Claude's own config*",
+      "Claude Code's own"
+    ]
+  ],
+  "context": {
+    ".agent/config.json": "{\n  \"mcp\": {\n    \"docs\": [\"docs-internal\", \"docs-public\"],\n    \"code_search\": [\"plugin_codeindex_codeindex\", \"code-search\"]\n  }\n}\n"
+  },
+  "match_code": true,
+  "after": {
+    ".claude/install_blocks.py": "\"\"\"Install steps that need more than shell: config dirs and the manifest (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport json\nimport sys\nfrom pathlib import Path\n\nMANIFEST = Path.home() / \".agent\" / \"install-manifest.json\"\n\n\ndef config_dirs(home: Path) -> list[Path]:\n    \"\"\"Every Claude config dir install writes to: `~/.claude` first, then each one recorded in the manifest.\"\"\"\n    recorded = json.loads(MANIFEST.read_text()).get(\"config_dirs\", []) if MANIFEST.is_file() else []\n    return [home / \".claude\", *(Path(p) for p in recorded if Path(p) != home / \".claude\")]\n\n\ndef record(section: str, entry: dict) -> None:\n    \"\"\"Append one entry to a manifest section, so uninstall can undo exactly what install did.\"\"\"\n    data = json.loads(MANIFEST.read_text()) if MANIFEST.is_file() else {}\n    data.setdefault(section, []).append(entry)\n    MANIFEST.write_text(json.dumps(data, indent=2) + \"\\n\")\n\n\ndef configured_servers(home: Path) -> list[str]:\n    \"\"\"The server names `~/.agent/config.json` `mcp` lists, docs and code search alike.\"\"\"\n    mcp = json.loads((home / \".agent\" / \"config.json\").read_text()).get(\"mcp\") or {}\n    return [*mcp.get(\"docs\", []), *mcp.get(\"code_search\", [])]\n\n\ndef mirror_mcp(home: Path) -> list[str]:\n    \"\"\"Copy each configured server's definition from `~/.claude.json` into every other config dir's `.claude.json`,\n    at the same scope (user level, or the same `projects.<path>`), so a session on a second config dir reaches the\n    same servers. A server the user already defined there is kept; each copy is recorded for uninstall.\"\"\"\n    source = json.loads((home / \".claude.json\").read_text())\n    scopes = [((), source.get(\"mcpServers\", {}))]\n    scopes += [((\"projects\", project), entry.get(\"mcpServers\", {})) for project, entry in source.get(\"projects\", {}).items()]\n    names, copied = configured_servers(home), []\n    for directory in config_dirs(home)[1:]:\n        path = directory / \".claude.json\"\n        target = json.loads(path.read_text()) if path.is_file() else {}\n        for keys, servers in scopes:\n            for name in (n for n in names if n in servers):\n                into = target\n                for key in keys:\n                    into = into.setdefault(key, {})\n                into = into.setdefault(\"mcpServers\", {})\n                if name in into:\n                    continue\n                into[name] = servers[name]\n                record(\"mcp_mirror\", {\"dir\": str(directory), \"scope\": \"/\".join(keys) or \"user\", \"name\": name})\n                copied.append(f\"{directory}: {name}\")\n        path.write_text(json.dumps(target, indent=2) + \"\\n\")\n    return copied\n\n\ndef main(argv: list[str]) -> int:\n    command = argv[0] if argv else \"\"\n    if command == \"config-dirs\":\n        print(\"\\n\".join(str(p) for p in config_dirs(Path.home())))\n        return 0\n    if command == \"mirror-mcp\":\n        for line in mirror_mcp(Path.home()):\n            print(f\"  mirrored MCP server {line}\")\n        return 0\n    print(f\"install_blocks: unknown command {command!r}\", file=sys.stderr)\n    return 2\n\n\nif __name__ == \"__main__\":\n    sys.exit(main(sys.argv[1:]))\n",
+    "install.sh": "# Link agents, skills and rules into every Claude config dir, and render the read-only agents' tools.\nwhile IFS= read -r dir; do\n  link_config_dir \"$dir\"\ndone < <(python3 \"$SCRIPT_DIR/.claude/install_blocks.py\" config-dirs)\nrender_readonly_agents\n# Sessions on a second config dir (such as ~/.claude-work) get the same MCP servers as ~/.claude.\nrun python3 \"$SCRIPT_DIR/.claude/install_blocks.py\" mirror-mcp\n"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-record-pr-wrong-folder-omxhjmqv",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/lib/git.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def mark_done|worktree|def worktrees",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

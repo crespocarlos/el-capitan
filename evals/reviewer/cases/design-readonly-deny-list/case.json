@@ -1,0 +1,96 @@
+{
+  "id": "design-readonly-deny-list",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": true,
+  "source": "hand-seeded from task EF8C1BD6 SPEC.md: the first criteria (one deny list per agent class) and the owner's amendment that replaced them with an install-rendered allowlist (PR #33)",
+  "summary": "Read-only agents (reviewer personas, explorers, spec critics) declared `tools: Read, Grep, Glob`. In Claude Code an explicit `tools:` list shuts out every MCP server, so these agents never reach the docs and code-search servers the owner names in `~/.agent/config.json` `mcp` (a copy is in the working directory as `.agent/config.json`). They now drop `tools:` and inherit the session's tools, MCP included, and one `disallowedTools` list, defined once in `lint_prompts.py`, denies the tools that write or act outside the review. The lint holds every read-only agent to that exact list; `specwriter-scope` shows the new frontmatter.",
+  "defect": "A deny list fails open: every tool it does not name is granted, so claude.ai connectors (`mcp__claude_ai_*`), plugin servers, WebFetch, WebSearch and any server or tool added later reach the read-only agents, and staying read-only depends on the list never going stale. The owner's amendment replaced it: keep an allowlist, `tools: Read, Grep, Glob{{mcp_servers}}`, which install renders with one `mcp__<server>__*` per server named in `~/.agent/config.json` `mcp` (nothing configured renders the plain list), and drop `disallowedTools`.",
+  "locations": [
+    {
+      "file": ".agent/tools/maintenance/lint_prompts.py",
+      "line": 16
+    },
+    {
+      "file": ".agent/tools/maintenance/lint_prompts.py",
+      "line": 29
+    },
+    {
+      "file": ".cursor/agents/specwriter-scope.md",
+      "line": 5
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "instead",
+      "rather than",
+      "unnecessary",
+      "not needed",
+      "needless*",
+      "no need",
+      "redundant",
+      "replace*",
+      "over-engineer*",
+      "overengineer*",
+      "overbuilt",
+      "over-built",
+      "reinvent*",
+      "re-implement*",
+      "reimplement*",
+      "hand-roll*",
+      "duplicat*",
+      "parallel",
+      "wrong approach",
+      "wrong layer",
+      "wrong place",
+      "redirect*",
+      "rethink",
+      "reconsider",
+      "heavyweight",
+      "too heavy",
+      "machinery",
+      "not the right",
+      "better approach",
+      "better fit",
+      "belongs in",
+      "should live",
+      "should be a",
+      "should be one",
+      "move this",
+      "move it",
+      "prefer*",
+      "don't build",
+      "do not build"
+    ],
+    [
+      "allowlist*",
+      "allow-list*",
+      "allow list*",
+      "whitelist*",
+      "explicit list",
+      "explicit tools",
+      "default-deny",
+      "deny by default",
+      "deny-by-default",
+      "fail closed",
+      "fails closed"
+    ],
+    [
+      "config*",
+      "render*",
+      "install*",
+      "placeholder",
+      "templat*",
+      "generat*"
+    ]
+  ],
+  "context": {
+    ".agent/config.json": "{\n  \"mcp\": {\n    \"docs\": [\"docs-internal\", \"docs-public\"],\n    \"code_search\": [\"plugin_codeindex_codeindex\", \"code-search\"]\n  }\n}\n"
+  },
+  "match_code": true,
+  "after": {
+    ".agent/tools/maintenance/lint_prompts.py": "\"\"\"Prompt lint rules over `.cursor/agents` (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport re\nfrom pathlib import Path\n\nTOOLS_LINE = re.compile(r\"^tools:[ \\t]*(.*)$\", re.MULTILINE)\nDENY_LINE = re.compile(r\"^disallowedTools:[ \\t]*(.*)$\", re.MULTILINE)\n# Agents that only read and report: reviewer personas, explorers and spec critics.\nREADONLY_AGENTS = (\"reviewer-adversarial\", \"reviewer-architecture\", \"reviewer-code-quality\", \"reviewer-product-flow\",\n                   \"reviewer-prompt-quality\", \"reviewer-layers\", \"specwriter-adversarial\", \"specwriter-scope\",\n                   \"specwriter-explorer\", \"reviewer-explorer\")\n# In Claude Code an explicit `tools:` list shuts every MCP server out, so read-only agents carry no `tools:` line and\n# inherit the session's tools, the docs and code-search servers included. This one list denies what writes or acts\n# outside the review; the search servers are read-only and stay available.\nREADONLY_AGENT_DENY = (\"Write\", \"Edit\", \"NotebookEdit\", \"Bash\", \"Agent\", \"Skill\", \"SendMessage\", \"TaskStop\",\n                       \"EnterWorktree\", \"ExitWorktree\", \"Artifact\", \"ArtifactData\", \"ArtifactComments\",\n                       \"mcp__github__*\", \"mcp__gitlab__*\", \"mcp__slack__*\", \"mcp__linear__*\", \"mcp__jira__*\",\n                       \"mcp__notion__*\", \"mcp__filesystem__*\")\n\n\ndef lint_readonly_tools(root: Path) -> Findings:\n    \"\"\"Each read-only agent has no `tools:` line, so it inherits the MCP servers, and denies exactly\n    `READONLY_AGENT_DENY`.\"\"\"\n    findings: Findings = []\n    for stem in READONLY_AGENTS:\n        path = root / \".cursor/agents\" / f\"{stem}.md\"\n        text = path.read_text(errors=\"replace\")\n        if TOOLS_LINE.search(text):\n            findings.append((rel(root, path), 1, \"agents-inherit-tools\", \"drop the tools: line so MCP is inherited\"))\n        deny = DENY_LINE.search(text)\n        listed = tuple(tool.strip() for tool in deny.group(1).split(\",\")) if deny else ()\n        if listed != READONLY_AGENT_DENY:\n            findings.append((rel(root, path), 1, \"agents-inherit-tools\", \"set disallowedTools to READONLY_AGENT_DENY\"))\n    return findings\n",
+    ".cursor/agents/specwriter-scope.md": "---\nname: specwriter-scope\ndescription: \"Spec scope and implementer critic for PR boundaries, task granularity, and builder compatibility. Dispatched by crew-specwriter — do not invoke directly.\"\nreadonly: true\ndisallowedTools: Write, Edit, NotebookEdit, Bash, Agent, Skill, SendMessage, TaskStop, EnterWorktree, ExitWorktree, Artifact, ArtifactData, ArtifactComments, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__notion__*, mcp__filesystem__*\nmaxTurns: 14\n---\n\nYou are a scope critic for a draft spec. Read the spec and the files it names; never edit.\n"
+  }
+}

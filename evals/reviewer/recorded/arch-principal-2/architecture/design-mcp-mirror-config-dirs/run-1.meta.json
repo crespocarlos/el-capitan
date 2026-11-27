@@ -1,0 +1,25 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-mcp-mirror-config-dirs-1hz8x17g",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/config.json"
+    },
+    {
+      "name": "Read",
+      "path": ".claude/install_blocks.py"
+    },
+    {
+      "name": "Read",
+      "path": "install.sh"
+    }
+  ],
+  "num_turns": 5
+}

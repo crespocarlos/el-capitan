@@ -1,0 +1,14 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-address-idea-no-files-to-read-6qe9f42i",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "Idea mode|idea mode|Do not edit|no files|Revised Idea|Review: Spec",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

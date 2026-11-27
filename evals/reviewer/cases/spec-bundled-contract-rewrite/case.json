@@ -1,0 +1,44 @@
+{
+  "id": "spec-bundled-contract-rewrite",
+  "lens": "specwriter-scope",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded from task C5D81C7C (review 20261118150640, architecture finding 3), reduced to a spec",
+  "summary": "A spec that shrinks the packages sent to review personas.",
+  "defect": "Task 4 rewrites the shared reviewer contract, which every persona reads, inside a packaging change: it serves no criterion, changes every lens's behaviour with nothing to measure it, and cannot be reverted apart from the packaging work. It belongs in its own PR.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 28
+    }
+  ],
+  "refs": [
+    "Task 4",
+    "T4"
+  ],
+  "keywords": [
+    [
+      "unrelated",
+      "separate PR",
+      "own PR",
+      "another PR",
+      "split*",
+      "bundl*",
+      "out of scope",
+      "scope creep",
+      "one concern",
+      "second concern",
+      "different concern",
+      "independent*",
+      "not part of",
+      "separate change"
+    ],
+    [
+      "contract",
+      "Task 4",
+      "T4"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

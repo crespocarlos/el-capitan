@@ -1,0 +1,11 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    }
+  ],
+  "num_turns": 2
+}

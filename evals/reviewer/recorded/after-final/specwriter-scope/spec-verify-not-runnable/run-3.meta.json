@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "open-pr|task_open_pr|pr_list|\"prs\"|subparsers|add_parser"
+    }
+  ],
+  "num_turns": 3
+}
