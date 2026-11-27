@@ -26,7 +26,7 @@ from task_live import Live, Seen, ended_at, running_agents
 from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
 from task_progress import blocked_reason, count_text, read_entries, sum_usage, task_usage_totals, usage_text
 from task_report import aligned, fitted, held_from, ordered_rows, task_cells
-from task_state import TaskState, head, name
+from task_state import TaskState, head, name, spec_branch
 from task_status import StatusError, token
 
 VIEWS = ("tasks", "workers", "report")
@@ -78,16 +78,22 @@ class Move:
         return [str(CREW_TASK), *self.args, *([text] if self.ask else [])]
 
 
-def moves(state: str, task: Path, prs: list[str]) -> list[Move]:
-    """The calls `crew-task.py` accepts from `state`: its gate (mark done with the newest PR from IMPLEMENTING),
-    then `blocked` with a reason for any task not DONE, and close as done (`mark-done --force` with a note) for a
-    state the CLI closes (`CLOSABLE`: not ABANDONED), except an IMPLEMENTING task with a PR. The CLI still checks
-    every gate."""
+def moves(state: str, task: Path, prs: list[str], branch: str = "") -> list[Move]:
+    """The calls `crew-task.py` accepts from `state`: its gate (start on the spec's `## Branch:`, none without one;
+    mark done with the newest PR from IMPLEMENTING), then `blocked` with a reason for any task not DONE, and close as
+    done (`mark-done --force` with a note) for a state the CLI closes (`CLOSABLE`: not ABANDONED), except an
+    IMPLEMENTING task with a PR. The CLI still checks every gate."""
     found = []
     for command, source, label in GATES:
-        if state == source and (command != "mark-done" or prs):
-            pr = ("--pr-url", prs[-1]) if command == "mark-done" else ()
-            found.append(Move(f"{label}{f' with PR {prs[-1]}' if pr else ''} ({command})", (command, str(task), *pr)))
+        if state != source:
+            continue
+        if command == "mark-implementing":
+            if branch:
+                found.append(Move(f"{label} on {branch} ({command})", (command, str(task), "--branch", branch)))
+        elif command != "mark-done":
+            found.append(Move(f"{label} ({command})", (command, str(task))))
+        elif prs:
+            found.append(Move(f"{label} with PR {prs[-1]} ({command})", (command, str(task), "--pr-url", prs[-1])))
     if state != "DONE":
         found.append(Move("blocked with a reason (blocked)", ("blocked", str(task)), ask="reason"))
     if state in CLOSABLE and not (state == "IMPLEMENTING" and prs):
@@ -148,7 +154,7 @@ def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], s
     shown = ordered_rows(rows, show_done)
     owners = {r.repo.split("/", 1)[0] for r in shown if "/" in r.repo}
     shared = len(owners) == 1 and all("/" in r.repo for r in shown if r.repo)
-    totals = []
+    totals, unstarted = [], []
     for r in shown:
         reason, held = blocked_reason(r.task), held_from(r)
         note = "; ".join(filter(None, [f"was {held}" if held else "",
@@ -162,12 +168,18 @@ def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], s
         view.rows.append((head(r) or "?", name(r), repo, *(cells[key] for key in view.header[3:8]),
                           landed.get(str(r.task), NOT_READ) if done else "-", note))
         view.links.append({key: url for key, url in (("ISSUE", r.issue), ("PR", r.prs[-1] if r.prs else "")) if url})
-        view.moves.append(moves(head(r), r.task, r.prs))
+        branch = spec_branch(r.text)
+        view.moves.append(moves(head(r), r.task, r.prs, branch))
+        if head(r) == "APPROVED" and not branch:
+            unstarted.append(name(r))
     open_count = sum(1 for r in rows if head(r) != "DONE")
     view.notes.append(f"{len(rows)} tasks: {open_count} open, {len(rows) - open_count} done; scope: {scope}")
     view.notes.append(f"tokens: {usage_text(sum_usage(totals))} across {len(shown)} tasks shown")
     if show_done and any(head(r) == "DONE" and str(r.task) not in landed for r in rows):
         view.notes.append(f"LANDED {NOT_READ}: not read yet; the GitHub key reads each DONE task's PR")
+    if unstarted:
+        view.notes.append(f"no start move for {', '.join(unstarted)}: SPEC.md names no `## Branch:`; start it from its "
+                          "checkout with crew-task.py mark-implementing <TASK_DIR>")
     return view
 
 

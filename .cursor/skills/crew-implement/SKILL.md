@@ -87,17 +87,24 @@ command and run it in `WORK_DIR`. The UUID task directory (`$TASK_DIR`) is stabl
 ### Step 5: Update progress
 
 ```bash
-~/.agent/bin/crew-task.py mark-implementing "$TASK_DIR" --branch "$(~/.agent/bin/crew-repo-info.py --root "$WORK_DIR" --field branch)"
+~/.agent/bin/crew-task.py mark-implementing "$TASK_DIR" --root "$WORK_DIR" \
+  --branch "$(~/.agent/bin/crew-repo-info.py --root "$WORK_DIR" --field branch)"
 ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
 ~/.agent/bin/crew-metric.py "$TASK_DIR" stage_start stage=implement 2>/dev/null || true
 ```
 
-`--root` reads `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
+When `mark-implementing` exits non-zero, stop here and report its message: no worker is
+dispatched for a task whose branch was not recorded.
+Both `--root` flags read `WORK_DIR`, not the current directory: Step 4 selects the worktree in a
 separate shell, so a bare read reports the drafting checkout and would record
-the wrong branch. `mark-implementing` records the branch actually being implemented in
+the wrong branch and checkout. `mark-implementing` records the branch actually being implemented in
 `.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
 branch and implemented on another, and task resolution matches either: without this every
 later `crew` command in the worktree resolves no task and silently skips its gates.
+`--branch` may be omitted when the command runs from the implementation checkout (`--root`, default
+the current directory): it then takes that checkout's branch and refuses with exit 2 on the default
+branch, in another repository, or on a branch another task records. The checkout is recorded as
+`.task-id` `worktree` only when it holds the recorded branch.
 
 ### Step 5b: Capture baseline diff
 

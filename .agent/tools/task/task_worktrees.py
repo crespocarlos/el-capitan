@@ -28,12 +28,13 @@ from lib.git import (
 )
 
 GONE = "[gone]"
+WORKTREE_TIMEOUT = 5.0  # seconds for the local listing; the PR hook runs it inline after `gh pr create`
 
 
-def worktrees() -> list[tuple[Path, str | None]]:
-    """Every registered worktree and its branch, from one porcelain listing."""
+def worktrees(root: Path | None = None) -> list[tuple[Path, str | None]]:
+    """Every registered worktree of the repository at `root` (default the cwd) and its branch, from one listing."""
     entries, current_path, current_branch_name = [], None, None
-    listing = output(None, ["worktree", "list", "--porcelain"])
+    listing = output(root, ["worktree", "list", "--porcelain"], timeout=WORKTREE_TIMEOUT)
     for line in listing.splitlines() + [""]:
         if line.startswith("worktree "):
             current_path = Path(line.removeprefix("worktree "))

@@ -51,7 +51,7 @@ def seed(home: Path) -> Path:
          [(5, "METRIC: stage_start stage=review"), (4.5, agent_end("a1", 259_000, 401_000)),
           (4, "METRIC: stage_end stage=review"),
           (2, "METRIC: stage_start stage=implement workers=2"), (2, f"PR: {PR.format(9)}")]),
-        ("T2", "blocked", "APPROVED", "acme/gadgets", "",
+        ("T2", "blocked", "APPROVED", "acme/gadgets", "## Branch: feat/gadgets\n\n",
          [(8, "METRIC: stage_start stage=review"), (1, "BLOCKED: waiting for keys")]),
         ("T3", "idle", "IMPLEMENTING", "acme/widgets", "",
          [(20 * 24 + 1, "METRIC: stage_end stage=implement workers=1 tokens_reported=259000"),
@@ -288,7 +288,7 @@ BLOCK, CLOSE = ("blocked", "{t}", "why"), ("mark-done", "{t}", "--force", "--pr-
 
 @pytest.mark.parametrize("state,prs,expected", [
     ("DRAFTING", [], [("mark-approved", "{t}"), BLOCK, CLOSE]),
-    ("APPROVED", [], [("mark-implementing", "{t}"), BLOCK, CLOSE]),
+    ("APPROVED", [], [("mark-implementing", "{t}", "--branch", "feat/x"), BLOCK, CLOSE]),
     ("IMPLEMENTING", [PR.format(7), PR.format(8)], [("mark-done", "{t}", "--pr-url", PR.format(8)), BLOCK]),
     ("IMPLEMENTING", [], [BLOCK, (*CLOSE[:-1], SHIPPED_NOTE)]),
     ("ON-HOLD", [], [BLOCK, CLOSE]),
@@ -299,7 +299,7 @@ def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[t
     """The gate the state allows (mark done with the newest PR), then `blocked` for every task not DONE and close as
     done (`--force`, the note `none (committed to main)` for IMPLEMENTING, else `closed: stale`) for a closable state
     with no PR; ABANDONED is not closable. Every move is a subcommand crew-task.py has."""
-    found = moves(state, tmp, prs)
+    found = moves(state, tmp, prs, "feat/x")
     wanted = [[arg.format(t=tmp) for arg in args] for args in expected]
     assert [move.argv(move.default or "why")[1:] for move in found] == wanted
     choices = load(CREW_TASK).make_parser()._subparsers._group_actions[0].choices
@@ -307,14 +307,30 @@ def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[t
 
 
 def test_a_move_runs_crew_task_for_real(home: Path) -> None:
-    """The app's default runner on a temp task: APPROVED to IMPLEMENTING in SPEC.md, through crew-task.py."""
+    """The app's default runner on a temp task: APPROVED to IMPLEMENTING in SPEC.md through crew-task.py, the spec's
+    `## Branch:` recorded and, run outside any checkout of the task, no `worktree`."""
     from tui_app import run_command
 
     task = home / ".agent" / "tasks" / "T2"
-    start = moves("APPROVED", task, [])[0]
+    start = moves("APPROVED", task, [], "feat/gadgets")[0]
     code, _, err = run_command(start.argv())
     assert code == 0, err
+    meta = json.loads((task / ".task-id").read_text())
     assert "## Status\nIMPLEMENTING" in (task / "SPEC.md").read_text()
+    assert meta["branch"] == "feat/gadgets" and "worktree" not in meta, meta
+
+
+@pytest.mark.parametrize("spec_line", ["", "## Branch: [type/short-description — e.g. feat/x]\n\n"])
+def test_no_start_move_without_a_spec_branch(home: Path, spec_line: str) -> None:
+    """An APPROVED task whose SPEC.md has no `## Branch:`, or only the template's placeholder, gets no start move (only
+    `blocked` and close as done) and a note saying to start it from its checkout."""
+    spec = home / ".agent" / "tasks" / "T2" / "SPEC.md"
+    spec.write_text(spec.read_text().replace("## Branch: feat/gadgets\n\n", spec_line))
+    view = views(home, Filters(repo="all"))["tasks"]
+    row = next(i for i, cells in enumerate(view.rows) if cells[1].startswith("blocked"))
+    found = [(move.args[0], *move.args[2:3]) for move in view.moves[row]]
+    assert found == [("blocked",), ("mark-done", "--force")], view.moves[row]
+    assert any("no start move for blocked" in note and "from its checkout" in note for note in view.notes), view.notes
 
 
 @pytest.mark.parametrize("text,base,expected", [
@@ -420,8 +436,8 @@ def test_app_switches_views_filters_moves_and_never_writes(home: Path) -> None:
         return seen, landed, cell, [cancelled, notes]
 
     seen, landed, cell, (cancelled, notes) = asyncio.run(drive())
-    assert cancelled == [] and ran == [[str(CREW_TASK), "mark-implementing", str(tasks / "T2")],
-                                       [str(CREW_TASK), "blocked", str(tasks / "T2"), "no keys"]]
+    start = [str(CREW_TASK), "mark-implementing", str(tasks / "T2"), "--branch", "feat/gadgets"]
+    assert cancelled == [] and ran == [start, [str(CREW_TASK), "blocked", str(tasks / "T2"), "no keys"]]
     assert "not DRAFTING; nothing written" in notes and "exit 1" in notes, notes
     assert opened == [ISSUE, PR.format(9)], "o opens the selected task's issue and O its PR"
     assert cell == f"[link={ISSUE}]#12[/link]", "the issue cell is a terminal link"
