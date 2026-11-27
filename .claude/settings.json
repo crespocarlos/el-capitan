@@ -108,6 +108,14 @@
             "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/probe.sh\" claude PreToolUse 2>/dev/null; exit 0"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -176,6 +184,14 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/spec-status-reconcile.sh\"; exit 0"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/probe.sh\" claude SessionStart 2>/dev/null; exit 0"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -186,6 +202,14 @@
             "command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\" 2>/dev/null; exit 0"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/probe.sh\" claude Stop 2>/dev/null; exit 0"
+          }
+        ]
       }
     ],
     "SubagentStop": [
@@ -194,6 +218,14 @@
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/capture-reply.sh\" 2>/dev/null; exit 0"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/probe.sh\" claude SubagentStop 2>/dev/null; exit 0"
           }
         ]
       }

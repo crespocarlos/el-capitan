@@ -290,7 +290,7 @@ BAD_CONFIG = '{"gc": {"artifact_days": 1}}'
     ("missing script, absolute form", absolute_hook,
      "hooks", "Cursor: registered hook scripts are missing: ~/.claude/hooks/absolute-gone.sh"),
     ("wrong matcher", lambda home: edit_json(home / ".claude/settings.json", unmatch),
-     "hooks", "missing or different PreToolUse Bash"),
+     "hooks", "missing or different PreToolUse "),
     ("missing registration", lambda home: edit_json(home / ".cursor/hooks.json", drop_guard),
      "hooks", "guard/credentials.sh"),
     ("a Cursor security guard that fails open", lambda home: edit_json(home / ".cursor/hooks.json", fail_open),
