@@ -335,13 +335,35 @@ prune_broken_symlinks() {
 
 link_dir_files "$SCRIPT_DIR/rules" ~/.cursor/rules
 prune_broken_symlinks ~/.cursor/rules
-link_dir_files "$SCRIPT_DIR/.cursor/agents" ~/.cursor/agents
+# Agents are linked one by one, except a templated agent (`tools:` ends in `# {{mcp_servers}}`) that already has
+# a rendered copy: a re-install never swaps that copy for a link. Without a copy the link is the fallback, and
+# its source line is a valid list of the class's native tools.
+TEMPLATED=$(python3 "$SCRIPT_DIR/.claude/install_blocks.py" templated-agents "$HOME" "$SCRIPT_DIR" 2>/dev/null) || TEMPLATED=""
+run mkdir -p ~/.cursor/agents
+for agent in "$SCRIPT_DIR"/.cursor/agents/*.md; do
+  name=$(basename "$agent")
+  if grep -qxF "$name" <<<"$TEMPLATED" && [ -f ~/.cursor/agents/"$name" ] && [ ! -L ~/.cursor/agents/"$name" ]; then
+    continue
+  fi
+  run ln -sf "$agent" ~/.cursor/agents/"$name"
+done
 for agent_dir in crew-reviewer references; do
   if [ -d "$SCRIPT_DIR/.cursor/agents/$agent_dir" ]; then
     run ln -sfn "$SCRIPT_DIR/.cursor/agents/$agent_dir" ~/.cursor/agents/$agent_dir
   fi
 done
 prune_broken_symlinks ~/.cursor/agents
+# The templated agents are written as regular files rendered from `mcp` in ~/.agent/config.json (one
+# `mcp__<server>__*` per named server). Every config dir's `agents` points into ~/.cursor/agents, so each sees the
+# rendered copy; a re-install re-renders, and the SessionStart hook `agents-refresh.sh` repairs a stale copy. A
+# failure is one line and the install goes on: an agent without a copy keeps its valid source link.
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "  [dry-run] render the read-only agents into ~/.cursor/agents from the mcp section of ~/.agent/config.json"
+elif ! rendered=$(python3 "$SCRIPT_DIR/.claude/install_blocks.py" render-agents "$HOME" "$SCRIPT_DIR" 2>&1); then
+  echo "  WARNING: render-agents failed ($(printf '%s' "$rendered" | tail -n 1)); read-only agents keep their source tools: line"
+else
+  printf '%s\n' "$rendered"
+fi
 
 if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
   shopt -s nullglob
@@ -540,7 +562,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 echo "Done. Installed:"
 echo "  Rules:   $(ls ~/.cursor/rules/*.mdc 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/rules)"
-echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc -l | tr -d ' ') (symlinked → ~/.cursor/agents ← ~/.claude/agents)"
+echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc -l | tr -d ' ') symlinked, the read-only ones rendered (→ ~/.cursor/agents ← ~/.claude/agents)"
 echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/skills ← ~/.claude/skills)"
 echo "  Claude config dirs: ${CONFIG_DIRS[*]}"
 echo ""

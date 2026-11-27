@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Install health on one screen: links, hook registrations, managed blocks, auto-memory, tools and gh, state sizes.
+"""Install health on one screen: links, hooks, blocks, auto-memory, rendered agents, tools and gh, state, MCP servers.
 
-Read only. Exit 0 healthy, 1 at least one problem (each `FAIL` line names its fix; a `WARN` is not one). The checks are
-`doctor_checks.py`; the size limits are the `doctor` object of `~/.agent/config.json` (`task_gc.py`
-holds the defaults, which apply, with a `FAIL config` line, when the file is invalid).
+Read only. Exit 0 healthy, 1 at least one problem (each `FAIL` line names its fix; a `WARN` is not one).
+The checks are `doctor_checks.py` and `doctor_mcp.py`; the size limits and MCP server names are the `doctor`
+and `mcp` objects of `~/.agent/config.json` (`task_gc.py` holds the defaults, which apply, with a
+`FAIL config` line, when the file is invalid).
 """
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +25,7 @@ from doctor_checks import (
     check_state,
     check_tools,
 )
+from doctor_mcp import check_mcp, check_rendered_agents
 from task_gc import DEFAULTS, ConfigError, Places, load_config
 
 
@@ -32,15 +35,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     home, places = Path.home(), Places.here()
     lines = []
+    mcp: dict | None
     try:
         config = load_config(places.agent)
-        limits = config["doctor"]
+        limits, mcp = config["doctor"], config["mcp"]
         lines.append(Line("ok", "config", f"crew ls scope (ls.repo): {config['ls']['repo']}"))
     except ConfigError as error:
-        limits = dict(DEFAULTS["doctor"])
+        limits, mcp = dict(DEFAULTS["doctor"]), None
         lines.append(Line("FAIL", "config", f"{error}; fix the file (the default limits apply meanwhile)"))
     lines += [*check_links(home), *check_hooks(home), *check_blocks(home), *check_auto_memory(home),
-              *check_tools(sign_in=not args.offline), *check_state(places, limits)]
+              *check_rendered_agents(home), *check_tools(sign_in=not args.offline), *check_state(places, limits),
+              *check_mcp(home, mcp, Path.cwd(), dict(os.environ))]
     print(f"crew doctor: install from {ROOT}")
     for line in lines:
         print(f"  {line.level:<4}  {line.area:<6}  {line.text}")

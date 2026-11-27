@@ -288,34 +288,44 @@ off-glossary synonyms it knows; crew-lint `glossary-terms` keeps this the one gl
 
 - **Frontmatter keys are harness-specific.** Cursor reads `name`, `description`, `readonly`, and
   `is_background`; it ignores `tools` and `maxTurns` and inherits every parent tool, MCP included,
-  so `readonly: true` is its only tool restriction. Claude Code reads `tools`, `disallowedTools` and
-  `maxTurns` and ignores `readonly`, so `maxTurns` binds under Claude Code only and every turn budget
-  here is prose-enforced in Cursor. `tools` therefore speaks Claude Code ids. These notes live here
-  once; an agent's frontmatter carries no harness comments. Do not set `model:`.
-- **`tools` grants only ids that always resolve.** A granted MCP id fails the whole dispatch on a
-  project without that server (`crew-lint` `mcp-grant-policy`), so vendor tools appear only in prose,
-  as optional.
+  so `readonly: true` is its only tool restriction. Claude Code reads `tools` and `maxTurns` and
+  ignores `readonly`, so `maxTurns` binds under Claude Code only and every turn budget here is
+  prose-enforced in Cursor. `tools` therefore speaks Claude Code ids. These notes live here once; an
+  agent's frontmatter carries no harness comments. Do not set `model:`.
+- **A dispatched agent has an allowlist; the docs and code-search servers come from the config.** A
+  deny list cannot keep out claude.ai connectors, plugin servers or tools the harness adds later, so
+  each dispatched agent's `tools:` line names exactly its class's native tools and ends with the YAML
+  comment `  # {{mcp_servers}}`, so the source line is valid by itself. Install replaces the comment
+  with one `, mcp__<server>__*` per server named in `mcp.docs` and `mcp.code_search` of
+  `~/.agent/config.json` (removes it when none is), writing the agent into `~/.cursor/agents` as a
+  regular file instead of a link, recorded in the install manifest (`rendered_agents`) and removed by
+  uninstall; the SessionStart hook `agents-refresh.sh` rewrites a copy gone stale, and `crew doctor`
+  fails one still stale. The classes are `AGENT_CLASSES` in `lint_prompts.py`, and `crew-lint`'s
+  `agents-inherit-tools` fails any other line, a missing placeholder, or a `disallowedTools`:
+  - **Read-only class** (`READONLY_AGENT_TOOLS`, every persona, explorer and critic): `Read, Grep, Glob`.
+  - **`crew-pr-resolver`** (`RESOLVER_AGENT_TOOLS`): plus `Bash`, for `gh` reads and probes.
+  - **`reviewer-probe`** (`PROBE_AGENT_TOOLS`): plus `Write` and `Bash`, for its throwaway artifact.
+  - **`crew-builder`** and the inline orchestrators: no `tools:` line; they inherit.
+
+  With Bash, "never edits, pushes or posts" (the resolver) and "no edit outlives the run" (the probe)
+  are instructions, not denies. Every native id resolves against `native_tools` in `tools.json`
+  (`tool-id-unknown`), so a typo fails. The configured servers are assumed read-only (search, read and
+  list tools); name only such servers in `mcp`.
 - **`readonly: true` is enforced, not copied.** `crew-lint`'s `missing-readonly` rule fails any agent
-  under `.cursor/agents/` that omits it, except the workers named in `WRITE_CAPABLE_AGENTS` and the
-  inline-only orchestrators named in `INLINE_ONLY_AGENTS`, both in `lint_prompts.py`. There are two
-  workers: `crew-builder` writes the change it was dispatched to make, and `reviewer-probe` writes one
-  throwaway artifact, runs it, and deletes it. `crew-pr-resolver` is a read-only analysis subagent; the
-  main session creates its worktree before dispatch and applies the plan it returns as its final
-  message. It keeps Bash for `gh` reads and probes, so in Claude Code, which ignores `readonly`, its
-  read-only promise holds by instruction only. Add an exemption there when
-  an agent must write, so the reason is reviewable rather than implied by an omission.
-- **An inheriting read-only agent denies the writers by list.** A read-only agent with no `tools:`
-  line inherits every session tool in Claude Code, MCP servers included, so its `disallowedTools`
-  must equal `READONLY_AGENT_DENY` in `lint_prompts.py` (`crew-lint`'s `inherited-tools-can-write`):
-  the native writers, `Agent`, and `mcp__<server>__*` for the MCP servers whose tools write (GitHub,
-  GitLab, Slack, Linear, Jira/Atlassian, Notion, filesystem, Claude Docs). Read-only search servers stay
-  available. An MCP server not on that list is denied only by the agent's instructions, so a new
-  write-capable server is added there, and the five agents' lines updated, in the same change.
+  under `.cursor/agents/` that omits it, except the classes `AGENT_CLASSES` in `lint_prompts.py`
+  exempts. There are two workers: `crew-builder` writes the change it was dispatched to make, and
+  `reviewer-probe` writes one throwaway artifact, runs it, and deletes it; `crew-reviewer` and
+  `crew-specwriter` run inline, where `readonly` never applies. `crew-pr-resolver` is a read-only
+  analysis subagent; the main session creates its worktree before dispatch and applies the plan it
+  returns as its final message. It keeps Bash for `gh` reads and probes, so in Claude Code, which
+  ignores `readonly`, its read-only promise holds by instruction only. Add a class there when an
+  agent must write, so the reason is reviewable rather than implied by an omission.
 - **Backgrounding is a call-site field.** Set `run_in_background: true` on the dispatch that needs it;
   do not put `is_background` in frontmatter, which would state the same fact twice with no check that
   the copies agree.
-- **Tool ids resolve against the catalog.** `crew-lint` checks every id against `mcp_servers` and
-  `native_tools` in `tools.json`; register a new one there, never only in prose.
+- **Tool ids resolve against the catalog.** `crew-lint` checks every `mcp__<server>__<tool>` id
+  against `mcp_servers` and every native `tools:` id against `native_tools` in `tools.json`; register
+  a new one there, never only in prose.
 - **Skill files** follow the workflow header, execution model, numbered steps shape;
   `crew-commit/SKILL.md` is the canonical example. Material a step needs only sometimes goes in
   `references/` and is linked, not inlined. An agent or skill file stays under 11,500 bytes.

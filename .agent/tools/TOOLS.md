@@ -103,6 +103,23 @@ therefore load every rule twice. `autoMemoryEnabled: false` is written by the se
 (`AUTO_MEMORY_OFF`), not carried in `.claude/settings.json`, because that file is also this checkout's
 project settings.
 
+**Rendered agents.** An agent whose frontmatter `tools:` line ends in the YAML comment
+`  # {{mcp_servers}}` is not linked once rendered: `install_blocks.py render-agents` writes it into
+`~/.cursor/agents` (which every config dir's `agents` points to) as a regular file, the comment
+replaced by one `, mcp__<server>__*` per server in `mcp.docs` and `mcp.code_search` of
+`~/.agent/config.json` (removed when none is), and records it as `rendered_agents`, with the checkout
+as `rendered_from`, in the manifest. Only the frontmatter line counts; the placeholder in prose is
+text. A re-install re-renders and never swaps a copy for a link; a render failure prints one line,
+the install goes on, and an agent without a copy keeps its source link, whose line grants exactly the
+class's native tools. Uninstall removes the copies. The SessionStart hook `agents-refresh.sh`
+(`install_blocks.py refresh-agents`) rewrites a recorded copy that differs from its `rendered_from`
+source rendered with the config now, so a `git pull` or a config change reaches the next session. A
+persona edit in a worktree takes effect for that worktree's review only after rendering from it:
+`python3 <worktree>/.claude/install_blocks.py render-agents "$HOME" <worktree>`; the copies then follow
+that worktree until `install.sh` (or the same command from the main checkout) renders from elsewhere.
+The repo ships no project-level agents link under `.claude/`, so a session inside the checkout uses
+the rendered user-level agents too (`sync-skills.yml` checks it).
+
 ## Module maps
 
 One line per module: what it owns. Entry points (`crew-*.py`) are listed in the table above.
@@ -121,7 +138,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `ls_data.py`: what `crew ls`, `--report` and the TUI read: rows, the repo filter (`--repo`, else `ls.repo` of `~/.agent/config.json`: `here`, `all` or an `owner/name`) and the state filter, stale, the `landed` lines, landing bases, `--watch`
 - `task_prs.py`: the branch PRs reconcile asks GitHub for: due tasks, a fork's parent, the 24-hour cache, the thread pool and its budget
 - `ls_report.py`: `crew-ls.py --report`: opened and closed, verdicts, findings and fixed rate, stage costs and durations, tool failures
-- `task_gc.py`: `~/.agent/config.json` (`gc`, `doctor`, `ls`: defaults, validation, exit 2 on a bad value), the retention policy, `crew-task.py gc`, the state sizes `crew-doctor.py` checks
+- `task_gc.py`: `~/.agent/config.json` (`gc`, `doctor`, `ls`, and `mcp`: `{"docs": [...], "code_search": [...]}`, the MCP server names `crew-doctor.py` looks for, empty by default so el-capitan names no vendor server; defaults, validation, exit 2 on a bad value), the retention policy, `crew-task.py gc`, the state sizes `crew-doctor.py` checks
 - `task_lock.py`: the worker lock (written, read across the worktrees, removed) and the `crew-task.py lock|blocked` commands
 - `task_artifacts.py`: bounded task artifacts: read one, render the resolved task
 - `task_repo_facts.py`: the repository record a prompt reads: root, branch, head, remotes, files
@@ -205,7 +222,16 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `lint_docs.py`: the one generator of the README command table and counts (`--commands`, `crew
   help`; `--write-readme`), their staleness rules, and the release files
 - `lint_dead_code.py`: the caller set for a catalog command (`--dead-code`)
-- `doctor_checks.py`: the `crew-doctor.py` checks: links, hook registrations, managed blocks (`.claude/install_blocks.py`), tools, state sizes
+- `doctor_checks.py`: the `crew-doctor.py` checks: links, hook registrations, managed blocks (`.claude/install_blocks.py`), auto-memory, tools,
+  state sizes
+- `doctor_mcp.py`: the rendered read-only agents (a copy in `~/.cursor/agents` that differs from what install renders now is a `FAIL`) and the
+  docs and code-search MCP capabilities. Server names come only from `mcp` in `~/.agent/config.json`; with none, one `note` says how to add
+  them, and with an invalid config one `note` says so; nothing is checked then. Claude Code: each existing config dir (the recorded ones and
+  `$CLAUDE_CONFIG_DIR`), reading `$CLAUDE_CONFIG_DIR/.claude.json` for the dir the variable names and `~/.claude.json` for `~/.claude`
+  otherwise: a project reaches the user `mcpServers` minus its `disabledMcpServers`, its own, and the cwd repo's `<repo>/.mcp.json` servers
+  that are approved (`enabledMcpjsonServers` or `enableAllProjectMcpServers`, in the project entry or the dir's `settings.json`) and not in
+  `disabledMcpjsonServers`. Cursor: `~/.cursor/mcp.json` and `<repo>/.cursor/mcp.json`. A missing capability is a `WARN`, never a `FAIL`;
+  plugin and claude.ai connector servers are named as unchecked
 
 ## Contracts
 
@@ -227,7 +253,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 | `crew-agent-context.py` | JSON always | — |
 | `crew-lint.py` | findings, or JSON with `--json`; `--commands` a Markdown table; `--dead-code` a table of caller counts, or JSON with `--json` | — |
 | `crew-ls.py` | table, `--md`, or with `--json` one object whose `items` are the tasks; `--report` text or JSON | `--limit`, `--max-chars` |
-| `crew-doctor.py` | one screen of `ok`, `note` and `FAIL` lines; exit 1 on a `FAIL` | — |
+| `crew-doctor.py` | one screen of `ok`, `note`, `WARN` and `FAIL` lines; exit 1 on a `FAIL` only | — |
 | `crew-mem.py` | text; JSON for `search`, `context`, `list` with `--json` | `--limit`, `--max-chars` |
 | `crew-review-findings.py` | text; JSON for `select`, `coverage`, `normalize` | `--max-chars` |
 | `crew-review-hunks.py` | JSON summary | `--max-chars` |
@@ -249,11 +275,11 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `crew-task-context.py` applies per artifact.
 - `tools.json` also declares the external tool surface that lint resolves. `mcp_servers` maps an MCP
   server name to the tool names this repository uses on it; `native_tools` lists the harness tool ids
-  an agent may name in a `tools:` line. `crew-lint.py` reports `mcp-tool-unknown` for an
-  `mcp__<server>__<tool>` reference and `tool-id-unknown` for a bare `tools:` id that neither list
-  declares. A project that adds an MCP server or a new native tool id adds it here in the same change.
-  `mcp-grant-policy` fails on any `mcp__` id in an agent's `tools:` line: a granted id fails the
-  whole dispatch on a project without that server, so vendor tools appear only in prose, as optional.
+  an agent's `tools:` line may name. `crew-lint.py` reports `mcp-tool-unknown` for an
+  `mcp__<server>__<tool>` reference that `mcp_servers` does not declare and `tool-id-unknown` for a
+  native id outside `native_tools`; a project that adds either adds it here in the same change.
+  `agents-inherit-tools` checks each agent's `tools:` line against its class in `lint_prompts.py`
+  (`.agent/tools/AGENTS.md`, "Authoring agent and skill files").
 - `crew-diff.sh` is source-only; it exports review context and intentionally does not implement an
   executable `--help`.
 - `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state

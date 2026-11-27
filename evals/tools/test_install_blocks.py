@@ -21,6 +21,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from cli_runner import load as cli_load
 from cli_runner import run as cli
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -253,6 +254,9 @@ BAD_CONFIG = '{"gc": {"artifact_days": 1}}'
     ("over-limit state", over_limit, "state", "tasks 0.0 MB (limit 0 MB); crew gc"),
     ("telemetry", telemetry, "state", "crew-task.py gc --only telemetry --apply"),
     ("bad config", lambda home: (home / ".agent/config.json").write_text(BAD_CONFIG), "config", "artifact_days"),
+    ("a rendered agent stale after a config change",
+     lambda home: (home / ".agent/config.json").write_text(json.dumps({"mcp": {"docs": ["docs-a"]}})),
+     "agents", "reviewer-adversarial.md stale"),
 ])
 def test_doctor(installed: Path, tmp: Path, case: str, damage: Callable[[Path], object],
                 area: str | None, text: str | None) -> None:
@@ -270,6 +274,215 @@ def test_doctor(installed: Path, tmp: Path, case: str, damage: Callable[[Path], 
     real = subprocess.run([str(home / ".agent/bin/crew-doctor.py"), "--offline"],
                           capture_output=True, text=True, env=env)
     check(f"{case}: the installed command, run as a process, exits 1", real.returncode == 1, real.stdout[-600:])
+
+
+WANTED = {"docs": ["docs-a", "docs-b"], "code_search": ["search-x"]}
+
+
+def servers(*names: str, **projects: dict) -> str:
+    """An MCP config: `names` at user level, and each project path's entry (its own keys as given)."""
+    return json.dumps({"mcpServers": {name: {} for name in names},
+                       "projects": {f"/w/{key}": value for key, value in projects.items()}})
+
+
+def own(*names: str) -> dict:
+    """A projects entry holding its own servers."""
+    return {"mcpServers": {name: {} for name in names}}
+
+
+DOCS, SEARCH = "docs server (docs-a, docs-b)", "code search (search-x)"
+UNCHECKED = ("note", "servers from plugins and claude.ai connectors are not checked")
+REPO = {"repo/.git/HEAD": "ref\n", "repo/.mcp.json": json.dumps({"mcpServers": {"docs-b": {}, "search-x": {}}})}
+# (case, files under the temp root, `mcp` config (None: invalid), CLAUDE_CONFIG_DIR under it, cwd under it,
+#  (level, text) lines that must appear, texts no line may contain). HOME is `home/`, with `home/.claude`; every
+#  config file is a temp one.
+MCP_CASES = (
+    ("both servers at user level",
+     {"home/.claude.json": servers("docs-a", "search-x"), "home/.cursor/mcp.json": servers("docs-b", "search-x")},
+     WANTED, None, ".", [("ok", f"Claude Code ~/.claude: {DOCS} at user level"), ("ok", f"Cursor: {SEARCH}")],
+     ["WARN"]),
+    ("the docs server only in a projects entry",
+     {"home/.claude.json": servers("search-x", kibana=own("docs-a"), other={})}, WANTED, None, ".",
+     [("WARN", f"{DOCS} missing for 1 of 2 projects: /w/other; add it at user level"),
+      ("ok", f"{SEARCH} at user level"),
+      ("WARN", "Cursor: docs server missing: none of docs-a, docs-b in ~/.cursor/mcp.json")],
+     ["/w/kibana"]),
+    ("a server only in the repo's approved .mcp.json",
+     {**REPO, "repo/.cursor/mcp.json": servers("docs-a", "search-x"),
+      "home/.claude/settings.json": json.dumps({"enableAllProjectMcpServers": True})}, WANTED, None, "repo",
+     [("ok", f"{DOCS} in every project (1)"), ("ok", "Cursor: docs server (docs-a)")], ["WARN"]),
+    ("an unapproved or disabled repo server does not count",
+     {**REPO, "home/.claude.json": "PROJECTS"}, WANTED, None, "repo",
+     [("WARN", f"{DOCS} missing for 1 of 1 projects"), ("WARN", f"{SEARCH} missing for 1 of 1 projects")], []),
+    ("a user-level server disabled in a project",
+     {"home/.claude.json": servers("docs-a", "search-x", kibana={"disabledMcpServers": ["docs-a"]})}, WANTED, None, ".",
+     [("WARN", f"{DOCS} missing for 1 of 1 projects: /w/kibana"), ("ok", f"{SEARCH} at user level")], []),
+    ("the docs server missing in a second config dir",
+     {"home/.claude.json": servers("docs-a", "search-x"), "home/.claude-work/.claude.json": servers("search-x")},
+     WANTED, "home/.claude-work", ".",
+     [("ok", f"Claude Code ~/.claude: {DOCS} at user level"), ("WARN", f"Claude Code ~/.claude-work: {DOCS} missing;"),
+      ("ok", f"Claude Code ~/.claude-work: {SEARCH} at user level")],
+     [f"~/.claude: {DOCS} missing"]),
+    ("CLAUDE_CONFIG_DIR at ~/.claude reads the file inside it",
+     {"home/.claude.json": servers("docs-a", "search-x"), "home/.claude/.claude.json": servers("search-x")},
+     WANTED, "home/.claude", ".", [("WARN", f"Claude Code ~/.claude: {DOCS} missing;")], []),
+    ("a config dir that does not exist is skipped",
+     {"home/.claude.json": servers("docs-a", "search-x")}, WANTED, "home/.claude-gone", ".",
+     [("ok", f"Claude Code ~/.claude: {DOCS} at user level")], ["~/.claude-gone"]),
+    ("no mcp section", {"home/.claude.json": servers()}, {"docs": [], "code_search": []}, None, ".",
+     [("note", 'no MCP server is checked; add "mcp": {"docs": ["<server>"]')], ["Claude Code", "Cursor", UNCHECKED[1]]),
+    ("an invalid mcp section", {"home/.claude.json": servers()}, None, None, ".",
+     [("note", "the mcp section of ~/.agent/config.json is not valid")], ["Claude Code", "no mcp section"]),
+)
+# The repo project of the unapproved case: docs-b approved but disabled, search-x never approved.
+UNAPPROVED = {"enabledMcpjsonServers": ["docs-b"], "disabledMcpjsonServers": ["docs-b"]}
+
+
+@pytest.mark.parametrize("case, files, wanted, config_dir, cwd, expected, absent", MCP_CASES,
+                         ids=[row[0] for row in MCP_CASES])
+def test_doctor_mcp(tmp: Path, case: str, files: dict[str, str], wanted: dict | None, config_dir: str | None, cwd: str,
+                    expected: list[tuple[str, str]], absent: list[str]) -> None:
+    """Each capability is found by the configured names at user level, per project or in the approved repo file,
+    minus disabled servers, in each existing config dir; a gap is a WARN, never a FAIL."""
+    cli_load(DOCTOR)
+    from doctor_mcp import check_mcp
+    (tmp / "home" / ".claude").mkdir(parents=True)
+    for name, text in files.items():
+        (tmp / name).parent.mkdir(parents=True, exist_ok=True)
+        text = json.dumps({"projects": {str(tmp / "repo"): UNAPPROVED}}) if text == "PROJECTS" else text
+        (tmp / name).write_text(text, encoding="utf-8")
+    environ = {"CLAUDE_CONFIG_DIR": str(tmp / config_dir)} if config_dir else {}
+    shown = [(line.level, line.text) for line in check_mcp(tmp / "home", wanted, tmp / cwd, environ)]
+    check(f"{case}: the expected lines appear, none is a FAIL, and the absent texts do not",
+          all(any(level == got and text in body for got, body in shown) for level, text in expected)
+          and all(level != "FAIL" for level, _ in shown)
+          and not any(text in f"{level} {body}" for text in absent for level, body in shown), shown)
+    check(f"{case}: one note with no names configured, else the unchecked sources named last",
+          len(shown) == 1 if not wanted or not any(wanted.values()) else shown[-1] == UNCHECKED, shown)
+
+
+def tools_lines(home: Path) -> dict[str, str]:
+    """The `tools:` line of each regular (rendered) agent file in ~/.cursor/agents."""
+    agents = home / ".cursor" / "agents"
+    files = [path for path in sorted(agents.glob("*.md")) if path.is_file() and not path.is_symlink()]
+    return {path.name: next(line for line in path.read_text(encoding="utf-8").splitlines()
+                            if line.startswith("tools:")) for path in files}
+
+
+def home_env(home: Path) -> dict[str, str]:
+    """The environment for an install into `home`: no crew or config-dir variable from the caller."""
+    drop = ("CREW_", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_JOB_DIR")
+    return {**{k: v for k, v in os.environ.items() if not k.startswith(drop)}, "HOME": str(home)}
+
+
+def install_with_config(home: Path, mcp: dict | None) -> None:
+    (home / ".agent").mkdir(parents=True, exist_ok=True)
+    (home / ".agent" / "config.json").write_text(json.dumps({"mcp": mcp} if mcp else {}), encoding="utf-8")
+
+
+def test_rendered_agents(tmp: Path) -> None:
+    """Install renders each read-only agent's allowlist from the mcp config and records the copies; the session-start
+    hook re-renders a stale copy; a re-install whose render fails keeps the copies (never swaps one for a link) and
+    finishes; a re-install re-renders; uninstall removes them."""
+    home = tmp / "home"
+    install_with_config(home, {"docs": ["docs-a", "docs-b"], "code_search": ["search-x"]})
+    config, env = home / ".agent" / "config.json", home_env(home)
+    templated = sorted(path.name for path in (PROJECT / ".cursor" / "agents").glob("*.md")
+                       if "{{mcp_servers}}" in path.read_text())
+    servers_part = ", mcp__docs-a__*, mcp__docs-b__*, mcp__search-x__*"
+    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
+    lines = tools_lines(home)
+    check("every templated agent is a rendered copy whose line ends with the three servers, recorded in the manifest",
+          done.returncode == 0 and sorted(lines) == templated and len(templated) == 12
+          and lines["reviewer-adversarial.md"] == f"tools: Read, Grep, Glob{servers_part}"
+          and lines["reviewer-probe.md"] == f"tools: Read, Grep, Glob, Write, Bash{servers_part}"
+          and lines["crew-pr-resolver.md"] == f"tools: Read, Grep, Glob, Bash{servers_part}"
+          and (home / ".cursor/agents/crew-builder.md").is_symlink()
+          and json.loads((home / ".agent/install-manifest.json").read_text())["rendered_agents"]
+          == [f".cursor/agents/{name}" for name in templated], (done.stderr[-400:], lines))
+    config.write_text(json.dumps({"mcp": {"docs": ["docs-a"]}}), encoding="utf-8")
+    hook = home / ".claude" / "hooks" / "agents-refresh.sh"
+    first, second = (subprocess.run(["bash", str(hook)], capture_output=True, text=True, env=env, timeout=30)
+                     for _ in range(2))
+    lines = tools_lines(home)
+    check("the session-start hook re-renders every stale copy once, in one line, and exits 0",
+          first.returncode == second.returncode == 0 and second.stdout == "" and first.stderr == ""
+          and first.stdout.strip() == "agents: re-rendered 12 stale read-only agent(s) in ~/.cursor/agents"
+          and lines["reviewer-adversarial.md"] == "tools: Read, Grep, Glob, mcp__docs-a__*", (first, second, lines))
+    config.write_text(json.dumps({"gc": {"artifacts_days": 7}}), encoding="utf-8")
+    (home / ".cursor/agents/reviewer-adversarial.md").unlink()
+    (home / ".cursor/agents/reviewer-adversarial.md").mkdir()  # makes the render fail on this agent
+    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
+    lines = tools_lines(home)
+    warned = [line for line in done.stdout.splitlines() if "render-agents failed" in line]
+    check("a re-install whose render fails says so in one line, finishes, and keeps the copies it did not reach",
+          done.returncode == 0 and len(warned) == 1 and "Done. Installed:" in done.stdout
+          and lines["reviewer-architecture.md"] == "tools: Read, Grep, Glob, mcp__docs-a__*",
+          (done.stdout[-800:], lines))
+    shutil.rmtree(home / ".cursor/agents/reviewer-adversarial.md")
+    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
+    lines = tools_lines(home)
+    check("a re-install with no mcp section re-renders the plain list",
+          done.returncode == 0 and lines["reviewer-adversarial.md"] == "tools: Read, Grep, Glob"
+          and lines["crew-pr-resolver.md"] == "tools: Read, Grep, Glob, Bash" and sorted(lines) == templated, lines)
+    done = subprocess.run(["bash", str(INSTALL), "--uninstall"], capture_output=True, text=True, env=env)
+    check("uninstall removes the rendered copies", done.returncode == 0 and tools_lines(home) == {}
+          and "12 rendered agent(s)" in done.stdout, (done.stdout[-600:], tools_lines(home)))
+
+
+def test_render_failure_falls_back_to_source_links(tmp: Path) -> None:
+    """A first install whose render fails still finishes; the agents it did not render are links to their source,
+    whose `tools:` line is valid YAML granting exactly the class's native tools."""
+    home = tmp / "home"
+    install_with_config(home, {"docs": ["docs-a"]})
+    (home / ".cursor/agents/reviewer-adversarial.md").mkdir(parents=True)
+    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=home_env(home))
+    link = home / ".cursor/agents/reviewer-architecture.md"
+    line = next(row for row in link.read_text().splitlines() if row.startswith("tools:")) if link.exists() else ""
+    check("one warning, a finished install, and a source link whose list is the native tools before the comment",
+          done.returncode == 0 and done.stdout.count("render-agents failed") == 1 and link.is_symlink()
+          and line == "tools: Read, Grep, Glob  # {{mcp_servers}}"
+          and line.split("#")[0].strip() == "tools: Read, Grep, Glob",
+          (done.stdout[-600:], line))
+
+
+def test_render_rules(tmp: Path) -> None:
+    """Server names keep only the characters a tool id keeps, matched whole; only the frontmatter `tools:` line is
+    templated, so the placeholder in prose is text."""
+    blocks = load_blocks()
+    cli_load(DOCTOR)
+    from task_gc import ConfigError, load_config
+    for bad in ("elastic.docs", "docs\n", "docs a"):
+        install_with_config(tmp, {"docs": [bad]})
+        check(f"{bad!r} is rejected by install and by the config", blocks.mcp_server_names(tmp)[0] == []
+              and blocks.mcp_server_names(tmp)[1] is not None)
+        with pytest.raises(ConfigError):
+            load_config(tmp / ".agent")
+    source = "---\nname: x\ntools: Read, Grep, Glob  # {{mcp_servers}}\n---\nWrite `{{mcp_servers}}` in prose.\n"
+    prose = "---\nname: y\n---\nThe line ends in `  # {{mcp_servers}}`.\n"
+    agents = tmp / "checkout" / ".cursor" / "agents"
+    agents.mkdir(parents=True)
+    (agents / "x.md").write_text(source)
+    (agents / "y.md").write_text(prose)
+    check("only the frontmatter line is rendered, and an agent with the placeholder only in prose is not templated",
+          blocks.render_agent(source, ["s"]) == source.replace("Glob  # {{mcp_servers}}", "Glob, mcp__s__*")
+          and blocks.render_agent(source, []) == source.replace("Glob  # {{mcp_servers}}", "Glob")
+          and blocks.render_agent(prose, ["s"]) == prose
+          and [path.name for path in blocks.templated_agents(tmp / "checkout")] == ["x.md"])
+
+
+def test_mcp_config_section(tmp: Path) -> None:
+    """The shared defaults name no server; a list of names is accepted and anything else is a config error."""
+    cli_load(DOCTOR)
+    from task_gc import ConfigError, load_config
+    check("the defaults are empty", load_config(tmp)["mcp"] == {"docs": [], "code_search": []})
+    (tmp / "config.json").write_text(json.dumps({"mcp": {"docs": ["docs-a"]}}), encoding="utf-8")
+    check("a list of names is merged over the defaults",
+          load_config(tmp)["mcp"] == {"docs": ["docs-a"], "code_search": []})
+    for bad in ({"docs": "docs-a"}, {"docs": [""]}, {"search": ["x"]}):
+        (tmp / "config.json").write_text(json.dumps({"mcp": bad}), encoding="utf-8")
+        with pytest.raises(ConfigError):
+            load_config(tmp)
 
 
 def claude_memory_entry(home: Path, folder: str) -> None:

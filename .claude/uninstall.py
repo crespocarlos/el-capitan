@@ -9,7 +9,8 @@ and the managed blocks go, and only then the links, so a guard is never register
 script. A link whose script a remaining registration still runs is kept. The links are found by the
 install layout (`install_blocks.LINKS`) and removed when they point into the recorded checkout, by
 real path; each recorded Claude config dir loses its settings entries, blocks and `agents`/`skills`
-links into ~/.cursor; the directories install created go when empty. Exit 0 when nothing of the install is left,
+links into ~/.cursor; the rendered agent copies the manifest records (`rendered_agents`) go with the links;
+the directories install created go when empty. Exit 0 when nothing of the install is left,
 1 when links remain (each is reported), 2 when the run refused before changing anything.
 ~/.agent data stays.
 """
@@ -260,9 +261,12 @@ def uninstall(home: Path, checkout: Path, dry_run: bool) -> int:
         else:
             install_blocks.write_atomically(path, text)
     print(f"  {verb} {len(removing)} link(s) into {', '.join(sorted(roots))}")
+    rendered = install_blocks.rendered_files(home, manifest)
+    if rendered:
+        print(f"  {verb} {len(rendered)} rendered agent(s) from ~/.cursor/agents")
     if not dry_run:
-        for link in removing:
-            link.unlink()
+        for path in [*removing, *rendered]:
+            path.unlink()
         # `dirs` are relative to HOME; `created_config_dirs` are absolute, wherever the config dir lives.
         relative = sorted((manifest or {}).get("dirs", []), key=lambda d: d.count("/"), reverse=True)
         absolute = [Path(name) for name in (manifest or {}).get("created_config_dirs", []) if os.path.isabs(name)]

@@ -1,8 +1,19 @@
 # Shared dispatch instructions
 
 Run orchestrators inline. Dispatch personas only from the main session: use Cursor Task or Claude
-Agent, preserve inherited model selection, and use the documented fallback only when native dispatch
-is unavailable. `REVIEW_ROOT` is the review directory `crew-reviewer` resolved.
+Agent, and preserve inherited model selection. `REVIEW_ROOT` is the review directory `crew-reviewer`
+resolved.
+
+**Dispatch a persona by its agent type.** In Claude Code, pass `subagent_type: reviewer-<name>` (the
+critics and explorers by their own names), so the persona's frontmatter applies: its `tools:`
+allowlist grants the read tools and the docs and code-search MCP servers install rendered into it,
+and nothing else. A generic agent told to read the persona file gets every session tool instead, so
+never dispatch that way. When the agent type is not registered in this session, stop: tell the user
+the agents are not installed for this config dir and to re-run `install.sh`.
+
+**The `claude -p` fallback** is only for a harness with no native subagent dispatch at all. It runs a
+top-level session that does not read the persona's frontmatter, so the persona gets that session's
+tools, not its allowlist; name that in the report's `### Reviewers` section.
 
 Reviewer personas may run read-only: Cursor Ask mode, or a Claude Code read-only subagent, where
 artifact writes are unavailable, and the `claude -p` fallback likewise returns only stdout. Dispatch

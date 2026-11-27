@@ -1,9 +1,9 @@
 """Retention of local state: `crew-task.py gc` (a dry run unless `--apply`) and the sizes `crew-doctor.py` checks.
 
-`~/.agent/config.json` holds `gc`, `doctor` and `ls` (`ls.repo`: the scope of `crew ls` without `--repo`); an
-unset key takes its default. The policy: a DONE task's `artifacts/` after `artifacts_days`, the DONE task
-archived after `archive_days`, memory `.sessions` files after `sessions_days` (never the review queue), and
-the legacy `~/.agent/telemetry`, which holds raw shell commands and which nothing reads.
+`~/.agent/config.json` holds `gc`, `doctor`, `ls` (`ls.repo`: the scope of `crew ls` without `--repo`) and `mcp`
+(server names doctor looks for, empty by default); an unset key takes its default. The policy: a DONE task's
+`artifacts/` after `artifacts_days`, the DONE task archived after `archive_days`, memory `.sessions` files after
+`sessions_days` (never the review queue), and the legacy `~/.agent/telemetry` (raw shell commands; nothing reads it).
 """
 from __future__ import annotations
 
@@ -26,9 +26,12 @@ from lib.files import read_json_object
 
 DEFAULTS = {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30},
             "doctor": {"tasks_mb": 500, "sessions_mb": 100},
-            "ls": {"repo": "here"}}
+            "ls": {"repo": "here"},
+            "mcp": {"docs": [], "code_search": []}}  # project-agnostic: the user names their own servers
 REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-RULES = {"ls": "all, here or an owner/name"}  # a section's accepted values when not a number >= 0
+SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+")  # install_blocks.SERVER_NAME: the characters a tool id keeps
+# A section's accepted values when not a number >= 0.
+RULES = {"ls": "all, here or an owner/name", "mcp": "a list of MCP server names (letters, digits, _ and -)"}
 KEEP_SESSIONS = frozenset({"review-queue.jsonl"})  # the capture queue `crew-inbox.py` drains
 TELEMETRY_NOTICE = "legacy telemetry: it holds raw shell commands and nothing reads it"
 DAY = 86400
@@ -61,9 +64,11 @@ class Action:
 
 
 def valid(section: str, value: object) -> bool:
-    """`ls.repo` is `all`, `here` or an `owner/name`; every other setting is a number >= 0."""
+    """`ls.repo` is `all`, `here` or an `owner/name`; an `mcp` key, a list of server names; any other, a number >= 0."""
     if section == "ls":
         return isinstance(value, str) and (value.lower() in ("all", "here") or bool(REPO_NAME.match(value)))
+    if section == "mcp":
+        return isinstance(value, list) and all(isinstance(name, str) and SERVER_NAME.fullmatch(name) for name in value)
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
 
 

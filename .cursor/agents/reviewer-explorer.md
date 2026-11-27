@@ -1,7 +1,7 @@
 ---
 name: reviewer-explorer
 description: "Codebase explorer for diff-context pattern discovery. Dispatched by crew-reviewer — do not invoke directly."
-disallowedTools: Write, Edit, NotebookEdit, Bash, Agent, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__atlassian__*, mcp__notion__*, mcp__filesystem__*, mcp__claude_ai_Claude_Docs__*
+tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 14
 ---
