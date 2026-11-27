@@ -123,15 +123,57 @@ def test_settings_merge(tmp: Path) -> None:
           and "Bash(my-own *)" in merged["allow"], (result.stderr[-200:], merged))
 
 
+@pytest.mark.parametrize("case, before, flag, after", [
+    ("the key is written only with --auto-memory-off", {}, True, False),
+    ("without the flag nothing is written", {}, False, None),
+    ("a user's own true is kept", {"autoMemoryEnabled": True}, True, True),
+    ("a user's own false is kept", {"autoMemoryEnabled": False}, True, False),
+])
+def test_settings_merge_auto_memory(tmp: Path, case: str, before: dict, flag: bool, after: object) -> None:
+    """The merge writes `autoMemoryEnabled: false` only on request and never over a user's value; the unmerge of
+    the install's record takes back only the false it added."""
+    home, dest = tmp / "home", tmp / "home" / "cfg" / "settings.json"
+    dest.parent.mkdir(parents=True)
+    dest.write_text(json.dumps(before), encoding="utf-8")
+    flags = ["--auto-memory-off"] if flag else []
+    merged = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest), "--manifest", str(home), *flags],
+                            capture_output=True, text=True)
+    value = json.loads(dest.read_text(encoding="utf-8")).get("autoMemoryEnabled")
+    unmerge = ("import json, sys, merge_claude_settings as m; d = json.load(open(sys.argv[1])); "
+               "r = next(v for k, v in json.load(open(sys.argv[2])).items() if k.startswith('claude_settings')); "
+               "print(json.dumps(m.unmerge(d, r, json.load(open(sys.argv[3])), print).get('autoMemoryEnabled')))")
+    undone = subprocess.run([sys.executable, "-c", unmerge, str(dest), str(home / ".agent/install-manifest.json"),
+                             str(SETTINGS)], capture_output=True, text=True, cwd=MERGE.parent)
+    check(f"{case}: merged as expected, and uninstall leaves the user's value",
+          (merged.returncode, value, undone.returncode) == (0, after, 0)
+          and json.loads(undone.stdout.splitlines()[-1]) == before.get("autoMemoryEnabled"),
+          (merged.stderr[-300:], value, undone.stdout, undone.stderr[-300:]))
+
+
 @pytest.fixture(scope="module")
 def installed(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """One HOME install.sh installed into; each doctor case works on its own copy."""
+    """One HOME install.sh installed into, with a second config dir `~/.claude-work`; each doctor case copies it."""
     home = tmp_path_factory.mktemp("installed") / "home"
     home.mkdir()
-    env = {**{k: v for k, v in os.environ.items() if not k.startswith("CREW_")}, "HOME": str(home)}
+    env = {**{k: v for k, v in os.environ.items() if not k.startswith("CREW_")}, "HOME": str(home),
+           "CLAUDE_CONFIG_DIR": str(home / ".claude-work")}
     done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
     assert done.returncode == 0, done.stderr[-400:]
     return home
+
+
+def copy_install(installed: Path, home: Path) -> None:
+    """A copy of the install whose manifest and links name the copy's directories, not the original's."""
+    shutil.copytree(installed, home, symlinks=True)
+    links = [Path(top) / name for top, dirs, files in os.walk(home) for name in dirs + files
+             if (Path(top) / name).is_symlink()]
+    for link in links:
+        target = os.readlink(link)
+        if target.startswith(str(installed) + os.sep):
+            link.unlink()
+            link.symlink_to(str(home) + target[len(str(installed)):])
+    manifest = home / ".agent" / "install-manifest.json"
+    manifest.write_text(manifest.read_text(encoding="utf-8").replace(str(installed), str(home)), encoding="utf-8")
 
 
 def doctor(home: Path) -> tuple[int, list[tuple[str, str]]]:
@@ -155,6 +197,11 @@ def unmatch(data: dict) -> None:
 def drop_guard(data: dict) -> None:
     shell = data["hooks"]["beforeShellExecution"]
     data["hooks"]["beforeShellExecution"] = [e for e in shell if "credentials" not in e["command"]]
+
+
+def drop_claude_guard(data: dict) -> None:
+    for entry in data["hooks"]["PreToolUse"]:
+        entry["hooks"] = [hook for hook in entry["hooks"] if "credentials" not in hook["command"]]
 
 
 def tilde_hook(home: Path) -> None:
@@ -191,7 +238,12 @@ BAD_CONFIG = '{"gc": {"artifact_days": 1}}'
     ("missing script", lambda home: (home / ".claude/hooks/guard").unlink(),
      "hooks", "scripts are missing: ~/.claude/hooks/guard/"),
     ("missing script, ~/ form", tilde_hook,
-     "hooks", "Claude Code: registered hook scripts are missing: ~/.claude/hooks/tilde-gone.sh"),
+     "hooks", "Claude Code (~/.claude): registered hook scripts are missing: ~/.claude/hooks/tilde-gone.sh"),
+    ("missing hook in the second config dir",
+     lambda home: edit_json(home / ".claude-work/settings.json", drop_claude_guard),
+     "hooks", "Claude Code (~/.claude-work): "),
+    ("second config dir without agents", lambda home: (home / ".claude-work/agents").unlink(),
+     "links", "~/.claude-work: not linked to ~/.cursor: agents"),
     ("missing script, absolute form", absolute_hook,
      "hooks", "Cursor: registered hook scripts are missing: ~/.claude/hooks/absolute-gone.sh"),
     ("wrong matcher", lambda home: edit_json(home / ".claude/settings.json", unmatch),
@@ -206,7 +258,7 @@ def test_doctor(installed: Path, tmp: Path, case: str, damage: Callable[[Path], 
                 area: str | None, text: str | None) -> None:
     """A fresh install is healthy; each damage is one FAIL line naming it, the other checks still run, exit 1."""
     home = tmp / "home"
-    shutil.copytree(installed, home, symlinks=True)
+    copy_install(installed, home)
     damage(home)
     code, fails = doctor(home)
     if area is None:
@@ -218,3 +270,35 @@ def test_doctor(installed: Path, tmp: Path, case: str, damage: Callable[[Path], 
     real = subprocess.run([str(home / ".agent/bin/crew-doctor.py"), "--offline"],
                           capture_output=True, text=True, env=env)
     check(f"{case}: the installed command, run as a process, exits 1", real.returncode == 1, real.stdout[-600:])
+
+
+def claude_memory_entry(home: Path, folder: str) -> None:
+    """One auto-memory entry in the second config dir, under project folder `folder`."""
+    memory = home / ".claude-work" / "projects" / folder / "memory"
+    memory.mkdir(parents=True)
+    (memory / "feedback_lesson.md").write_text("---\ntype: feedback\n---\nA lesson.\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("case, damage, level, words", [
+    ("auto-memory off everywhere", lambda home: None, "ok", ("auto-memory off",)),
+    ("the user's own true",
+     lambda home: edit_json(home / ".claude/settings.json", lambda d: d.update(autoMemoryEnabled=True)),
+     "WARN", ("~/.claude/settings.json", "autoMemoryEnabled")),
+    ("an entry to import", lambda home: claude_memory_entry(home, re.sub(r"[^A-Za-z0-9]", "-", str(home))),
+     "note", ("~/.claude-work:", "import-claude --config-dir")),
+    ("an entry for review", lambda home: claude_memory_entry(home, "-gone"),
+     "note", ("~/.claude-work:", "delete or move")),
+])
+def test_doctor_auto_memory(installed: Path, tmp: Path, case: str, damage: Callable[[Path], object],
+                            level: str, words: tuple[str, ...]) -> None:
+    """A user's `true` is a WARN, entries to import or to review are notes, each naming its dir; none counts."""
+    home = tmp / "home"
+    copy_install(installed, home)
+    damage(home)
+    done = cli(DOCTOR, "--offline", env={"HOME": str(home), "CREW_MEMORY_DIR": None})
+    lines = [line.split(None, 2) for line in done.stdout.splitlines() if len(line.split(None, 2)) == 3]
+    machine = any(found[0] == "FAIL" and found[1] in ("tools", "gh") for found in lines)
+    check(f"{case}: a {level} memory line names the dir, no other FAIL, and the exit counts only FAIL lines",
+          any(found[:2] == [level, "memory"] and all(word in found[2] for word in words) for found in lines)
+          and not any(found[0] == "FAIL" and found[1] not in ("tools", "gh") for found in lines)
+          and done.returncode == (1 if machine else 0), done.stdout)

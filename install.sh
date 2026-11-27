@@ -1,18 +1,32 @@
 #!/bin/bash
 set -e
 
-# Usage: install.sh [--dry-run]            install or upgrade from this checkout
-#        install.sh --uninstall [--dry-run] remove what install created; ~/.agent data stays
-# --dry-run prints every action and changes nothing.
+# Usage: install.sh [--dry-run] [--claude-config-dir DIR ...]   install or upgrade from this checkout
+#        install.sh --uninstall [--dry-run]                     remove what install created; ~/.agent data stays
+# --dry-run prints every action and changes nothing. Every Claude config dir gets the settings merge,
+# the agents link and the skills: ~/.claude, $CLAUDE_CONFIG_DIR when set, and each --claude-config-dir
+# (repeatable). They are recorded in ~/.agent/install-manifest.json, and a later install covers them too.
 DRY_RUN=0
 UNINSTALL=0
-for arg in "$@"; do
-  case "$arg" in
+ARGS=("$@")
+EXTRA_CONFIG_DIRS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --uninstall) UNINSTALL=1 ;;
-    *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    --claude-config-dir)
+      if [ $# -lt 2 ] || [ -z "$2" ]; then echo "error: --claude-config-dir needs a directory" >&2; exit 1; fi
+      EXTRA_CONFIG_DIRS+=("$2")
+      shift ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
+  shift
 done
+if [ "$UNINSTALL" -eq 1 ] && [ "${#EXTRA_CONFIG_DIRS[@]}" -gt 0 ]; then
+  echo "error: --claude-config-dir is an install option; --uninstall reverses every config dir the manifest records" >&2
+  exit 1
+fi
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then EXTRA_CONFIG_DIRS+=("$CLAUDE_CONFIG_DIR"); fi
 
 # Every dependency is checked before anything is written: the guard hooks fail closed, so a missing
 # interpreter would turn a finished install into a blocked shell.
@@ -55,7 +69,7 @@ if [ -z "$source_file" ] || [ ! -f "$source_file" ] \
     echo "error: could not clone el-capitan to $checkout. Nothing was installed." >&2
     exit 1
   fi
-  exec bash "$checkout/install.sh" "$@"
+  exec bash "$checkout/install.sh" "${ARGS[@]}"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$source_file")" && pwd)"
@@ -233,21 +247,30 @@ run mkdir -p ~/.agent/tasks ~/.agent/journal ~/.agent/bin
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "  [dry-run] create the install directories and record them in ~/.agent/install-manifest.json"
 else
-  python3 "$SCRIPT_DIR/.claude/install_blocks.py" prepare "$HOME" "$SCRIPT_DIR"
+  python3 "$SCRIPT_DIR/.claude/install_blocks.py" prepare "$HOME" "$SCRIPT_DIR" "${EXTRA_CONFIG_DIRS[@]}"
+fi
+# The Claude config dirs, ~/.claude first: the recorded ones and those this run names.
+CONFIG_DIRS=()
+while IFS= read -r config_dir; do
+  [ -n "$config_dir" ] && CONFIG_DIRS+=("$config_dir")
+done < <(python3 "$SCRIPT_DIR/.claude/install_blocks.py" config-dirs "$HOME" "${EXTRA_CONFIG_DIRS[@]}")
+if [ "${#CONFIG_DIRS[@]}" -eq 0 ]; then
+  echo "error: could not list the Claude config dirs (install_blocks.py config-dirs)" >&2
+  exit 1
 fi
 
 # ~/.claude/agents and ~/.claude/skills are directory symlinks to their ~/.cursor equivalents.
 # Both Cursor and Claude Code consumers are satisfied from a single set of files in ~/.cursor/.
 # Migrate: if they're real directories (old file-per-file layout), replace with a dir symlink.
-for dir in agents skills; do
-  target="$HOME/.claude/$dir"
+link_managed_dir() {
+  local target="$1" dir="$2" count backup restored file name skill
   if [ -d "$target" ] && [ ! -L "$target" ]; then
     count=$(find "$target" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
     # Never delete: hand-placed and third-party agents live here. Move aside so the
     # install can proceed and the files stay recoverable.
     backup="${target}.bak.$(date +%s)"
     while [ -e "$backup" ]; do backup="${backup}x"; done
-    echo "  ~/.claude/$dir is a real directory ($count .md files) — moving to $backup and linking the managed dir."
+    echo "  $target is a real directory ($count .md files) — moving to $backup and linking the managed dir."
     run mv "$target" "$backup"
     # Restore user files into the add-on location, or the migration silently disables
     # every third-party agent the user had. Names the managed set already owns are skipped.
@@ -282,7 +305,9 @@ for dir in agents skills; do
     fi
   fi
   run ln -sfn "$HOME/.cursor/$dir" "$target"
-done
+}
+link_managed_dir "$HOME/.claude/agents" agents
+link_managed_dir "$HOME/.claude/skills" skills
 
 # Prune broken symlinks in a directory (symlinks whose target no longer exists).
 # Only removes symlinks that point into SCRIPT_DIR, so hand-placed files are safe.
@@ -353,6 +378,46 @@ if [ -d "$SCRIPT_DIR/.cursor/skills" ]; then
   shopt -u nullglob
 fi
 
+# `agents` and `skills` of every other config dir: a directory link into ~/.cursor when the dir has none.
+# When it is a real directory (another tool syncs into it), one link per crew entry inside it, leaving its
+# other entries alone. Anything of the user's (a link elsewhere, a file or link of a crew entry's name) is
+# kept with a line, never replaced, and uninstall removes only the links named after their ~/.cursor entry.
+link_config_entries() {
+  local target="$1/$2" source="$HOME/.cursor/$2" entry name link
+  if [ -L "$target" ]; then
+    [ "$(readlink "$target")" = "$source" ] || echo "  kept $target: your link to $(readlink "$target"); crew $2 are not linked there"
+    return 0
+  fi
+  if [ ! -e "$target" ]; then
+    run ln -s "$source" "$target"
+    return 0
+  fi
+  if [ ! -d "$target" ]; then
+    echo "  kept $target: not a directory; crew $2 are not linked there"
+    return 0
+  fi
+  shopt -s nullglob
+  for entry in "$SCRIPT_DIR/.cursor/$2"/*; do
+    name=$(basename "$entry")
+    link="$target/$name"
+    if [ -L "$link" ] && [ "$(readlink "$link")" = "$source/$name" ]; then continue; fi
+    if [ -e "$link" ] || [ -L "$link" ]; then
+      echo "  kept $link: yours; the crew entry $name is not linked there"
+      continue
+    fi
+    run ln -s "$source/$name" "$link"
+  done
+  for link in "$target"/*; do
+    name=$(basename "$link")
+    if [ -L "$link" ] && [ ! -e "$link" ] && [ "$(readlink "$link")" = "$source/$name" ]; then run rm -f "$link"; fi
+  done
+  shopt -u nullglob
+}
+for config_dir in "${CONFIG_DIRS[@]:1}"; do
+  link_config_entries "$config_dir" agents
+  link_config_entries "$config_dir" skills
+done
+
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "  [dry-run] upsert memory adapters and global rule imports"
 else
@@ -365,17 +430,41 @@ if [ -f "$SCRIPT_DIR/.claude/settings.json" ]; then
   # settings.json: merge el-capitan hooks into existing config rather than symlinking.
   # This is a managed copy — re-run install.sh to pick up upstream changes.
   SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.json"
-  SETTINGS_DEST="$HOME/.claude/settings.json"
-  # What the merge adds (absent before) is recorded in the install manifest; uninstall removes only that.
-  if [ "$DRY_RUN" -eq 1 ]; then
-    echo "  [dry-run] merge settings.json → $SETTINGS_DEST"
-  else
-    if ! python3 "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST" --manifest "$HOME"; then
+  # What the merge adds (absent before) is recorded in the install manifest, per config dir; uninstall
+  # removes only that. Every config dir's hooks run the scripts in ~/.claude/hooks.
+  # Crew memory is the one memory store: Claude Code's auto-memory goes off in a dir (`autoMemoryEnabled:
+  # false`) only once none of its entries is left to import, so nothing it remembered is lost.
+  for config_dir in "${CONFIG_DIRS[@]}"; do
+    SETTINGS_DEST="$config_dir/settings.json"
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "  [dry-run] merge settings.json → $SETTINGS_DEST"
+      continue
+    fi
+    memory_flag=()
+    check_status=0
+    left=$(python3 "$SCRIPT_DIR/.agent/tools/memory/crew-mem.py" import-claude --check --config-dir "$config_dir" 2>&1) || check_status=$?
+    pending=$(grep -c '^not imported:' <<< "$left" || true)
+    review=$(grep -c '^review ' <<< "$left" || true)
+    if [ "$check_status" -eq 0 ]; then
+      memory_flag=(--auto-memory-off)
+    elif [ "$check_status" -eq 1 ]; then
+      if [ "$pending" -gt 0 ]; then
+        echo "  auto-memory left on in $config_dir: Claude memory entries to import: $pending."
+        echo "    Run ~/.agent/bin/crew-mem.py import-claude --config-dir $config_dir, import the drafts, then re-run install.sh."
+      fi
+      if [ "$review" -gt 0 ]; then
+        echo "  auto-memory left on in $config_dir: Claude memory entries for your review: $review."
+        echo "    ~/.agent/bin/crew-mem.py import-claude --check --config-dir $config_dir lists them: decide, then delete or move each file."
+      fi
+    else
+      echo "  auto-memory left on in $config_dir: could not check its Claude memory entries: ${left%%$'\n'*}" >&2
+    fi
+    if ! python3 "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST" --manifest "$HOME" "${memory_flag[@]}"; then
       echo "  ERROR: settings.json merge failed — hooks may not be registered" >&2
       echo "  Run manually: python3 $SCRIPT_DIR/.claude/merge_claude_settings.py $SETTINGS_SRC $SETTINGS_DEST --manifest $HOME" >&2
       FAILED=1
     fi
-  fi
+  done
 fi
 link_dir_files "$SCRIPT_DIR/.claude/hooks" ~/.claude/hooks
 # The guard rules and the shared preamble live in subdirectories, and each is linked as a whole
@@ -453,6 +542,7 @@ echo "Done. Installed:"
 echo "  Rules:   $(ls ~/.cursor/rules/*.mdc 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/rules)"
 echo "  Agents:   $(find ~/.cursor/agents -maxdepth 1 -name '*.md' -type l | wc -l | tr -d ' ') (symlinked → ~/.cursor/agents ← ~/.claude/agents)"
 echo "  Skills:   $(ls -d ~/.cursor/skills/*/ 2>/dev/null | wc -l | tr -d ' ') (symlinked → ~/.cursor/skills ← ~/.claude/skills)"
+echo "  Claude config dirs: ${CONFIG_DIRS[*]}"
 echo ""
 echo "  Journal:  ~/.agent/journal/ (monthly files, not tracked by git)"
 

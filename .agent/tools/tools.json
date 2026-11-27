@@ -791,6 +791,15 @@
       "smoke": "imported by crew-mem.py"
     },
     {
+      "name": "memory_claude.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py and doctor_checks.py: `import-claude`: Claude Code auto-memory drafted into the inbox, `--check`, `--archive`",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
       "name": "memory_maintenance.py",
       "dir": "memory",
       "kind": "module",

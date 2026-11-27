@@ -46,7 +46,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py` | — | Durable units and immutable observations |
+| `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
 | `maintenance/` | `crew-doctor.py`, `crew-lint.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
 | `lib/` | — | `files.py`, `git.py`, `gh_reads.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
@@ -62,7 +62,7 @@ file at that exact path.
 and `crew-lint.py` are argparse entry points over their modules: each parses the command line and
 dispatches, and holds no command logic. Modules import each other by their namespaced name in
 dependency order (`memory_paths` → `memory_frontmatter` → `memory_store` → `memory_add`/`memory_search`/
-`memory_journal`/`memory_inbox` → `memory_maintenance`, `memory_store` → `memory_transfer`; `review_vocabulary` → `review_models` →
+`memory_journal`/`memory_inbox` → `memory_maintenance`, `memory_store` → `memory_transfer`/`memory_claude`; `review_vocabulary` → `review_models` →
 `review_findings` → `review_render`/`review_layers` → `review_coverage` → `review_report`; `task_status`
 → `task_progress` → `task_state` → `task_resolve`/`task_gates`/`ls_data` → `task_report`; `evals_query` →
 `evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_catalog`/`lint_prompts`/
@@ -74,15 +74,16 @@ reaching into a private module.
 
 **Packages import along these edges only** (crew-lint `package-direction`; a module's package is the
 directory it lives in, `lib` imports nothing from a package). `review` may read task state (PROGRESS
-METRIC lines, the report check) and `maintenance` reads the retention policy and sizes (`task_gc.py`) for `crew-doctor.py`; `task`
-never imports `review`, and nothing imports `maintenance`, `memory` or `evals` across packages:
+METRIC lines, the report check) and `maintenance` reads the retention policy and sizes (`task_gc.py`) and the
+Claude auto-memory entries not yet imported (`memory_claude.py`) for `crew-doctor.py`; `task` never imports
+`review`, and nothing imports `maintenance` or `evals` across packages, nor `memory` except that one read:
 
 ```package-edges
 task -> lib
 review -> task lib
 memory -> lib
 evals -> lib
-maintenance -> task lib
+maintenance -> task memory lib
 lib ->
 ```
 
@@ -90,6 +91,17 @@ lib ->
 wherever it lives: `crew-lint`'s `module-size` rule derives the capped set from the tree rather than
 from a list, so a package added tomorrow is capped the moment its directory exists. There is no
 per-package exception and no exception by filename.
+
+**Claude config dirs.** `install.sh` merges the settings and links `agents` and `skills` into every
+Claude config dir (`~/.claude`, `$CLAUDE_CONFIG_DIR`, each `--claude-config-dir`), but writes the
+CLAUDE.md blocks into `~/.claude/CLAUDE.md` only. The docs (claude-directory.md) say "If you set
+`CLAUDE_CONFIG_DIR`, every `~/.claude` path on this page lives under that directory instead", which
+would include `CLAUDE.md`. Observed: the user CLAUDE.md is read from ~/.claude even with
+CLAUDE_CONFIG_DIR set (2026-11-27): a `CLAUDE_CONFIG_DIR=~/.claude-work` session with no
+`~/.claude-work/CLAUDE.md` (and no link) loaded `~/.claude/CLAUDE.md`. A block in the second dir could
+therefore load every rule twice. `autoMemoryEnabled: false` is written by the settings merge
+(`AUTO_MEMORY_OFF`), not carried in `.claude/settings.json`, because that file is also this checkout's
+project settings.
 
 ## Module maps
 
