@@ -13,6 +13,14 @@
 # protocol writes `.task-id` in Step 1 and the SPEC.md in Step 3, so a first write always reaches this
 # hook with metadata present. Denying on the slug alone refused the ordinary case — a fresh directory
 # whose title differed by one word from the slug its creator derived — while no file existed to lose.
+#
+# It also guards the approval gate. Install allows every Edit under `~/.agent/tasks` without a prompt,
+# so `lib/spec_guard.py` refuses an Edit, MultiEdit or Write that changes the `## Status` value of an
+# existing task SPEC.md (read with the one reader, `task_status`), creates one with a Status other
+# than DRAFTING, leaves a second Status heading, carries another tool's fields, or cannot be applied
+# exactly; and any write to `.task-id` or a review's `*.expect`, `*.provenance.json` and `*.out.md`.
+# It decides on the path first and fails closed: no verdict is a denial. A Bash
+# command that rewrites SPEC.md is not seen here; the harness's Bash prompt is the only check on it.
 set -euo pipefail
 HOOK_NAME=check-task-spec-owner
 # shellcheck source=lib/hook.sh
@@ -22,19 +30,22 @@ hook_event
 path=$(hook_field file_path)
 [ -n "$path" ] || hook_allow
 
-tasks_root="$HOME/.agent/tasks"
-case "$path" in */SPEC.md) ;; *) hook_allow ;; esac
+verdict=$(printf '%s' "$HOOK_INPUT" | python3 -I "$HOOK_LIB/spec_guard.py" "$HOME/.agent/tasks" 2>/dev/null) || verdict=""
+case "$verdict" in
+  skip) hook_allow ;;
+  "ok "*) path=${verdict#ok } ;;
+  "deny "*) hook_deny "${verdict#deny }" ;;
+  *) hook_deny "Task spec guard: cannot check this write to $path (lib/spec_guard.py gave no verdict), so it is refused." ;;
+esac
 task_dir=$(dirname "$path")
-case "$task_dir" in "$tasks_root"/*) ;; *) hook_allow ;; esac
-# `<tasks>/<uuid>/SPEC.md` only: a nested path such as `<uuid>/review/…/SPEC.md` is not a task spec.
-[ "$(dirname "$task_dir")" = "$tasks_root" ] || hook_allow
 
-metadata="$task_dir/.task-id"
-[ -f "$metadata" ] || hook_allow
 # Nothing to protect: a directory with no SPEC.md cannot lose one, and this is where every new task
 # starts. Refusing here turned the ordinary first write into a denial whenever the spec's title and the
 # slug its creator derived disagreed by a word.
 [ -f "$task_dir/SPEC.md" ] || hook_allow
+
+metadata="$task_dir/.task-id"
+[ -f "$metadata" ] || hook_allow
 owner=$(jq -r '.slug // empty' "$metadata" 2>/dev/null) || hook_allow
 [ -n "$owner" ] || hook_allow
 

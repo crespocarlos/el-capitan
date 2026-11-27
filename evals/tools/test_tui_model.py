@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / "tui" / "crew_tui.py"
 load(ENTRY)
 import tui_model  # noqa: E402
-from tui_model import CREW_TASK, FORCE_NOTE, Filters, collect, landed_for, moves, parse_filter  # noqa: E402
+from tui_model import CREW_TASK, SHIPPED_NOTE, STALE_NOTE, Filters, collect, landed_for, moves, parse_filter  # noqa: E402
 
 NOW = time.time()
 HOUR = 3600
@@ -283,21 +283,25 @@ def test_workers_view_lists_running_stages_and_locks(home: Path) -> None:
     assert f"\nSTALE_SECONDS={tui_model.LOCK_STALE_SECONDS}\n" in hook, "the lock threshold follows worker-tree.sh"
 
 
+BLOCK, CLOSE = ("blocked", "{t}", "why"), ("mark-done", "{t}", "--force", "--pr-url", STALE_NOTE)
+
+
 @pytest.mark.parametrize("state,prs,expected", [
-    ("DRAFTING", [], [("mark-approved", "{t}")]),
-    ("APPROVED", [], [("mark-implementing", "{t}", "--branch", "feat/x")]),
-    ("IMPLEMENTING", [PR.format(7), PR.format(8)], [("mark-done", "{t}", "--pr-url", PR.format(8))]),
-    ("IMPLEMENTING", [], [("mark-done", "{t}", "--force", "--pr-url", FORCE_NOTE)]),
-    ("ON-HOLD", [], []),
-    ("DONE", [PR.format(8)], None),
+    ("DRAFTING", [], [("mark-approved", "{t}"), BLOCK, CLOSE]),
+    ("APPROVED", [], [("mark-implementing", "{t}", "--branch", "feat/x"), BLOCK, CLOSE]),
+    ("IMPLEMENTING", [PR.format(7), PR.format(8)], [("mark-done", "{t}", "--pr-url", PR.format(8)), BLOCK]),
+    ("IMPLEMENTING", [], [BLOCK, (*CLOSE[:-1], SHIPPED_NOTE)]),
+    ("ON-HOLD", [], [BLOCK, CLOSE]),
+    ("ABANDONED", [], [BLOCK]),
+    ("DONE", [PR.format(8)], []),
 ])
-def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[tuple] | None) -> None:
-    """The gate the state allows (mark done with the newest PR, else --force and the default note), then
-    `blocked` for every task not DONE; every move is a subcommand crew-task.py has."""
+def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[tuple]) -> None:
+    """The gate the state allows (mark done with the newest PR), then `blocked` for every task not DONE and close as
+    done (`--force`, the note `none (committed to main)` for IMPLEMENTING, else `closed: stale`) for a closable state
+    with no PR; ABANDONED is not closable. Every move is a subcommand crew-task.py has."""
     found = moves(state, tmp, prs, "feat/x")
-    gates = [tuple(arg.format(t=tmp) for arg in args) for args in expected or []]
-    wanted = [] if expected is None else [*gates, ("blocked", str(tmp), "why")]
-    assert [move.argv(move.default or "why")[1:] for move in found] == [list(args) for args in wanted]
+    wanted = [[arg.format(t=tmp) for arg in args] for args in expected]
+    assert [move.argv(move.default or "why")[1:] for move in found] == wanted
     choices = load(CREW_TASK).make_parser()._subparsers._group_actions[0].choices
     assert all(move.args[0] in choices for move in found)
 
@@ -318,13 +322,14 @@ def test_a_move_runs_crew_task_for_real(home: Path) -> None:
 
 @pytest.mark.parametrize("spec_line", ["", "## Branch: [type/short-description — e.g. feat/x]\n\n"])
 def test_no_start_move_without_a_spec_branch(home: Path, spec_line: str) -> None:
-    """An APPROVED task whose SPEC.md has no `## Branch:`, or only the template's placeholder, gets no start move and a
-    note saying to start it from its checkout."""
+    """An APPROVED task whose SPEC.md has no `## Branch:`, or only the template's placeholder, gets no start move (only
+    `blocked` and close as done) and a note saying to start it from its checkout."""
     spec = home / ".agent" / "tasks" / "T2" / "SPEC.md"
     spec.write_text(spec.read_text().replace("## Branch: feat/gadgets\n\n", spec_line))
     view = views(home, Filters(repo="all"))["tasks"]
     row = next(i for i, cells in enumerate(view.rows) if cells[1].startswith("blocked"))
-    assert [move.args[0] for move in view.moves[row]] == ["blocked"], view.moves[row]
+    found = [(move.args[0], *move.args[2:3]) for move in view.moves[row]]
+    assert found == [("blocked",), ("mark-done", "--force")], view.moves[row]
     assert any("no start move for blocked" in note and "from its checkout" in note for note in view.notes), view.notes
 
 

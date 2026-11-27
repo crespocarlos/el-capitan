@@ -231,7 +231,7 @@ def test_gates(tmp: Path) -> None:
     check("--force closes an unchecked task", status_of(tasks / "open") == "DONE")
     note = task("mark-done", str(tasks / "free-text"), "--pr-url", "none (committed to main)", "--force")
     check("--force accepts a free-text note and records no PR", note.returncode == 0 and status_of(tasks / "free-text") == "DONE"
-          and "(PR opened: none (committed to main))" in progress_text(tasks / "free-text") and task_state.load(tasks / "free-text").prs == [])
+          and "IMPLEMENTING → DONE (closed: none (committed to main))" in progress_text(tasks / "free-text") and task_state.load(tasks / "free-text").prs == [])
     task("blocked", str(spec(tasks / "quoted", "IMPLEMENTING")), f"waiting: PR opened: {PR_ONE} needs a rebase")
     check("a BLOCKED reason quoting `PR opened:` adds no PR", task_state.load(tasks / "quoted").prs == [])
     check("no review closes the task", close(spec(tasks / "unreviewed", "IMPLEMENTING")).returncode == 0 and status_of(tasks / "unreviewed") == "DONE")
@@ -539,6 +539,31 @@ def test_reviewed_at(tmp: Path) -> None:
         check(f"{name}: the recorded review is read and its footer commit is the one",
               resolved is not None and resolved.resolve() == (recorded / "REVIEW.md").resolve()
               and task_status.reviewed_at(resolved) == "0123456789abcdef" and str(resolved) in task_gates.review_location(directory), resolved)
+
+
+def test_force_closes_any_open_state(tmp: Path) -> None:
+    """`mark-done --force` closes a stale DRAFTING, APPROVED or ON-HOLD task with `closed: <note>` (stripped, any case
+    of the prefix) and ends its BLOCKED line. Refused, nothing written: a draft without `--force`, a PR URL before
+    approval, ABANDONED, an unset status, an empty note."""
+    tasks = tmp / "stale"
+    draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
+    check("DRAFTING without --force is refused", refuses(task("mark-done", str(draft), "--pr-url", "closed: stale"), "not a GitHub PR URL")
+          and refuses(task("mark-done", str(draft), "--pr-url", PR_ONE), "not IMPLEMENTING") and status_of(draft) == "DRAFTING")
+    for words, directory, note in (("approve the spec first", draft, PR_ONE), ("is ABANDONED", spec(tasks / "abandoned", "ABANDONED"), "closed: stale"),
+                                   ("is unset", spec(tasks / "unset", ""), "closed: stale"), ("--pr-url is empty", draft, "  closed:  ")):
+        before = status_of(directory)
+        check(f"--force refuses: {words}", refuses(task("mark-done", str(directory), "--pr-url", note, "--force"), words)
+              and status_of(directory) == before and "TRANSITION" not in progress_text(directory), progress_text(directory))
+    held = spec(tasks / "held", HOLD.format("DRAFTING"), "- [ ] a")
+    task("blocked", str(held), "deprioritized")
+    check("an ON-HOLD task shows its BLOCKED line", "BLOCKED: deprioritized" in ls(tasks, "--all", "--repo", "all"))
+    for state, directory, note in (("DRAFTING", draft, "closed: stale"), ("APPROVED", spec(tasks / "approved", "APPROVED", "- [ ] a"), "  Closed: stale "),
+                                   ("ON-HOLD", held, "stale")):
+        closed = task("mark-done", str(directory), "--pr-url", note, "--force")
+        check(f"--force closes {state}", closed.returncode == 0 and status_of(directory) == "DONE"
+              and f"{state} → DONE (closed: stale)" in progress_text(directory), (closed, progress_text(directory)))
+    row = next(r for r in json.loads(ls(tasks, "--all", "--json", "--repo", "all"))["items"] if r["slug"] == "held")
+    check("closing ends the open BLOCKED line", row.get("blocked") == "", row)
 
 
 def test_blocked_events(tmp: Path) -> None:

@@ -181,6 +181,9 @@ def plan_settings(home: Path, checkout: Path, manifest: dict | None, current: di
         if data is None:
             continue
         template = json.loads((checkout / template_of(section)).read_text(encoding="utf-8"))
+        if section.startswith("claude_settings"):
+            # Install wrote the template's directories expanded; compare with what it wrote.
+            template = merge_claude_settings.expand_dirs(template, str(home))
         name = tilde(settings_files(home)[section], home)
         left = json.loads(json.dumps(data))
         recorded = (manifest or {}).get(section)

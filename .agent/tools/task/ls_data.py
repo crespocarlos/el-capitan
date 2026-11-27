@@ -1,8 +1,9 @@
 """What `crew ls` and `crew report` read: rows, the repo and state filters, stale, BLOCKED and `landed`, `--watch`.
 
 `landed`: did a DONE task's change reach the default branch (`yes`, `no`, `unknown`), from the PR
-record, not branch ancestry. `landing_bases` (`AGENTS.md`) adds branches where work may land; a match
-is `yes` with `backport to <base>`. The watch loop's sleep, clear and cap are parameters.
+record, not branch ancestry; `closed` for a task closed with a note and no PR. `landing_bases`
+(`AGENTS.md`) adds branches where work may land; a match is `yes` with `backport to <base>`.
+The watch loop's sleep, clear and cap are parameters.
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ import task_bootstrap  # noqa: F401
 
 from task_gc import Places, load_config
 from task_lock import blocked_lines
-from task_progress import GITHUB_PR_URL, pr_urls
+from task_progress import GITHUB_PR_URL, pr_urls, read_entries
 from task_state import TaskState, head, load, name
 
 from lib.files import FENCE
@@ -195,15 +196,23 @@ def flag(found: dict | None, patterns: list[str] | None = None) -> str:
 Local = Callable[[], "dict[str, str]"]
 
 
+def closed_without_pr(task: Path) -> bool:
+    """True when a TRANSITION into DONE carries `(closed: <note>)`, the forced close of `mark-done`."""
+    return any(entry.kind == "TRANSITION" and "→ DONE (closed:" in entry.body for entry in read_entries(task))
+
+
 def landed_row(task: Path, read: Reader = read_pr_actions, reach: Reach = reachable_from,
                patterns: list[str] | None = None, local: Local = local_remotes) -> dict:
     """`{landed, flag}` for one DONE task, plus `note: backport to <base>` for a merge into a landing base.
 
     `patterns` are the repo's `landing_bases`; None reads them from the AGENTS.md of the current repository.
     They and reachability belong to this checkout, so a PR of a repository that is neither `origin` nor
-    `upstream` is `unknown` when its base is not the default branch, and gets no backport note.
+    `upstream` is `unknown` when its base is not the default branch, and gets no backport note. A task with
+    no PR closed by `mark-done --force` (its DONE transition says `closed:`) is `closed`, never asked.
     """
     ref = pr_ref(task)
+    if ref is None and closed_without_pr(task):
+        return {"landed": "closed", "flag": ""}
     remote = (local() or {}).get(ref[1].lower()) if ref is not None else None
     found = facts(task, read)
     bases = (load_bases() if patterns is None else patterns) if remote else []

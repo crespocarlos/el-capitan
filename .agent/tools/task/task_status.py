@@ -137,14 +137,28 @@ class StatusError(ValueError):
     """A status value outside the contract; the message names every allowed token."""
 
 
+def spec_text(text: str) -> str:
+    """`text` as a spec reader sees it: universal newlines, so a lone `\\r` or `\\r\\n` is a `\\n`.
+
+    `Path.read_text` does the same on disk; the Status guard (`.claude/hooks/lib/spec_guard.py`) applies
+    it to the text a write would leave, so both read one Status.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def status_of(text: str) -> str:
+    """The status value of a spec's text (after `spec_text`), "" when unset."""
+    match = STATUS.search(spec_text(text))
+    return match.group(2).strip() if match else ""
+
+
 def read_status(path: Path | str) -> str | None:
     """Return the status value, "" when unset, or None when the file is unreadable."""
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError:
         return None
-    match = STATUS.search(text)
-    return match.group(2).strip() if match else ""
+    return status_of(text)
 
 
 def head(value: str | None) -> str:
