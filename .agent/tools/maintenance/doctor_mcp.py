@@ -21,11 +21,12 @@ UNCHECKED = "servers from plugins and claude.ai connectors are not checked"
 
 
 def check_rendered_agents(home: Path, root: Path = ROOT) -> list[Line]:
-    """Each templated agent in ~/.cursor/agents is a regular file equal to what install renders from the config now."""
+    """Each templated agent in ~/.cursor/agents is a regular file equal to its source (the checkout it was rendered
+    from) rendered with the config now; the SessionStart hook repairs a stale one, a missing one needs install."""
     blocks = install_blocks(root)
     servers, _ = blocks.mcp_server_names(home)
     stale = []
-    templates = blocks.templated_agents(root)
+    templates = blocks.templated_agents(blocks.rendered_source(home, root))
     for path in templates:
         target = home / ".cursor" / "agents" / path.name
         if target.is_symlink() or not target.is_file():

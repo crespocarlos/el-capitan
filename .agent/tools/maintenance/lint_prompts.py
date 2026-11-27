@@ -112,7 +112,8 @@ MODEL_INVOCABLE_SKILLS = {"crew-evals", "spec-writing", "prompt-authoring"}
 # A deny list cannot keep out claude.ai connectors, plugin servers or tools the harness adds later; an
 # allowlist names exactly what the agent reaches. Agents that inherit (the writer and the inline
 # orchestrators) carry no `tools:` line, and no agent carries `disallowedTools`.
-MCP_PLACEHOLDER = "{{mcp_servers}}"
+# A YAML comment, so the source line is a valid list of the native tools until install renders it.
+MCP_PLACEHOLDER = "  # {{mcp_servers}}"
 READONLY_AGENT_TOOLS = ("Read", "Grep", "Glob")
 # crew-pr-resolver is told never to edit, push or post; Bash (kept for `gh` reads and probes) makes that an
 # instruction, not a deny.
@@ -245,7 +246,7 @@ def lint_native_tool_ids(root: Path, native: set[str]) -> Findings:
         text = path.read_text(errors="replace")
         frontmatter_text, _, error = parse_frontmatter(text)
         match = TOOLS_LINE.search(frontmatter_text or "") if not error else None
-        for tool in (match.group(1).replace(MCP_PLACEHOLDER, "").split(",") if match else []):
+        for tool in (match.group(1).split("#", 1)[0].split(",") if match else []):
             if tool.strip() and not tool.strip().startswith("mcp__") and tool.strip() not in native:
                 findings.append((rel(root, path), line_no(frontmatter_text or "", match.start()) + 1, "tool-id-unknown",
                                  f"{tool.strip()} is not in native_tools of tools.json"))

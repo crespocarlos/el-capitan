@@ -1,7 +1,7 @@
 ---
 name: reviewer-product-flow
 description: "Product manager reviewer for spec alignment, user experience, flow completeness, a11y, and perceived performance. Works on code diffs, plans, proposals, and session discussions. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob{{mcp_servers}}
+tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 10
 ---

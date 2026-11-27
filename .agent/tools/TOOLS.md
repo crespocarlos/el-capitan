@@ -103,13 +103,22 @@ therefore load every rule twice. `autoMemoryEnabled: false` is written by the se
 (`AUTO_MEMORY_OFF`), not carried in `.claude/settings.json`, because that file is also this checkout's
 project settings.
 
-**Rendered agents.** An agent whose `tools:` line ends in `{{mcp_servers}}` is not linked:
-`install_blocks.py render-agents` writes it into `~/.cursor/agents` (which every config dir's `agents`
-points to) as a regular file, the placeholder replaced by one `, mcp__<server>__*` per server in
-`mcp.docs` and `mcp.code_search` of `~/.agent/config.json`, and records it as `rendered_agents` in the
-manifest; a re-install re-renders, uninstall removes it. The repo ships no project-level agents link
-under `.claude/`, so a session inside the checkout uses the rendered user-level agents too
-(`sync-skills.yml` checks it).
+**Rendered agents.** An agent whose frontmatter `tools:` line ends in the YAML comment
+`  # {{mcp_servers}}` is not linked once rendered: `install_blocks.py render-agents` writes it into
+`~/.cursor/agents` (which every config dir's `agents` points to) as a regular file, the comment
+replaced by one `, mcp__<server>__*` per server in `mcp.docs` and `mcp.code_search` of
+`~/.agent/config.json` (removed when none is), and records it as `rendered_agents`, with the checkout
+as `rendered_from`, in the manifest. Only the frontmatter line counts; the placeholder in prose is
+text. A re-install re-renders and never swaps a copy for a link; a render failure prints one line,
+the install goes on, and an agent without a copy keeps its source link, whose line grants exactly the
+class's native tools. Uninstall removes the copies. The SessionStart hook `agents-refresh.sh`
+(`install_blocks.py refresh-agents`) rewrites a recorded copy that differs from its `rendered_from`
+source rendered with the config now, so a `git pull` or a config change reaches the next session. A
+persona edit in a worktree takes effect for that worktree's review only after rendering from it:
+`python3 <worktree>/.claude/install_blocks.py render-agents "$HOME" <worktree>`; the copies then follow
+that worktree until `install.sh` (or the same command from the main checkout) renders from elsewhere.
+The repo ships no project-level agents link under `.claude/`, so a session inside the checkout uses
+the rendered user-level agents too (`sync-skills.yml` checks it).
 
 ## Module maps
 

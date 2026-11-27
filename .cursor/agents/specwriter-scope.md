@@ -2,7 +2,7 @@
 name: specwriter-scope
 description: "Spec scope and implementer critic for PR boundaries, task granularity, and builder compatibility. Dispatched by crew-specwriter — do not invoke directly."
 readonly: true
-tools: Read, Grep, Glob{{mcp_servers}}
+tools: Read, Grep, Glob  # {{mcp_servers}}
 maxTurns: 10
 ---
 

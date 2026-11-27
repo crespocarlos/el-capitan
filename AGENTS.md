@@ -20,7 +20,7 @@ permission run: `.agent/tools/AGENTS.md`. The builder's Completion Protocol runs
 |---|---|
 | `rules/` | Always-loaded rules; `crew-router.mdc` is the routing source of truth |
 | `.cursor/agents/`, `.cursor/skills/` | Canonical agent and skill sources — edit only here |
-| `.claude/` | `CLAUDE.md`, guard hooks, and symlinks to `.cursor/agents` and `.cursor/skills` |
+| `.claude/` | `CLAUDE.md`, guard hooks, and the `.cursor/skills` link; no agents link (install renders them) |
 | `.agent/tools/` | Every command and module; catalog in `tools.json`, prose in `TOOLS.md` |
 | `.agent/_*TEMPLATE.md` | Spec and journal templates, symlinked from skill `references/` |
 | `evals/` | Hermetic suites, one file per tool or family |

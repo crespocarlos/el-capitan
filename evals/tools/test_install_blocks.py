@@ -364,20 +364,29 @@ def test_doctor_mcp(tmp: Path, case: str, files: dict[str, str], wanted: dict | 
 def tools_lines(home: Path) -> dict[str, str]:
     """The `tools:` line of each regular (rendered) agent file in ~/.cursor/agents."""
     agents = home / ".cursor" / "agents"
-    return {path.name: next(line for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("tools:"))
-            for path in sorted(agents.glob("*.md")) if not path.is_symlink()} if agents.is_dir() else {}
+    files = [path for path in sorted(agents.glob("*.md")) if path.is_file() and not path.is_symlink()]
+    return {path.name: next(line for line in path.read_text(encoding="utf-8").splitlines()
+                            if line.startswith("tools:")) for path in files}
+
+
+def home_env(home: Path) -> dict[str, str]:
+    """The environment for an install into `home`: no crew or config-dir variable from the caller."""
+    drop = ("CREW_", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_JOB_DIR")
+    return {**{k: v for k, v in os.environ.items() if not k.startswith(drop)}, "HOME": str(home)}
+
+
+def install_with_config(home: Path, mcp: dict | None) -> None:
+    (home / ".agent").mkdir(parents=True, exist_ok=True)
+    (home / ".agent" / "config.json").write_text(json.dumps({"mcp": mcp} if mcp else {}), encoding="utf-8")
 
 
 def test_rendered_agents(tmp: Path) -> None:
-    """Install renders each read-only agent's allowlist from the mcp config, re-renders on a re-install after a
-    config change, records the copies, and uninstall removes them."""
+    """Install renders each read-only agent's allowlist from the mcp config and records the copies; the session-start
+    hook re-renders a stale copy; a re-install whose render fails keeps the copies (never swaps one for a link) and
+    finishes; a re-install re-renders; uninstall removes them."""
     home = tmp / "home"
-    (home / ".agent").mkdir(parents=True)
-    config = home / ".agent" / "config.json"
-    config.write_text(json.dumps({"mcp": {"docs": ["docs-a", "docs-b"], "code_search": ["search-x"]}}),
-                      encoding="utf-8")
-    env = {**{k: v for k, v in os.environ.items() if not k.startswith(("CREW_", "CLAUDE_CONFIG_DIR"))},
-           "HOME": str(home)}
+    install_with_config(home, {"docs": ["docs-a", "docs-b"], "code_search": ["search-x"]})
+    config, env = home / ".agent" / "config.json", home_env(home)
     templated = sorted(path.name for path in (PROJECT / ".cursor" / "agents").glob("*.md")
                        if "{{mcp_servers}}" in path.read_text())
     servers_part = ", mcp__docs-a__*, mcp__docs-b__*, mcp__search-x__*"
@@ -391,15 +400,75 @@ def test_rendered_agents(tmp: Path) -> None:
           and (home / ".cursor/agents/crew-builder.md").is_symlink()
           and json.loads((home / ".agent/install-manifest.json").read_text())["rendered_agents"]
           == [f".cursor/agents/{name}" for name in templated], (done.stderr[-400:], lines))
+    config.write_text(json.dumps({"mcp": {"docs": ["docs-a"]}}), encoding="utf-8")
+    hook = home / ".claude" / "hooks" / "agents-refresh.sh"
+    first, second = (subprocess.run(["bash", str(hook)], capture_output=True, text=True, env=env, timeout=30)
+                     for _ in range(2))
+    lines = tools_lines(home)
+    check("the session-start hook re-renders every stale copy once, in one line, and exits 0",
+          first.returncode == second.returncode == 0 and second.stdout == "" and first.stderr == ""
+          and first.stdout.strip() == "agents: re-rendered 12 stale read-only agent(s) in ~/.cursor/agents"
+          and lines["reviewer-adversarial.md"] == "tools: Read, Grep, Glob, mcp__docs-a__*", (first, second, lines))
     config.write_text(json.dumps({"gc": {"artifacts_days": 7}}), encoding="utf-8")
+    (home / ".cursor/agents/reviewer-adversarial.md").unlink()
+    (home / ".cursor/agents/reviewer-adversarial.md").mkdir()  # makes the render fail on this agent
+    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
+    lines = tools_lines(home)
+    warned = [line for line in done.stdout.splitlines() if "render-agents failed" in line]
+    check("a re-install whose render fails says so in one line, finishes, and keeps the copies it did not reach",
+          done.returncode == 0 and len(warned) == 1 and "Done. Installed:" in done.stdout
+          and lines["reviewer-architecture.md"] == "tools: Read, Grep, Glob, mcp__docs-a__*",
+          (done.stdout[-800:], lines))
+    shutil.rmtree(home / ".cursor/agents/reviewer-adversarial.md")
     done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
     lines = tools_lines(home)
     check("a re-install with no mcp section re-renders the plain list",
           done.returncode == 0 and lines["reviewer-adversarial.md"] == "tools: Read, Grep, Glob"
-          and lines["crew-pr-resolver.md"] == "tools: Read, Grep, Glob, Bash", lines)
+          and lines["crew-pr-resolver.md"] == "tools: Read, Grep, Glob, Bash" and sorted(lines) == templated, lines)
     done = subprocess.run(["bash", str(INSTALL), "--uninstall"], capture_output=True, text=True, env=env)
     check("uninstall removes the rendered copies", done.returncode == 0 and tools_lines(home) == {}
           and "12 rendered agent(s)" in done.stdout, (done.stdout[-600:], tools_lines(home)))
+
+
+def test_render_failure_falls_back_to_source_links(tmp: Path) -> None:
+    """A first install whose render fails still finishes; the agents it did not render are links to their source,
+    whose `tools:` line is valid YAML granting exactly the class's native tools."""
+    home = tmp / "home"
+    install_with_config(home, {"docs": ["docs-a"]})
+    (home / ".cursor/agents/reviewer-adversarial.md").mkdir(parents=True)
+    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=home_env(home))
+    link = home / ".cursor/agents/reviewer-architecture.md"
+    line = next(row for row in link.read_text().splitlines() if row.startswith("tools:")) if link.exists() else ""
+    check("one warning, a finished install, and a source link whose list is the native tools before the comment",
+          done.returncode == 0 and done.stdout.count("render-agents failed") == 1 and link.is_symlink()
+          and line == "tools: Read, Grep, Glob  # {{mcp_servers}}"
+          and line.split("#")[0].strip() == "tools: Read, Grep, Glob",
+          (done.stdout[-600:], line))
+
+
+def test_render_rules(tmp: Path) -> None:
+    """Server names keep only the characters a tool id keeps, matched whole; only the frontmatter `tools:` line is
+    templated, so the placeholder in prose is text."""
+    blocks = load_blocks()
+    cli_load(DOCTOR)
+    from task_gc import ConfigError, load_config
+    for bad in ("elastic.docs", "docs\n", "docs a"):
+        install_with_config(tmp, {"docs": [bad]})
+        check(f"{bad!r} is rejected by install and by the config", blocks.mcp_server_names(tmp)[0] == []
+              and blocks.mcp_server_names(tmp)[1] is not None)
+        with pytest.raises(ConfigError):
+            load_config(tmp / ".agent")
+    source = "---\nname: x\ntools: Read, Grep, Glob  # {{mcp_servers}}\n---\nWrite `{{mcp_servers}}` in prose.\n"
+    prose = "---\nname: y\n---\nThe line ends in `  # {{mcp_servers}}`.\n"
+    agents = tmp / "checkout" / ".cursor" / "agents"
+    agents.mkdir(parents=True)
+    (agents / "x.md").write_text(source)
+    (agents / "y.md").write_text(prose)
+    check("only the frontmatter line is rendered, and an agent with the placeholder only in prose is not templated",
+          blocks.render_agent(source, ["s"]) == source.replace("Glob  # {{mcp_servers}}", "Glob, mcp__s__*")
+          and blocks.render_agent(source, []) == source.replace("Glob  # {{mcp_servers}}", "Glob")
+          and blocks.render_agent(prose, ["s"]) == prose
+          and [path.name for path in blocks.templated_agents(tmp / "checkout")] == ["x.md"])
 
 
 def test_mcp_config_section(tmp: Path) -> None:

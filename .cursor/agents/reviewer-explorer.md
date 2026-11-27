@@ -1,7 +1,7 @@
 ---
 name: reviewer-explorer
 description: "Codebase explorer for diff-context pattern discovery. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob{{mcp_servers}}
+tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 14
 ---

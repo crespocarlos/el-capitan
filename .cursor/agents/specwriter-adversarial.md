@@ -2,7 +2,7 @@
 name: specwriter-adversarial
 description: "Spec adversarial critic for a wrong approach, missing criteria, and edge cases. Dispatched by crew-specwriter — do not invoke directly."
 readonly: true
-tools: Read, Grep, Glob{{mcp_servers}}
+tools: Read, Grep, Glob  # {{mcp_servers}}
 maxTurns: 10
 ---
 

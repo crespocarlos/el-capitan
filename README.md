@@ -114,8 +114,10 @@ feature list.
 | `~/.agent/config.json` `mcp` | Your docs and code-search MCP server names (`{"docs": [...], "code_search": [...]}`); install adds them to the read-only agents' tool allowlists |
 | `~/.agent/memory/`, `~/.agent/tasks/`, `~/.agent/journal/` | Your data: memory units, task state, journal. Created once, never overwritten |
 
-No file is copied: the links point into your clone, so `git pull` updates everything. Run
-`bash install.sh` again after a pull so new commands are linked and removed ones unlinked.
+Almost everything is a link into your clone, so `git pull` updates it. The read-only agents are the
+exception: they are copies rendered with your `mcp` servers, and the next Claude Code session
+re-renders any copy a pull or a config change made stale. Run `bash install.sh` again after a pull
+so new commands are linked and removed ones unlinked.
 
 **It registers hooks that can block your commands**: a destructive-git guard, a secret-scanning
 commit guard, a write-boundary check, a shell-expansion guard, and a worker-tree guard.

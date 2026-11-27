@@ -344,4 +344,4 @@ PAYLOADS = [
 # Hooks whose stdout is their product: only their failure handling is checked here.
 SILENT = ("mode-anchor.sh", "memory-context.sh", "cursor-memory-context.sh", "notify-idle.sh", "log-tool-use.sh",
           "memory-capture-prompt.sh", "spec-status-reconcile.sh", "record-pr.sh",
-          "capture-reply.sh")
+          "capture-reply.sh", "agents-refresh.sh")

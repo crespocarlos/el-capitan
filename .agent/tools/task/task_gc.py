@@ -29,9 +29,9 @@ DEFAULTS = {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30
             "ls": {"repo": "here"},
             "mcp": {"docs": [], "code_search": []}}  # project-agnostic: the user names their own servers
 REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-SERVER_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")  # the same pattern install's agent rendering accepts
+SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+")  # install_blocks.SERVER_NAME: the characters a tool id keeps
 # A section's accepted values when not a number >= 0.
-RULES = {"ls": "all, here or an owner/name", "mcp": "a list of MCP server names (letters, digits, _ . -)"}
+RULES = {"ls": "all, here or an owner/name", "mcp": "a list of MCP server names (letters, digits, _ and -)"}
 KEEP_SESSIONS = frozenset({"review-queue.jsonl"})  # the capture queue `crew-inbox.py` drains
 TELEMETRY_NOTICE = "legacy telemetry: it holds raw shell commands and nothing reads it"
 DAY = 86400
@@ -68,7 +68,7 @@ def valid(section: str, value: object) -> bool:
     if section == "ls":
         return isinstance(value, str) and (value.lower() in ("all", "here") or bool(REPO_NAME.match(value)))
     if section == "mcp":
-        return isinstance(value, list) and all(isinstance(name, str) and SERVER_NAME.match(name) for name in value)
+        return isinstance(value, list) and all(isinstance(name, str) and SERVER_NAME.fullmatch(name) for name in value)
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
 
 

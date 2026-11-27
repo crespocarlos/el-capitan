@@ -4,7 +4,7 @@ Four changes, two of them in code (steps 2 and 4). Miss one and the persona is d
 no package, or never dispatched at all.
 
 1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
-   `description`, `tools: Read, Grep, Glob{{mcp_servers}}`, `readonly: true`, `maxTurns: 12`) and
+   `description`, `tools: Read, Grep, Glob  # {{mcp_servers}}`, `readonly: true`, `maxTurns: 12`) and
    a persona prompt: identity, scope boundaries, focus areas, the lens's label table, and its
    `Assessment:` question (the appended `reviewer-contract.md` owns the output shape). Copy the
    frontmatter from an existing persona rather than inventing tool ids; install fills the placeholder

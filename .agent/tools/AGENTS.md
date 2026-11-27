@@ -294,12 +294,13 @@ off-glossary synonyms it knows; crew-lint `glossary-terms` keeps this the one gl
   agent's frontmatter carries no harness comments. Do not set `model:`.
 - **A dispatched agent has an allowlist; the docs and code-search servers come from the config.** A
   deny list cannot keep out claude.ai connectors, plugin servers or tools the harness adds later, so
-  each dispatched agent's `tools:` line names exactly its class's native tools and ends with
-  `{{mcp_servers}}`. Install renders that placeholder into one `mcp__<server>__*` per server named in
-  `mcp.docs` and `mcp.code_search` of `~/.agent/config.json` (nothing when none is), writing the
-  agent into `~/.cursor/agents` as a regular file instead of a link, recorded in the install manifest
-  (`rendered_agents`) and removed by uninstall; `crew doctor` fails a copy that differs from the
-  config. The classes are `AGENT_CLASSES` in `lint_prompts.py`, and `crew-lint`'s
+  each dispatched agent's `tools:` line names exactly its class's native tools and ends with the YAML
+  comment `  # {{mcp_servers}}`, so the source line is valid by itself. Install replaces the comment
+  with one `, mcp__<server>__*` per server named in `mcp.docs` and `mcp.code_search` of
+  `~/.agent/config.json` (removes it when none is), writing the agent into `~/.cursor/agents` as a
+  regular file instead of a link, recorded in the install manifest (`rendered_agents`) and removed by
+  uninstall; the SessionStart hook `agents-refresh.sh` rewrites a copy gone stale, and `crew doctor`
+  fails one still stale. The classes are `AGENT_CLASSES` in `lint_prompts.py`, and `crew-lint`'s
   `agents-inherit-tools` fails any other line, a missing placeholder, or a `disallowedTools`:
   - **Read-only class** (`READONLY_AGENT_TOOLS`, every persona, explorer and critic): `Read, Grep, Glob`.
   - **`crew-pr-resolver`** (`RESOLVER_AGENT_TOOLS`): plus `Bash`, for `gh` reads and probes.
