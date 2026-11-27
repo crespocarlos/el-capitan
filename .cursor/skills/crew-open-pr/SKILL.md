@@ -130,10 +130,11 @@ a summary if there are multiple commits.
 After approval:
 
 ```bash
-PR_URL=$(GH_PAGER=cat gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO")
+PR_URL=$(GH_PAGER=cat gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO") && echo "$PR_URL"
 ```
 
-`gh pr create` prints the PR URL; keep it as `PR_URL` for Step 4 and Session Capture.
+`gh pr create` prints the PR URL; keep it as `PR_URL` for Step 4 and Session Capture. The `echo` in
+the same command is what lets the `record-pr.sh` hook see the URL.
 
 **Important:** Always pass `--body` explicitly. If `--body` is omitted or empty, `gh` opens
 `$EDITOR` which freezes the VS Code terminal. Never rely on interactive input for the body.
@@ -162,6 +163,10 @@ appends to `PROGRESS.md`. It refuses unless the spec is `IMPLEMENTING`, every cr
 and, when a review exists, its `Reviewed at:` commit is an ancestor of HEAD. Because `crew commit`
 runs after `crew review`, HEAD is normally ahead of the reviewed tree; a review older than a rebase
 must be re-run.
+
+The `record-pr.sh` hook has usually done this already: it runs `mark-done` as soon as `gh pr create`
+prints the URL, so the command below then answers `already done`. It stays here for its refusal
+message, which this stage must show.
 
 ```bash
 if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then

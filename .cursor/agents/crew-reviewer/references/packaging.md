@@ -158,6 +158,15 @@ package opens with the same contract and hunk reference.
 In spec and idea reviews there is no diff, so the tool does not apply: compose by hand in the same
 order, contract first.
 
+## The reply marker (Claude Code)
+
+Before each Claude Code dispatch, the probe included, run `~/.agent/bin/crew-review-findings.py
+expect --review-dir "$REVIEW_ROOT" --persona <persona>` and make the line it prints the first line
+of the dispatch prompt, unchanged. It writes `<persona>.expect` with a random nonce; the
+`SubagentStop` hook saves the reply when the marker's nonce matches, then removes the file. Cursor
+has no such hook, so it saves with `save-out`. With a task, the next line is `crew-task: <TASK_DIR>`,
+so the hook records the persona's token usage on it, in any harness's prompt.
+
 ## Elastic docs trigger (opt-in: artifacts with ES|QL or Elasticsearch/Kibana API claims)
 
 Every persona already carries the docs rule from `~/.cursor/agents/references/reviewer-contract.md`;

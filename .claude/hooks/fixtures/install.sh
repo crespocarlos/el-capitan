@@ -172,6 +172,17 @@ settings_mode=$(mode "$round/.claude/settings.json")
 HOME="$round" bash "$root/install.sh" >/dev/null
 grep -q '"Bash(ls:\*)"' "$round/.claude/settings.json"
 if grep -q '"Bash(ls \*)"' "$round/.claude/settings.json"; then exit 1; fi
+# The record-keeping hooks are merged (and, by the pristine check below, removed again by uninstall).
+python3 - "$round" <<'PY'
+import json, sys
+home = sys.argv[1]
+claude, cursor = json.load(open(f"{home}/.claude/settings.json"))["hooks"], json.load(open(f"{home}/.cursor/hooks.json"))["hooks"]
+def has(entries, script, matcher=None):
+    return any(script in hook.get("command", "") and (matcher is None or entry.get("matcher") == matcher)
+               for entry in entries for hook in entry.get("hooks", [entry]))
+assert has(claude["PostToolUse"], "record-pr.sh", "Bash") and has(claude["SubagentStop"], "capture-reply.sh")
+assert has(cursor["afterShellExecution"], "record-pr.sh")
+PY
 installed=$(tree_state "$round")
 HOME="$round" bash "$root/install.sh" --uninstall --dry-run >/dev/null
 test "$installed" = "$(tree_state "$round")"

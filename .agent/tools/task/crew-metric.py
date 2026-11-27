@@ -2,8 +2,9 @@
 """crew-metric.py — append an audit-only METRIC line to PROGRESS.md.
 
 Usage: crew-metric.py <TASK_DIR> <payload...> (words joined after "METRIC:"); state never reads it.
-`stage_start stage=<implement|review>` and `stage_end ... tokens_reported=<n|unknown>` are validated
-(`task_progress`); `stage_end` prints the stage's cost line, which `crew ls --cost` lists.
+`stage_start stage=<implement|review>`, `stage_end ... tokens_reported=<n|unknown>` and `agent_end agent=<type>
+persona=<name> tokens=<n> [input= output= cache_read= cache_write=]` are validated (`task_progress`); `stage_end`
+prints the stage's cost line, which `crew ls --cost` lists (an `agent_end` total replaces `tokens_reported`).
 """
 import argparse
 import sys

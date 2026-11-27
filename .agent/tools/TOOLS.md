@@ -102,6 +102,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_state.py`: the SPEC record (its issue and PR list included), the status write, reconcile rules, the status migration
 - `task_progress.py`: PROGRESS.md: append and read every entry (BLOCKED, METRIC, stage cost and PR lines included)
 - `task_gates.py`: the transition gates: approve, implement, close out
+- `task_usage.py`: a subagent run's token usage from its transcript, appended as `agent_end` to the task its `crew-task:` line names
+- `task_record_pr.py`: `crew-task.py record-pr`, the PR hook: the task of a `gh pr create` PR (from `gh pr view`), marked done, given the PR, or created minimal and DONE
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`
 - `task_report.py`: rendering task state for `crew-ls.py`, the ISSUE, PR, PROGRESS and ACTIVITY cells, and `reconcile`
 - `ls_data.py`: what `crew ls`, `--report` and the TUI read: rows, the repo filter (`--repo`, else `ls.repo` of `~/.agent/config.json`: `here`, `all` or an `owner/name`) and the state filter, stale, the `landed` lines, landing bases, `--watch`
@@ -129,6 +131,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `review_layers.py`: the layer map: validation, hunk references, per-layer reports
 - `review_consolidate.py`: the `consolidate` subcommand: grouping and `candidates.json`
 - `review_render.py`: rendered findings, generated sections, the degraded mark, `save-out` and provenance
+- `review_capture.py`: `expect` (a persona's dispatch nonce and marker line) and `capture`, the `SubagentStop` hook that saves the reply
 - `review_report.py`: `persist`: writing the report and gating it against the findings JSON
 - `review_records.py`: deferred and dropped records, the cost METRIC, the outcome journal
 - `review_workspace.py`: where a review writes, and the content manifest of what it read
@@ -263,7 +266,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   writes DONE; it refuses an unchecked criterion and a reviewed commit that is not an ancestor of HEAD
   (no review: skipped), but not a review verdict or a branch other than the task's. A refusal exits
   non-zero with the reason and still records the PR; `crew open pr` stops on it. On a DONE task it
-  only appends the PR. `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
+  only appends the PR. The `record-pr.sh` hook runs the same gate the moment `gh pr create` prints a
+  URL (`crew-task.py record-pr`, `task_record_pr.py`). `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
   read-only, for each IMPLEMENTING task with no PR recorded and a branch off its repository's default
   branch, on 8 threads. When the task's repository is a fork and lists no PR, it asks the parent too
   and keeps the PRs whose head repository belongs to the fork's owner (`gh pr list --head` takes no
@@ -430,7 +434,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `<persona>.provenance.json` (`harness`, `agent_id|null`, `model|null`, `time`, `sha256`); `persist`
   verifies the hash when the record exists and passes a review directory without one with
   `provenance: absent (legacy)` (tamper evidence applies to new reviews only). Fewer agents than lenses
-  is a `Degraded: 1 agent, N lenses` review capped at `WARN`. `consolidate --review-dir D` only GROUPS
+  is a `Degraded: 1 agent, N lenses` review capped at `WARN`. Under Claude Code the `capture-reply.sh`
+  hook calls the same writer: `expect` writes `<persona>.expect` (a nonce) and prints the
+  `crew-review-out:` marker the dispatch prompt carries; `capture` saves the reply when they match. `consolidate --review-dir D` only GROUPS
   candidates (`raw-candidates.json`; identical file and overlapping `line`..`line_end`, never title
   similarity) into a draft `candidates.json` that `normalize` reads unchanged: every original keeps its
   label, the representative carries `group_severity`, the others get `disposition: merged`, and hunk ids
@@ -528,6 +534,17 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - **METRIC lines** are append-only audit records for offline analysis, never parsed for gates or
   transitions. Write one with `~/.agent/bin/crew-metric.py "$TASK_DIR" <event> [key=value ...]`; the
   events and fields are the ones `crew-metric.py` validates ("Gates and cost" above).
+- **`agent_end`** is written by the `capture-reply.sh` hook (`task_usage.py`), never by hand: one per
+  Claude Code subagent whose prompt carries `crew-task: <TASK_DIR>`. `tokens` is the last call's
+  context (its input + cache write + cache read + output), the figure the harness reports; `input`,
+  `output`, `cache_read` and `cache_write` are each summed over the calls (each assistant message
+  once). Summed `cache_read` counts the cached context once per call, so it never enters the
+  headline. The named directory must sit under `~/.agent/tasks` and hold `SPEC.md`. Each entry carries
+  `agent_id`, and only an agent's latest entry counts, so a resumed agent's stops are not added up.
+  `task_progress.agent_ends` is the one attribution both views use: an entry belongs to the stage of
+  the `stage_start` before it (else `other`), and per task a stage with any
+  `agent_end` shows their `tokens` total and the summed `output` in `crew ls --cost` and `crew
+  report` instead of `tokens_reported`. A transcript with no usage field records nothing.
 
 ## Hooks
 
@@ -569,6 +586,13 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 | `spec-status-reconcile.sh` | SessionStart | applies the status policy, refreshes the anchor |
 | `log-tool-use.sh`, `notify-idle.sh` | PostToolUse / Notification | local telemetry and the idle notification |
 | `memory-capture-prompt.sh` | Stop | queues one memory review: inbox drafts, no question |
+| `record-pr.sh` | PostToolUse Bash / `afterShellExecution` | `crew-task.py record-pr`: the PR a `gh pr create` printed, recorded on its task (`task_record_pr.py`) |
+| `capture-reply.sh` | SubagentStop (Claude Code) | `crew-review-findings.py capture`: the persona reply its `crew-review-out:` marker and `.expect` nonce name (`review_capture.py`) |
+
+The two record-keeping hooks never block and never stay silent about what they did: each prints its
+outcome on stdout (`record-pr.sh` as Claude `additionalContext`), and every other command or subagent
+ends in shell before Python starts. Both are `SILENT` in `hook_cases.py`, which checks their failure
+handling only; their behavior is pinned in `test_lifecycle.py` and `test_review_findings.py`.
 
 One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
 reader sees one purpose per file. `lib/hook.sh` is sourced, never registered; it holds the command
