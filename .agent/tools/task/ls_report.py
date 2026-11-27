@@ -57,9 +57,13 @@ def closed_at(entries: list) -> datetime | None:
     return max(done) if done else None
 
 
-def stage_runs(entries: list, start: datetime) -> list[dict]:
-    """One record per `stage_end` in the window: stage, tokens (None when unreported), seconds since its start."""
-    opened: dict[str, datetime] = {}
+def stage_pairs(entries: list) -> tuple[list[dict], dict[str, tuple[datetime, dict]]]:
+    """`stage_start`/`stage_end` matched per stage: the closed runs and the starts still open.
+
+    A run is `{stage, at (its end), tokens (None when unreported), seconds (None without a start)}`;
+    an open start is `{stage: (at, its METRIC fields)}`, the latest start of each stage.
+    """
+    opened: dict[str, tuple[datetime, dict]] = {}
     runs = []
     for entry in entries:
         words = entry.body.split()
@@ -68,14 +72,19 @@ def stage_runs(entries: list, start: datetime) -> list[dict]:
         given = fields(words)
         stage = given.get("stage", "?")
         if words[0] == "stage_start":
-            opened[stage] = entry.at
+            opened[stage] = (entry.at, given)
             continue
-        if entry.at >= start:
-            began = opened.pop(stage, None)
-            tokens = given.get("tokens_reported", "")
-            runs.append({"stage": stage, "tokens": int(tokens) if tokens.isdigit() else None,
-                         "seconds": (entry.at - began).total_seconds() if began else None})
-    return runs
+        began = opened.pop(stage, None)
+        tokens = given.get("tokens_reported", "")
+        runs.append({"stage": stage, "at": entry.at, "tokens": int(tokens) if tokens.isdigit() else None,
+                     "seconds": (entry.at - began[0]).total_seconds() if began else None})
+    return runs, opened
+
+
+def stage_runs(entries: list, start: datetime) -> list[dict]:
+    """One record per `stage_end` in the window: stage, tokens (None when unreported), seconds since its start."""
+    return [{key: run[key] for key in ("stage", "tokens", "seconds")} for run in stage_pairs(entries)[0]
+            if run["at"] >= start]
 
 
 def review_runs(entries: list, start: datetime) -> list[dict]:

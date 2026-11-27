@@ -11,4 +11,6 @@ if ! command -v uvx >/dev/null 2>&1; then
 fi
 python="$(command -v python3)" || { echo "test.sh: python3 is not on PATH" >&2; exit 2; }
 cd "$root"
-exec uvx --python "$python" --with "pytest-xdist==$xdist_version" "pytest==$pytest_version" "$@"
+# The TUI's pin (tui/requirements.txt) joins the environment, so its pilot smoke runs with the suite.
+exec uvx --python "$python" --with "pytest-xdist==$xdist_version" --with-requirements tui/requirements.txt \
+    "pytest==$pytest_version" "$@"

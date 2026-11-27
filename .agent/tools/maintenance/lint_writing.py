@@ -1,8 +1,8 @@
 """Rules over what the repository says: removed command forms, docstrings, narration, pipeline prose.
 
-`removed-command-form`, `docstring-length` (at most 6 lines), `no-incident-narration` (`narration`
-takes any text, so prompts are held to it too); a `crew-progress` call with an event label, a shell
-rewrite of a tracked file, a hook without a settings entry in both harnesses, tracked `.agent` state.
+`removed-command-form`, `docstring-length` (at most 6 lines, `tui/` too), `no-incident-narration`
+(`narration` takes any text, so prompts are held to it too); a `crew-progress` call with an event label,
+a shell rewrite of a tracked file, a hook without a settings entry in both harnesses, tracked `.agent` state.
 """
 from __future__ import annotations
 
@@ -111,7 +111,7 @@ def prose(source: str, tree: ast.Module) -> list[tuple[int, str]]:
 def lint_tool_prose(root: Path) -> list[Finding]:
     """Module docstrings at most `MAX_MODULE_DOCSTRING_LINES` lines; no narration in docstrings or comments."""
     found: list[Finding] = []
-    for path in sorted((root / ".agent/tools").rglob("*.py")):
+    for path in sorted([*(root / ".agent/tools").rglob("*.py"), *(root / "tui").glob("*.py")]):
         if "__pycache__" in path.parts or path.name == "lint_writing.py":
             continue
         source = path.read_text(encoding="utf-8", errors="replace")
