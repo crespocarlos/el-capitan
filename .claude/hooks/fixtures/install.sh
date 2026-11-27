@@ -77,6 +77,17 @@ ln -s "$root/.cursor/skills/crew-gone/SKILL.md" "$home/.cursor/skills/crew-gone/
 ln -s "$root/.cursor/skills/crew-gone/references/policy.md" "$home/.cursor/skills/crew-gone/references/policy.md"
 HOME="$home" bash "$root/install.sh" >/dev/null
 test ! -e "$home/.cursor/skills/crew-gone"
+# References moved out of a live skill: the stale links go at any depth and in names with spaces, with the
+# folders they alone filled; the user's file beside one and the user's own empty folder stay.
+refs="$home/.cursor/skills/spec-writing/references"
+mkdir -p "$refs/old notes/deep" "$refs/drafts"
+ln -s "$root/.cursor/skills/spec-writing/references/x.md" "$refs/x.md"
+ln -s "$root/.cursor/skills/spec-writing/references/old notes/deep/y z.md" "$refs/old notes/deep/y z.md"
+printf 'mine\n' > "$refs/mine.md"
+HOME="$home" bash "$root/install.sh" >/dev/null
+test ! -L "$refs/x.md" && test ! -e "$refs/old notes" && test -f "$refs/mine.md" && test -d "$refs/drafts"
+test -L "$refs/spec-template.md"
+rm -r "$refs/mine.md" "$refs/drafts"
 
 # Merge scripts: idempotent, preserve foreign hooks, and fail loudly on bad input.
 counts() {

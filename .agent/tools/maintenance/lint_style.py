@@ -23,6 +23,10 @@ TEMPLATES = ".cursor/skills/spec-writing/references/"
 SHARED_BY_DESIGN = {
     frozenset({TEMPLATES + "spec-template.md", TEMPLATES + "bug-spec-template.md"}): "the templates share sections",
 }
+# The lookups pointer is one line every working agent carries by design: it is the link, not a copy.
+# Only the fixed sentence is skipped, so text after it on the same line is still scanned.
+POINTER_LINE = re.compile(r"(?m)^Lookups: follow `[^`]*lookups\.md` before you search for code whose file you do not "
+                          r"already know, or rely on a product or API fact\.")
 GLOSSARY_FILE = ".agent/tools/AGENTS.md"
 GLOSSARY_TERMS = ("persona", "worker", "gate", "verification")
 VENDOR = re.compile(r"(?i)\bkibana\b|\belasticsearch\b|\bES\|QL\b|\besql\b|@kbn/|mcp__elastic|\belastic-docs\b"
@@ -156,7 +160,7 @@ def duplicate_passages(texts: dict[str, str]) -> Findings:
     """No run of `PASSAGE_WORDS` words in two prompt files outside `SHARED_BY_DESIGN`; one finding per pair."""
     owners: dict[str, list[tuple[str, int]]] = collections.defaultdict(list)
     for name, text in texts.items():
-        prose = mask(text, inline=False)
+        prose = POINTER_LINE.sub(blank, mask(text, inline=False))
         words = [(m.group(0).lower(), m.start()) for m in re.finditer(r"[A-Za-z0-9][A-Za-z0-9_'-]*", prose)]
         for index in range(len(words) - PASSAGE_WORDS + 1):
             owners[" ".join(word for word, _ in words[index:index + PASSAGE_WORDS])].append((name, words[index][1]))

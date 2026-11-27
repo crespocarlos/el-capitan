@@ -314,7 +314,7 @@ WANTED = {"docs": ["docs-a", "docs-b"], "code_search": ["search-x"]}
 def servers(*names: str, **projects: dict) -> str:
     """An MCP config: `names` at user level, and each project path's entry (its own keys as given)."""
     return json.dumps({"mcpServers": {name: {} for name in names},
-                       "projects": {f"/w/{key}": value for key, value in projects.items()}})
+                       "projects": {f"@TMP@/w/{key}": value for key, value in projects.items()}})
 
 
 def own(*names: str) -> dict:
@@ -322,42 +322,124 @@ def own(*names: str) -> dict:
     return {"mcpServers": {name: {} for name in names}}
 
 
+def origin(url: str, *paths: str) -> dict[str, str]:
+    """A git config whose `remote.origin.url` is `url` in each path; CREW is the remote the temp task names."""
+    return {f"{path}/.git/config": f'[core]\n\tbare = false\n[remote "origin"]\n\turl = {url}\n' for path in paths}
+
+
+def plugin(*installs: dict, **others: list) -> dict[str, str]:
+    """~/.claude's installed_plugins.json listing the `srch` plugin with these installs, and other plugins by name."""
+    named = {f"{name}@mkt": value for name, value in others.items()}
+    listing = {"version": 2, "plugins": {"srch@mkt": list(installs), **named}}
+    return {"home/.claude/plugins/installed_plugins.json": json.dumps(listing)}
+
+
+def crew_project(path: str, url: str, extra: dict[str, str] | None = None) -> dict[str, str]:
+    """A projects entry at `path` that disables docs-a (so a matched project WARNs), its repository's origin at
+    `url` (the config one level up for a `/sub` path), and any extra files."""
+    entry = {path.removeprefix("w/"): {"disabledMcpServers": ["docs-a"]}}
+    return {"home/.claude.json": servers("docs-a", "search-x", **entry), **origin(url, path.removesuffix("/sub")),
+            **(extra or {})}
+
+
+CREW = "git@example.com:o/crew.git"
+CREW_WARN = "docs server (docs-a, docs-b) missing for 1 of 1 projects with crew work: /w/"
 DOCS, SEARCH = "docs server (docs-a, docs-b)", "code search (search-x)"
-UNCHECKED = ("note", "servers from plugins and claude.ai connectors are not checked")
-REPO = {"repo/.git/HEAD": "ref\n", "repo/.mcp.json": json.dumps({"mcpServers": {"docs-b": {}, "search-x": {}}})}
-# (case, files under the temp root, `mcp` config (None: invalid), CLAUDE_CONFIG_DIR under it, cwd under it,
-#  (level, text) lines that must appear, texts no line may contain). HOME is `home/`, with `home/.claude`; every
-#  config file is a temp one.
+PLUGIN_WANTED = {"docs": ["docs-a"], "code_search": ["plugin_srch_srch"]}
+PLUGIN_SEARCH = "code search (plugin_srch_srch)"
+UNCHECKED = ("note", "servers from claude.ai connectors are not checked")
+NONE_NOTE = ("note", "no configured MCP servers in ~/.claude-work: crew agents in sessions on it use text search")
+REPO = {"repo/.git/HEAD": "ref\n", **origin(CREW, "repo"),
+        "repo/.mcp.json": json.dumps({"mcpServers": {"docs-b": {}, "search-x": {}}})}
+# The repo project of the unapproved case: docs-b approved but disabled, search-x never approved.
+UNAPPROVED = {"enabledMcpjsonServers": ["docs-b"], "disabledMcpjsonServers": ["docs-b"]}
+# (case, files under the temp root (`@TMP@` is that root), `mcp` config (None: invalid), CLAUDE_CONFIG_DIR under it,
+#  cwd under it, (level, text) lines that must appear, texts no line may contain). HOME is `home/`, with
+#  `home/.claude` and one task whose remote is CREW; every config file is a temp one; the temp root is cut from lines.
 MCP_CASES = (
     ("both servers at user level",
      {"home/.claude.json": servers("docs-a", "search-x"), "home/.cursor/mcp.json": servers("docs-b", "search-x")},
      WANTED, None, ".", [("ok", f"Claude Code ~/.claude: {DOCS} at user level"), ("ok", f"Cursor: {SEARCH}")],
      ["WARN"]),
     ("the docs server only in a projects entry",
-     {"home/.claude.json": servers("search-x", kibana=own("docs-a"), other={})}, WANTED, None, ".",
-     [("WARN", f"{DOCS} missing for 1 of 2 projects: /w/other; add it at user level"),
+     {"home/.claude.json": servers("search-x", kibana=own("docs-a"), other={}), **origin(CREW, "w/kibana", "w/other")},
+     WANTED, None, ".",
+     [("WARN", f"{DOCS} missing for 1 of 2 projects with crew work: /w/other"),
       ("ok", f"{SEARCH} at user level"),
       ("WARN", "Cursor: docs server missing: none of docs-a, docs-b in ~/.cursor/mcp.json")],
      ["/w/kibana"]),
+    ("a project without crew work is not checked",
+     {"home/.claude.json": servers("docs-a", "search-x", other={"disabledMcpServers": ["docs-a"]}),
+      **origin("git@example.com:o/elsewhere.git", "w/other")}, WANTED, None, ".",
+     [("ok", f"{DOCS} at user level")], ["WARN Claude", "/w/other"]),
+    ("a worktree resolves to its main repository's origin",
+     {"home/.claude.json": servers("docs-a", "search-x", wt={"disabledMcpServers": ["docs-a"]}),
+      "w/wt/.git": "gitdir: ../main/.git/worktrees/wt\n", "w/main/.git/worktrees/wt/commondir": "../..\n",
+      **origin(CREW, "w/main")}, WANTED, None, ".",
+     [("WARN", f"{DOCS} missing for 1 of 1 projects with crew work: /w/wt")], []),
+    ("an insteadOf rule in ~/.gitconfig rewrites the origin before the match",
+     crew_project("w/iof", "crew:crew.git", {"home/.gitconfig": '[url "git@example.com:o/"]\n\tinsteadOf = crew:\n'}),
+     WANTED, None, ".", [("WARN", CREW_WARN + "iof")], []),
+    ("an origin without the .git suffix matches", crew_project("w/bare", "git@example.com:o/crew"),
+     WANTED, None, ".", [("WARN", CREW_WARN + "bare")], []),
+    ("an https origin matches the task's ssh remote", crew_project("w/https", "https://example.com/o/crew.git"),
+     WANTED, None, ".", [("WARN", CREW_WARN + "https")], []),
+    ("a project in a subdirectory reads the repository above it", crew_project("w/up/sub", CREW),
+     WANTED, None, ".", [("WARN", CREW_WARN + "up/sub")], []),
     ("a server only in the repo's approved .mcp.json",
      {**REPO, "repo/.cursor/mcp.json": servers("docs-a", "search-x"),
       "home/.claude/settings.json": json.dumps({"enableAllProjectMcpServers": True})}, WANTED, None, "repo",
      [("ok", f"{DOCS} in every project (1)"), ("ok", "Cursor: docs server (docs-a)")], ["WARN"]),
-    ("an unapproved or disabled repo server does not count",
-     {**REPO, "home/.claude.json": "PROJECTS"}, WANTED, None, "repo",
-     [("WARN", f"{DOCS} missing for 1 of 1 projects"), ("WARN", f"{SEARCH} missing for 1 of 1 projects")], []),
+    ("an unapproved or disabled repo server does not count; the primary dir keeps its WARNs",
+     {**REPO, "home/.claude.json": json.dumps({"projects": {"@TMP@/repo": UNAPPROVED}})}, WANTED, None, "repo",
+     [("WARN", f"{DOCS} missing for 1 of 1 projects with crew work"),
+      ("WARN", f"{SEARCH} missing for 1 of 1 projects with crew work")], ["no configured MCP servers"]),
+    ("an extra config dir with no configured server gets one note",
+     {"home/.claude.json": servers("docs-a", "search-x"), "home/.claude-work/.claude.json": servers()},
+     WANTED, "home/.claude-work", ".", [NONE_NOTE], ["WARN Claude"]),
     ("a user-level server disabled in a project",
-     {"home/.claude.json": servers("docs-a", "search-x", kibana={"disabledMcpServers": ["docs-a"]})}, WANTED, None, ".",
-     [("WARN", f"{DOCS} missing for 1 of 1 projects: /w/kibana"), ("ok", f"{SEARCH} at user level")], []),
+     {"home/.claude.json": servers("docs-a", "search-x", kibana={"disabledMcpServers": ["docs-a"]}),
+      **origin(CREW, "w/kibana")}, WANTED, None, ".",
+     [("WARN", f"{DOCS} missing for 1 of 1 projects with crew work: /w/kibana"),
+      ("ok", f"{SEARCH} at user level")], []),
+    ("a plugin installed at user scope provides its server",
+     {"home/.claude.json": servers("docs-a"), **plugin({"scope": "user"})}, PLUGIN_WANTED, None, ".",
+     [("ok", f"Claude Code ~/.claude: {PLUGIN_SEARCH} at user level")], ["WARN Claude"]),
+    ("a plugin disabled in settings.json provides nothing",
+     {"home/.claude.json": servers("docs-a"), **plugin({"scope": "user"}),
+      "home/.claude/settings.json": json.dumps({"enabledPlugins": {"srch@mkt": False}})}, PLUGIN_WANTED, None, ".",
+     [("WARN", f"Claude Code ~/.claude: {PLUGIN_SEARCH} missing at user level")], []),
+    ("no plugins file: the plugin server is missing",
+     {"home/.claude.json": servers("docs-a")}, PLUGIN_WANTED, None, ".",
+     [("WARN", f"Claude Code ~/.claude: {PLUGIN_SEARCH} missing at user level")], []),
+    ("without manifests plugin_a_b_srv belongs to a_b, the longest name, not a",
+     {"home/.claude.json": servers("docs-a"), **plugin(a=[{"scope": "user"}], a_b=[{"scope": "user"}]),
+      "home/.claude/settings.json": json.dumps({"enabledPlugins": {"a_b@mkt": False}})},
+     {"docs": ["docs-a"], "code_search": ["plugin_a_b_srv"]}, None, ".",
+     [("WARN", "code search (plugin_a_b_srv) missing at user level")], []),
+    ("a manifest names the servers exactly: a prefix match it does not declare is missing",
+     {"home/.claude.json": servers("docs-a"), **plugin({"scope": "user", "installPath": "@TMP@/inst"}),
+      "inst/.claude-plugin/marketplace.json": json.dumps({"plugins": [{"name": "srch", "mcpServers": {"other": {}}}]})},
+     PLUGIN_WANTED, None, ".", [("WARN", f"{PLUGIN_SEARCH} missing at user level")], []),
+    ("a project's .claude/settings.json disables a user plugin there",
+     {"home/.claude.json": servers("docs-a", kibana={}), **origin(CREW, "w/kibana"), **plugin({"scope": "user"}),
+      "w/kibana/.claude/settings.json": json.dumps({"enabledPlugins": {"srch@mkt": False}})}, PLUGIN_WANTED, None, ".",
+     [("WARN", f"{PLUGIN_SEARCH} missing for 1 of 1 projects with crew work: /w/kibana")], []),
+    ("a project's settings.local.json enables a plugin the user level disabled",
+     {"home/.claude.json": servers("docs-a", kibana={}), **origin(CREW, "w/kibana"), **plugin({"scope": "user"}),
+      "home/.claude/settings.json": json.dumps({"enabledPlugins": {"srch@mkt": False}}),
+      "w/kibana/.claude/settings.local.json": json.dumps({"enabledPlugins": {"srch@mkt": True}})},
+     PLUGIN_WANTED, None, ".", [("ok", f"{PLUGIN_SEARCH} in every project (1)")], ["WARN Claude"]),
     ("the docs server missing in a second config dir",
      {"home/.claude.json": servers("docs-a", "search-x"), "home/.claude-work/.claude.json": servers("search-x")},
      WANTED, "home/.claude-work", ".",
-     [("ok", f"Claude Code ~/.claude: {DOCS} at user level"), ("WARN", f"Claude Code ~/.claude-work: {DOCS} missing;"),
+     [("ok", f"Claude Code ~/.claude: {DOCS} at user level"),
+      ("WARN", f"Claude Code ~/.claude-work: {DOCS} missing at user level"),
       ("ok", f"Claude Code ~/.claude-work: {SEARCH} at user level")],
      [f"~/.claude: {DOCS} missing"]),
     ("CLAUDE_CONFIG_DIR at ~/.claude reads the file inside it",
      {"home/.claude.json": servers("docs-a", "search-x"), "home/.claude/.claude.json": servers("search-x")},
-     WANTED, "home/.claude", ".", [("WARN", f"Claude Code ~/.claude: {DOCS} missing;")], []),
+     WANTED, "home/.claude", ".", [("WARN", f"Claude Code ~/.claude: {DOCS} missing at user level")], []),
     ("a config dir that does not exist is skipped",
      {"home/.claude.json": servers("docs-a", "search-x")}, WANTED, "home/.claude-gone", ".",
      [("ok", f"Claude Code ~/.claude: {DOCS} at user level")], ["~/.claude-gone"]),
@@ -366,28 +448,28 @@ MCP_CASES = (
     ("an invalid mcp section", {"home/.claude.json": servers()}, None, None, ".",
      [("note", "the mcp section of ~/.agent/config.json is not valid")], ["Claude Code", "no mcp section"]),
 )
-# The repo project of the unapproved case: docs-b approved but disabled, search-x never approved.
-UNAPPROVED = {"enabledMcpjsonServers": ["docs-b"], "disabledMcpjsonServers": ["docs-b"]}
 
 
 @pytest.mark.parametrize("case, files, wanted, config_dir, cwd, expected, absent", MCP_CASES,
                          ids=[row[0] for row in MCP_CASES])
 def test_doctor_mcp(tmp: Path, case: str, files: dict[str, str], wanted: dict | None, config_dir: str | None, cwd: str,
                     expected: list[tuple[str, str]], absent: list[str]) -> None:
-    """Each capability is found by the configured names at user level, per project or in the approved repo file,
-    minus disabled servers, in each existing config dir; a gap is a WARN, never a FAIL."""
+    """Each capability is found by the configured names at user level, from an enabled plugin, per crew project or
+    in the approved repo file, minus disabled servers, in each existing config dir; a gap is a WARN naming the server
+    and the place, never a FAIL and never a setup instruction."""
     cli_load(DOCTOR)
     from doctor_mcp import check_mcp
     (tmp / "home" / ".claude").mkdir(parents=True)
+    files = {"home/.agent/tasks/t1/.task-id": json.dumps({"repo_remote_url": CREW}), **files}
     for name, text in files.items():
         (tmp / name).parent.mkdir(parents=True, exist_ok=True)
-        text = json.dumps({"projects": {str(tmp / "repo"): UNAPPROVED}}) if text == "PROJECTS" else text
-        (tmp / name).write_text(text, encoding="utf-8")
+        (tmp / name).write_text(text.replace("@TMP@", str(tmp)), encoding="utf-8")
     environ = {"CLAUDE_CONFIG_DIR": str(tmp / config_dir)} if config_dir else {}
-    shown = [(line.level, line.text) for line in check_mcp(tmp / "home", wanted, tmp / cwd, environ)]
-    check(f"{case}: the expected lines appear, none is a FAIL, and the absent texts do not",
+    lines = check_mcp(tmp / "home", wanted, tmp / cwd, environ)
+    shown = [(line.level, line.text.replace(str(tmp), "")) for line in lines]
+    check(f"{case}: the expected lines appear, none is a FAIL or says 'add it', and the absent texts do not",
           all(any(level == got and text in body for got, body in shown) for level, text in expected)
-          and all(level != "FAIL" for level, _ in shown)
+          and all(level != "FAIL" and "add it" not in body for level, body in shown)
           and not any(text in f"{level} {body}" for text in absent for level, body in shown), shown)
     check(f"{case}: one note with no names configured, else the unchecked sources named last",
           len(shown) == 1 if not wanted or not any(wanted.values()) else shown[-1] == UNCHECKED, shown)

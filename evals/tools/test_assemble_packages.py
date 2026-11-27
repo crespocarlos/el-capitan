@@ -351,7 +351,7 @@ def test_the_layout_shares_a_byte_identical_head_and_the_whole_diff(tmp: Path) -
     texts = {persona: (review / f"{persona}.in.md").read_text(encoding="utf-8") for persona in PERSONAS}
     diff = fixture_diff()
     for persona, text in texts.items():
-        order = ["# Shared reviewer contract", "## Hunk reference", "# Repo memory", "# Diff (package.diff", *TAIL_HEADINGS]
+        order = ["# Shared reviewer contract", "\n# Lookups\n", "## Hunk reference", "# Repo memory", "# Diff (package.diff", *TAIL_HEADINGS]
         order += ["# Consumers of the changed contracts"] if persona in CONSUMER_PERSONAS else []
         order += ["# Prompt tier"] if persona == "prompt-quality" else []
         positions = [text.index(heading) for heading in order]

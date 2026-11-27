@@ -446,7 +446,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `parseDiff`; that parity is what lets a crew review and a nightshift review of one PR cite the
   same `h1`.
 - `crew-assemble-packages.py <review-dir>` composes one `<persona>.in.md` package per
-  reviewer from files the run already wrote, in one order: the shared head (contract, mode, hunk
+  reviewer from files the run already wrote, in one order: the shared head (contract, lookups, mode, hunk
   reference, memory), then `package.diff` in full, then the per-persona tail (size gate, spec, reading
   map, guidance narrowed for that lens, prior-round block, consumer and prompt extras). The head and
   the whole diff are byte-identical across the run's packages, so a harness that caches a prompt

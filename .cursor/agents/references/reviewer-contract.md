@@ -138,41 +138,11 @@ it is attributable to you. State your conclusion in the body; leave the leading 
 
 ## Finding things in the codebase
 
-Search Sourcerer's code index before reaching for a text search: it ranks by relevance across whole
-repositories, so it finds implementations you could not have guessed the words for. Take the first row
-that fits and stop there. Install adds the code-search server to your allowlist when it is configured.
-When it is not in your tools, or a call fails, use the equivalent `Grep`/`Glob`/`Read` call and put
-`code search unreachable: used text search` on its own line directly after the `Assessment:` line:
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+Your package appends that file after this contract, so following it costs no read. When it sends you
+to text search, put `code search unreachable: used text search` on its own line directly after the
+`Assessment:` line.
 
-| Task | Use |
-| --- | --- |
-| Where does this concept live? | `sourcerer_code_search` with a described query, then `sourcerer_files_tree` on the directory it names |
-| Find code by identifier, error text, or config key | `sourcerer_code_grep` (exact regex) |
-| Outline of one known directory | `sourcerer_files_tree` |
-| Read a file search identified, or a line range | `sourcerer_files_read_lines` |
-| Read a whole file | `sourcerer_files_cat` |
-| Which repositories hold this code | `sourcerer_repos_search`, or `sourcerer_repos_list` |
-| Which branch or tag is indexed | `sourcerer_refs_list`; a stale index is the usual reason results look wrong |
-| Repository or module orientation prose | `sourcerer_ki_search` |
-| Verify one exact string in a file you already located | a text search (`Grep`) |
-| Find files by path once you know the area | a path search (`Glob`) |
-
-These are Sourcerer's ids (`mcp__sourcerer__*`) plus the native `Grep` and `Glob`; in a harness with
-different names, use its equivalents in the same order. The index is **lexical ranking, not
-embedding search**, so query with the words the code contains; it holds snapshots of *refs*, so for
-a version-specific claim pass the branch as `git_ref` and check its `status` in `sourcerer_refs_list`
-(`complete` is safe, `indexing` may be partial, `stale` is not). Start exploring with the index, not
-a text search, and read a whole file only as a last resort.
-
-**Tool-call budget: ≤8 file-fetch calls** (text search, read, and index search combined). Fetch
+**Tool-call budget: ≤8 file-fetch calls** (text search, read, index search, and docs lookup combined). Fetch
 only when a finding cannot be grounded from the artifact and package; count before each call and
 stop at 8.
-
-## Elastic docs claims (opt-in: applies when the package says the artifact has Elastic content)
-
-Verify ES|QL (`.esql` files, `FROM … |`, `esql` identifiers) and Elasticsearch or Kibana API claims
-against the docs server, never from memory: search with `search_internal_docs`, confirm with
-`get_internal_document_by_url`, cite the URL. The code index shows how code builds a query, not
-whether the syntax is valid. With no docs server in your tools, or a failed lookup, mark the claim
-`unverified (docs server unreachable)` and never settle it from code or memory: a guessed option is
-indistinguishable from a verified one.

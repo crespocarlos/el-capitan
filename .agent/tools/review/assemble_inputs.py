@@ -274,6 +274,9 @@ def common(review_dir: Path, config: dict) -> str:
     parts = [
         contract_path().read_text(encoding="utf-8"),
         "\n---\n\n",
+        # The contract points to lookups.md; carrying it here spares every persona a read from its budget.
+        contract_path().with_name("lookups.md").read_text(encoding="utf-8"),
+        "\n---\n\n",
         config.get("mode") or DEFAULT_MODE,
         "\n---\n\n## Hunk reference\n\n",
         HUNK_SENTENCE,

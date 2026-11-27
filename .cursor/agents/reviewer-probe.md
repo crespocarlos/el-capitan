@@ -24,6 +24,8 @@ What a probe is, its lifecycle, the trigger bounds, the four shapes of uncertain
 shape are held once in [probing an unsettled claim](~/.cursor/agents/references/probing.md). Read it
 before the first probe.
 
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+
 What changes for you: the claims arrive already collected, so you do not re-litigate whether a probe is
 warranted. The shared lifecycle's one-question-per-probe rule is the boundary here too: one artifact may
 answer several claims only when they share one question, and the return block still gives every claim

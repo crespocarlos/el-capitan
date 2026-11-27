@@ -96,8 +96,7 @@ bloats the package. Include the guidance, from repository root to nearest folder
 Diff modes also split the diff into numbered hunks, order them into layers, and assemble one package
 per persona with the tool. Follow
 [packaging](~/.cursor/agents/crew-reviewer/references/packaging.md) for the layer map, the
-`## Hunk reference` section built from `hunks.index.md`, `assemble.json`, and the opt-in Elastic docs
-trigger.
+`## Hunk reference` section built from `hunks.index.md`, and `assemble.json`.
 
 Every persona package carries `~/.cursor/agents/references/reviewer-contract.md`, which owns the
 output; a persona file never restates it.
