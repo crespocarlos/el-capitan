@@ -210,6 +210,7 @@ crew spec <issue URL or description>
 
 | Dependency | Purpose | Install |
 |---|---|---|
+| [`shfmt`](https://github.com/mvdan/sh) | A real bash parser for the guard hooks (preferred over the awk fallback when present) | `brew install shfmt` |
 | [Sourcerer](https://github.com/elastic/sourcerer) | Ranked code search and file reads over git repos indexed in Elasticsearch (lexical bm25, not embeddings). Tools appear as `mcp__sourcerer__*` | `uv tool install "git+https://github.com/elastic/sourcerer.git@v3.0.3"` |
 
 > **Sourcerer is self-hosted.** It needs Elasticsearch and Kibana v9.5.0+, a `.env` with
@@ -504,6 +505,13 @@ The shell guards read a command the way the shell runs it, through one normalise
 message or a heredoc body stays data, except a heredoc, here-string or `echo`/`printf` text fed to a
 shell with no `-c`, which is read as its script; a shell fed by any other pipe (`curl ... | bash`)
 is denied, and so is a command nesting more payloads than the normaliser reads.
+
+The normaliser has two parsers. [`shfmt`](https://github.com/mvdan/sh) is optional and preferred:
+when it is on PATH, the command is parsed into a real bash syntax tree (`shfmt --to-json`, read by
+`lib/segments.jq`), which reads `$(...)` inside double quotes and in unquoted heredoc bodies
+correctly. Without it, when it cannot parse the command, or when the command is over 16 KiB or
+nests too deeply for the tree to stay small, an awk tokenizer reads it instead, so a parse failure
+never lets through what awk would block. Install it with `brew install shfmt` (CI pins v3.14.1).
 
 **Turning a guard off.** Every blocking hook honours an off switch read from the harness's own
 environment (export it in the shell that starts Claude Code or Cursor; a prefix on the agent's

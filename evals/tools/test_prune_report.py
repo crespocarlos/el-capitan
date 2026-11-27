@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 """Checks for the prune report: a command with no reference anywhere is the only automatic verdict.
 
-The command surface grows faster than it is exercised, and nothing noticed when four tools lost
-their last caller. These cases build a throwaway repository with one called command, one named only
-by a test, and one named nowhere, and assert the report separates them — because a report that
-counts documentation as a caller answers "everything is called" and measures nothing.
+These cases build a throwaway repository with one called command, one named only by a test, and one
+named nowhere, and assert the report separates them, because a report that counts documentation as a
+caller answers "everything is called" and measures nothing.
 """
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
-import sys
-import tempfile
 from pathlib import Path
+
+from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
 PRUNE = ROOT / ".agent" / "tools" / "maintenance" / "crew-prune.py"
 
-FAILED: list[str] = []
 CATALOG = {
     "schema_version": 1,
     "tools": [
@@ -34,14 +30,6 @@ CATALOG = {
                  "owner": "repository", "help": "imported", "smoke": "imported"}],
     "assets": [],
 }
-
-
-def check(name: str, condition: bool, detail: object = "") -> None:
-    if condition:
-        print(f"pass: {name}")
-        return
-    FAILED.append(name)
-    print(f"FAIL: {name}{': ' + str(detail) if detail else ''}")
 
 
 def write(root: Path, relative: str, text: str) -> None:
@@ -67,97 +55,49 @@ def fixture(base: Path) -> Path:
     return root
 
 
-def report(root: Path, *arguments: str) -> tuple[int, list[dict], str]:
-    result = subprocess.run([sys.executable, str(PRUNE), "--root", str(root), "--json", *arguments],
-                            capture_output=True, text=True)
+def report(root: Path, *arguments: str) -> tuple[int, dict[str, str], str]:
+    """Exit code, the verdict per command name, and the output."""
+    result = cli(PRUNE, "--root", str(root), "--json", *arguments)
     try:
         rows = json.loads(result.stdout) if result.stdout.strip() else []
     except json.JSONDecodeError:
         rows = []
-    return result.returncode, rows, result.stdout + result.stderr
+    return result.returncode, {row["name"]: row["verdict"] for row in rows}, result.stdout + result.stderr
 
 
-def verdicts(rows: list[dict]) -> dict[str, str]:
-    return {row["name"]: row["verdict"] for row in rows}
+def test_the_fixture_names_exactly_one_uncalled_command(tmp: Path) -> None:
+    """A documented catalog page is not a caller, and a module is not a command."""
+    code, verdict, _ = report(fixture(tmp))
+    assert verdict == {"crew-called.py": "called", "crew-tested.py": "test-only", "crew-orphan.py": "uncalled"}, verdict
+    assert code == 1
 
 
-def fixture_cases(base: Path) -> None:
-    """The fixture names exactly one uncalled command, and the exit code says so."""
-    root = fixture(base)
-    code, rows, output = report(root)
-    verdict = verdicts(rows)
-    check("the fixture's uncalled command is the only uncalled one",
-          [name for name, state in verdict.items() if state == "uncalled"] == ["crew-orphan.py"],
-          verdict)
-    check("a command a prompt names is called", verdict.get("crew-called.py") == "called", verdict)
-    check("a command only a test names is test-only",
-          verdict.get("crew-tested.py") == "test-only", verdict)
-    check("an uncalled command fails the report", code == 1, code)
-    check("the documented catalog page is not a caller", verdict.get("crew-orphan.py") != "called",
-          verdict)
-    check("a module is not reported as a command",
-          "helper_module.py" not in verdict, sorted(verdict))
-
-
-def table_cases(base: Path) -> None:
-    """The human report names the same command and prints a table with one row per command."""
-    root = fixture(base)
-    result = subprocess.run([sys.executable, str(PRUNE), "--root", str(root)],
-                            capture_output=True, text=True)
-    check("the table names the uncalled command", "crew-orphan.py" in result.stdout, result.stdout)
-    check("the table says how many are uncalled", "1 uncalled" in result.stdout, result.stdout)
+def test_the_table_has_one_row_per_command(tmp: Path) -> None:
+    result = cli(PRUNE, "--root", str(fixture(tmp)))
     body = [line for line in result.stdout.splitlines() if line.startswith("crew-")]
-    check("the table has one row per command", len(body) == 3, body)
-    check("the table's exit code reports the finding", result.returncode == 1, result.returncode)
+    assert "crew-orphan.py" in result.stdout and "1 uncalled" in result.stdout, result.stdout
+    assert len(body) == 3 and result.returncode == 1, (body, result.returncode)
 
 
-def install_cases(base: Path) -> None:
-    """A command the installer links is a caller, because install.sh names it."""
-    root = fixture(base)
+def test_an_installer_reference_is_a_caller(tmp: Path) -> None:
+    root = fixture(tmp)
     write(root, "install.sh", "#!/usr/bin/env bash\nln -sf crew-orphan.py b\n")
-    code, rows, _ = report(root)
-    verdict = verdicts(rows)
-    check("an installer reference counts as a caller", verdict.get("crew-orphan.py") == "called",
-          verdict)
-    check("nothing is uncalled, so the report exits 0", code == 0, code)
+    code, verdict, _ = report(root)
+    assert verdict.get("crew-orphan.py") == "called" and code == 0, (verdict, code)
 
 
-def description_cases(base: Path) -> None:
+def test_a_description_is_not_a_caller_and_a_string_in_code_is(tmp: Path) -> None:
     """A docstring, a comment or a tool-tree `.md` doc describes a command; it does not call it."""
-    root = fixture(base)
+    root = fixture(tmp)
     write(root, ".agent/tools/task/helper_module.py",
           '"""Wraps crew-orphan.py."""\n# crew-orphan.py is described here\nVALUE = 1\n')
     write(root, ".agent/tools/AGENTS.md", "# Tools\n\nRun `crew-orphan.py` to see.\n")
-    code, rows, _ = report(root)
-    check("a docstring, a comment and a tool-tree doc are not callers",
-          verdicts(rows).get("crew-orphan.py") == "uncalled", verdicts(rows))
-    check("the report still fails for an uncalled command", code == 1, code)
+    code, verdict, _ = report(root)
+    assert verdict.get("crew-orphan.py") == "uncalled" and code == 1, (verdict, code)
     write(root, ".agent/tools/task/helper_module.py", 'COMMAND = "crew-orphan.py"\n')
-    check("a string in code is a caller", verdicts(report(root)[1]).get("crew-orphan.py") == "called")
+    assert report(root)[1].get("crew-orphan.py") == "called"
 
 
-def unreadable_catalog_cases(base: Path) -> None:
-    """A missing catalog is an invocation failure, not "everything is called"."""
-    root = base / "empty"
-    root.mkdir(parents=True, exist_ok=True)
-    code, _, output = report(root)
-    check("an unreadable catalog exits 2", code == 2, (code, output))
-    check("an unreadable catalog says why", "cannot read the catalog" in output, output)
-
-
-def main() -> int:
-    base = Path(tempfile.mkdtemp(prefix="crew-prune-"))
-    try:
-        fixture_cases(base / "one")
-        table_cases(base / "two")
-        install_cases(base / "three")
-        description_cases(base / "four")
-        unreadable_catalog_cases(base / "five")
-    finally:
-        shutil.rmtree(base, ignore_errors=True)
-    print("all prune-report checks passed" if not FAILED else f"prune: {len(FAILED)} failed")
-    return 1 if FAILED else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+def test_an_unreadable_catalog_exits_2(tmp: Path) -> None:
+    code, _, output = report(tmp)
+    assert code == 2 and "cannot read the catalog" in output, (code, output)

@@ -14,7 +14,6 @@ import io
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from cli_runner import run as cli
@@ -179,22 +178,3 @@ def test_crew_ls_cost_reads_the_same_lines(tmp: Path) -> None:
     assert listed.returncode == 0, listed.stderr
     assert listed.stdout.strip() == "abc: implement: 3 workers, 410k tokens; review: 4 personas, 380k tokens", \
         listed.stdout
-
-
-def main() -> int:
-    tests = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
-    failed = 0
-    for test in tests:
-        with tempfile.TemporaryDirectory() as directory:
-            try:
-                test(Path(directory))
-                print(f"pass: {test.__name__}")
-            except Exception as error:
-                failed += 1
-                print(f"FAIL: {test.__name__}: {type(error).__name__}: {error}")
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

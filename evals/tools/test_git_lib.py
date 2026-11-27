@@ -11,28 +11,24 @@ still pass a test that only looked at the happy path.
 from __future__ import annotations
 
 import importlib.util
-import json
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+import pytest
+
+ROOT =Path(__file__).resolve().parents[2]
 GIT_MODULE = ROOT / ".agent" / "tools" / "lib" / "git.py"
 DEFAULT_BRANCH_SH = ROOT / ".agent" / "tools" / "task" / "crew-default-branch.sh"
 
-FAILED: list[str] = []
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.invalid",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e.invalid"}
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
-    if condition:
-        print(f"pass: {name}")
-        return
-    FAILED.append(name)
-    print(f"FAIL: {name}{': ' + str(detail) if detail else ''}")
+    assert condition, f"{name}: {detail}"
 
 
 def load_module():
@@ -251,7 +247,6 @@ def default_branch_cases(module, stub: GhStub, repo: Path, base: Path) -> None:
     """default_branch: gh wins when it answers, git answers when gh cannot, both named when neither."""
     stub.reset()
     stub.answers["api repos/"] = "main"
-    module.gh = stub
     with GitRecorder(module) as recorder:
         check("default_branch prefers gh", module.default_branch(repo, "origin") == "main")
         check("gh-first issues no network git call", recorder.network_calls() == [],
@@ -292,11 +287,11 @@ def remote_tip_cases(module, stub: GhStub, repo: Path, base: Path) -> None:
 
 
 def ahead_on_origin(repo: Path, base: Path) -> str:
-    """Push one commit to the bare origin, so the local tracking ref is behind it."""
-    ahead = base / "ahead"
-    git(base, "clone", "-q", str(base / "origin.git"), "ahead")
-    (ahead / "tracked.txt").write_text("three\n")
-    git(ahead, "commit", "-qam", "third")
+    """Push one commit to the bare origin, so the local tracking ref is behind it (each call clones afresh)."""
+    ahead = Path(tempfile.mkdtemp(dir=str(base))) / "ahead"
+    git(base, "clone", "-q", str(base / "origin.git"), str(ahead))
+    (ahead / "tracked.txt").write_text(f"{ahead.parent.name}\n")
+    git(ahead, "commit", "-qam", "ahead")
     git(ahead, "push", "-q", "origin", "main")
     return module_tip(ahead)
 
@@ -338,9 +333,12 @@ def behind_cases(module, stub: GhStub, repo: Path, base: Path) -> None:
         check("behind_count prefers gh", module.behind_count(repo, "origin", "main") == 2)
         check("behind_count gh answer makes no network git call", recorder.network_calls() == [],
               recorder.network_calls())
+    head = module.rev_parse(repo, "HEAD")
+    ahead_on_origin(repo, base)
+    behind = git(base / "origin.git", "rev-list", "--count", f"{head}..main").stdout.strip()
     stub.reset()
-    check("behind_count falls back to git", module.behind_count(repo, "origin", "main") == 1,
-          "HEAD is one commit behind the origin tip pushed by fetch_remote_cases")
+    check("behind_count falls back to git (it fetches, then counts)",
+          str(module.behind_count(repo, "origin", "main")) == behind != "0", f"origin is {behind} ahead of HEAD")
     stub.reset()
     expect_error("behind_count names both failures",
                  lambda: module.behind_count(broken_copy(repo, base), "origin", "main"), "gh:")
@@ -357,27 +355,34 @@ def script_agreement(module, repo: Path) -> None:
               f"{result.stdout.strip()!r} vs {module.default_branch(repo, remote)!r}")
 
 
-def main() -> int:
-    module = load_module()
-    stub = GhStub()
-    with tempfile.TemporaryDirectory() as temporary:
-        base = Path(temporary)
-        repo, _origin, _upstream = make_repo(base)
-        outside = base / "outside"
-        outside.mkdir()
-        local_cases(module, repo, outside, base)
-        # The remotes are local bare repositories, which name no owner/repo; the network helpers
-        # are asked as if they were on GitHub (`slug_from_url` has its own cases in test_task_progress).
-        module.slug_from_url = lambda url: "acme/widgets" if url else None
-        default_branch_cases(module, stub, repo, base)
-        remote_tip_cases(module, stub, repo, base)
-        fetch_remote_cases(module, stub, repo, base)
-        behind_cases(module, stub, repo, base)
-        script_agreement(module, repo)
-    print(json.dumps({"checks_failed": FAILED}))
-    print("all git-lib checks passed" if not FAILED else "git-lib: fail")
-    return 1 if FAILED else 0
+def test_local_reads(tmp: Path) -> None:
+    repo, _origin, _upstream = make_repo(tmp)
+    outside = tmp / "outside"
+    outside.mkdir()
+    local_cases(load_module(), repo, outside, tmp)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+@pytest.fixture(scope="module")
+def network(tmp_path_factory: pytest.TempPathFactory) -> tuple:
+    """One repository with its remotes and one gh stub, shared by the network groups below; each group
+    resets the stub and makes the remote state it needs, so they pass in any order or alone."""
+    base = tmp_path_factory.mktemp("git-lib")
+    module, stub = load_module(), GhStub()
+    module.gh = stub
+    repo, _origin, _upstream = make_repo(base)
+    # The remotes are local bare repositories, which name no owner/repo; the network helpers
+    # are asked as if they were on GitHub (`slug_from_url` has its own cases in test_task_progress).
+    module.slug_from_url = lambda url: "acme/widgets" if url else None
+    return module, stub, repo, base
+
+
+@pytest.mark.parametrize("group", [default_branch_cases, remote_tip_cases, fetch_remote_cases, behind_cases],
+                         ids=["default_branch", "remote_tip", "fetch_remote", "behind_count"])
+def test_network_helpers_fall_back_from_gh_to_git(group, network: tuple) -> None:
+    group(*network)
+
+
+def test_the_script_and_the_helper_agree(network: tuple) -> None:
+    module, stub, repo, _ = network
+    stub.reset()
+    script_agreement(module, repo)

@@ -528,7 +528,14 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
 reader sees one purpose per file. `lib/hook.sh` is sourced, never registered; it holds the command
 normaliser every shell guard reads through and the off switches (`EL_CAPITAN_GUARDS=off`,
-`EL_CAPITAN_GUARD_<NAME>=off`, documented in the README's hooks section). `lib/anchor.sh`
+`EL_CAPITAN_GUARD_<NAME>=off`, documented in the README's hooks section). The normaliser prefers
+`shfmt` (optional) when it is on PATH: `shfmt --to-json` parses the command and `lib/segments.jq`
+turns the tree into the same segment records the awk fallback emits, so the guards never know which
+parser ran; awk reads the whole command when shfmt is absent or fails on any part of it, and when
+the command is over 16 KiB or nests deeply (shfmt's JSON grows with depth times size).
+`evals/tools/test_hook_cases.py` runs every case through both parsers (`PARSERS_DIFFER` in
+`hook_cases.py` lists the rows where awk is wrong), and CI installs the pinned shfmt with
+`evals/install-shfmt.sh`. `lib/anchor.sh`
 holds the anchor line `spec-status-reconcile.sh` computes and `mode-anchor.sh` reprints.
 
 The review-address gate is the user's answer in `crew-address-review` Step 3; no hook or permission
@@ -594,7 +601,7 @@ harness that produces that failure.
    `json_smoke` invocation the test can run hermetically. Add the row to the contract table above.
 5. Add a deterministic smoke command if the CLI is safe to invoke.
 6. Run `python3 .agent/tools/maintenance/crew-lint.py`, the listed smoke command, and
-   `python3 evals/tools/test_command_names.py`.
+   `bash evals/test.sh evals/tools/test_command_names.py`.
 
 ## Handoff trailers
 

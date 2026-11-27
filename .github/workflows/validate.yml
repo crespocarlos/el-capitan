@@ -6,42 +6,75 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+# Every check is hermetic: no network beyond the pinned tool downloads, no API key, no model calls.
 jobs:
-  checks:
-    name: Deterministic checks
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The upgrade fixture installs origin/main before this tree, so the full history is needed.
-          fetch-depth: 0
+          persist-credentials: false
 
-      # Every check below is hermetic: no network, no API key, no model calls.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: false
+
       - name: Repo conventions (routing, catalog, references, prompt budget)
         run: python3 .agent/tools/maintenance/crew-lint.py --budget
 
       - name: Ruff (version pinned in ruff.toml)
         run: bash evals/ruff.sh check .
 
-      - name: Tests (tools, hooks, reviewer, install surface)
+      - name: Shell syntax
         run: |
-          failed=0
-          for t in evals/tools/test_*.py evals/reviewer/test_*.py; do
-            echo "::group::$t"
-            python3 "$t" || { echo "::error::$t failed"; failed=1; }
-            echo "::endgroup::"
-          done
-          exit "$failed"
+          bash -n install.sh
+          for f in .claude/hooks/*.sh .claude/hooks/guard/*.sh .claude/hooks/lib/*.sh; do bash -n "$f"; done
+          find .agent/tools -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The upgrade test installs origin/main before this tree, so the full history is needed.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: false
+
+      # The hook tests run every case through both normaliser paths: shfmt (this pinned binary) and awk.
+      - name: shfmt (pinned release binary, checksum checked)
+        run: |
+          bash evals/install-shfmt.sh "$RUNNER_TEMP/shfmt-bin"
+          echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
+
+      - name: Tests (pytest and pytest-xdist, versions pinned in evals/test.sh)
+        run: bash evals/test.sh -n auto
 
       - name: Install migration and idempotency
         run: bash .claude/hooks/fixtures/install.sh
 
       - name: Memory eval
         run: python3 evals/memory/run.py
-
-      - name: Shell syntax
-        run: |
-          bash -n install.sh
-          for f in .claude/hooks/*.sh .claude/hooks/guard/*.sh .claude/hooks/lib/*.sh; do bash -n "$f"; done
-          find .agent/tools -name '*.sh' -print0 | xargs -0 -r -n1 bash -n

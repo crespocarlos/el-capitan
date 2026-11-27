@@ -3,12 +3,9 @@
 
 `ls_data` (shared with a TUI) is driven with stubbed readers, an injected sleep and clock; a real
 `crew-ls.py --watch` is read until it has drawn twice, then interrupted. A DONE task is `yes`, `no`,
-or `unknown`, from the PR record.
-
-`DONE` means a draft PR was opened. Stacked PRs merged into their parents looked merged and never
-reached the default branch, so the verdict reads the PR record (base, state, merge commit) and not
-branch ancestry, which is false for squash merges. No test calls the real GitHub: the decision
-functions take a stubbed reader, and the end-to-end cases put a fake `gh` first on PATH.
+or `unknown`, from the PR record (base, state, merge commit), not from branch ancestry, which is false
+for squash merges. No test calls the real GitHub: the decision functions take a stubbed reader, and
+the end-to-end cases put a fake `gh` first on PATH.
 """
 from __future__ import annotations
 
@@ -17,8 +14,9 @@ import os
 import stat
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
@@ -27,15 +25,14 @@ sys.path.insert(0, str(TASK_TOOLS.parent))
 
 import ls_data  # noqa: E402
 
-FAILED: list[str] = []
 URL = "https://github.com/acme/widgets/pull/51"
 SHA = "a" * 40
+BACKPORT = [r"^\d+\.\d+$", r"^\d+\.x$"]
+ANY = object()
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
-    print(("pass: " if condition else "FAIL: ") + name + ("" if condition else f": {detail}"))
-    if not condition:
-        FAILED.append(name)
+    assert condition, f"{name}: {detail}"
 
 
 def task_with_pr(base: Path, url: str | None = URL) -> Path:
@@ -59,16 +56,51 @@ def reader(state: str, base: str, default: str = "main", sha: str | None = SHA, 
     return read
 
 
+def never(_sha: str, _ref: str) -> bool:
+    raise AssertionError("no ancestry needed")
+
+
 HERE = lambda: {"acme/widgets": "origin"}  # the current directory's remotes, for tasks whose PR is acme/widgets
+FORK = lambda: {"me/widgets": "origin", "acme/widgets": "upstream"}  # origin is the user's fork, the PR targets upstream
+REACH = {"yes": lambda s, d: True, "no": lambda s, d: False, "stale": lambda s, d: None, "never": never}
+
+# (case, state, base, merge sha, reader fails, reachability, landing bases, landed, flag: "" exact or a fragment, note)
+DECISIONS = [
+    ("merge into a parent branch is no and flagged", "MERGED", "feat/parent", SHA, False, "no", [], "no", "feat/parent, not main", ANY),
+    ("merge commit into the default is yes, not flagged", "MERGED", "main", SHA, False, "never", [], "yes", "", ANY),
+    ("squash merge into default is yes via the PR record", "MERGED", "main", "c" * 40, False, "no", [], "yes", ANY, ANY),
+    ("PR record unavailable is unknown", "MERGED", "main", SHA, True, "yes", [], "unknown", "", ANY),
+    ("a default branch that cannot be refreshed is unknown", "MERGED", "feat/parent", SHA, False, "stale", [], "unknown", ANY, ANY),
+    ("a stack merged on afterwards is yes by reachability", "MERGED", "feat/parent", SHA, False, "yes", [], "yes", ANY, ANY),
+    ("an open PR on a non-default base is no and flagged", "OPEN", "feat/parent", SHA, False, "yes", [], "no", "open into feat/parent", ANY),
+    ("an open PR on the default is no and not flagged", "OPEN", "main", SHA, False, "yes", [], "no", "", None),
+    ("a closed PR is no and not flagged", "CLOSED", "feat/parent", SHA, False, "yes", [], "no", "", None),
+    ("merged into another base with no merge commit is no", "MERGED", "feat/parent", None, False, "yes", [], "no", ANY, ANY),
+    ("a merge into a landing base is yes, worded as a backport", "MERGED", "9.x", SHA, False, "never", BACKPORT, "yes", "", "backport to 9.x"),
+    ("every landing base pattern counts", "MERGED", "9.1", SHA, False, "never", BACKPORT, "yes", ANY, ANY),
+    ("landing bases leave a parent-branch merge no and flagged", "MERGED", "feat/parent", SHA, False, "no", BACKPORT, "no", "feat/parent", None),
+    ("a landing base pattern matches the whole name", "MERGED", "feat/9.x-fix", SHA, False, "no", BACKPORT, "no", ANY, ANY),
+    ("an open PR into a landing base is no and not flagged", "OPEN", "9.x", SHA, False, "never", BACKPORT, "no", "", None),
+    ("without landing bases a release-branch merge is no and flagged", "MERGED", "9.x", SHA, False, "no", [], "no", "9.x", ANY),
+    ("a merge into the default carries no backport note", "MERGED", "main", SHA, False, "never", BACKPORT, "yes", "", None),
+]
 
 
-def decide(tmp: Path, read, reach=lambda sha, default: True) -> dict:
-    return ls_data.landed_row(task_with_pr(tmp), read, reach, local=HERE)
+@pytest.mark.parametrize("case,state,base,sha,fail,reach,patterns,landed,flag,note", DECISIONS, ids=[row[0] for row in DECISIONS])
+def test_landed_decision(case: str, state: str, base: str, sha: str | None, fail: bool, reach: str, patterns: list[str], landed: str,
+                         flag: object, note: object, tmp: Path) -> None:
+    row = ls_data.landed_row(task_with_pr(tmp), reader(state, base, sha=sha, fail=fail), REACH[reach], patterns, local=HERE)
+    assert row["landed"] == landed, row
+    assert flag is ANY or (flag in row["flag"] if flag else row["flag"] == ""), row
+    assert note is ANY or row.get("note") == note, row
 
 
-def foreign_repo_case(tmp: Path) -> None:
+def test_a_task_with_no_recorded_pr_is_unknown(tmp: Path) -> None:
+    assert ls_data.landed_row(task_with_pr(tmp, None), reader("MERGED", "main"))["landed"] == "unknown"
+
+
+def test_another_repositorys_pr(tmp: Path) -> None:
     """Reachability and `landing_bases` belong to the cwd repository: another repo's PR is unknown, never a wrong no."""
-    never = lambda s, d: (_ for _ in ()).throw(AssertionError("reachability belongs to another repository"))
     elsewhere = lambda: {"someone/else": "origin", "someone/upstream": "upstream"}
     other = ls_data.landed_row(task_with_pr(tmp / "a"), reader("MERGED", "feat/parent"), never, BACKPORT, local=elsewhere)
     check("a merge into a non-default base of another repo is unknown", other["landed"] == "unknown", other)
@@ -84,11 +116,8 @@ def foreign_repo_case(tmp: Path) -> None:
     check("origin URLs normalise to owner/repo", slugs == ["acme/widgets"] * 3, slugs)
 
 
-FORK = lambda: {"me/widgets": "origin", "acme/widgets": "upstream"}  # origin is the user's fork, the PR targets upstream
-
-
-def fork_case(tmp: Path) -> None:
-    """The fork workflow: a PR into upstream counts as local, and reachability reads `upstream/<default>`."""
+def test_the_fork_workflow(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A PR into upstream counts as local, and reachability reads `upstream/<default>`."""
     asked: list[str] = []
     reach = lambda sha, ref: asked.append(ref) or True
     stacked = ls_data.landed_row(task_with_pr(tmp / "a"), reader("MERGED", "feat/parent"), reach, [], local=FORK)
@@ -104,41 +133,9 @@ def fork_case(tmp: Path) -> None:
     git(repo, "init", "-q", "-b", "main")
     git(repo, "remote", "add", "origin", "git@github.com:me/widgets.git")
     git(repo, "remote", "add", "upstream", "https://github.com/acme/widgets.git")
-    cwd = os.getcwd()
-    os.chdir(repo)
-    try:
-        found = ls_data.local_remotes()
-    finally:
-        os.chdir(cwd)
+    monkeypatch.chdir(repo)
+    found = ls_data.local_remotes()
     check("local_remotes maps origin and upstream to their owner/repo", found == {"me/widgets": "origin", "acme/widgets": "upstream"}, found)
-
-
-def decision_cases(tmp: Path) -> None:
-    parent = decide(tmp / "a", reader("MERGED", "feat/parent"), lambda s, d: False)
-    check("merge into a parent branch is no", parent["landed"] == "no", parent)
-    check("a parent-branch merge is flagged", "feat/parent" in parent["flag"] and "main" in parent["flag"], parent)
-    direct = decide(tmp / "b", reader("MERGED", "main"), lambda s, d: (_ for _ in ()).throw(AssertionError("no ancestry needed")))
-    check("merge commit into the default is yes", direct["landed"] == "yes", direct)
-    check("a default-base merge is not flagged", direct["flag"] == "", direct)
-    squash = decide(tmp / "c", reader("MERGED", "main", sha="c" * 40), lambda s, d: False)
-    check("squash merge into default is yes via the PR record", squash["landed"] == "yes", squash)
-    gone = decide(tmp / "d", reader("MERGED", "main", fail=True))
-    check("PR record unavailable is unknown", gone["landed"] == "unknown" and gone["flag"] == "", gone)
-    stale = decide(tmp / "e", reader("MERGED", "feat/parent"), lambda s, d: None)
-    check("a default branch that cannot be refreshed is unknown", stale["landed"] == "unknown", stale)
-    stacked_later = decide(tmp / "f", reader("MERGED", "feat/parent"), lambda s, d: True)
-    check("a stack merged on afterwards is yes by reachability", stacked_later["landed"] == "yes", stacked_later)
-    opened = decide(tmp / "g", reader("OPEN", "feat/parent"))
-    check("an open PR is no", opened["landed"] == "no", opened)
-    check("an open PR on a non-default base is flagged", "open into feat/parent" in opened["flag"], opened)
-    open_default = decide(tmp / "h", reader("OPEN", "main"))
-    check("an open PR on the default is no and not flagged", open_default == {"landed": "no", "flag": ""}, open_default)
-    closed = decide(tmp / "i", reader("CLOSED", "feat/parent"))
-    check("a closed PR is no and not flagged", closed == {"landed": "no", "flag": ""}, closed)
-    nopr = ls_data.landed_row(task_with_pr(tmp / "j", None), reader("MERGED", "main"))
-    check("a task with no recorded PR is unknown", nopr["landed"] == "unknown", nopr)
-    nosha = decide(tmp / "k", reader("MERGED", "feat/parent", sha=None))
-    check("merged into another base with no merge commit is no", nosha["landed"] == "no", nosha)
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -150,17 +147,24 @@ def git(root: Path, *arguments: str) -> str:
     return done.stdout.strip()
 
 
-def fake_gh(directory: Path) -> Path:
-    """A `gh` that fails everything, so a stale-origin fetch cannot reach the real GitHub."""
+def fake_gh(directory: Path, body: str = "  *) exit 1 ;;\n", log: Path | None = None) -> Path:
+    """A `gh` that answers `pr view` and `repo view` from `body` (a case list) and fails everything else."""
     directory.mkdir(parents=True, exist_ok=True)
     script = directory / "gh"
-    script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    record = f'echo "$@" >> "{log}"\n' if log else ""
+    script.write_text(f'#!/bin/sh\n{record}case "$1 $2" in\n{body}esac\n', encoding="utf-8")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     return directory
 
 
-def stale_origin_case(tmp: Path) -> None:
-    """`origin/main` is behind the server: reachability fetches first, and an unfetchable origin is None."""
+def merged_into(base: str) -> str:
+    return ('  "pr view") echo \'{"state":"MERGED","baseRefName":"' + base + '","mergeCommit":{"oid":"' + SHA + '"}}\' ;;\n'
+            '  "repo view") echo \'{"defaultBranchRef":{"name":"main"}}\' ;;\n'
+            "  *) exit 1 ;;\n")
+
+
+def test_a_stale_origin_is_unknown_and_never_fetched(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`origin/main` is behind the server: the listing never fetches, so the answer is unknown, not no."""
     remote, clone, other = tmp / "remote.git", tmp / "clone", tmp / "other"
     subprocess.run(["git", "init", "--bare", "-b", "main", str(remote)], capture_output=True, check=True)
     subprocess.run(["git", "clone", str(remote), str(clone)], capture_output=True, check=True)
@@ -170,102 +174,46 @@ def stale_origin_case(tmp: Path) -> None:
     git(other, "commit", "--allow-empty", "-m", "merged work")
     merged = git(other, "rev-parse", "HEAD")
     git(other, "push", "origin", "HEAD:main")
-    previous, cwd = os.environ["PATH"], os.getcwd()
-    os.environ["PATH"] = f"{fake_gh(tmp / 'bin')}{os.pathsep}{previous}"
-    os.chdir(clone)
-    try:
-        check("the stale clone does not hold the merge commit yet",
-              subprocess.run(["git", "cat-file", "-e", merged], capture_output=True).returncode != 0)
-        check("the listing never fetches: a stale origin/main is unknown, not no",
-              ls_data.reachable_from(merged, "origin/main") is None)
-        check("the listing left the stale clone as it was (no fetch)",
-              subprocess.run(["git", "cat-file", "-e", merged], capture_output=True).returncode != 0)
-        git(clone, "fetch", "-q", "origin")
-        check("a commit already in origin/main is reachable", ls_data.reachable_from(merged, "origin/main") is True)
-    finally:
-        os.chdir(cwd)
-        os.environ["PATH"] = previous
+    monkeypatch.setenv("PATH", f"{fake_gh(tmp / 'bin')}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.chdir(clone)
+    check("the listing never fetches: a stale origin/main is unknown, not no",
+          ls_data.reachable_from(merged, "origin/main") is None)
+    check("the listing left the stale clone as it was (no fetch)",
+          subprocess.run(["git", "cat-file", "-e", merged], capture_output=True).returncode != 0)
+    git(clone, "fetch", "-q", "origin")
+    check("a commit already in origin/main is reachable", ls_data.reachable_from(merged, "origin/main") is True)
 
 
-def end_to_end_case(tmp: Path) -> None:
-    """`crew-ls.py --all` with a fake gh on PATH: the table line, the JSON field, and the argv gh saw."""
-    tasks = tmp / "tasks"
-    done = tasks / "11111111-1111-1111-1111-111111111111"
-    task_with_pr(tmp / "e2e")
-    done.mkdir(parents=True)
+def copy_task(source: Path, task: Path, slug: str, branch: str) -> None:
+    task.mkdir(parents=True)
     for name in ("SPEC.md", "PROGRESS.md"):
-        (done / name).write_text((tmp / "e2e" / "task" / name).read_text(encoding="utf-8"), encoding="utf-8")
-    (done / ".task-id").write_text(json.dumps({"slug": "stacked", "branch": "feat/x"}), encoding="utf-8")
-    bin_dir, log = tmp / "gh-bin", tmp / "gh.log"
-    bin_dir.mkdir()
-    script = bin_dir / "gh"
-    script.write_text(
-        "#!/bin/sh\n" f'echo "$@" >> "{log}"\n'
-        'case "$1 $2" in\n'
-        '  "pr view") echo \'{"state":"MERGED","baseRefName":"feat/parent","mergeCommit":{"oid":"' + SHA + '"}}\' ;;\n'
-        '  "repo view") echo \'{"defaultBranchRef":{"name":"main"}}\' ;;\n'
-        "  *) exit 1 ;;\nesac\n", encoding="utf-8")
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+        (task / name).write_text((source / name).read_text(encoding="utf-8"), encoding="utf-8")
+    (task / ".task-id").write_text(json.dumps({"slug": slug, "branch": branch}), encoding="utf-8")
+
+
+def test_crew_ls_all_with_a_fake_gh(tmp: Path) -> None:
+    """`crew-ls.py --all`: the table line, the JSON field, and the argv gh saw."""
+    tasks, log = tmp / "tasks", tmp / "gh.log"
+    copy_task(task_with_pr(tmp / "e2e"), tasks / "11111111-1111-1111-1111-111111111111", "stacked", "feat/x")
+    env = {**os.environ, "PATH": f"{fake_gh(tmp / 'gh-bin', merged_into('feat/parent'), log)}{os.pathsep}{os.environ['PATH']}"}
     # The merge commit is not in this scratch repository, so reachability cannot confirm it: unknown or no,
     # never yes. The flag line is the point of this case.
-    run = lambda *extra: subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks), "--all", *extra],
+    run = lambda *extra: subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks), *extra],
                                         capture_output=True, text=True, env=env, cwd=tmp)
-    table = run()
+    table = run("--all")
     check("crew ls --all prints a landed line for a DONE task", "stacked  landed:" in table.stdout, table)
     check("the non-default base is flagged in the listing", "merged into feat/parent, not main" in table.stdout, table.stdout)
     check("the merged-into-a-parent task is never yes", "landed: yes" not in table.stdout, table.stdout)
-    data = json.loads(run("--json").stdout)
+    data = json.loads(run("--all", "--json").stdout)
     check("--json carries landed and flag for the DONE task",
           data[0].get("landed") in ("no", "unknown") and "feat/parent" in data[0].get("flag", ""), data)
     calls = log.read_text(encoding="utf-8")
     check("gh saw `pr view 51 --repo acme/widgets`", "pr view 51 --repo acme/widgets --json state,baseRefName,mergeCommit" in calls, calls)
     check("gh saw the repository positionally", "repo view acme/widgets --json defaultBranchRef" in calls, calls)
-    plain = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks)],
-                           capture_output=True, text=True, env=env, cwd=tmp)
-    check("without --all the listing makes no landed read", "landed" not in plain.stdout, plain.stdout)
+    check("without --all the listing makes no landed read", "landed" not in run().stdout)
 
 
-def closing_text_case() -> None:
-    """The close of `crew open pr` (data, not an always-on rule) names merged-but-not-landed."""
-    rules = json.loads((TASK_TOOLS / "next-steps.json").read_text(encoding="utf-8"))["rules"]
-    why = rules["build.open-pr.opened"]["why"]
-    check("the open-pr close mentions merged but not landed", "merged but not landed" in why and "landed: no" in why, why)
-    router = (ROOT / "rules" / "crew-orchestrator.mdc").read_text(encoding="utf-8")
-    check("the always-on session line is unchanged", "Active task: **<slug>** (<STATE>). Next:" in router)
-
-
-BACKPORT = [r"^\d+\.\d+$", r"^\d+\.x$"]
-
-
-def backport_cases(tmp: Path) -> None:
-    """`landing_bases`: release branches are normal bases for a repo that says so (Kibana: 8.x, 9.x, 9.1)."""
-    fixed = lambda s, d: (_ for _ in ()).throw(AssertionError("no ancestry needed"))
-    merged = decide_with(tmp / "a", reader("MERGED", "9.x"), BACKPORT, fixed)
-    check("a merged PR into a landing base is yes", merged["landed"] == "yes", merged)
-    check("it is worded as a backport", merged.get("note") == "backport to 9.x", merged)
-    check("a landing base is not flagged", merged["flag"] == "", merged)
-    check("the version-number form matches too", decide_with(tmp / "b", reader("MERGED", "9.1"), BACKPORT, fixed)["landed"] == "yes")
-    stacked = decide_with(tmp / "c", reader("MERGED", "feat/parent"), BACKPORT, lambda s, d: False)
-    check("a stacked PR into any other base is still no", stacked["landed"] == "no" and "note" not in stacked, stacked)
-    check("and still flagged", "feat/parent" in stacked["flag"], stacked)
-    check("a name that only contains a pattern is not a landing base",
-          decide_with(tmp / "d", reader("MERGED", "feat/9.x-fix"), BACKPORT, lambda s, d: False)["landed"] == "no")
-    opened = decide_with(tmp / "e", reader("OPEN", "9.x"), BACKPORT, fixed)
-    check("an open PR into a landing base is no and not flagged", opened == {"landed": "no", "flag": ""}, opened)
-    unset = decide_with(tmp / "f", reader("MERGED", "9.x"), [], lambda s, d: False)
-    check("with no landing_bases the default branch is the only normal base", unset["landed"] == "no" and "9.x" in unset["flag"], unset)
-    default = decide_with(tmp / "g", reader("MERGED", "main"), BACKPORT, fixed)
-    check("a default-base merge is plain yes, no backport note", default == {"landed": "yes", "flag": ""}, default)
-    line = ls_data.landed_lines([("fix-it", task_with_pr(tmp / "h"))], reader("MERGED", "9.x"), lambda s, d: False, BACKPORT, HERE)
-    check("the listing line reads `landed: yes (backport to 9.x)`", line == ["  fix-it  landed: yes (backport to 9.x)"], line)
-
-
-def decide_with(tmp: Path, read, patterns: list[str], reach) -> dict:
-    return ls_data.landed_row(task_with_pr(tmp), read, reach, patterns, local=HERE)
-
-
-def landing_bases_parse(tmp: Path) -> None:
+def test_landing_bases_are_read_from_the_repository(tmp: Path) -> None:
     line = "# Repo\n\nlanding_bases: ^\\d+\\.\\d+$ `^\\d+\\.x$`\n"
     check("a landing_bases line lists patterns separated by spaces", ls_data.parse(line) == BACKPORT, ls_data.parse(line))
     block = "# Repo\n\n```landing_bases\n^\\d+\\.\\d+$\n# release lines\n^\\d+\\.x$\n```\n"
@@ -273,6 +221,8 @@ def landing_bases_parse(tmp: Path) -> None:
     check("no setting means no patterns", ls_data.parse("# Repo\nnothing\n") == [])
     check("a broken regex is dropped, not fatal", ls_data.parse("landing_bases: ( ^ok$\n") == ["^ok$"])
     check("matching is a full match", ls_data.matches("9.x", BACKPORT) and not ls_data.matches("v9.x", BACKPORT))
+    line_out = ls_data.landed_lines([("fix-it", task_with_pr(tmp / "h"))], reader("MERGED", "9.x"), lambda s, d: False, BACKPORT, HERE)
+    check("the listing line reads `landed: yes (backport to 9.x)`", line_out == ["  fix-it  landed: yes (backport to 9.x)"], line_out)
     root = tmp / "repo"
     root.mkdir(parents=True)
     git(root, "init", "-q", "-b", "main")
@@ -281,30 +231,15 @@ def landing_bases_parse(tmp: Path) -> None:
     check("a directory with no repo has no patterns", ls_data.load_bases(tmp / "nowhere") == [])
 
 
-def backport_end_to_end(tmp: Path) -> None:
+def test_crew_ls_all_reads_the_landing_bases_of_its_repository(tmp: Path) -> None:
     """`crew-ls.py --all` run inside a repo whose AGENTS.md declares the landing bases, gh faked."""
     repo, tasks = tmp / "repo", tmp / "tasks"
     repo.mkdir(parents=True)
     git(repo, "init", "-q", "-b", "main")
     git(repo, "remote", "add", "origin", "https://github.com/acme/widgets.git")
     (repo / "AGENTS.md").write_text("landing_bases: ^\\d+\\.x$\n", encoding="utf-8")
-    task = tasks / "22222222-2222-2222-2222-222222222222"
-    task_with_pr(tmp / "src")
-    task.mkdir(parents=True)
-    for name in ("SPEC.md", "PROGRESS.md"):
-        (task / name).write_text((tmp / "src" / "task" / name).read_text(encoding="utf-8"), encoding="utf-8")
-    (task / ".task-id").write_text(json.dumps({"slug": "backport", "branch": "fix/x"}), encoding="utf-8")
-    bin_dir = tmp / "bin"
-    bin_dir.mkdir()
-    script = bin_dir / "gh"
-    script.write_text(
-        "#!/bin/sh\n"
-        'case "$1 $2" in\n'
-        '  "pr view") echo \'{"state":"MERGED","baseRefName":"9.x","mergeCommit":{"oid":"' + SHA + '"}}\' ;;\n'
-        '  "repo view") echo \'{"defaultBranchRef":{"name":"main"}}\' ;;\n'
-        "  *) exit 1 ;;\nesac\n", encoding="utf-8")
-    script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    copy_task(task_with_pr(tmp / "src"), tasks / "22222222-2222-2222-2222-222222222222", "backport", "fix/x")
+    env = {**os.environ, "PATH": f"{fake_gh(tmp / 'bin', merged_into('9.x'))}{os.pathsep}{os.environ['PATH']}"}
     shown = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks), "--all"],
                            capture_output=True, text=True, env=env, cwd=repo)
     check("crew ls --all prints `landed: yes (backport to 9.x)`", "backport  landed: yes (backport to 9.x)" in shown.stdout, shown)
@@ -335,7 +270,7 @@ def digest(tasks: Path) -> str:
     return "".join(f"{path}:{path.read_bytes()!r}" for path in sorted(tasks.rglob("*")) if path.is_file())
 
 
-def gathering(tmp: Path) -> None:
+def test_gather(tmp: Path) -> None:
     """`ls_data.gather`, shared with a TUI: every row, the BLOCKED lines, landed reads only for shown DONE tasks."""
     tasks = make_tasks(tmp)
     snapshot = ls_data.gather(tasks, show_done=False)
@@ -348,7 +283,7 @@ def gathering(tmp: Path) -> None:
     check("a directory with no tasks gathers nothing", ls_data.gather(tmp / "empty", False).rows == [])
 
 
-def limit_and_cache(tmp: Path) -> None:
+def test_limit_and_cache(tmp: Path) -> None:
     """`--limit` bounds the landed reads, a repository is asked once, and a watch loop re-reads on a TTL."""
     tasks = tmp / "tasks"
     for index in range(4):
@@ -389,7 +324,7 @@ def limit_and_cache(tmp: Path) -> None:
     check("past the TTL only the stale tasks are read again", len(reads) == 2 and reads[1] == ["d0", "d1"], reads)
 
 
-def loop() -> None:
+def test_the_watch_loop() -> None:
     """`ls_data.watch` with an injected sleep and clear: render into a buffer, clear, sleep; Ctrl-C is exit 0."""
     events: list[str] = []
     code = ls_data.watch(lambda: events.append("render"), interval=2.5, sleep=lambda s: events.append(f"sleep {s}"),
@@ -411,7 +346,7 @@ def loop() -> None:
           and "x" not in events)
 
 
-def watch_command(tmp: Path) -> None:
+def test_the_watch_command(tmp: Path) -> None:
     """A real `crew-ls.py --watch` draws twice, takes a SIGINT, exits 0, and leaves the task files alone."""
     import selectors
     import signal
@@ -442,34 +377,3 @@ def watch_command(tmp: Path) -> None:
           missing.returncode == 2 and missing.stdout == "" and "no tasks directory" in missing.stderr, missing)
     for bad in (["--watch", "--interval", "0"], ["--watch", "--json"], ["--interval", "5"]):
         check(f"{' '.join(bad)} is refused", subprocess.run([*command, *bad], capture_output=True, text=True).returncode == 2)
-
-
-def main() -> int:
-    closing_text_case()
-    loop()
-    with tempfile.TemporaryDirectory() as raw:
-        tmp = Path(raw)
-        backport_cases(tmp / "backport")
-        landing_bases_parse(tmp / "bases")
-        backport_end_to_end(tmp / "backport-e2e")
-        decision_cases(tmp / "decide")
-        foreign_repo_case(tmp / "foreign")
-        try:
-            fork_case(tmp / "fork")
-        except (AttributeError, TypeError, RuntimeError) as error:
-            check("fork case", False, f"{type(error).__name__}: {error}")
-        try:
-            stale_origin_case(tmp / "stale")
-        except (RuntimeError, subprocess.SubprocessError, OSError) as error:
-            check("stale origin fixture", False, error)
-        end_to_end_case(tmp / "e2e-run")
-        gathering(tmp / "gather")
-        limit_and_cache(tmp / "limit")
-        watch_command(tmp / "watch")
-    for name in FAILED:
-        print(f"failed: {name}", file=sys.stderr)
-    return 1 if FAILED else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

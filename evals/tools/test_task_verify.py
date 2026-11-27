@@ -16,9 +16,9 @@ import os
 import stat
 import subprocess
 import sys
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
@@ -26,8 +26,6 @@ CLI = TASK_TOOLS / "crew-verify.py"
 sys.path.insert(0, str(TASK_TOOLS))
 sys.path.insert(0, str(TASK_TOOLS.parent))
 from cli_runner import run as run_cli  # noqa: E402
-
-FAILED: list[str] = []
 
 WORKFLOW = """name: CI
 on:
@@ -56,9 +54,7 @@ CHECK = 'unset CI\ntest -z "$GITHUB_ACTIONS"\n'
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
-    print(("pass: " if condition else "FAIL: ") + name + ("" if condition else f": {detail}"))
-    if not condition:
-        FAILED.append(name)
+    assert condition, f"{name}: {detail}"
 
 
 def git(root: Path, *arguments: str) -> str:
@@ -90,10 +86,9 @@ def fixture(tmp: Path, level: str = "1", workflow: bool = True) -> Path:
 
 
 def cli(*arguments: str, home: Path) -> subprocess.CompletedProcess:
-    """`crew-verify.py` as a child process, its `--wait` polling every 20 ms instead of every second."""
-    env = {**os.environ, "HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null", "CREW_VERIFY_POLL_SECONDS": "0.02"}
-    env.pop("CREW_TASK_DIR", None)
-    return subprocess.run([sys.executable, str(CLI), *arguments], capture_output=True, text=True, env=env, timeout=120)
+    """`crew-verify.py` in this process, its `--wait` polling every 20 ms instead of every second."""
+    env = {"HOME": str(home), "GIT_CONFIG_GLOBAL": "/dev/null", "CREW_VERIFY_POLL_SECONDS": "0.02", "CREW_TASK_DIR": None}
+    return run_cli(CLI, *arguments, env=env)
 
 
 def verify(root: Path, home: Path, *extra: str) -> tuple[int, str, dict]:
@@ -111,7 +106,7 @@ def fake_node(home: Path, version: str) -> None:
     binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
 
 
-def mirrors_the_runner(tmp: Path) -> None:
+def test_mirrors_the_runner(tmp: Path) -> None:
     root, home = fixture(tmp / "mirror"), tmp / "home1"
     home.mkdir(parents=True)
     fake_node(home, "22.1.0")
@@ -132,7 +127,7 @@ def mirrors_the_runner(tmp: Path) -> None:
     check("the same test passes in a bare local shell, which is why the mirror matters", plain.returncode == 0)
 
 
-def caching(tmp: Path) -> None:
+def test_caching(tmp: Path) -> None:
     root, home = fixture(tmp / "cache"), tmp / "home2"
     home.mkdir(parents=True)
     fake_node(home, "22.1.0")
@@ -160,7 +155,7 @@ def caching(tmp: Path) -> None:
                keys.cache_key("t", "cmd", {"A": "2"}, "v22.0.0"), keys.cache_key("t", "cmd", {"A": "1"}, "v20.0.0")}) == 5)
 
 
-def base_declaration_wins(tmp: Path) -> None:
+def test_base_declaration_wins(tmp: Path) -> None:
     root, home = fixture(tmp / "head"), tmp / "home3"
     home.mkdir(parents=True)
     git(root, "checkout", "-q", "-b", "pr")
@@ -175,7 +170,7 @@ def base_declaration_wins(tmp: Path) -> None:
     check("a gates.json added in the PR head is ignored too", "override" not in data["source"], data["source"])
 
 
-def fallback_order(tmp: Path) -> None:
+def test_fallback_order(tmp: Path) -> None:
     home = tmp / "home4"
     home.mkdir(parents=True)
     block = "# Repo\n\n```gates\nenv: LEVEL=7\nunit: echo unit\nlint: test \"$LEVEL\" = 7\n```\n"
@@ -205,7 +200,7 @@ def fallback_order(tmp: Path) -> None:
     check("nothing declared is an error that names the three sources", code == 2 and "no gates declared" in out, out)
 
 
-def drift_warning(tmp: Path) -> None:
+def test_drift_warning(tmp: Path) -> None:
     root, home = fixture(tmp / "drift"), tmp / "home6"
     home.mkdir(parents=True)
     write(root, ".agent/gates.json", json.dumps({"schema_version": 1, "gates": [{"name": "lint", "command": "true"}]}))
@@ -218,7 +213,7 @@ def drift_warning(tmp: Path) -> None:
           "warning: gate lint" in out and "echo lint" in out and "'true'" in out, out)
 
 
-def background_run(tmp: Path) -> None:
+def test_background_run(tmp: Path) -> None:
     root, home = fixture(tmp / "bg"), tmp / "home5"
     home.mkdir(parents=True)
     out = tmp / "bg" / "gates.json"
@@ -228,7 +223,7 @@ def background_run(tmp: Path) -> None:
     check("--wait prints the gate lines and the failing exit", "unit-tests exit=1" in waited.stdout and waited.returncode == 1, waited)
 
 
-def stale_result_is_not_waited_on(tmp: Path) -> None:
+def test_stale_result_is_not_waited_on(tmp: Path) -> None:
     """A previous run's `done` file must not answer a new run that has not finished a gate yet."""
     root, home = fixture(tmp / "stale"), tmp / "home7"
     home.mkdir(parents=True)
@@ -254,7 +249,7 @@ def bounded(*arguments: str, home: Path, seconds: int = 60) -> subprocess.Comple
         return None
 
 
-def wait_follows_the_child(tmp: Path) -> None:
+def test_wait_follows_the_child(tmp: Path) -> None:
     """--wait has no total limit while the recorded child lives; a dead child with no result is a failed run."""
     home = tmp / "home10"
     home.mkdir(parents=True)
@@ -279,7 +274,7 @@ def wait_follows_the_child(tmp: Path) -> None:
           and "--list" in refused.stderr and not (tmp / "list.json").exists(), refused)
 
 
-def early_exit_is_reported(tmp: Path) -> None:
+def test_early_exit_is_reported(tmp: Path) -> None:
     """A child that dies before its first gate writes `failed` with a reason, so --wait stops at once."""
     home = tmp / "home8"
     home.mkdir(parents=True)
@@ -291,7 +286,7 @@ def early_exit_is_reported(tmp: Path) -> None:
     check("--wait reports it and points at the log", waited.returncode == 2 and "gates.log" in waited.stderr + waited.stdout, waited)
 
 
-def wait_matches_foreground_when_unverified(tmp: Path) -> None:
+def test_wait_matches_foreground_when_unverified(tmp: Path) -> None:
     home = tmp / "home9"
     home.mkdir(parents=True)
     bare = fixture(tmp / "bare", workflow=False)
@@ -315,26 +310,25 @@ def pinned(tmp: Path, name: str, files: dict[str, str]) -> tuple[Path, Path]:
     return root, home
 
 
-def node_pin_order(tmp: Path) -> None:
+@pytest.mark.parametrize("name,files,installed,expected", [
+    ("none", {}, "22.1.0", {"source": "none", "required": ""}),
+    ("nodever", {".node-version": "20.1\n"}, "20.1.0", {"required": "20.1", "used": "v20.1.0", "source": ".node-version"}),
+    ("tool", {".tool-versions": "python 3.11.2\nnodejs 18.2.0\n", "package.json": '{"engines": {"node": "22"}}'}, "18.2.0",
+     {"source": ".tool-versions", "used": "v18.2.0"}),
+    ("engines", {"package.json": '{"name": "x", "engines": {"node": "^20.3.0"}}'}, "20.3.0",
+     {"required": "20.3.0", "used": "v20.3.0", "source": "package.json engines.node"}),
+    ("nvmrc", {".nvmrc": "v22\n", ".node-version": "20\n"}, "22.1.0", {"source": ".nvmrc", "used": "v22.1.0"}),
+])
+def test_node_pin_order(name: str, files: dict[str, str], installed: str, expected: dict[str, str], tmp: Path) -> None:
     """The first pin found picks the Node: .nvmrc, .node-version, .tool-versions, engines.node; none forces nothing."""
-    cases = (
-        ("none", {}, "22.1.0", {"source": "none", "required": ""}),
-        ("nodever", {".node-version": "20.1\n"}, "20.1.0", {"required": "20.1", "used": "v20.1.0", "source": ".node-version"}),
-        ("tool", {".tool-versions": "python 3.11.2\nnodejs 18.2.0\n", "package.json": '{"engines": {"node": "22"}}'}, "18.2.0",
-         {"source": ".tool-versions", "used": "v18.2.0"}),
-        ("engines", {"package.json": '{"name": "x", "engines": {"node": "^20.3.0"}}'}, "20.3.0",
-         {"required": "20.3.0", "used": "v20.3.0", "source": "package.json engines.node"}),
-        ("nvmrc", {".nvmrc": "v22\n", ".node-version": "20\n"}, "22.1.0", {"source": ".nvmrc", "used": "v22.1.0"}),
-    )
-    for name, files, installed, expected in cases:
-        root, home = pinned(tmp, name, files)
-        fake_node(home, installed)
-        _, out, data = verify(root, home)
-        check(f"Node pin {name}: {expected}", all(data["node"].get(k) == v for k, v in expected.items())
-              and (name != "none" or ("no Node pin found, using PATH" in out and data["node"]["used"] != "v22.1.0")), data.get("node"))
+    root, home = pinned(tmp, name, files)
+    fake_node(home, installed)
+    _, out, data = verify(root, home)
+    check(f"Node pin {name}: {expected}", all(data["node"].get(k) == v for k, v in expected.items())
+          and (name != "none" or ("no Node pin found, using PATH" in out and data["node"]["used"] != "v22.1.0")), data.get("node"))
 
 
-def python_only(tmp: Path) -> None:
+def test_python_only(tmp: Path) -> None:
     """A Python repo is never forced onto Node: no pin file, even with a Node installed under HOME."""
     root, home = tmp / "py", tmp / "home-py"
     root.mkdir(parents=True)
@@ -371,7 +365,7 @@ def committed(root: Path, files: dict[str, str], branch_edit: tuple[str, str] | 
     return root
 
 
-def kibana_shape(tmp: Path) -> None:
+def test_kibana_shape(tmp: Path) -> None:
     """Unreadable CI is named; the nearest AGENTS.md's prose commands are surfaced, never run, never a pass."""
     home = tmp / "home-kibana"
     home.mkdir(parents=True)
@@ -396,7 +390,7 @@ def kibana_shape(tmp: Path) -> None:
           "NOT VERIFIED" in out and data.get("verified") is False and code == 3 and verify(root, home, "--strict")[0] == 2, (code, out))
 
 
-def prose_only_repo(tmp: Path) -> None:
+def test_prose_only_repo(tmp: Path) -> None:
     home = tmp / "home-prose"
     home.mkdir(parents=True)
     root = committed(tmp / "prose", {"AGENTS.md": "# Repo\n\nBefore a PR run `make check` and `make lint`.\n", "src/a.py": "a = 1\n"},
@@ -409,7 +403,7 @@ def prose_only_repo(tmp: Path) -> None:
     check("nothing declared at all is an error", code == 2 and "NOT VERIFIED" in out, (code, out))
 
 
-def workflows_win(tmp: Path) -> None:
+def test_workflows_win(tmp: Path) -> None:
     """Workflows stay THE source: prose is not consulted, and unreadable CI falls through only without them."""
     root, home = fixture(tmp / "wf"), tmp / "home-wf"
     home.mkdir(parents=True)
@@ -450,7 +444,7 @@ PUBLISH_COMMANDS = ("npm publish", "pnpm publish", "yarn publish", "yarn npm pub
                     "NPM_TOKEN=x npm publish --access public", "make a || git push")
 
 
-def workflow_reading(tmp: Path) -> None:
+def test_workflow_reading(tmp: Path) -> None:
     """Which workflows and steps become gates: CI triggers only, never a publish, never a gated job; setup lines dropped."""
     from task_verify_env import is_partial
     from task_verify_sources import block_gates, prose_commands, workflow_gates
@@ -496,7 +490,7 @@ WORKFLOW_PARTIAL = ("on: push\njobs:\n  j:\n    steps:\n      - uses: actions/ch
                     "      - name: Cond\n        if: github.ref == 'x'\n        run: make deploy\n      - name: Unit\n        run: echo unit\n")
 
 
-def partial_mirror_is_not_verified(tmp: Path) -> None:
+def test_partial_mirror_is_not_verified(tmp: Path) -> None:
     root, home = fixture(tmp / "pm"), tmp / "home-pm"
     home.mkdir(parents=True)
     write(root, ".github/workflows/ci.yml", WORKFLOW_PARTIAL)
@@ -527,7 +521,7 @@ NOT_CI = {  # one CI file, the rest scheduled or dispatched by hand
 }
 
 
-def non_ci_workflows_are_not_partial(tmp: Path) -> None:
+def test_non_ci_workflows_are_not_partial(tmp: Path) -> None:
     root, home = fixture(tmp / "nc", workflow=False), tmp / "home-nc"
     home.mkdir(parents=True)
     for name, trigger in NOT_CI.items():
@@ -550,25 +544,20 @@ printf '{"on":{"push":null},"env":{"PYTHON":3.10,"BIG":12345678901234567890,"NOD
 """
 
 
-def parser_chain(tmp: Path) -> None:
-    """mikefarah yq reads the workflow when installed (scalars as strings); otherwise the stdlib reader does. Changes os.environ."""
+def test_parser_chain(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """mikefarah yq reads the workflow when installed (scalars as strings); otherwise the stdlib reader does."""
     from lib.workflow_yaml import load
 
-    tmp.mkdir(parents=True)
     (tmp / "yq").write_text(FAKE_YQ, encoding="utf-8")
     (tmp / "yq").chmod(0o755)
-    saved = dict(os.environ)
-    try:
-        os.environ.update(PATH=f"{tmp}{os.pathsep}{saved['PATH']}", YQ_VERSION="yq (https://github.com/mikefarah/yq/) version v4.44.1")
-        doc, parser = load("on: push\n")
-        check("mikefarah yq is the parser when installed, its scalars kept as written (3.10 stays 3.10), null as ''", parser == "yq" and doc == {
-            "on": {"push": ""}, "env": {"PYTHON": "3.10", "BIG": "12345678901234567890", "NODE": "22"},
-            "jobs": {"j": {"timeout-minutes": "5", "steps": [{"run": "echo hi", "continue-on-error": "true"}]}}}, (parser, doc))
-        os.environ["YQ_VERSION"] = "yq 3.2.3"
-        check("another yq is not used: the stdlib reader is the fallback", load("on: push\n") == ({"on": "push"}, "stdlib"))
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+    monkeypatch.setenv("PATH", f"{tmp}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("YQ_VERSION", "yq (https://github.com/mikefarah/yq/) version v4.44.1")
+    doc, parser = load("on: push\n")
+    check("mikefarah yq is the parser when installed, its scalars kept as written (3.10 stays 3.10), null as ''", parser == "yq" and doc == {
+        "on": {"push": ""}, "env": {"PYTHON": "3.10", "BIG": "12345678901234567890", "NODE": "22"},
+        "jobs": {"j": {"timeout-minutes": "5", "steps": [{"run": "echo hi", "continue-on-error": "true"}]}}}, (parser, doc))
+    monkeypatch.setenv("YQ_VERSION", "yq 3.2.3")
+    check("another yq is not used: the stdlib reader is the fallback", load("on: push\n") == ({"on": "push"}, "stdlib"))
 
 
 REPORT = """## Implementation Report
@@ -632,52 +621,22 @@ REPORT_CASES = (
 )
 
 
-def report_check(tmp: Path) -> None:
+@pytest.mark.parametrize("case,text,extra,gates,code,needle", REPORT_CASES, ids=[case[0] for case in REPORT_CASES])
+def test_report_check(case: str, text: str, extra: tuple[str, ...], gates: dict | None, code: int, needle: str, tmp: Path) -> None:
     """`crew-verify.py report-check`: a builder's REPORT.md may claim a gate only as the gates JSON recorded it."""
+    (tmp / "REPORT.md").write_text(text, encoding="utf-8")
+    arguments = [str(tmp / "REPORT.md"), *extra]
+    if gates is not None:
+        (tmp / "gates.json").write_text(json.dumps(gates), encoding="utf-8")
+        arguments += ["--gates", str(tmp / "gates.json")]
+    done = run_cli(CLI, "report-check", *arguments)
+    assert done.returncode == code and needle in done.stdout + done.stderr, done.stdout + done.stderr
+
+
+def test_report_parsers_on_an_old_report(tmp: Path) -> None:
     import task_verify_report as rc
 
-    for index, (case, text, extra, gates, code, needle) in enumerate(REPORT_CASES):
-        directory = tmp / str(index)
-        directory.mkdir(parents=True)
-        (directory / "REPORT.md").write_text(text, encoding="utf-8")
-        arguments = [str(directory / "REPORT.md"), *extra]
-        if gates is not None:
-            (directory / "gates.json").write_text(json.dumps(gates), encoding="utf-8")
-            arguments += ["--gates", str(directory / "gates.json")]
-        done = run_cli(CLI, "report-check", *arguments)
-        check(case, done.returncode == code and needle in done.stdout + done.stderr, done.stdout + done.stderr)
     check("every parser returns empty for an old report or plain prose", rc.sections(OLD_REPORT).get("Unverified claims") is None
           and rc.unverified_claims(OLD_REPORT) == [] and rc.report_data(OLD_REPORT) is None and rc.gate_exits(OLD_REPORT) == {}
           and rc.unverified_claims("just prose\n") == [] and rc.problems("x", None, True) == [] and rc.capped(OLD_REPORT, 5) == [])
     check("an unreadable gates file is not a crash", rc.load_gates(tmp / "missing.json") is None)
-
-
-def run_cases(parallel: tuple, serial: tuple = ()) -> int:
-    """Each case in its own directory; `parallel` ones side by side, `serial` ones (they change os.environ) after."""
-    def one(case) -> None:
-        try:
-            case(tmp / case.__name__)
-        except (RuntimeError, KeyError, IndexError, OSError, ValueError, TypeError, subprocess.TimeoutExpired) as error:
-            check(case.__name__, False, f"{type(error).__name__}: {error}")
-
-    with tempfile.TemporaryDirectory() as raw:
-        tmp = Path(raw)
-        with ThreadPoolExecutor(max_workers=len(parallel)) as pool:
-            list(pool.map(one, parallel))
-        for case in serial:
-            one(case)
-    for name in FAILED:
-        print(f"failed: {name}", file=sys.stderr)
-    return 1 if FAILED else 0
-
-
-def main() -> int:
-    return run_cases((mirrors_the_runner, caching, base_declaration_wins, fallback_order, drift_warning, background_run,
-                      stale_result_is_not_waited_on, early_exit_is_reported, wait_matches_foreground_when_unverified, wait_follows_the_child,
-                      node_pin_order, python_only, kibana_shape, prose_only_repo, workflows_win, workflow_reading,
-                      partial_mirror_is_not_verified, non_ci_workflows_are_not_partial),
-                     (parser_chain, report_check))
-
-
-if __name__ == "__main__":
-    sys.exit(main())

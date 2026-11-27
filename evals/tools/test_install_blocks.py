@@ -12,7 +12,6 @@ import json
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -22,13 +21,10 @@ MERGE = SETTINGS.parent / "merge_claude_settings.py"
 MEMORY = "<!-- el-capitan:memory -->\nMEMORY\n<!-- /el-capitan:memory -->"
 IMPORTS = "<!-- el-capitan:imports -->\n@~/.cursor/rules/x.mdc\n<!-- /el-capitan:imports -->"
 SEEDED = "# a\n\n<!-- el-capitan:memory -->\nstale\n<!-- /el-capitan:memory -->\n\n# b\n"
-FAILED: list[str] = []
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
-    print(("pass: " if condition else "FAIL: ") + name + ("" if condition else f": {detail}"))
-    if not condition:
-        FAILED.append(name)
+    assert condition, f"{name}: {detail}"
 
 
 def load_helpers() -> dict:
@@ -43,7 +39,7 @@ def load_helpers() -> dict:
     return namespace
 
 
-def block_cases() -> None:
+def test_managed_blocks() -> None:
     ns = load_helpers()
     upsert, global_imports = ns["upsert"], ns["global_rule_imports"]
     once = upsert("# notes\n", "memory", MEMORY)
@@ -75,7 +71,7 @@ def command_of(rule: str) -> str | None:
     return body[:-2] if body.endswith(" *") else body.rstrip(":*")
 
 
-def permission_cases() -> None:
+def test_permission_rules() -> None:
     permissions = json.loads(SETTINGS.read_text(encoding="utf-8"))["permissions"]
     allow_rules, ask_rules = permissions.get("allow", []), permissions.get("ask", [])
     allow = [c for c in map(command_of, allow_rules) if c]
@@ -103,29 +99,16 @@ def permission_cases() -> None:
           not broad and not hidden, (broad, hidden))
 
 
-def merge_cases() -> None:
+def test_settings_merge(tmp: Path) -> None:
     """The installer retires a broad rule when the template narrows it, and keeps the user's own rules."""
     user = {"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"],
                             "ask": ["Edit(~/.agent/tasks/**)", "Write(~/.agent/tasks/**)", "Edit(~/.claude/**)"]},
             "hooks": {}}
-    with tempfile.TemporaryDirectory() as raw:
-        dest = Path(raw) / "dest.json"
-        dest.write_text(json.dumps(user), encoding="utf-8")
-        result = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest)], capture_output=True, text=True)
-        merged = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
+    dest = tmp / "dest.json"
+    dest.write_text(json.dumps(user), encoding="utf-8")
+    result = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest)], capture_output=True, text=True)
+    merged = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
     check("the merge retires the broad task rule for the narrow one and keeps unrelated user rules",
           result.returncode == 0 and "Edit(~/.agent/tasks/**)" not in merged["ask"]
           and "Edit(~/.agent/tasks/*/SPEC.md)" in merged["ask"] and "Edit(~/.claude/**)" in merged["ask"]
           and "Bash(my-own *)" in merged["allow"], (result.stderr[-200:], merged))
-
-
-def main() -> int:
-    block_cases()
-    permission_cases()
-    merge_cases()
-    print(f"install config: {len(FAILED)} failed" if FAILED else "install config: pass")
-    return 1 if FAILED else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -15,18 +15,17 @@ import hashlib
 import io
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / ".claude" / "hooks"
 INBOX = ROOT / ".agent" / "tools" / "memory" / "crew-inbox.py"
 for directory in (ROOT / ".agent" / "tools" / "memory", ROOT / ".agent" / "tools" / "task"):
     sys.path.insert(0, str(directory))
-FAILED: list[str] = []
 # Both harness shapes, with quotes and non-ASCII in the command and the session id.
 TELEMETRY = (
     {"session_id": "claude-✓", "hook_event_name": "PostToolUse", "tool_input": {"command": 'echo "quotes" é→✓'}},
@@ -48,13 +47,10 @@ DRAFT = ("---\nid: procedure-{id}\ntype: procedure\nscope: global\ntitle: {title
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
-    print(("pass: " if condition else "FAIL: ") + name + ("" if condition else f": {detail}"))
-    if not condition:
-        FAILED.append(name)
+    assert condition, f"{name}: {detail}"
 
 
-def store() -> Path:
-    root = Path(tempfile.mkdtemp(prefix="memory-"))
+def store(root: Path) -> Path:
     (root / ".inbox").mkdir(parents=True)
     (root / ".sessions").mkdir(parents=True)
     return root
@@ -84,90 +80,96 @@ def inbox(root: Path, *arguments: str) -> subprocess.CompletedProcess:
                           env={**os.environ, "CREW_MEMORY_DIR": str(root)})
 
 
-def telemetry_cases() -> None:
+def test_telemetry_and_capture_prompt(tmp: Path) -> None:
     """log-tool-use records both shapes; its session name is the one the capture hook reads."""
-    root = store()
-    try:
-        for payload in TELEMETRY:
-            code, body = hook("log-tool-use.sh", root, payload)
-            check(f"log-tool-use answers {{}} for {payload['hook_event_name']}", (code, body) == (0, {}), (code, body))
-        records = [json.loads(line) for path in (root / ".sessions").glob("*.jsonl") for line in path.read_text().splitlines()]
-        check("each record carries event, action and target", len(records) == 2 and all(r["event"] and r["action"] and r["target"] for r in records), records)
-        for _ in range(2):
-            hook("log-tool-use.sh", root, {"session_id": "s-edit", "hook_event_name": "PostToolUse", "tool_input": {"file_path": "/x/a.py"}})
-        code, body = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "s-edit"})
-        check("a session with edits returns a followup", "followup_message" in body, body)
-        check("the review is queued before the guard is written",
-              len(queue(root)) == 1 and (root / ".sessions" / f"{hashed('s-edit')}.memory-prompted").is_file(), queue(root))
-        code, again = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "s-edit"})
-        check("a second stop is silent and queues nothing", again == {} and len(queue(root)) == 1, (again, queue(root)))
-        code, body = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "no-events"})
-        check("a session with no telemetry says nothing", body == {}, body)
-        (root / ".sessions" / f"{hashed('quiet')}.jsonl").write_text('{"action": "read", "failure": false}\n', encoding="utf-8")
-        code, body = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "quiet"})
-        check("a read-only session says nothing, queues nothing and writes no guard",
-              body == {} and len(queue(root)) == 1 and not (root / ".sessions" / f"{hashed('quiet')}.memory-prompted").exists(), body)
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+    root = store(tmp)
+    for payload in TELEMETRY:
+        code, body = hook("log-tool-use.sh", root, payload)
+        check(f"log-tool-use answers {{}} for {payload['hook_event_name']}", (code, body) == (0, {}), (code, body))
+    records = [json.loads(line) for path in (root / ".sessions").glob("*.jsonl") for line in path.read_text().splitlines()]
+    check("each record carries event, action and target", len(records) == 2 and all(r["event"] and r["action"] and r["target"] for r in records), records)
+    for _ in range(2):
+        hook("log-tool-use.sh", root, {"session_id": "s-edit", "hook_event_name": "PostToolUse", "tool_input": {"file_path": "/x/a.py"}})
+    code, body = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "s-edit"})
+    check("a session with edits returns a followup", "followup_message" in body, body)
+    check("the review is queued before the guard is written",
+          len(queue(root)) == 1 and (root / ".sessions" / f"{hashed('s-edit')}.memory-prompted").is_file(), queue(root))
+    code, again = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "s-edit"})
+    check("a second stop is silent and queues nothing", again == {} and len(queue(root)) == 1, (again, queue(root)))
+    code, body = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "no-events"})
+    check("a session with no telemetry says nothing", body == {}, body)
+    (root / ".sessions" / f"{hashed('quiet')}.jsonl").write_text('{"action": "read", "failure": false}\n', encoding="utf-8")
+    code, body = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "quiet"})
+    check("a read-only session says nothing, queues nothing and writes no guard",
+          body == {} and len(queue(root)) == 1 and not (root / ".sessions" / f"{hashed('quiet')}.memory-prompted").exists(), body)
 
 
-def inbox_cases() -> None:
-    root = store()
-    try:
-        empty = inbox(root)
-        check("an empty inbox says so and exits 0", (empty.returncode, empty.stdout.strip()) == (0, "inbox: empty"), empty.stdout)
-        (root / ".inbox" / "procedure-probe.md").write_text(DRAFT.format(id="probe", title="Probe draft"), encoding="utf-8")
-        (root / ".sessions" / "review-queue.jsonl").write_text(json.dumps({"session": "s1", "substantive": 2}) + "\n", encoding="utf-8")
-        body = json.loads(inbox(root, "--json").stdout or "{}")
-        check("the inbox lists the draft with its title and the queued review",
-              [d["title"] for d in body.get("drafts", [])] == ["Probe draft"] and len(body.get("queued_reviews", [])) == 1, body)
-        drained = inbox(root, "--drain")
-        check("drain clears the ask log and leaves the drafts alone",
-              not (root / ".sessions" / "review-queue.jsonl").exists() and (root / ".inbox" / "procedure-probe.md").is_file(), drained.stdout)
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+def test_inbox(tmp: Path) -> None:
+    root = store(tmp)
+    empty = inbox(root)
+    check("an empty inbox says so and exits 0", (empty.returncode, empty.stdout.strip()) == (0, "inbox: empty"), empty.stdout)
+    (root / ".inbox" / "procedure-probe.md").write_text(DRAFT.format(id="probe", title="Probe draft"), encoding="utf-8")
+    (root / ".sessions" / "review-queue.jsonl").write_text(json.dumps({"session": "s1", "substantive": 2}) + "\n", encoding="utf-8")
+    body = json.loads(inbox(root, "--json").stdout or "{}")
+    check("the inbox lists the draft with its title and the queued review",
+          [d["title"] for d in body.get("drafts", [])] == ["Probe draft"] and len(body.get("queued_reviews", [])) == 1, body)
+    drained = inbox(root, "--drain")
+    check("drain clears the ask log and leaves the drafts alone",
+          not (root / ".sessions" / "review-queue.jsonl").exists() and (root / ".inbox" / "procedure-probe.md").is_file(), drained.stdout)
 
 
-def key_cases() -> None:
+def test_add_cite_and_journal_round_trip(tmp: Path) -> None:
+    """The write side the prompts use: `add` a unit from stdin, `cite` it, `journal add` an entry."""
+    from cli_runner import run as cli
+
+    env = {"CREW_MEMORY_DIR": str(tmp / "memory"), "CREW_JOURNAL_DIR": str(tmp / "journal"), "HOME": str(tmp)}
+
+    def mem(*arguments: str, stdin: str = "") -> subprocess.CompletedProcess:
+        return cli(ROOT / ".agent" / "tools" / "memory" / "crew-mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
+
+    check("init prepares the store", mem("init").returncode == 0)
+    added = mem("add", "--type", "procedure", "--scope", "global", "--title", "Run the hook suite first",
+                "--evidence", "x", stdin="Run the hook suite before any guard change.\n")
+    check("add writes one unit", added.returncode == 0, added.stderr)
+    units = json.loads(mem("list", "--json").stdout)
+    unit = units[0] if isinstance(units, list) and units else {}
+    check("list shows the unit with its title", unit.get("title") == "Run the hook suite first", units)
+    cited = mem("cite", "--outcome", "helped", unit.get("id", "none"))
+    check("cite records the outcome on the unit", cited.returncode == 0 and "helped: 1" in next(
+        (tmp / "memory").rglob(f"*{unit.get('id', 'none').split('-', 1)[-1]}*.md")).read_text(), cited.stderr)
+    journal = mem("journal", "add", "--title", "PR review: probe", "--tags", "probe", "--repo", "demo",
+                  stdin="The probe confirmed the guard runs first.\n")
+    stored = list((tmp / "memory" / "observations" / "demo").glob("observation-*.md"))
+    check("journal add stores the entry as one observation in its repo's scope",
+          journal.returncode == 0 and len(stored) == 1, journal.stderr)
+
+
+def test_primary_remote() -> None:
     import memory_bootstrap  # noqa: F401
 
-    import memory_paths
     import task_repo_facts
 
     check("a checkout with neither upstream nor origin reports its first remote",
           task_repo_facts.primary_remote(["fork", "mirror"]) == "fork")
     check("upstream wins over origin, whatever the order", task_repo_facts.primary_remote(["origin", "upstream"]) == "upstream")
-    saved_cwd, saved_env = os.getcwd(), os.environ.get("GIT_CONFIG_GLOBAL")
-    os.environ["GIT_CONFIG_GLOBAL"] = os.devnull
-    try:
-        with tempfile.TemporaryDirectory() as temp:
-            for index, (case, url, expected) in enumerate(KEYS):
-                checkout = Path(temp) / str(index) / "checkout"
-                checkout.mkdir(parents=True)
-                subprocess.run(["git", "init", "-q", str(checkout)], check=True)
-                if url:
-                    subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin", url], check=True)
-                os.chdir(checkout)
-                check(f"{case}: key is {expected}", memory_paths.repo_key() == expected, memory_paths.repo_key())
-                if url:
-                    with contextlib.redirect_stderr(io.StringIO()):  # an unborn HEAD is reported, and is not the case
-                        named = task_repo_facts.collect(argparse.Namespace(root=None, remote=None, network=False))["repo_name"]
-                    check(f"{case}: crew-repo-info's repo_name is the same {expected}", named == expected, named)
-    finally:
-        os.chdir(saved_cwd)
-        if saved_env is None:
-            os.environ.pop("GIT_CONFIG_GLOBAL", None)
-        else:
-            os.environ["GIT_CONFIG_GLOBAL"] = saved_env
 
 
-def main() -> int:
-    telemetry_cases()
-    inbox_cases()
-    key_cases()
-    print("memory: fail" if FAILED else "memory: pass")
-    return 1 if FAILED else 0
+@pytest.mark.parametrize("case,url,expected", KEYS)
+def test_repo_key(case: str, url: str | None, expected: str, tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import memory_bootstrap  # noqa: F401
 
+    import memory_paths
+    import task_repo_facts
 
-if __name__ == "__main__":
-    sys.exit(main())
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    checkout = tmp / "checkout"
+    checkout.mkdir()
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    if url:
+        subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin", url], check=True)
+    monkeypatch.chdir(checkout)
+    check(f"{case}: key is {expected}", memory_paths.repo_key() == expected, memory_paths.repo_key())
+    if url:
+        with contextlib.redirect_stderr(io.StringIO()):  # an unborn HEAD is reported, and is not the case
+            named = task_repo_facts.collect(argparse.Namespace(root=None, remote=None, network=False))["repo_name"]
+        check(f"{case}: crew-repo-info's repo_name is the same {expected}", named == expected, named)

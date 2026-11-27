@@ -14,10 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
-import sys
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -151,22 +148,6 @@ def run_all(tmp: Path) -> list[str]:
     return [failure for failure in failures if failure]
 
 
-def main() -> int:
-    interpreter = shutil.which("python3") or "python3"
-    version = subprocess.run([interpreter, "--version"], capture_output=True, text=True).stdout.strip()
-    print(f"interpreter: {interpreter} ({version})")
-    tmp = Path(tempfile.mkdtemp(prefix="installed-commands-")).resolve()
-    try:
-        failures = run_all(tmp)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-    for failure in failures:
-        print(f"FAIL: {failure}")
-    if failures:
-        return 1
-    print(f"pass: {len(catalog())} installed command(s) run through a symlink from outside the repo")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+def test_every_command_runs_through_its_link(tmp: Path) -> None:
+    failures = run_all(tmp.resolve())
+    assert not failures, "\n".join(failures)

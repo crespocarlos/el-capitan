@@ -16,9 +16,9 @@ at all, so "no threads" and "could not read" stay distinguishable.
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 
+import pytest
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,9 +78,7 @@ def run(arguments, bindir, home):
 
 
 def check(name, condition, detail=""):
-    if not condition:
-        raise AssertionError(f"{name}: {detail}")
-    print(f"pass: {name}")
+    assert condition, f"{name}: {detail}"
 
 
 def envelope(nodes, has_next=False, cursor=None, extra=None):
@@ -93,19 +91,14 @@ def envelope(nodes, has_next=False, cursor=None, extra=None):
 class Sandbox:
     """A scratch HOME with a stub `gh`; each case installs the body it needs."""
 
-    def __enter__(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.path = Path(self.temporary.name)
+    def __init__(self, path: Path):
+        self.path = path
         self.bindir = self.path / "bin"
         self.bindir.mkdir()
         asset = self.path / ".agent" / "bin" / "pr-review-threads.graphql"
         asset.parent.mkdir(parents=True)
         asset.write_text((ROOT / ".agent" / "tools" / "review" /
                           "pr-review-threads.graphql").read_text())
-        return self
-
-    def __exit__(self, *_):
-        self.temporary.cleanup()
 
     def stub(self, body, code=0, stderr=""):
         log = self.bindir / "gh.calls"
@@ -128,7 +121,12 @@ class Sandbox:
         return self.log.read_text().splitlines() if self.log.exists() else []
 
 
-def field_cases(box):
+@pytest.fixture
+def box(tmp_path: Path) -> Sandbox:
+    return Sandbox(tmp_path)
+
+
+def test_fields(box):
     """Three fields, in the order asked, one bare line each — the resolver's one-call saving."""
     box.stub(json.dumps(VIEW))
     result = box.run("view", "--pr", "42", "--repo", "owner/repo",
@@ -142,7 +140,7 @@ def field_cases(box):
     check("the repo and PR reach gh", "--repo owner/repo" in called and " 42" in called, called)
 
 
-def absent_field_cases(box):
+def test_absent_field(box):
     """A field gh did not return prints empty and still exits 0, so a caller can test it."""
     box.stub(json.dumps({"title": "only a title"}))
     result = box.run("view", "--pr", "42", "--field", "branch,title")
@@ -151,7 +149,7 @@ def absent_field_cases(box):
           result.stdout.splitlines() == ["", "only a title"], result.stdout)
 
 
-def failing_gh_cases(box):
+def test_failing_gh(box):
     """A failed call is loud: nonzero exit and gh's own message, never an empty answer."""
     box.stub("{}", code=1, stderr="HTTP 404: Not Found (https://api.github.com)")
     result = box.run("view", "--pr", "999", "--field", "title")
@@ -160,7 +158,7 @@ def failing_gh_cases(box):
     check("a failing gh prints no field line", result.stdout.strip() == "", result.stdout)
 
 
-def diff_cases(box):
+def test_diff(box):
     """`diff` writes the patch to stdout unchanged, so a caller redirects it to a file."""
     box.stub(PATCH)
     result = box.run("diff", "--pr", "42", "--repo", "owner/repo")
@@ -169,7 +167,7 @@ def diff_cases(box):
     check("diff names the PR", "pr diff 42" in box.calls()[0], box.calls())
 
 
-def other_read_cases(box):
+def test_other_reads(box):
     """`repo` and `issue` answer the two fields the prompts asked gh for directly."""
     box.stub(json.dumps({"nameWithOwner": "elastic/el-capitan"}))
     result = box.run("repo", "--field", "nameWithOwner")
@@ -185,7 +183,7 @@ def other_read_cases(box):
     check("a multiline body stays one line", len(lines) == 2, lines)
 
 
-def fetch_shape_cases(box):
+def test_fetch_shape(box):
     """The flat shape: pageInfo and threads at the top level, counts over the whole set."""
     threads = [THREAD,
                {"id": "T_2", "isResolved": True, "isOutdated": False, "comments": {"nodes": []}},
@@ -206,7 +204,7 @@ def fetch_shape_cases(box):
           == (1, 1, 1), payload)
 
 
-def fetch_merge_cases(box):
+def test_fetch_merge(box):
     """With --cursor the pages accumulate and the counts are over the merged set, not per page."""
     box.stub_pages({
         "PAGE1": (envelope([THREAD], has_next=True, cursor="PAGE2"), 0, ""),
@@ -229,7 +227,7 @@ def fetch_merge_cases(box):
     check("the second request carries the end cursor", "cursor=PAGE2" in calls[1], calls)
 
 
-def fetch_failure_cases(box):
+def test_fetch_failure(box):
     """A GraphQL error and a missing pullRequest both exit nonzero, printing no JSON."""
     box.stub(json.dumps({"errors": [{"message": "Could not resolve to a PullRequest"}]}))
     result = box.run("fetch", "--repo", "owner/repo", "--pr", "404")
@@ -249,7 +247,7 @@ def fetch_failure_cases(box):
     check("a failing fetch prints no JSON", result.stdout.strip() == "", result.stdout)
 
 
-def fetch_empty_cases(box):
+def test_fetch_empty(box):
     """A PR nobody has reviewed is a real empty answer: threads [], counts 0, exit 0."""
     box.stub(envelope([], has_next=False, cursor=None))
     result = box.run("fetch", "--repo", "owner/repo", "--pr", "42")
@@ -261,7 +259,7 @@ def fetch_empty_cases(box):
           == (0, 0, 0), payload)
 
 
-def dry_run_cases(box):
+def test_dry_run(box):
     """--dry-run keeps printing the plan and never calls gh."""
     box.stub(envelope([]))
     result = box.run("fetch", "--repo", "owner/repo", "--pr", "42", "--dry-run")
@@ -275,7 +273,7 @@ REPLY = ("reply", "--repo", "owner/repo", "--pr", "7", "--thread-id", "T_1", "--
 RESOLVE = ("resolve", "--repo", "owner/repo", "--pr", "7", "--thread-id", "T_1")
 
 
-def write_cases(box):
+def test_writes(box):
     """A mutation plans without --execute (or with --dry-run) and calls gh only with --execute."""
     box.stub('{"data": {"stub": true}}')
     for extra in ((), ("--dry-run",)):
@@ -301,18 +299,3 @@ def write_cases(box):
     check("the default --query is the installed asset, and an explicit one is honored",
           f"query=@{box.path / '.agent' / 'bin' / 'pr-review-threads.graphql'}" in default
           and f"query=@{custom}" in json.loads(result.stdout)["planned"]["command"], (default, result.stdout))
-
-
-def main():
-    cases = (field_cases, absent_field_cases, failing_gh_cases, diff_cases, other_read_cases,
-             fetch_shape_cases, fetch_merge_cases, fetch_failure_cases, fetch_empty_cases,
-             dry_run_cases, write_cases)
-    for case in cases:
-        with Sandbox() as box:
-            case(box)
-    print("all crew-pr-actions read checks passed")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

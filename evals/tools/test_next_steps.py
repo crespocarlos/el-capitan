@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -131,23 +130,3 @@ def test_known_stages_are_short_keys_a_skill_can_quote() -> None:
     stages = known_stages(table())
     assert "review.block" in stages, stages
     assert all(len(stage.split(".")) == 2 for stage in stages), stages
-
-
-def main() -> int:
-    tests = [value for name, value in sorted(globals().items())
-             if name.startswith("test_") and callable(value)]
-    failed = 0
-    for test in tests:
-        with tempfile.TemporaryDirectory() as tmp:
-            try:
-                test(Path(tmp)) if test.__code__.co_argcount else test()
-                print(f"pass: {test.__name__}")
-            except AssertionError as error:
-                failed += 1
-                print(f"FAIL: {test.__name__}: {error}")
-    print(f"{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

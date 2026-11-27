@@ -23,10 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -71,7 +68,7 @@ def install(tree: Path, home: Path, cwd: Path) -> None:
     done = subprocess.run(["bash", str(tree / "install.sh")], cwd=cwd, env=env,
                           capture_output=True, text=True, timeout=300)
     if done.returncode != 0:
-        raise SystemExit(f"FAIL: install from {tree} exited {done.returncode}\n{done.stdout[-1500:]}"
+        raise AssertionError(f"install from {tree} exited {done.returncode}\n{done.stdout[-1500:]}"
                          f"\n{done.stderr[-1500:]}")
 
 
@@ -79,7 +76,7 @@ def export_previous(destination: Path) -> None:
     destination.mkdir()
     archive = subprocess.run(["git", "-C", str(ROOT), "archive", PREVIOUS], capture_output=True)
     if archive.returncode != 0:
-        raise SystemExit(f"FAIL: cannot export {PREVIOUS} (fetch it, or set UPGRADE_FROM_REF): "
+        raise AssertionError(f"cannot export {PREVIOUS} (fetch it, or set UPGRADE_FROM_REF): "
                          f"{archive.stderr.decode(errors='replace').strip()}")
     subprocess.run(["tar", "-x", "-C", str(destination)], input=archive.stdout, check=True)
 
@@ -164,31 +161,19 @@ def imports_failures(home: Path) -> list[str]:
                        if any(item.endswith("/" + name) for item in got)]
 
 
-def main() -> int:
+def test_upgrade_from_the_previous_release(tmp: Path) -> None:
     real_home = Path.home()
     before = fingerprint(real_home)
-    tmp = Path(tempfile.mkdtemp(prefix="upgrade-")).resolve()
-    try:
-        home, cwd, previous = tmp / "home", tmp / "cwd", tmp / "previous"
-        home.mkdir()
-        cwd.mkdir()
-        export_previous(previous)
-        install(previous, home, cwd)
-        install(ROOT, home, cwd)
-        (tmp / "tasks").mkdir()
-        failures = (reference_failures(home) + allow_list_failures(home) + imports_failures(home)
-                    + new_command_failures(home, tmp / "tasks"))
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    tmp = tmp.resolve()
+    home, cwd, previous = tmp / "home", tmp / "cwd", tmp / "previous"
+    home.mkdir()
+    cwd.mkdir()
+    export_previous(previous)
+    install(previous, home, cwd)
+    install(ROOT, home, cwd)
+    (tmp / "tasks").mkdir()
+    failures = (reference_failures(home) + allow_list_failures(home) + imports_failures(home)
+                + new_command_failures(home, tmp / "tasks"))
     if fingerprint(real_home) != before:
         failures.append(f"the real HOME's install surface changed under {real_home}")
-    for failure in failures:
-        print(f"FAIL: {failure}")
-    if failures:
-        return 1
-    print(f"pass: upgrade from {PREVIOUS} resolves every prompt reference and allow-list command")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    assert not failures, "\n".join(failures)
