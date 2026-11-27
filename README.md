@@ -86,7 +86,9 @@ for it is open: `crew open pr` records the PR and marks it, and the merge comes 
 `p` switch views, `r` refreshes, `g` reads `landed` from GitHub, and `o` and `O` open the selected
 task's issue and PR in the browser. `s` lists the `crew-task.py` moves the selected task's state allows:
 approve (`mark-approved`), start (`mark-implementing`), mark done (`mark-done` with the newest recorded
-PR, or `--force` with a note, by default `none (committed to main)`, when there is none) and `blocked`
+PR), close as done (`mark-done --force` with a note, by default `none (committed to main)` for
+IMPLEMENTING and `closed: stale` otherwise, on a DRAFTING, APPROVED, IMPLEMENTING or ON-HOLD task with no
+PR to mark done with; never on ABANDONED; LANDED then reads `closed`) and `blocked`
 with a reason. Each move shows the exact command in a confirm dialog, which is your approval for a gate,
 then runs it and shows its output and exit code; a refusal shows the reason. The dashboard never writes a
 file itself and never calls a model. It needs Textual, pinned in

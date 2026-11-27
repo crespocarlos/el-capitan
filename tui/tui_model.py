@@ -21,6 +21,7 @@ from ls_data import landed_rows, load_rows, repo_filter, select, stale
 from ls_report import gather as gather_report
 from ls_report import render as render_report
 from ls_report import stage_pairs
+from task_gates import CLOSABLE
 from task_live import Live, Seen, ended_at, running_agents
 from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
 from task_progress import blocked_reason, count_text, read_entries, sum_usage, task_usage_totals, usage_text
@@ -33,7 +34,8 @@ STAGE_STALE_SECONDS = LOCK_STALE_SECONDS  # a stage open this long outlived any 
 NOT_READ = "?"  # a DONE task's `landed` before the GitHub key is pressed
 LINKED = ("ISSUE", "PR")  # the cells that are terminal links in the app; `o` and `O` open them
 CREW_TASK = tui_bootstrap.TASK_TOOLS / "crew-task.py"  # the checkout's copy, which ~/.agent/bin links to
-FORCE_NOTE = "none (committed to main)"  # the `--pr-url` note of `mark-done --force` for a task with no PR
+# The default `--pr-url` note of the close move (`mark-done --force`): shipped work for IMPLEMENTING, else stale.
+SHIPPED_NOTE, STALE_NOTE = "none (committed to main)", "closed: stale"
 # The gates of `crew-task.py` and the one state each moves from (`task_gates.py`); the CLI refuses any other.
 GATES = (("mark-approved", "DRAFTING", "approve"), ("mark-implementing", "APPROVED", "start"),
          ("mark-done", "IMPLEMENTING", "mark done"))
@@ -77,21 +79,20 @@ class Move:
 
 
 def moves(state: str, task: Path, prs: list[str]) -> list[Move]:
-    """The calls `crew-task.py` accepts from `state`: its gate (mark done with the newest PR, or `--force` and a
-    note without one), and `blocked` with a reason for any task not DONE. The CLI still checks every gate."""
+    """The calls `crew-task.py` accepts from `state`: its gate (mark done with the newest PR from IMPLEMENTING),
+    then `blocked` with a reason for any task not DONE, and close as done (`mark-done --force` with a note) for a
+    state the CLI closes (`CLOSABLE`: not ABANDONED), except an IMPLEMENTING task with a PR. The CLI still checks
+    every gate."""
     found = []
     for command, source, label in GATES:
-        if state != source:
-            continue
-        if command != "mark-done":
-            found.append(Move(f"{label} ({command})", (command, str(task))))
-        elif prs:
-            found.append(Move(f"{label} with PR {prs[-1]} ({command})", (command, str(task), "--pr-url", prs[-1])))
-        else:
-            found.append(Move(f"{label} without a PR ({command} --force)", (command, str(task), "--force", "--pr-url"),
-                              ask="note recorded as the PR", default=FORCE_NOTE))
+        if state == source and (command != "mark-done" or prs):
+            pr = ("--pr-url", prs[-1]) if command == "mark-done" else ()
+            found.append(Move(f"{label}{f' with PR {prs[-1]}' if pr else ''} ({command})", (command, str(task), *pr)))
     if state != "DONE":
         found.append(Move("blocked with a reason (blocked)", ("blocked", str(task)), ask="reason"))
+    if state in CLOSABLE and not (state == "IMPLEMENTING" and prs):
+        found.append(Move("close as done (mark-done --force)", ("mark-done", str(task), "--force", "--pr-url"),
+                          ask="note", default=SHIPPED_NOTE if state == "IMPLEMENTING" else STALE_NOTE))
     return found
 
 
@@ -268,7 +269,7 @@ def collect(tasks_dir: Path, filters: Filters, landed: dict[str, str] | None = N
 
 
 def landed_for(tasks_dir: Path, filters: Filters, reader: Callable | None = None) -> dict[str, str]:
-    """`{task dir: yes|no|unknown}` for the DONE rows shown: the one GitHub read, behind an explicit key."""
+    """`{task dir: yes|no|unknown|closed}` for the DONE rows shown: the one GitHub read, behind an explicit key."""
     rows, _ = load(tasks_dir, filters)
     done = [r.task for r in rows if head(r) == "DONE"]
     found = landed_rows(done) if reader is None else landed_rows(done, reader)

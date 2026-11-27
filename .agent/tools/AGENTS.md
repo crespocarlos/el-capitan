@@ -88,7 +88,7 @@ command (a command costs always-on router budget). What the hardening work added
   `worktree pref|record` (`task_worktrees.py`) and `worktree check <tree>`
   (`task_worktrees.py`: `ok`, `on-feature-branch` exit 4, `dirty` exit 5), and `gc [--only telemetry]
   [--apply]` (`task_gc.py`: the retention policy of `~/.agent/config.json`). `crew-ls.py` only reads.
-- `crew-ls.py` shows the REPO column, AGE from the last PROGRESS entry, `landed: yes|no|unknown`, the
+- `crew-ls.py` shows the REPO column, AGE from the last PROGRESS entry, `landed: yes|no|unknown|closed`, the
   `BLOCKED:` line and one `stale:` line; `--repo`, `--status`, `--cost`, `--watch [--interval N]`
   and `--report [--since 30d]` (`ls_report.py`), all over `ls_data.py`, the gathering a future TUI
   imports too; `crew-metric.py` validates `stage_start`, `stage_end` and `tokens_reported`
