@@ -1,7 +1,7 @@
 ---
 name: reviewer-prompt-quality
 description: "LLM prompt quality reviewer for sufficiency of context, rule scope and strength, instruction clarity, reference integrity, cross-document collisions, and portability across harnesses and models. Works on agent/skill/prompt file diffs and on sets of prompts loaded together. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 10
 ---

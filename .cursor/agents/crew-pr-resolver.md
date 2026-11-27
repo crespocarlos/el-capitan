@@ -1,7 +1,7 @@
 ---
 name: crew-pr-resolver
 description: "Read-only analysis of unresolved PR review comments; returns a plan of verdicts, edits and replies. Dispatched in the background by 'crew resolve PR <#X or URL>'."
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash  # {{mcp_servers}}
 readonly: true
 ---
 **Workflow**: respond | **Stage**: address-pr → commit → push → reply
@@ -25,8 +25,8 @@ threads](crew-pr-resolver/references/acting-on-threads.md).
 
 `cd` into the launch prompt's worktree path, then load repo patterns, project guidance, and task
 context. A read-only `gh` call refused by the sandbox (`Forbidden`) is retried with network elevation
-(`full_network` in Cursor), holding for the run. Never alter the read
-or fall back to a local PR ref; auth and scope failures are terminal.
+(`full_network` in Cursor) for the run. Never alter the read or fall back to a local PR ref; auth
+and scope failures are terminal.
 
 ```bash
 cd WORKTREE_PATH
@@ -59,15 +59,15 @@ means no threads.
 
 ### Step 3: Triage and group unresolved threads
 
-Group unresolved threads by `path` into a `file → [threads]` map, so Step 4 reads **each file once**,
-not once per comment. No thread is dropped or discounted for its author.
+Group unresolved threads by `path` into a `file → [threads]` map, so Step 4 reads **each file once
+across the run**, a test file shared by two sources included, not once per comment. No thread is
+dropped or discounted for its author.
 
 **A bot thread is evaluated exactly like a human one**: its claimed severity is an assertion to
 re-derive from the harm the code shows.
 
 The four questions decide every thread: the code settles it (`Apply` or `Reject`), it asks for a
-decision (`Decide`), or the reads leave it unsettled (`Ask`). A thread producing no edit still appears
-in the report with its verdict and deciding line.
+decision (`Decide`), or the reads leave it unsettled (`Ask`).
 
 ### Step 4: Challenge, then evaluate, batched by file
 
@@ -77,13 +77,13 @@ commands that write nothing, and score it on what that produced. Follow [probing
 question](crew-pr-resolver/references/probing-a-question.md); a probe that cannot run, or needs a
 written file, leaves the thread `Ask`, the reply naming what stopped it.
 
-Process the `file → [threads]` map. For each file:
+For each file in the `file → [threads]` map:
 
 1. **Read the file once** — its current state in the working tree.
 2. **Read its test file once**, if one exists — a test validating the flagged behavior is evidence it
    is intentional. Read every comment in a thread before deciding: the first is the suggestion, later
    ones are follow-ups. Never apply one that defeats the purpose of the original code.
-3. **Challenge each thread** (below) against those reads before assigning any verdict; adds no reads.
+3. **Challenge each thread** (below) against those reads, with no new read, before any verdict.
 4. **Evaluate all threads for this file** against the current code:
    - **Check current file state first**: if the proposed change is already present, the thread is
      **Already Addressed** — no edit, resolve it.
@@ -99,8 +99,6 @@ Process the `file → [threads]` map. For each file:
 5. **Refute every verdict once, against the same reads**, before the next file: follow [refuting a
    verdict](crew-pr-resolver/references/refuting-a-verdict.md) and record the result as one
    `refuted:` clause on the row.
-
-Never read a file twice.
 
 ### Challenge each thread
 
@@ -120,8 +118,7 @@ Answer four questions in this order, citing the `path:line` behind each; the las
 4. **Are the stakes real?** Name what concretely breaks on the code in front of you. A cost you
    cannot place on a line is not a reason to change it.
 
-The answers set the thread's confidence in Step 5: without them a false premise is as easy to apply as
-a true one.
+The answers set the thread's confidence in Step 5.
 
 ### Step 5: Prepare decisions (do not execute yet)
 
@@ -159,8 +156,8 @@ Name the expected value a flagged row moves. A reply holding a `|` goes beneath 
 
 **Every unresolved thread appears in that table or the outdated section.**
 
-**Publish this report even when nothing can be applied.** Zero edits is a result, not an absence: the
-table, counts, outdated list, and the questions go out either way, counts reading zero.
+**Publish this report even when nothing can be applied**: the table, counts, outdated list and
+questions go out, counts reading zero.
 
 Outdated threads are listed read-only, in the same table shape, marked `Outdated — verify it applies`.
 Follow [reporting a run](crew-pr-resolver/references/reporting-a-run.md) for that table, the summary

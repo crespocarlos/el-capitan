@@ -413,6 +413,15 @@
       "smoke": "imported by crew-doctor.py"
     },
     {
+      "name": "doctor_mcp.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-doctor.py: the rendered read-only agents and the docs and code-search MCP servers per harness",
+      "smoke": "imported by crew-doctor.py"
+    },
+    {
       "name": "lint_python.py",
       "dir": "maintenance",
       "kind": "module",

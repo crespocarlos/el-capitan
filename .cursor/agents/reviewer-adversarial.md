@@ -1,7 +1,7 @@
 ---
 name: reviewer-adversarial
 description: "Paranoid reviewer for edge cases, regressions, and silent failures. Works on code diffs, plans, proposals, and session discussions. Dispatched by crew-reviewer — do not invoke directly."
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 12
 ---

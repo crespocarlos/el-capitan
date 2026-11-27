@@ -90,7 +90,7 @@ Impact ("what breaks if I change X?"):     sourcerer_code_grep('X') for every ca
 ```
 
 Without an index in the current invocation, fall back to the harness's own search, then read only the
-range it identified, and say in the report that index search was unavailable.
+range it identified, and name the fallback as the Availability section below says.
 
 ## Availability and fallback
 
@@ -110,8 +110,9 @@ range it identified, and say in the report that index search was unavailable.
 - `sourcerer_repos_list` is the index inventory; `sourcerer_repos_search` is the "which repo is this"
   query. If the trail leads into a dependency, check whether that repo is indexed before concluding
   the answer is not findable.
-- A rejected call means the server is unavailable or unauthenticated in this invocation: fall back to
-  the harness's own search and say so; there is no in-session re-authentication step.
+- A rejected call, or no code-search tool at all, means the server is unreachable in this invocation:
+  fall back to the harness's own search and name the fallback in the reply (`code search unreachable:
+  used text search`), never silently; there is no in-session re-authentication step.
 
 ## Elastic setup and ES|QL (opt-in: Kibana and Elasticsearch work)
 
@@ -119,5 +120,6 @@ range it identified, and say in the report that index search was unavailable.
   `sourcerer` MCP server and credentials.
 - For any ES|QL query or Elasticsearch/Kibana docs question, also use a docs MCP server if one is
   configured: its search tool to find the command, function, or syntax, then its fetch-by-URL tool to
-  confirm it. Without one, say the claim is unverified rather than guessing. Use the code index only
-  to find how Kibana code builds or consumes the query.
+  confirm it. When it is unreachable, follow the Elastic docs section of
+  `~/.cursor/agents/references/reviewer-contract.md`, which holds that rule once. Use the code index
+  only to find how Kibana code builds or consumes the query.

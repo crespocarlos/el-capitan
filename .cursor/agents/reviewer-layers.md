@@ -1,7 +1,7 @@
 ---
 name: reviewer-layers
 description: "Layer-map pre-pass for crew-reviewer: orders a PR or diff into readable layers and writes layers.json. Dispatched by crew-reviewer before personas — do not invoke directly, and it reports no findings."
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 8
 ---

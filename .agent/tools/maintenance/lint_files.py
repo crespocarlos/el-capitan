@@ -63,8 +63,7 @@ RULES: dict[str, tuple[str, str]] = {
     "missing-disable-model-invocation": ("prompts", "a user-only skill disables model invocation"),
     "missing-readonly": ("prompts", "a read-only agent declares readonly: true"),
     "unexpected-readonly": ("prompts", "a write-capable agent does not declare readonly"),
-    "inherited-tools-can-write": ("prompts", "an inheriting read-only agent denies the writers"),
-    "mcp-grant-policy": ("prompts", "MCP grants follow the persona policy"),
+    "agents-inherit-tools": ("prompts", "an agent's tools: line is its class list plus the MCP placeholder, or absent"),
     "mcp-tool-unknown": ("prompts", "an MCP tool id is in the catalog"),
     "tool-id-unknown": ("prompts", "a native tool id is in the catalog"),
     # lint_references: paths, installed names and routing

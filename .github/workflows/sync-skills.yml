@@ -46,18 +46,13 @@ jobs:
             fi
           fi
 
-          # .claude/agents → ../.cursor/agents (cursor/agents is canonical)
-          if [ ! -L .claude/agents ]; then
-            echo "ERROR: .claude/agents is not a symlink"
+          # No .claude/agents in the repo: the read-only agents carry an install-time {{mcp_servers}}
+          # placeholder, and a project-level copy would override the rendered user-level agents.
+          if [ -e .claude/agents ] || [ -L .claude/agents ]; then
+            echo "ERROR: .claude/agents must not exist (install renders the agents into ~/.cursor/agents)"
             ERRORS=$((ERRORS+1))
           else
-            TARGET=$(readlink .claude/agents)
-            if [ "$TARGET" != "../.cursor/agents" ]; then
-              echo "ERROR: .claude/agents → $TARGET (expected ../.cursor/agents)"
-              ERRORS=$((ERRORS+1))
-            else
-              echo "✓ .claude/agents → ../.cursor/agents"
-            fi
+            echo "✓ no project-level .claude/agents"
           fi
 
           if [ $ERRORS -gt 0 ]; then exit 1; fi
