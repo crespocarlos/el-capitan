@@ -103,7 +103,13 @@ RULES: dict[str, tuple[str, str]] = {
     # lint_writing: what prompts, docs and tool sources say
     "removed-command-form": ("writing", "no prompt, doc, hook or tool names a removed command form"),
     "docstring-length": ("writing", "a module docstring under .agent/tools is at most 6 lines"),
-    "no-incident-narration": ("writing", "no docstring or comment narrates history (used to, N of M measured)"),
+    "no-incident-narration": ("writing", "no docstring, comment or prompt narrates history (used to, N of M measured)"),
+    # lint_style: the repo-specific writing standard for prompt files (Vale, .vale.ini, owns the generic prose rules)
+    "duplicate-passages": ("style", "no 12-word passage shared by two prompt files outside the allow-list"),
+    "glossary-terms": ("style", "one glossary in .agent/tools/AGENTS.md defining the core terms"),
+    "vendor-tools-scoped": ("style", "Elastic-only ids only in Kibana prompts, personal rules or an (opt-in) section"),
+    "undefined-placeholder": ("style", "a $PLACEHOLDER in an agent or skill is defined before use"),
+    "one-closing-confirmation": ("style", "journal writes and draft imports only in closing confirmation or resolver"),
 }
 
 

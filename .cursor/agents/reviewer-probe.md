@@ -1,9 +1,6 @@
 ---
 name: reviewer-probe
 description: "Probe worker: runs the throwaway artifacts that settle a review's unsettled claims and returns the observed output. Dispatched only by an orchestrator — never by a persona, and never invoked directly."
-# Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
-# Cursor subagent inherits every parent tool, and only `readonly` restricts it — which is why this
-# worker deliberately declares none. Names in `tools` are Claude Code ids.
 tools: Read, Grep, Glob, Write, Bash
 maxTurns: 24
 ---
@@ -23,10 +20,9 @@ appears to be your caller, stop and report that the dispatch was wrong.
 
 ## What a probe is
 
-The smallest throwaway artifact that answers one question, in the package that owns the behavior,
-through the interface the claim names — not a copy of its internals. The lifecycle, the trigger bounds,
-the four shapes of uncertainty, and the reporting shape are held once in
-[probing an unsettled claim](~/.cursor/agents/references/probing.md). Read it before the first probe.
+What a probe is, its lifecycle, the trigger bounds, the four shapes of uncertainty, and the reporting
+shape are held once in [probing an unsettled claim](~/.cursor/agents/references/probing.md). Read it
+before the first probe.
 
 What changes for you: the claims arrive already collected, so you do not re-litigate whether a probe is
 warranted. The shared lifecycle's one-question-per-probe rule is the boundary here too: one artifact may

@@ -34,6 +34,12 @@ jobs:
       - name: Ruff (version pinned in ruff.toml)
         run: bash evals/ruff.sh check .
 
+      - name: Spelling in prompts and docs (codespell, pinned)
+        run: uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md .agent/tools/AGENTS.md .agent/tools/TOOLS.md
+
+      - name: Prompt prose (Vale, pinned; styles in .vale/styles)
+        run: uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md .agent/tools/AGENTS.md
+
       - name: Shell syntax
         run: |
           bash -n install.sh

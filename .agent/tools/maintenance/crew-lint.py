@@ -28,6 +28,7 @@ from lint_prompts import (
 )
 from lint_python import lint_python
 from lint_references import lint_documents, lint_handoff, lint_repo_paths
+from lint_style import lint_style
 from lint_writing import (
     lint_edit_discipline,
     lint_hook_registration,
@@ -87,6 +88,7 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_python(root))
     findings.extend(lint_removed_forms(root))
     findings.extend(lint_tool_prose(root))
+    findings.extend(lint_style(root))
     if budget:
         findings.extend(lint_budget(root, all_files, rules))
     return findings

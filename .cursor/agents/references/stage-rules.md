@@ -1,7 +1,7 @@
 # Review stage rules: cost line and e2e
 
 `crew-reviewer` links here for the two things it does after the personas are dispatched and before it
-hands off.
+hands off. `TASK_DIR` is the review's task directory, empty for none.
 
 ## The cost line
 

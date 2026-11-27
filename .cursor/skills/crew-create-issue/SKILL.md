@@ -28,10 +28,10 @@ If that returns `OWNER/REPO`, use it. If a repo is mentioned in the conversation
 `org/repo`), use that. If genuinely unresolvable, ask exactly one question: **"Which repo?
 (OWNER/REPO)"**
 
-### Step 2: Load the template (mandatory)
+### Step 2: Load the template
 
-**Read** [issue-templates.md](./references/issue-templates.md) before drafting. Do not rely on
-memory.
+**Read** [issue-templates.md](./references/issue-templates.md) before drafting, every time: the
+headings below must match it, and memory drifts.
 
 Check for repo-native templates:
 
@@ -51,15 +51,14 @@ Default (feature) when ambiguous.
 `issue-templates.md`. Infer prefix/style from recent issues in the target repo; do not hardcode org-
 or workstream-specific patterns.
 
-**Body** — use **only** the section headings from the chosen template, with emoji headers exactly as
-written (`## 📓 Summary`, `## ✔️ Acceptance criteria`, etc.). Map session content into these
-sections:
+**Body** — use **only** the section headings from the chosen template, exactly as written
+(`## Summary`, `## Acceptance criteria`, etc.). Map session content into these sections:
 
 | Session material | Goes in |
 |---|---|
-| Problem statement, context, why it matters | `## 📓 Summary` (1–2 paragraphs) |
-| What "done" looks like — outcomes, not implementation steps | `## ✔️ Acceptance criteria` (checkbox bullets) |
-| File paths, risky areas, merge order, approach notes | `## 💡 Implementation hints` (grouped by area) |
+| Problem statement, context, why it matters | `## Summary` (1–2 paragraphs) |
+| What "done" looks like — outcomes, not implementation steps | `## Acceptance criteria` (checkbox bullets) |
+| File paths, risky areas, merge order, approach notes | `## Implementation hints` (grouped by area) |
 | Repro steps, logs (bugs only) | Bug template sections |
 
 **Do not add** top-level sections such as `## Domain hierarchy`, `## Issues`, `## Proposed fix`, or

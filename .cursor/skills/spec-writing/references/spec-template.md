@@ -32,7 +32,7 @@ Out of scope: [adjacent work a reader might expect — one-phrase reason each]
 - **Command**: `[command]`
 - A frontend feature gets one golden-path e2e from the first group, so `crew review` can run it.
 ### Validation
-- **Command**: `[lint, type-check, or other quality gate]`
+- **Command**: `[lint, type-check, or other validation command]`
 
 ## Tasks
 - [ ] 1) [Task name]

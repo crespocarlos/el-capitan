@@ -39,21 +39,12 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 
 ## Dispatch
 
-`crew spec` and `crew review` are **inline only**: never hand either to an agent tool: each
-dispatches its explorers, critics, or personas from the main session. Everything else runs inline
-too, bar two background subagents: `crew implement` → `crew-builder`; `crew resolve PR` → read-only
-`crew-pr-resolver`, given the worktree `crew-worktree.py <branch>` prints; on its plan (its final
-message), read `crew-pr-resolver.md` from Step 6 and `references/acting-on-threads.md`; follow them.
-
-### Dispatch reliability
-
-- No native persona dispatch: use the documented degraded fallback, never an orchestrator subagent.
-- Preserve model inheritance: no `model` in agent frontmatter.
-- Launch both asynchronously in Cursor: a ~30-second synchronous turn limit kills healthy runs.
-- Pass task directory and worktree paths in the launch prompt; read the durable report
-  (`SPEC.md`, `REPORT.md`, the plan) once it ends.
-- Retry once, asynchronously, when a dispatch ends without its durable report (a resolver reply
-  without the Step 6 table has none); never restart a task that already produced one.
+`crew spec` and `crew review` run inline only, because each dispatches its personas from the main
+session. Everything else runs inline too, except two background workers: `crew implement` →
+`crew-builder`; `crew resolve PR` → read-only `crew-pr-resolver`, given the worktree
+`crew-worktree.py <branch>` prints; on its plan (its final message), read `crew-pr-resolver.md` from
+Step 6 and `references/acting-on-threads.md`; follow them. Both dispatches follow the reliability
+rules in `~/.cursor/skills/crew-implement/references/worker-dispatch.md`.
 
 ## Add-ons
 
@@ -64,8 +55,6 @@ deploy`.
 
 ## Invariants
 
-- `crew implement` always follows crew-builder's protocol: through the subagent or by following the
-  protocol directly, never ad-hoc.
 - `crew review` is pre-commit in `build`, advisory after the push in `respond`. Mid-iteration, ask
   an inline question or run one adversarial check.
 - Every skill step that hands off names the next step and says "proceed immediately".

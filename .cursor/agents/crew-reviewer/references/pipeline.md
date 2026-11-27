@@ -1,6 +1,8 @@
 ## Review artifacts
 
-Persistence is mandatory for every mode; `crew commit` and `crew review address` read its output.
+Inputs: `TASK_DIR` (the resolved task, empty for none) and `REVIEW_ROOT` (below).
+
+Every mode persists, because `crew commit` and `crew review address` read its output.
 Let a command choose the directory, so a sandbox that denies the task path falls back instead of
 failing. Run it on its own line first, then assign — a command that *starts* with `VAR=$(…)` hides
 its own prefix from a permission check, so it asks every time:
@@ -34,8 +36,7 @@ the diff, `normalize` its input, `spec-context` the SPEC.md path. `coverage` gat
 `comments` writes the paste-ready bodies.
 
 **PR mode has no task.** A PR review produces no SPEC.md transition, `crew commit` never reads its
-output, and `crew-resolve-task-dir.py` answers with the newest non-DONE task for the current branch —
-usually an unrelated feature. Report the artifacts as `<path> (outside task state)`; that is a
+output, and the resolver's task for the current branch is usually an unrelated feature. Report the artifacts as `<path> (outside task state)`; that is a
 successful persist, not the `review not persisted` failure below. Pass the PR head SHA to `--head`,
 and never read it from this checkout with a raw git call: the local checkout never contains the PR
 head, because PR mode fetches nothing.
@@ -63,9 +64,7 @@ task's `REVIEW.md`.
    fail on a finding with no `kind`, on an emitted (`patch`/`decide`) `blocking` or `attention`
    finding without `verified: true` and an `evidence` location, on a `verified` finding with no
    `validation` sentence, and on more than `MAX_FINDINGS` emitted findings or more than `MAX_NITS`
-   emitted nits; supply all three on each candidate. The two caps are defined once, in
-   `crew-review-findings.py`, and restated with their rationale in `consolidation.md` — read them
-   there rather than copying the numbers, so a cap change cannot leave this file stale. In PR mode
+   emitted nits; supply all three on each candidate. The caps and their rationale: `consolidation.md`. In PR mode
    evidence must use the PR-head form `path:line@headSHA7`, and the evidence excerpt belongs in the
    relevant persona `.in.md` or validator prompt. A finding verified at a PR head also carries `excerpt`: the lines
    actually read, stored on the record so it re-reads without the network
@@ -77,9 +76,7 @@ task's `REVIEW.md`.
    `.out.md` carrying any other word — or a placeholder summary without a complete no-findings
    verdict, complete finding, or documented explorer section with an item — is read as no output,
    and persistence refuses the whole run. Write each real response as it returns; never substitute a
-   stub, and never write a condensed digest in its place: an artifact whose opening says
-   `condensed` or `summarized` is classified as an orchestrator summary and refused, because nothing
-   in it is attributable to the persona or re-verifiable later. Keep that persona in `--personas`
+   stub or a condensed digest (refused, per `reviewer-contract.md`). Keep that persona in `--personas`
    and name it under `### Reviewers` in the report. Then
    write the emitted report to `$REVIEW_ROOT/report.md`,
    and run `~/.agent/bin/crew-review-findings.py persist --review-dir "$REVIEW_ROOT" --report
@@ -131,7 +128,7 @@ when no `REVIEW.md` was written.
 
 ## Pipeline Integration (self-review mode only)
 
-`crew review` (self-review) is the quality gate between implementation and commit. After outputting
+`crew review` (self-review) is the verification between implementation and commit. After outputting
 the consolidated report, log the pipeline transition and provide a commit-ready conclusion.
 
 **Resolve TASK_DIR:**
@@ -173,8 +170,6 @@ _(Next-step handoff is emitted in Step 8 above for all modes.)_
 
 ## Rules
 
-- Never write original findings. Personas do the reviewing — you challenge, filter, and consolidate
-  what they return.
 - Never skip consolidation. Even with one reviewer, output goes through the consolidation format.
 - Reviewers receive pre-built context first; the per-persona fetch budget is defined once, in
   `context-tiers.md`.

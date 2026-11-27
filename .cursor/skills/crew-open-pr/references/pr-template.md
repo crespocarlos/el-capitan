@@ -34,7 +34,7 @@ Derive from, in order:
 1. SPEC **Summary** and **high-signal** bullets under **Acceptance criteria** — distill to reviewer-sized checks.
 2. **Diff risk** — what changed files or behaviors a reviewer should spot-check (UI path, config knob, API response shape).
 
-**Automated:** Typed commands under SPEC `## Tests` (`### Unit` / `### Integration` / `### E2E` / `### Validation`) are run by the builder's quality gates (and CI when applicable). One line in the PR body is enough, e.g. "Automated: the `## Tests` commands pass in the worktree."
+**Automated:** Typed commands under SPEC `## Tests` (`### Unit` / `### Integration` / `### E2E` / `### Validation`) are run by the builder's verification (and CI when applicable). One line in the PR body is enough, e.g. "Automated: the `## Tests` commands pass in the worktree."
 
 **Do not:** Invent steps.
 

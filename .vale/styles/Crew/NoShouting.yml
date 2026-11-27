@@ -1,0 +1,26 @@
+extends: existence
+message: "'%s' is emphasis; give the reason in one sentence."
+level: error
+ignorecase: false
+tokens:
+  - MUST
+  - NEVER
+  - ALWAYS
+  - NOT(?! VERIFIED)
+  - ONLY
+  - DO
+  - DON'T
+  - "NO"
+  - CRITICAL
+  - IMPORTANT
+  - MANDATORY
+  - REQUIRED
+  - STOP
+  - ALL
+  - ANY
+  - EVERY
+  - EXACTLY
+  - IMMEDIATELY
+  - (?i:mandatory)
+  - (?i:no exceptions)
+  - (?i:protocol violation)

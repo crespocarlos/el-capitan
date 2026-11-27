@@ -1,26 +1,26 @@
 ## Step 5: Context packaging
 
+Inputs from `crew-reviewer`: `REVIEW_ROOT` (the review directory) and `TASK_DIR` (the task, empty
+for none).
+
 Build context packages for each reviewer before dispatching. Reviewers receive pre-built context
 first and should prefer it. They may do up to **8 targeted fetch calls** (repository search and
 targeted file reads, by whatever name the harness exposes them) to ground a finding they cannot
-verify from the provided context alone — but they must not re-read files already included in their
-package.
+verify from the provided context alone, without re-reading files already in their package.
 
 **Every package states its output contract, including the hunk requirement.** The shared reviewer
-contract already carries the hunk-citation rule, but a package assembles the rule's *inputs*: without
-the `## Hunk reference` section below, a persona has no ids to cite. Restate the sentence verbatim
-directly under that heading, because a package is what the persona reads and the ids it cites must be
-the ids in front of it. Without either half, personas do not cite hunk ids — only 7 of 511 recorded
-candidates carried one — and strict persistence then fails on every `[blocking]`/`[attention]`
-finding for a reason the persona was never told about:
+contract carries the hunk-citation rule, but a package assembles the rule's *inputs*: without the
+`## Hunk reference` section below, a persona has no ids to cite. Restate the sentence verbatim
+directly under that heading, so the ids the persona cites are the ids in front of it; without it,
+personas cite none and strict persistence fails every `[blocking]`/`[attention]` finding for a reason
+the persona was never told:
 
 > Every `[blocking]` and `[attention]` finding cites the hunk ids whose change causes it, next to the
 > `file:line` anchor: `[attention] src/a.ts:42 (h7) — …`, or `(h3, h7)`. A finding no hunk causes is
 > pre-existing; say so instead of citing a hunk that does not cause it.
 
-Also state the review mode in the same preamble (self, changes, PR, spec, or idea) together with the
-label vocabulary for that mode: `[concern]` replaces `[attention]` in a spec or idea review. A
-persona whose file lists only code labels otherwise has no legal label for a plan weakness.
+Also state the review mode in the same preamble (self, changes, PR, spec, or idea), so a persona
+applies the contract's label row for that mode (`[concern]` in a spec or idea review).
 
 ### Self and changes review modes
 
@@ -28,12 +28,11 @@ The size gate (see "Spine files" below) decides which of two packaging strategie
 checked first, and the two never both apply:
 
 - **At or above the threshold** — spine strategy: spine files and their consumers only.
-- **Below the threshold** — the complete diff (`package.diff`, generated files collapsed) is the hunk source for every persona, so do not
-  re-extract hunks or function boundaries to rebuild what it already holds. The tiers still supply
-  what a diff never carries and are not optional: Tier 1's surrounding lines and signatures, Tier
-  2's spec heading, Tier 3's consumers, the prompt tier, and the server-response contract
-  supplement. A diff shows roughly three context lines per change, no signatures, no full function
-  bodies, no type definitions, and no file that imports the changed module unless it also changed.
+- **Below the threshold** — the complete diff (`package.diff`, generated files collapsed) is the
+  hunk source for every persona; do not re-extract what it holds. The tiers still supply what a diff
+  never carries (about three context lines per change, no signatures, bodies, types, or importers):
+  Tier 1's surrounding lines and signatures, Tier 2's spec heading, Tier 3's consumers, the prompt
+  tier, and the server-response contract supplement.
 
 **Tier 1 — Hunks+** (~15–20% of full context): Diff hunks + 15 surrounding lines + function/class
 signatures of changed functions. Assigned to: **Code Quality**
@@ -42,8 +41,8 @@ signatures of changed functions. Assigned to: **Code Quality**
 type definitions + import statements. Assigned to: **Product Flow**
 
 **Spec in every code-mode package.** Code modes are self, changes, and PR (`CODE_MODES` in
-`crew-review-findings.py`); spec and idea reviews already send every persona the whole artifact and are
-unaffected. This section owns the rule; other files point here. When the task dir has a SPEC.md, append the output of
+`crew-review-findings.py`); spec and idea reviews already send the whole artifact. This section owns
+the rule. When the task dir has a SPEC.md, append the output of
 `crew-review-findings.py spec-context --persona <name> "$TASK_DIR/SPEC.md"` under a `## Spec` heading.
 Product Flow gets the whole spec; every other persona gets it without `## Tasks` and `## Hints`,
 which are implementation steps only Product Flow checks against the diff.
@@ -155,9 +154,8 @@ commands, in either harness. Read the patch with `~/.agent/bin/crew-pr-actions.p
 Repository guidance is the orchestrator's one local read; see the PR-mode paragraph in
 `references/dispatch.md` for its scope and its limits.
 
-**One base read per regression claim.** "This used to behave differently" is a claim about a tree you
-have not read, and asserting it from the head alone is a guess. The allowance, its label, and the
-fallback are in [evidence and comments](evidence-and-comments.md); it opens no local checkout.
+**A regression claim gets one base read**, never a local checkout: the allowance, its label, and the
+fallback are in [evidence and comments](evidence-and-comments.md).
 
 Two additions apply only to this mode:
 
@@ -192,14 +190,14 @@ across a run's packages, so a prefix cache pays for them once (`test_assemble_pa
 ## Repo memory
 
 Before dispatch, call `crew-mem.py context --mode review --paths <changed files>` once. Append its output
-under `# Repo memory` in every context package, in the shared head. On exit 2, append
-`warning: memory unavailable`.
+under `# Repo memory` in every context package, in the shared head; on exit 2, `warning: memory
+unavailable`.
 
 ## Package build inputs
 
 `crew-assemble-packages.py` composes every package from files the review directory already holds; the
 two it cannot produce itself, `agent-context.json` and `mem.md`, are written in Step 5 of
-[crew-reviewer](../crew-reviewer.md), which owns those commands. A missing file is not an error to
+[crew-reviewer](../../crew-reviewer.md), which owns those commands. A missing file is not an error to
 the tool: the package silently loses its guidance, or carries `warning: memory unavailable`. A
 non-zero exit from either command can still have written its file, so keep what was written and
 report the exit code.

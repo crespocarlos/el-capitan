@@ -23,7 +23,7 @@ structured-question tool.
 ## Step 1: Research the code as it is
 
 Turn the request into 3–6 concrete research questions (where X lives, how Y is done today, which
-tests cover Z, which quality gates run). Answer them from the code, not from the request: describe
+tests cover Z, which validation commands run). Answer them from the code, not from the request: describe
 what exists, with `path:line` pointers, and do not propose changes yet. Collect:
 
 - files and modules involved;
@@ -55,8 +55,8 @@ questions`. A spec with open items is a draft, not a plan.
   command, or a file plus what to inspect. Structural constraints (boundaries, API surface, pattern
   reuse) and non-regression items are criteria too.
 - **Tests** — keep only the layers that apply (`### Unit`, `### Integration`, `### E2E`, `###
-  Validation`); each kept layer has a runnable `**Command**`. Quality gates go under `###
-  Validation`.
+  Validation`); each kept layer has a runnable `**Command**`. Lint, type-check and other validation
+  commands go under `### Validation`.
 - **Tasks** — ordered, one architectural unit each (a function, module, or file pair), touching 1–2
   files. Each task says what to change and where (paths from the repository root, never `./`), and
   ends with `Verify: <command>` or `Verify: inspect: <what>`. Split any "modify X to also do Y"

@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Stop hook: queue a memory-capture review for the turn that just ended.
+# Stop hook: queue a memory-capture review for the turn that just ended; it drafts, never asks.
 #
-# A subagent cannot ask a human. When its turn ends, anything it says goes into the parent's
-# transcript, which is already finished, so a question asked there is never rendered and the drafts
-# it wrote are never surfaced. This hook therefore queues the review instead of asking in the turn:
-# `crew-inbox.py pending` lists it at the next session start and in `crew ls`, so the decision reaches
-# a human even when the turn that produced it could not.
+# The agent writes inbox drafts and asks nothing: the one approval question is the closing
+# confirmation of `crew open pr`, and a subagent's question would never reach a human anyway.
+# `crew-inbox.py pending` lists the queued review at the next session start and in `crew ls`.
 #
 # The guard file is written only after the queue entry exists, so an interrupted run retries rather
-# than marking itself prompted for a question nobody saw.
+# than marking itself prompted for a review nobody saw.
 set -euo pipefail
 HOOK_NAME=memory-capture-prompt
 . "$(dirname "$0")/lib/hook.sh"
@@ -62,10 +60,9 @@ message = (
     + (f"{failure_count} repeated tool failure(s)" if failure_count >= 2
        else f"{substantive_count} substantive action(s)")
     + ". Review it for at most three durable, non-derivable lessons, then draft each as one `.md` "
-      "file in `~/.agent/memory/.inbox/` with the usual frontmatter. A subagent cannot ask the user, "
-      "so do not end your turn with a question about importing them: the drafts are already queued "
-      "and the next session start lists them. If nothing "
-      "qualifies, write nothing."
+      "file in `~/.agent/memory/.inbox/` with the usual frontmatter. Ask nothing about importing them: "
+      "the closing confirmation of `crew open pr` and the next session start show the drafts. If "
+      "nothing qualifies, write nothing."
 )
 finish({"followup_message": message})
 PY

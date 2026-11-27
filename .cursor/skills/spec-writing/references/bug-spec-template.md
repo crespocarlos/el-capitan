@@ -24,7 +24,7 @@ should happen] Unchanged behavior: [adjacent behavior the fix must not alter] Ou
 ### Unit
 - **Command**: `[command]`
 ### Validation
-- **Command**: `[lint, type-check, or other quality gate]`
+- **Command**: `[lint, type-check, or other validation command]`
 
 ## Tasks
 - [ ] 1) Add a failing regression test

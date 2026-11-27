@@ -1,7 +1,7 @@
 # Package assembly and dispatch evidence
 
 Step 5–6 detail for `crew-reviewer`. The tool owns composition; this file says what to write, what
-to check, and how the evidence reaches a persona.
+to check, and how the evidence reaches a persona. `REVIEW_ROOT` is the review directory.
 
 ## Layer map (diff modes only)
 
@@ -72,8 +72,8 @@ Check the map before any persona runs: `crew-review-findings.py coverage --hunks
 a map, and name the gap in the report.
 
 **A map assertion must be grounded in its own hunks.** `reviewer-layers` sees hunk bodies and no
-repository, so an explainer naming a config key, a dependency, or a file the diff does not touch is a
-guess that three personas then restate as a `[needs more info]`. When reading the map, drop any
+repository, so an explainer about anything outside them is a guess that three personas then restate
+as a `[needs more info]`. When reading the map, drop any
 explainer or `hunkNotes` claim its hunks do not show, and when reviewing a map that reached a real
 run, verify such a claim against the diff before quoting it.
 
@@ -158,14 +158,12 @@ package opens with the same contract and hunk reference.
 In spec and idea reviews there is no diff, so the tool does not apply: compose by hand in the same
 order, contract first.
 
-## ES|QL / Elasticsearch docs trigger
+## Elastic docs trigger (opt-in: artifacts with ES|QL or Elasticsearch/Kibana API claims)
 
-Every persona already carries the docs rule from `~/.cursor/agents/references/reviewer-contract.md`
-(search with `search_internal_docs`, confirm with `get_internal_document_by_url`, mark `unverified`
-when unavailable). The trigger only tells the persona this artifact needs it. When the reviewed
-content contains ES|QL (`FROM … |` queries, `.esql` files, `esql` identifiers) or Elasticsearch/Kibana
-API claims, add to every persona's package: "This artifact contains ES|QL or Elasticsearch API claims.
-Verify the syntax, function availability, and API behavior with the docs MCP server before reporting,
-and cite the URL. State `unverified` when the docs are unreachable." Every reviewer persona and
-`reviewer-explorer` holds the docs server's search and fetch-by-URL tools, so the check stays possible
-whenever that server is configured.
+Every persona already carries the docs rule from `~/.cursor/agents/references/reviewer-contract.md`;
+the trigger only tells the persona this artifact needs it. When the reviewed content contains ES|QL
+(`FROM … |` queries, `.esql` files, `esql` identifiers) or Elasticsearch/Kibana API claims, add to
+every persona's package: "This artifact contains ES|QL or Elasticsearch API claims. Verify the syntax,
+function availability, and API behavior with the docs MCP server before reporting, and cite the URL.
+State `unverified` when the docs are unreachable." The personas reach the docs server through the
+harness whenever it is configured.

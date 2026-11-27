@@ -7,22 +7,22 @@ alwaysApply: false
 
 <critical_rules>
 
-**Before any text search, path search, or file read for a discovery task: STOP.** Ask yourself: "Do I
-already know the exact file and line I need?"
+**Before any text search, path search, or file read for a discovery task, ask:** do I already know
+the exact file and line I need?
 
 - **Yes** → a direct search or read is fine.
 - **No** → search Sourcerer's code index first.
 
-Defaulting to `rg` or `grep` for code exploration is a protocol violation. The index is ranked over
-whole repositories, so it finds code you could not have guessed the words for; grep finds only what you
-already know to search for. Tool names below are Sourcerer's, reached as `mcp__sourcerer__*`; in a
-harness without them, use that harness's equivalent search and read tools in the same order, and with
-no index, search first and read only what search narrowed.
+Start code exploration with the index, not `rg` or `grep`: the index is ranked over whole
+repositories, so it finds code you could not have guessed the words for, while grep finds only what
+you already know to search for. Tool names below are Sourcerer's, reached as `mcp__sourcerer__*`; in
+a harness without them, use that harness's equivalent search and read tools in the same order, and
+with no index, search first and read only what search narrowed.
 
 </critical_rules>
 
-**Index search is always preferred. Text search, path search, and reads are fallbacks — only use them
-after an index search has narrowed the scope, or when you already know the exact file and line.**
+The flow is index search to discover, then text search and reads only to drill into what search
+already found.
 
 | Task | Preferred | Fallback (scope already known) |
 | --- | --- | --- |
@@ -35,20 +35,6 @@ after an index search has narrowed the scope, or when you already know the exact
 | Orientation prose about a repo or module | `sourcerer_ki_search` | — |
 | Verify an exact string once you know the file | — | text search (Cursor `Grep`) |
 
-**The flow is always: index search to discover → text search and reads only to drill into what search
-already found. Never start with a text search.**
-
-## Decision tree
-
-```
-Know the identifier, error text, or config key? ──→ sourcerer_code_grep
-Exploring a concept?                             ──→ sourcerer_code_search → sourcerer_files_tree
-Need a repo or module overview before reading?    ──→ sourcerer_ki_search
-Need full file content?                          ──→ sourcerer_files_read_lines / sourcerer_files_cat
-Exact string verification in a known file?       ──→ Grep
-Path-based file find in a known area?            ──→ Glob
-```
-
 ## Tool selection
 
 ### sourcerer_code_search
@@ -56,96 +42,52 @@ Path-based file find in a known area?            ──→ Glob
 **Primary tool for any discovery question.**
 
 - Lexical relevance ranking (bm25) over the indexed revisions of indexed repositories — not embedding
-  search, so the words that appear in the code beat a restatement of the question
+  search, so the words that appear in the code beat a restatement of the question, and generic terms
+  like "handler" or "manager" need the distinguishing words beside them
 - Narrow with `file_path` (`src/**`), `git_repo`, `git_ref`, or `git_org` instead of hoping the ranking
-  sorts it out
+  sorts it out; more hits in one file usually means more relevant
 - Best for: "where is X handled?", "what implements Y?", finding code you cannot name precisely
 - Follow it with `sourcerer_files_tree` on the directory it names, or `sourcerer_files_read_lines` on a
   specific hit
 
 ### sourcerer_code_grep
 
-**Exact regex over the index.**
-
-- Use when you know the string: an identifier, an error message fragment, a config key
-- Same filters as `sourcerer_code_search`
-- Best for: every call site of a name, a literal that must match exactly
+**Exact regex over the index.** Use it when you know the string: an identifier, an error message
+fragment, a config key. Same filters as `sourcerer_code_search`. Best for every call site of a name,
+or a literal that must match exactly.
 
 ### sourcerer_files_tree
 
-**Structure of a directory.**
-
-- Roots at `file_path` and recurses; `L` controls depth, `d` lists directories only, `f` and `i`
-  produce a flat list of full paths
-- Best for: orienting in an unfamiliar package before reading anything
+**Structure of a directory.** Roots at `file_path` and recurses; `L` controls depth, `d` lists
+directories only, `f` and `i` produce a flat list of full paths. Best for orienting in an unfamiliar
+package before reading anything.
 
 ### sourcerer_files_read_lines / sourcerer_files_cat
 
-**Read from the index.**
-
-- `read_lines` takes a range and is the default; `cat` reads the whole file
-- Each line arrives prefixed with its 1-indexed number, so an anchor can be quoted directly
-- Best for: reading what search identified without a separate path lookup
+**Read from the index.** `read_lines` takes a range and is the default; `cat` reads the whole file,
+only once search has narrowed what to read. Each line arrives prefixed with its 1-indexed number, so
+an anchor can be quoted directly.
 
 ### sourcerer_repos_search / sourcerer_repos_list / sourcerer_refs_list
 
-**What is actually indexed.**
-
-- `repos_search` finds repositories whose code matches a query; `repos_list` enumerates them
-- `refs_list` shows the branches and tags indexed, and their status — an `indexing` or stale ref is the
-  usual reason results look empty or wrong
-- Best for: a result set that seems impossible, or a review against a branch
+**What is actually indexed.** `repos_search` finds repositories whose code matches a query;
+`repos_list` enumerates them. `refs_list` shows the branches and tags indexed, and their status — an
+`indexing` or stale ref is the usual reason results look empty or wrong.
 
 ### sourcerer_ki_search
 
-**Prose orientation.**
-
-- Searches the Knowledge Indicator index for repo profiles and ref profiles
-- Best for: "what is this repository", "what does this module do" before reading code
-- Not a substitute for reading the code a finding depends on
+**Prose orientation.** Searches the Knowledge Indicator index for repo and ref profiles: "what is
+this repository", "what does this module do" before reading code. Not a substitute for reading the
+code a finding depends on.
 
 ## Workflows
 
-**User mentions specific names** (e.g., "How does onFilter work?"):
-
 ```
-sourcerer_code_grep('onFilter') → sourcerer_files_read_lines (the definition and one caller)
+Names given ("How does onFilter work?"):   sourcerer_code_grep('onFilter') → sourcerer_files_read_lines (definition and one caller)
+Concept ("How is auth handled?"):          sourcerer_code_search('auth middleware validates session token') → sourcerer_files_tree(dir) → sourcerer_files_read_lines
+Cross-file consistency (schema vs mapping): sourcerer_code_grep('fieldName') → read each hit → confirm the same name everywhere
+Impact ("what breaks if I change X?"):     sourcerer_code_grep('X') for every call site → sourcerer_files_read_lines on each
 ```
-
-**User asks conceptual question** (e.g., "How is auth handled?"):
-
-```
-sourcerer_code_search('auth middleware validates session token') → sourcerer_files_tree(dir) → sourcerer_files_read_lines
-```
-
-**Tracing cross-file consistency** (e.g., "does the schema match the mapping?"):
-
-```
-sourcerer_code_grep('fieldName') → read each hit → confirm the same name everywhere
-```
-
-**Deep investigation of impact** (e.g., "what breaks if I change X?"):
-
-```
-sourcerer_code_grep('X') for every call site → sourcerer_files_read_lines on each → note the ones the change breaks
-```
-
-## Key rules
-
-✅ **Start with an index search** — for research, discovery, or exploration; it ranks across whole
-repositories rather than matching the exact string you already know
-✅ Know the identifier → `sourcerer_code_grep`; exploring a concept → `sourcerer_code_search`
-✅ Text search and file reads are fallbacks — after search has narrowed the scope, or when you already
-know the file and line
-✅ Use the names and strings the code actually contains; a described query works because bm25 ranks
-token overlap, not because the index understands English
-✅ More hits in one file usually means more relevant
-✅ Chain: search → tree → read the range
-
-❌ Starting with a text search when you are still exploring — it only finds what you already know to
-look for
-❌ Generic query terms alone like "handler" or "manager" — add the distinguishing words
-❌ Reading full files before search has narrowed what to read
 
 Without an index in the current invocation, fall back to the harness's own search, then read only the
 range it identified, and say in the report that index search was unavailable.
@@ -168,16 +110,14 @@ range it identified, and say in the report that index search was unavailable.
 - `sourcerer_repos_list` is the index inventory; `sourcerer_repos_search` is the "which repo is this"
   query. If the trail leads into a dependency, check whether that repo is indexed before concluding
   the answer is not findable.
-- Setup is self-hosted: an Elasticsearch and Kibana deployment (v9.5.0+), a configured `sourcerer`
-  MCP server, and credentials. A rejected call means the server is unavailable or unauthenticated in
-  this invocation — fall back to the harness's own search and say so; there is no in-session
-  re-authentication step.
+- A rejected call means the server is unavailable or unauthenticated in this invocation: fall back to
+  the harness's own search and say so; there is no in-session re-authentication step.
 
-## ES|QL construction
+## Elastic setup and ES|QL (opt-in: Kibana and Elasticsearch work)
 
-For any ES|QL query or Elasticsearch/Kibana docs question, also use a docs MCP server if one is
-configured for this project: its search tool to find the command, function, or syntax, then its
-fetch-by-URL tool to confirm it. When no docs server is available in this invocation, say the claim
-is unverified rather than guessing.
-Check ES|QL syntax and function availability there before writing a query. Use the code index only to
-find how Kibana code builds or consumes the query.
+- Sourcerer is self-hosted on an Elasticsearch and Kibana deployment (v9.5.0+), with a configured
+  `sourcerer` MCP server and credentials.
+- For any ES|QL query or Elasticsearch/Kibana docs question, also use a docs MCP server if one is
+  configured: its search tool to find the command, function, or syntax, then its fetch-by-URL tool to
+  confirm it. Without one, say the claim is unverified rather than guessing. Use the code index only
+  to find how Kibana code builds or consumes the query.

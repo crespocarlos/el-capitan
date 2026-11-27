@@ -113,6 +113,14 @@ def test_inbox(tmp: Path) -> None:
     body = json.loads(inbox(root, "--json").stdout or "{}")
     check("the inbox lists the draft with its title and the queued review",
           [d["title"] for d in body.get("drafts", [])] == ["Probe draft"] and len(body.get("queued_reviews", [])) == 1, body)
+    old = root / ".inbox" / "procedure-old.md"
+    old.write_text(DRAFT.format(id="old", title="Old draft"), encoding="utf-8")
+    os.utime(old, (1_700_000_000, 1_700_000_000))
+    scoped = json.loads(inbox(root, "--json", "--since", "2024-01-01T00:00:00Z").stdout or "{}")
+    shown = inbox(root, "--since", "2024-01-01T00:00:00Z").stdout
+    check("--since lists only the drafts written after it and counts the rest",
+          [d["title"] for d in scoped.get("drafts", [])] == ["Probe draft"] and scoped.get("older") == 1
+          and "since 2024-01-01T00:00:00Z" in shown and "Old draft" not in shown, (scoped, shown))
     drained = inbox(root, "--drain")
     check("drain clears the ask log and leaves the drafts alone",
           not (root / ".sessions" / "review-queue.jsonl").exists() and (root / ".inbox" / "procedure-probe.md").is_file(), drained.stdout)
@@ -142,6 +150,12 @@ def test_add_cite_and_journal_round_trip(tmp: Path) -> None:
     stored = list((tmp / "memory" / "observations" / "demo").glob("observation-*.md"))
     check("journal add stores the entry as one observation in its repo's scope",
           journal.returncode == 0 and len(stored) == 1, journal.stderr)
+    (tmp / "not-a-dir").write_text("x", encoding="utf-8")
+    env["CREW_MEMORY_DIR"] = str(tmp / "not-a-dir" / "memory")
+    plain, warned = mem("context", "--query", "x"), mem("context", "--query", "x", "--warn-unavailable")
+    check("an unavailable store exits 2, or with --warn-unavailable prints none and a warning and exits 0",
+          plain.returncode == 2 and (warned.returncode, warned.stdout.strip()) == (0, "none")
+          and "warning: memory unavailable" in warned.stderr, (plain.returncode, warned.stdout, warned.stderr))
 
 
 def test_primary_remote() -> None:

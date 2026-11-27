@@ -13,9 +13,9 @@ exploration and critics, and the approval gate. Where the two differ, this file 
 and gates; the skill wins for spec content.
 
 **Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and
-Cursor — **never invoke `crew-specwriter` with Agent, Task, or Subagent.** It dispatches
-`specwriter-explorer`, `specwriter-scope`, and `specwriter-adversarial` one level deep, which
-requires the main session's Task or Agent capability.
+Cursor, never through Agent, Task, or Subagent, because it dispatches `specwriter-explorer`,
+`specwriter-scope`, and `specwriter-adversarial` one level deep with the main session's Task or
+Agent capability.
 
 ## Execution model
 
@@ -32,11 +32,9 @@ Determine the task source:
   N --repo O/R --field title,body,labels,comments`
 - If given a plain description: use it directly
 
-**Create a new task directory; never reuse one.** `crew-resolve-task-dir.py` answers with the newest
-non-DONE task for the current branch, which on a repo where every task lives on `main` is unrelated
-finished work. Writing a new SPEC.md into that directory overwrites a completed task's spec, and
-because task directories sit outside the repository no version control recovers it. Generate a fresh
-UUID for every spec:
+**Create a new task directory; never reuse one.** The resolver's answer for the current branch may be
+unrelated work (every task on `main` shares a branch), and a spec written over it is unrecoverable:
+task directories sit outside version control. Generate a fresh UUID for every spec:
 
 ```bash
 # Generate slug from issue title or description (lowercase, hyphens, ~50 chars max)
@@ -52,34 +50,28 @@ jq --arg uuid "$UUID" --arg slug "$SLUG" \
   '{uuid: $uuid, repo_remote_url: .remote_url, branch: .branch, slug: $slug,
     created_at: (now | todate)}' <<<"$INFO" > "$TASK_DIR/.task-id"
 
-# Refuse to write into a directory that already holds another task's spec. Compare first, then stop
-# before any file is touched.
+# Refuse to write into a directory that already holds another task's spec, before any file is touched.
 if [ -f "$TASK_DIR/SPEC.md" ]; then
   echo "error: $TASK_DIR already holds a SPEC.md; generate a new UUID instead of reusing a task dir" >&2
   exit 1
 fi
 
-MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode plan --query "$SLUG" 2>&1); MEM_RC=$?
-case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: crew-mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
+RECALLED_PATTERNS=$(~/.agent/bin/crew-mem.py context --mode plan --query "$SLUG" --warn-unavailable)
+RECALLED_PATTERNS=${RECALLED_PATTERNS:-none}
 ```
 
-The slug is derived from the issue title (if fetched) or the user's description — lowercase, spaces
-and special characters replaced with hyphens, truncated to ~50 characters. Examples: "Add retry
-logic for async search" → `add-retry-logic-for-async-search`.
+The slug comes from the issue title or the description: lowercase, hyphens for spaces and special
+characters, about 50 characters ("Add retry logic for async search" →
+`add-retry-logic-for-async-search`).
 
-**Template selection** — infer from request content:
-- Use `_BUG_SPEC_TEMPLATE.md` if any of these signals are present:
-  - The request or linked issue contains reproduction steps
-  - The issue is labeled "bug" or the title contains "fix" or "bug"
-  - The user's description uses words like "broken", "regression", "error", "crash"
-- Otherwise use `_SPEC_TEMPLATE.md` (default)
-
-No explicit `--type bug` flag or `start bug` command is required.
+**Template selection** — infer it, with no flag: `_BUG_SPEC_TEMPLATE.md` when the request or issue
+has reproduction steps, a "bug" label, "fix" or "bug" in the title, or words like "broken",
+"regression", "error", "crash"; otherwise `_SPEC_TEMPLATE.md`.
 
 ### Step 2: Explore the codebase
 
-Delegate exploration to the `specwriter-explorer` subagent to preserve context. **Do NOT read
-codebase files directly** — the explorer returns a structured summary in its own context window. In
+Delegate exploration to the `specwriter-explorer` subagent to preserve context; do not read codebase
+files yourself, because the explorer returns a structured summary from its own context window. In
 Cursor, launch it with background execution and wait for its durable result before drafting.
 
 **Blind research:** do not pass the issue body or the proposed solution. Derive 3–6 research
@@ -106,7 +98,7 @@ Task/Agent tool call:
     <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
 
     ## Docs check
-    <if the task involves ES|QL or Elasticsearch/Kibana APIs: "Verify syntax, functions, and API behavior with a docs MCP server if one is configured for this project (its search tool, then its fetch-by-URL tool); return the doc URLs. State unverified if no docs server is available." Otherwise "none">
+    <the docs line from "Vendor docs check" below when it applies, otherwise "none">
 
     ---
 
@@ -115,19 +107,25 @@ Task/Agent tool call:
 
 Claude Code dispatches the same prompt through its Agent tool by name.
 
+#### Vendor docs check (opt-in: Kibana and Elasticsearch tasks)
+
+When the task involves ES|QL or Elasticsearch or Kibana APIs, the docs line is: "Verify syntax,
+functions, and API behavior with a docs MCP server if one is configured (its search tool, then its
+fetch-by-URL tool); return the doc URLs, or state unverified when no docs server is available."
+
+### Using the summary
+
 The explorer returns: files involved, canonical pattern examples (with inline excerpts), test
 locations + commands, and build config. Use this summary as the foundation for the spec.
 
-**Thin summary recovery:** If the explorer summary is missing a section (e.g., no patterns found, no
-tests located) or covers fewer than 2 files, do targeted supplementary reads — up to 3 file reads or
-semantic-search calls to fill gaps. Don't re-explore broadly; fill the specific holes.
+**Thin summary recovery:** when the summary misses a section (no patterns, no tests) or covers fewer
+than 2 files, fill those holes with up to 3 targeted reads or index searches, not a broad re-explore.
 
 **Fallback (no subagent dispatch):** use the semantic index directly: symbol or directory lookup when
 one is available, otherwise a text search followed by a narrowed read. Read at most 2 full files
 (config files or small utilities only).
 
-**Research conventions before drafting.** The explorer summary includes 1–2 canonical examples with
-inline excerpts; the spec's `## Hints` section embeds them, so the implementer need not read those
+The spec's `## Hints` embeds the summary's canonical examples, so the implementer need not read those
 files again.
 
 ### Step 2b: Clarify
@@ -149,7 +147,7 @@ Draft `$TASK_DIR/SPEC.md` from `~/.agent/_SPEC_TEMPLATE.md` (or `~/.agent/_BUG_S
 following spec-writing Step 3, then run its Step 4 self-check before dispatching critics. Populate
 `## Branch:` with a concise conventional branch name derived from the type and goal — e.g.
 `feat/sigevents-verdict-rename`, under 50 characters, lowercase, hyphen-separated. Copy the
-explorer's quality gates into `### Validation`. The user can change the branch before approving.
+explorer's validation commands into `### Validation`. The user can change the branch before approving.
 
 ### Step 4: Self-critique
 
@@ -163,7 +161,7 @@ they see only the improved spec in the output.
    - `specwriter-adversarial` — whether the approach is correct, then the criteria
 
 2. **Dispatch** both critics in parallel, each as a registered subagent dispatched by name, passing
-   only the draft spec as context (never the persona prompt):
+   only the draft spec and the critic contract (never the persona prompt):
 **Cursor (Task tool):**
    ```
    Task tool call per critic:
@@ -179,9 +177,13 @@ they see only the improved spec in the output.
 
        <full contents of the draft SPEC.md>
 
+       ## Critic contract
+
+       <full contents of ~/.cursor/agents/references/critic-contract.md>
+
        ---
 
-       Produce your critique now. Follow the output format in your persona definition.
+       Produce your critique now, in the shape the contract and your persona define.
    ```
 
 Claude Code dispatches the same prompt through its Agent tool by name.
@@ -206,7 +208,7 @@ Claude Code dispatches the same prompt through its Agent tool by name.
 
 ### Degraded fallback (no Task tool, no Agent tool)
 
-Run the critics inline sequentially (ordering bias; last resort).
+Run the critics inline sequentially, each with the critic contract (ordering bias; last resort).
 
 ### Step 5: Surface open questions
 

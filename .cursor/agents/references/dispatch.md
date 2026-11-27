@@ -2,7 +2,7 @@
 
 Run orchestrators inline. Dispatch personas only from the main session: use Cursor Task or Claude
 Agent, preserve inherited model selection, and use the documented fallback only when native dispatch
-is unavailable.
+is unavailable. `REVIEW_ROOT` is the review directory `crew-reviewer` resolved.
 
 Reviewer personas may run read-only: Cursor Ask mode, or a Claude Code read-only subagent, where
 artifact writes are unavailable, and the `claude -p` fallback likewise returns only stdout. Dispatch
@@ -25,11 +25,9 @@ alternative, not a deviation, when all three hold:
    instructions: reply text only, no artifact writes, the finding shape, and the mode.
 
 **When:** attempt inline first. By path only when that inline send truncates, fails to arrive, or is
-rejected for size, or when the package exceeds **120,000 bytes** — above that the inline send is a
-call whose failure is predictable rather than a measurement worth paying for. A five-persona review
-measured at 640 KB (about 160k tokens of duplicate output) is the shape that hits both. Below the
-threshold, a failure is still the way to find out: guessing an output bound is the mistake this rule
-exists to prevent. A package delivered by path is still the audit artifact: `<persona>.in.md` and
+rejected for size, or when the package exceeds **120,000 bytes**, above which an inline failure is
+predictable. Below the threshold, send inline rather than guess an output bound; a failure is how to
+find out. A package delivered by path is still the audit artifact: `<persona>.in.md` and
 `<persona>.out.md` stay the pair `persist` requires, and the recorded package remains the one
 the persona read. Name the delivery, and for a by-size delivery its byte count, in the report's
 `### Reviewers` section.
@@ -63,10 +61,9 @@ complete list in this final message, in the finding shape, nothing else. Then sa
 trail holds the findings rather than a reference to them. If the resume also points backwards, persist
 the failure artifact and name the gap under `### Reviewers`.
 
-**Saving replies with `save-out`.** Personas still never write their own artifacts and the reply text is still the only thing the
-orchestrator receives. What `save-out` removes is the second write: the orchestrator no longer
-re-types each reply into `<persona>.out.md`. It pipes the reply to the tool, which stores the raw
-bytes and a provenance record beside them:
+**Saving replies with `save-out`.** Personas never write their own artifacts, and the orchestrator
+does not re-type a reply into `<persona>.out.md` either: it pipes the reply to the tool, which stores
+the raw bytes and a provenance record beside them:
 
 ```bash
 ~/.agent/bin/crew-review-findings.py save-out --review-dir "$REVIEW_ROOT" --persona <persona> \

@@ -9,9 +9,14 @@ this file covers the code that pipeline runs.
 python3 .agent/tools/maintenance/crew-lint.py --budget   # catalog, references, module cap, imports, budget
 bash evals/ruff.sh check .                               # Ruff, the version pinned in ruff.toml
 bash evals/test.sh -n auto                               # every test: pinned pytest + pytest-xdist (uvx)
+uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md .agent/tools/AGENTS.md .agent/tools/TOOLS.md
+uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md .agent/tools/AGENTS.md
 ```
 
-The first two are fast and cover structure. `crew-lint.py --list-rules` prints every crew-lint rule;
+The first two are fast and cover structure; codespell and Vale (pinned, the same lines CI runs) check
+the spelling and the generic prose rules of prompts (`.vale.ini`, `.vale/styles/Crew`: emphasis
+capitals, emoji, off-glossary terms), and crew-lint's `style` rules check the repo-specific writing
+standard. `crew-lint.py --list-rules` prints every crew-lint rule;
 Ruff (`ruff.toml`) owns generic Python style: imports, return annotations, function size (statements,
 `PLR0915`), unused code, banned generic module names. `ruff.toml`'s `per-file-ignores` is a baseline
 of existing violations: delete an entry when its file is clean, never add one for new code.
@@ -90,7 +95,7 @@ command (a command costs always-on router budget). What the hardening work added
   `review_findings.py`); `crew-assemble-packages.py` records skips and optional slices
   (`assemble_inputs.py` decides, `assemble_build.py` slices and writes).
 - New prose for these stages lives in `references/` files linked in one line (`stage-rules.md`,
-  `worker-dispatch.md`): the prompt files are within bytes of `MAX_PROMPT_FILE_BYTES`.
+  `worker-dispatch.md`), so the main prompt files stay under `MAX_PROMPT_FILE_BYTES`.
 - `.github/workflows/validate.yml` runs `bash evals/test.sh -n auto` (pytest collects every
   `evals/tools/test_*.py` and `evals/reviewer/test_*.py`, `pytest.ini`) on ubuntu and macOS with
   Python 3.9 and 3.12, so a new suite there runs in CI with no workflow change.
@@ -147,7 +152,7 @@ optional and the absence of each has one default.
   maintenance/    crew-lint and its lint_* families
 ```
 
-Rules that the structural gate enforces (crew-lint rule names in parentheses; the rest is Ruff):
+Rules that crew-lint enforces (crew-lint rule names in parentheses; the rest is Ruff):
 
 - No module over 400 lines, entry points included, in every package under `.agent/tools/`
   (`module-size`). The capped set is derived from the tree, so a new package is capped without
@@ -157,7 +162,7 @@ Rules that the structural gate enforces (crew-lint rule names in parentheses; th
   is a function.
 - Every function carries a return annotation (Ruff `ANN201`/`ANN202`).
 - A module docstring states the contract in at most 6 lines (`docstring-length`), and no docstring
-  or comment narrates history: what code used to do, measurements, incidents (`no-incident-narration`).
+  or comment narrates history: earlier behavior, measurements, incidents (`no-incident-narration`).
 - No prompt, doc, hook or tool names a removed command form (`removed-command-form`).
 - An import crosses packages only along an edge the `package-edges` block in TOOLS.md declares
   (`package-direction`).
@@ -253,14 +258,33 @@ that failed to look.
   naming what was dropped and how to get the rest — never truncate silently, because a model that
   receives a cut list assumes it was complete.
 
+## Glossary
+
+One term per concept across every rule, agent, skill and reference (Vale's `Crew.Glossary` fails the
+off-glossary synonyms it knows; crew-lint `glossary-terms` keeps this the one glossary). Load the
+`prompt-authoring` skill.
+
+| Term | Meaning |
+| --- | --- |
+| persona | A dispatched reviewer or critic: one lens over one artifact, read-only (`reviewer-*`, `specwriter-scope`, `specwriter-adversarial`); the explorers are personas too |
+| orchestrator | `crew-reviewer` or `crew-specwriter`, run inline in the main session; it dispatches personas |
+| worker | A dispatched agent that produces the stage's work: `crew-builder` (writes) or `crew-pr-resolver` (read-only analysis) |
+| gate | A user approval only: Gate 1 approves SPEC.md, Gate 2 approves the PR in `crew open pr` |
+| verification | The checks a stage runs (tests, lint, `crew-verify.py`); never called a gate |
+| label | A finding's severity, from the one table in `.cursor/agents/references/reviewer-contract.md`, which covers code, spec and idea modes |
+| closing confirmation | The build workflow's one journal and memory question, asked after `crew open pr` opens the PR; the respond workflow's is `crew-pr-resolver`'s `+ journal` |
+
 ## Authoring agent and skill files
 
 - **Frontmatter keys are harness-specific.** Cursor reads `name`, `description`, `readonly`, and
-  `is_background`; it ignores `tools` and `maxTurns` and inherits every parent tool, so `readonly: true`
-  is its only tool restriction. Claude Code reads `tools` and `maxTurns` and ignores `readonly`, so
-  `maxTurns` binds under Claude Code only and every turn budget here is prose-enforced in Cursor.
-  `tools` therefore speaks Claude Code ids, and each frontmatter says which harness reads which key.
-  Do not set `model:`.
+  `is_background`; it ignores `tools` and `maxTurns` and inherits every parent tool, MCP included,
+  so `readonly: true` is its only tool restriction. Claude Code reads `tools`, `disallowedTools` and
+  `maxTurns` and ignores `readonly`, so `maxTurns` binds under Claude Code only and every turn budget
+  here is prose-enforced in Cursor. `tools` therefore speaks Claude Code ids. These notes live here
+  once; an agent's frontmatter carries no harness comments. Do not set `model:`.
+- **`tools` grants only ids that always resolve.** A granted MCP id fails the whole dispatch on a
+  project without that server (`crew-lint` `mcp-grant-policy`), so vendor tools appear only in prose,
+  as optional.
 - **`readonly: true` is enforced, not copied.** `crew-lint`'s `missing-readonly` rule fails any agent
   under `.cursor/agents/` that omits it, except the workers named in `WRITE_CAPABLE_AGENTS` and the
   inline-only orchestrators named in `INLINE_ONLY_AGENTS`, both in `lint_prompts.py`. There are two
@@ -284,17 +308,14 @@ that failed to look.
   `native_tools` in `tools.json`; register a new one there, never only in prose.
 - **Skill files** follow the workflow header, execution model, numbered steps shape;
   `crew-commit/SKILL.md` is the canonical example. Material a step needs only sometimes goes in
-  `references/` and is linked, not inlined. An agent or skill file stays under 12,000 bytes.
+  `references/` and is linked, not inlined. An agent or skill file stays under 11,500 bytes.
 - **A handoff trailer is one line.** A file that hands work on ends with `> Next: ` naming the
   `crew <verb>` to run next — once, as the last non-empty line, resolvable in `crew-router.mdc`.
   `crew-lint` enforces the shape; several outcomes are quoted per branch instead.
 
-## Editing
+## Editing and tests
 
-Use the edit or write tool for every text change. A `python3 - <<'PY'`, `sed -i`, or redirect that
-rewrites a file bypasses the review diff and turns a wrong anchor into a silent no-op.
-
-When adding tests: the area's file is in `evals/tools/` or `evals/reviewer/` (one file per tool or
+Text changes follow the root `AGENTS.md` "Editing" section. When adding tests: the area's file is in `evals/tools/` or `evals/reviewer/` (one file per tool or
 family), hermetic (no network, no API key); CI runs every `test_*.py` there. Run a command in process
 with `evals/tools/cli_runner.py` unless the test is about the process itself; the runner shares imported
 modules between calls, so a tool reads HOME and the environment at call time, never at import.

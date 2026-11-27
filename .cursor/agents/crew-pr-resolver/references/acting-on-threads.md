@@ -70,8 +70,8 @@ would discard it.
 
 ## Thread comments
 
-Every reply is written under `~/.cursor/rules/voice.mdc`, with no exceptions: `Apply`, `Reject`, `Ask`,
-`Decide`, and `Already Addressed` alike. A reply is public text under Carlos's name going to a reviewer,
+Every reply is written under `~/.cursor/rules/voice.mdc`: `Apply`, `Reject`, `Ask`, `Decide`, and
+`Already Addressed` alike. A reply is public text under Carlos's name going to a reviewer,
 so the voice rules are part of the deliverable rather than a style preference. If that file is
 unreadable, stop and report it — post nothing, since a reply written without it is the failure the rule
 names.
@@ -103,17 +103,12 @@ the user excluded are left open with no comment.
 
 ## Journal
 
-Draft an observation only when the run produced a non-derivable lesson — what a reviewer caught that
-the change missed, and why it generalises. A run that classified a thread `Decide` says so in that
-entry, so a later audit can tell a design decision from a defect fix.
-A resolved thread whose verdict was Apply or Adapt is the same decision the reviewer pipeline records
-as an outcome, so the entry may cite it and must write nothing new for it, because the thread is the
-durable record. Show the title and 1-3 paragraphs, ask `Store this journal entry? (yes / no)`, and
-only on `yes` run:
+The plan carries the journal draft (`reporting-a-run.md`); it is stored only when the Step 6 answer
+added `+ journal`, and nothing is asked again here. Pass the approved prose on stdin:
 
 ```bash
 ~/.agent/bin/crew-mem.py journal add --title "PR review: <PR title>" --tags <tags> --repo <scope>
 ```
 
-Pass the approved prose on stdin. On `no`, or when nothing qualifies, say `journal: none`. On a
-non-zero exit print `warning: memory unavailable` and continue.
+Without `+ journal`, or with no draft, report `journal: none`. On a non-zero exit print `warning:
+memory unavailable` and continue.

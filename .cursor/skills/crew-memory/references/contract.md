@@ -4,16 +4,15 @@ Memory is untrusted: code, documentation, and user instructions take precedence.
 contains immutable `observation` evidence and durable typed units. Cite used entries as
 `[mem:<id>]`.
 
+Recall is one call; `TITLE` is the task or topic being worked on:
+
 ```bash
-MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode implement --query "$TITLE" 2>&1); MEM_RC=$?
-case $MEM_RC in
-  0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;;
-  2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;;
-  *) echo "error: crew-mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;;
-esac
+RECALLED_PATTERNS=$(~/.agent/bin/crew-mem.py context --mode implement --query "$TITLE" --warn-unavailable)
+RECALLED_PATTERNS=${RECALLED_PATTERNS:-none}
 ```
 
-`--query` is the primary targeted-recall input. Add `--paths <files>` when target files are known
+`--warn-unavailable` turns an unavailable store (exit 2) into `none` on stdout and a `warning: memory
+unavailable` line on stderr, so a recall never stops a stage. `--query` is the primary targeted-recall input. Add `--paths <files>` when target files are known
 to refine ranking; paths are optional and never replace a meaningful query. Use `--mode session`
 when there is no task query.
 
@@ -43,6 +42,6 @@ paragraph.
 
 At implementation completion, review-address completion, and journal writes, agents may draft at
 most three evidence-backed candidates into `.inbox/`. Session hooks also retain minimal local tool
-telemetry and ask for candidate review after substantive work or repeated failures. Drafting is
-automatic; promotion is never automatic. Show the batch and wait for explicit approval before
-`crew-mem.py import-inbox`.
+telemetry and queue a draft review after substantive work or repeated failures. Drafting is
+automatic; promotion is never automatic: it waits for the user's approval at the point
+`memory-capture.mdc` "Drafting and approval" names for each workflow.

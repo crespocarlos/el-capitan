@@ -1,0 +1,6 @@
+extends: existence
+message: "'%s' is an emoji; use a word."
+level: error
+nonword: true
+tokens:
+  - "[\U0001F000-\U0001FAFF☀-➿⭐⭕️]"

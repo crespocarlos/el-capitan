@@ -12,13 +12,11 @@ from pathlib import Path
 
 from lint_files import line_no, rel
 
-# Measured 2026-11-21 at 7,204 tokens after the trim; 9,100 leaves room for prompt-engineering.mdc,
-# which is imported because Claude Code ignores globs and prompt work is frequent here. Raise it only
-# with a new measurement.
-MAX_ALWAYS_RULE_TOKENS = 9150
-# An agent or skill file is read whole, so its ceiling is bytes rather than a token estimate: the
-# dispatch cost of a 12 KB prompt is already large, and prose above it belongs in a references file.
-MAX_PROMPT_FILE_BYTES = 12_000
+# The always-on total plus 300 tokens of headroom; raise it only with a new measurement.
+MAX_ALWAYS_RULE_TOKENS = 5672
+# An agent or skill file is read whole, so its ceiling is bytes rather than a token estimate: prose
+# above it belongs in a references file. 11,500 keeps every file 500 bytes clear of the 12 KB mark.
+MAX_PROMPT_FILE_BYTES = 11_500
 MAX_PROMPT_FILE_LINES = 500
 ALWAYS_LOADED_PROJECT_FILES = ("AGENTS.md", ".claude/CLAUDE.md")
 PROMPT_ROOTS = (".cursor/agents", ".cursor/skills")
@@ -108,7 +106,7 @@ def lint_budget(root: Path, all_files: list[Path], rules: set[str]) -> Findings:
 
 
 # The source of truth for skills that may activate without an explicit `crew` command.
-MODEL_INVOCABLE_SKILLS = {"crew-evals", "spec-writing"}
+MODEL_INVOCABLE_SKILLS = {"crew-evals", "spec-writing", "prompt-authoring"}
 # Agents that write by definition, so `readonly` cannot apply to them. `reviewer-probe` is here
 # because a probe is a throwaway artifact and the rule that keeps it honest is deletion, not
 # `readonly`: a read-only worker could not run the artifact that is the whole point.

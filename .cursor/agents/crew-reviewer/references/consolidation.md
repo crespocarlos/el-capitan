@@ -21,9 +21,8 @@ content wins, and a sentinel line never cancels findings above it. Note the cont
 ### Challenge each finding before keeping it
 
 Interrogate every finding before deduplication. The primary question is not "is this correct?" but
-**"is this assessment grounded — does the reasoning follow from the artifact?"** Reviewers are LLMs
-and will sometimes produce confident findings that contradict each other, contradict the artifact, or
-are pattern-matched noise.
+**"is this assessment grounded — does the reasoning follow from the artifact?"**, because personas
+produce confident findings that contradict each other, the artifact, or are pattern-matched noise.
 
 **Step 7a — scan session history for prior reviews.** Scan the visible conversation for previous
 `## Review:` headings, and build a map of prior findings and decisions: what was flagged, approved,
@@ -49,10 +48,9 @@ chain downgrades. Mark a downgrade `(downgraded: harm is speculative — no dire
 drop `(dropped: too vague to act on)`.
 
 **Is the score earned?** The persona's `confidence` travels with the finding and is not yours to
-restate. A read or a probe may move it. The verification read raises it when it resolves the unknown
-the low score recorded, by at most 2, with `validation` naming what settled it — never by reassurance
-or to keep a finding in the list; nothing enforces that ceiling, so it is a discipline this pass
-keeps. A probe moves it either way: a confirming measurement may raise it (at most 2), a refuting one
+restate; only a read or a probe moves it. The verification read raises it when it resolves the
+unknown the low score recorded, by at most 2 (a ceiling this pass keeps, since no gate enforces it),
+with `validation` naming what settled it — never to keep a finding in the list. A probe moves it either way: a confirming measurement may raise it (at most 2), a refuting one
 may lower it, and both need `validation` quoting the command and the observed output.
 A read that settles nothing settles nothing, so a `[blocking]` or `[attention]` at 1-2 whose unknown
 survives becomes `[needs more info]` at its original score with that unknown named, and a refuted
@@ -63,7 +61,7 @@ deferring is not reading it.
 mutually exclusive ("the guard is unreachable" versus "the guard fires before validation"), which
 per-finding traceability cannot see. Surface it as `(note: conflicts with [other finding] — kept the
 stronger one)`. Deduplication handles one issue flagged twice; this handles two that cannot both hold.
-The goal is a report where every finding has a traceable reason to exist — not a relay.
+Every kept finding has a traceable reason to exist; the report is not a relay.
 
 ### Verify against the repository
 
@@ -118,8 +116,7 @@ Three things are recorded beyond the label and anchor, each under its own condit
 
 - **`kind`** (required) — what sort of defect, independent of severity. Every finding that reaches a
   gate states one; a finding with none is rejected with the allowed values listed. Values are the
-  `KINDS` set in `crew-review-findings.py`; read it there rather than copying it, and never invent a
-  value, because the parser rejects one outside it. The boundaries that matter: `correctness` produces
+  `KINDS` set in `crew-review-findings.py`; the parser rejects any other. The boundaries that matter: `correctness` produces
   a wrong result on valid input; `reliability` fails
   under load, timing, or an environmental condition; `testing` is missing or weak coverage of behavior
   the change introduces; `documentation` misstates what the code does; `other` is none of these.
@@ -130,8 +127,8 @@ Three things are recorded beyond the label and anchor, each under its own condit
   `validation` above. Any probe records `probe: <outcome>` from `PROBE_OUTCOMES`; `probe: refuted`
   alone lowers a score, and never beside one that rose.
 - **`validation`** (when `verified` is true) — one sentence on what you read and concluded, e.g.
-  "confirmed: `executeEsqlQuery` returns no rows when `_source` is absent, and this query keeps only
-  `data_json`". `verified: true` alone asserts a second read happened; this records why it passed.
+  "confirmed: `fetchRows` returns no rows when `source` is absent, and this query keeps only
+  `payload`". `verified: true` alone asserts a second read happened; this records why it passed.
   `persist` requires it whenever `verified` is true, in every mode, including one passing no
   `--files`.
 
@@ -168,15 +165,8 @@ Both modes use one flat numbered list; severity is an inline label, never a sect
 diff outranks one argued, and two personas outrank one lens's polish. Record cuts as `dropped` with
 the reason, so their reviewers find them in `DROPPED.md`.
 
-| Label | Meaning |
-| --- | --- |
-| `[blocking]` | Must fix before merge / must resolve before proceeding |
-| `[attention]` | Meaningful improvement — worth doing, not required |
-| `[needs more info]` | Unclear; needs an answer before it can be evaluated |
-| `[nit]` | Minor — polish, naming, style |
-
-In idea and spec reviews, `[blocking]` marks a broken plan fundamental (an assumption that does not
-hold, a missing requirement) and `[concern]` replaces `[attention]` for weaknesses worth addressing.
-`[blocking]` still blocks, so the verdict mapping in pipeline persistence applies unchanged.
+What each label means, in code, spec and idea modes alike, is the one table in the shared contract
+(`~/.cursor/agents/references/reviewer-contract.md` → Labels); the verdict mapping in pipeline
+persistence applies unchanged in every mode.
 
 Write each kept finding in the shape [finding formats](finding-formats.md) defines.

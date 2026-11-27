@@ -1,10 +1,9 @@
 ---
-description: "Prompt authoring and evaluation requirements."
-globs: **/*.md.txt, **/*.md.text, **/*.mdc, **/agents/**, **/skills/**
-alwaysApply: false
+name: prompt-authoring
+description: "Prompt authoring and evaluation. Load before editing a rule, agent, skill or reference file or a system prompt; also when designing or evaluating an LLM workflow."
 ---
 
-# Prompt engineering guide
+# Prompt authoring
 
 Prompt changes are code changes: define the behavior, test representative inputs, inspect failures,
 and keep prompts, tools, evaluators, and runtime configuration consistent.
@@ -37,6 +36,28 @@ the code, or the reasoning that produced it.
   are needed, give several that differ in meaningful ways and say they are illustrative.
 - Put instructions before short context. Put long documents or data first and the question last.
   Separate instructions, examples, and task data with headings or tags.
+
+## Writing standard in this repository
+
+`crew-lint` and Vale check each point by name; `crew-lint.py --list-rules` prints crew-lint's, and
+`.vale/styles/Crew/` holds Vale's.
+
+- State the rule that holds now. No incident narration, no measurements quoted as instructions
+  (`no-incident-narration`).
+- No capitals as emphasis and no `mandatory`, `no exceptions` or `protocol violation`
+  (`Crew.NoShouting`); no emoji (`Crew.NoEmoji`).
+- Each rule is stated once. A passage two files need lives in one file and the other links it
+  (`duplicate-passages`); a prompt file stays under 11,500 bytes (`prompt-budget`). A file that is
+  appended to several dispatches (`reviewer-contract.md`, `critic-contract.md`) is how shared
+  instructions reach personas without a copy in each.
+- Use the glossary in `.agent/tools/AGENTS.md` and its label table (`Crew.Glossary`,
+  `glossary-terms`).
+- Elastic-specific tool ids and examples live only in the prompts that target that stack by design
+  (`crew-e2e`, `crew-evals`), in the owner's personal rules (`personal.mdc`, `voice.mdc`, which
+  describe the owner's own profile), or under an `(opt-in)` heading (`vendor-tools-scoped`).
+- Define every shell placeholder before its first use: assign it, or name it in backticks in an
+  inputs line, as `TASK_DIR`, `$TASK_DIR` or `${TASK_DIR}` (`undefined-placeholder`).
+- Plain, short sentences. Keep every contract a test or tool parses: headings, labels, trailers.
 
 ## Delegation briefs
 
@@ -106,7 +127,8 @@ When an LLM workflow has multiple stages, tools, schemas, or evaluators, treat i
 ## References
 
 - Prefer primary sources and link vendor-specific claims. Treat empirical claims as hypotheses
-  until reproducibly evaluated.
+  until reproducibly evaluated. Vendor notes for this repository's prompts:
+  `~/.cursor/agents/references/prompt-vendor-principles.md`.
 - [Anthropic: Prompt engineering
   overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview)
 - [Anthropic: Building effective

@@ -1,9 +1,6 @@
 ---
 name: reviewer-layers
 description: "Layer-map pre-pass for crew-reviewer: orders a PR or diff into readable layers and writes layers.json. Dispatched by crew-reviewer before personas — do not invoke directly, and it reports no findings."
-# Harness notes: `tools` and `maxTurns` are Claude Code fields (both read). Cursor ignores them: a
-# Cursor subagent inherits every parent tool, MCP included, and only `readonly` restricts it. `readonly`
-# is not a Claude Code field and is ignored there. Names in `tools` are Claude Code ids.
 tools: Read, Grep, Glob
 readonly: true
 maxTurns: 8

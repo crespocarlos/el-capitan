@@ -11,25 +11,20 @@ unchecked task, run per-task acceptance checks, and report back.
 ## Execution model
 
 **Silent execution, one report.** All tasks run without intermediate output; speak once when
-REPORT.md is ready (1 turn). Before each task emit `[N/M] <task name>...` — the only permitted
-mid-run output. Never narrate actions within a task.
+REPORT.md is ready (1 turn). Before each task emit `[N/M] <task name>...`, the only mid-run output.
+Never narrate actions within a task.
 
 ## Inputs (provided in launch prompt)
 
 - `TASK_DIR` — path to task directory containing SPEC.md and PROGRESS.md
-- `WORK_DIR` — the worktree or repo directory to work in (**required** — never assume the current
-  directory is correct)
-- `RECALLED_PATTERNS` — repo-specific patterns to follow (may be empty)
+- `WORK_DIR` — the worktree or repo directory to work in (required: never assume the current
+  directory is correct). crew-implement creates it before launch; the builder never creates
+  worktrees.
+- `RECALLED_PATTERNS` — repo-specific patterns to follow. Empty or `"none"` means crew-implement
+  already recalled and found nothing: do not re-run recall.
 - `TASK_RANGE` — optional, e.g. `1-6`. When set, implement only those task numbers, write
   `$TASK_DIR/REPORT.part-<first>-<last>.md` with the Report format, and run the Completion Protocol
   only if the range contains the last task.
-
-If `RECALLED_PATTERNS` is empty **or `"none"`**, skip auto-recall — crew-implement already ran it
-and found nothing. Do not re-run; pass `"none"` to the implementation context.
-
-> **Note on worktrees:** `WORK_DIR` comes from crew-implement, which creates the worktree before
-> launching the builder. The builder never creates worktrees — crew-implement owns that. All file
-> operations must be anchored to `WORK_DIR`.
 
 ---
 
@@ -96,10 +91,11 @@ Otherwise run steps 1-4 and overwrite `REPORT.md`.
 
 1. **Reconcile test evidence.** Prune added tests per the testing policy, rerun the narrowest
    verify command, and update the contract mapping for retained evidence.
-2. **Run quality gates.** Run every command under the spec's `## Tests` section, then the lint and
-   type-check commands from project guidance, scoped to changed files or their package when the tool
-   supports it. Fix failures caused by this change (up to 3 attempts per gate). Record a failure as
-   pre-existing only when it is in a file this change does not touch. A skipped gate must name why.
+2. **Run the verification commands.** Every command under the spec's `## Tests` section, then the
+   lint and type-check commands from project guidance, scoped to changed files or their package when
+   the tool supports it. Fix failures caused by this change (up to 3 attempts per command). Record a
+   failure as pre-existing only when it is in a file this change does not touch; a skipped command
+   names why.
 3. Walk each `- [ ]` under **`## Acceptance criteria`** — mark `[x]` only if satisfied by the
    retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or
    explicit file inspection stated in the criterion).
@@ -172,10 +168,10 @@ Write to **`$TASK_DIR/REPORT.md`** in this shape:
 <a json code block: {"schema_version": 1, "tasks": {"passed": N, "total": M}, "gates": [{"name": "<gate>", "exit": N}], "unverified_claims": [{"claim": "...", "verify": "..."}]}>
 ```
 
-**Gates.** Run `~/.agent/bin/crew-verify.py --repo <WORK_DIR> --task-dir $TASK_DIR` (for a
-long run add `--background`, then `--wait $TASK_DIR/gates.json`). It runs the base branch's CI
-(rule: `.agent/tools/TOOLS.md` "Gates and cost"). It prints
-`<name> exit=<N>` lines and writes `$TASK_DIR/gates.json`. Never claim a gate from memory or from a narrower command.
+**Verification run.** Run `~/.agent/bin/crew-verify.py --repo <WORK_DIR> --task-dir $TASK_DIR` (for
+a long run add `--background`, then `--wait $TASK_DIR/gates.json`). It runs the base branch's CI
+(`.agent/tools/TOOLS.md` "Gates and cost"), prints `<name> exit=<N>` lines and writes
+`$TASK_DIR/gates.json`. Never claim a result from memory or from a narrower command.
 
 **Check the report in the same worker.** Right after writing it, run
 `~/.agent/bin/crew-verify.py report-check <report file> --gates $TASK_DIR/gates.json`. On a
@@ -192,15 +188,13 @@ report: <TASK_DIR>/<the report file you wrote>
 For a single run that file is `REPORT.md`; a `TASK_RANGE` batch writes `REPORT.part-<first>-<last>.md`
 and must point at that, because the orchestrator reads the reply as confirmation the file exists.
 
-Add `(failed: <task numbers>)` to the second line when any failed. Nothing else goes in the reply —
-no report body, no section headings, no summary of what passed — because a restated report is a second
-copy that can disagree with the file, and the orchestrator reads the file.
+Add `(failed: <task numbers>)` to the second line when any failed. Nothing else goes in the reply,
+because a restated report is a second copy that can disagree with the file.
 
 **Artifacts:** Oversized command transcripts (Completion Protocol) go under `$TASK_DIR/artifacts/`.
 
-**Always write `REPORT.md` before returning.** It is the durable signal — if the session ends
-unexpectedly, the orchestrator detects completion from this file. The returned message is a
-convenience; the file is the contract.
+**Write the report file before returning.** If the session ends unexpectedly, the orchestrator
+detects completion from that file.
 
 ---
 
@@ -215,9 +209,6 @@ convenience; the file is the contract.
   "$WORK_DIR/node_modules"`): emitting builds (`tsc -b`, or a repo script that builds project
   references) write `.d.ts` files into the main repo through the symlink. Run `tsc --noEmit -p
   <nearest tsconfig>` instead. If no no-emit form exists for the repo, record the type-check as
-skipped with that reason — never skip silently.
-- **Between-task signal is mandatory.** `[N/M] <task name>...` before each task. Only permitted
-  mid-execution output.
-- **Run discipline:** After **three** failed verify runs for the same task, stop and report. Do
-  **not** run the **full** repository test suite on a single task unless that task's verify line
-  explicitly names that command.
+  skipped with that reason — never skip silently.
+- **Run discipline:** after three failed verify runs for the same task, stop and report. Run the full
+  repository test suite for a single task only when that task's verify line names it.

@@ -47,7 +47,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py` | — | Durable units and immutable observations |
-| `maintenance/` | `crew-lint.py`, `crew-prune.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `prune_callers.py` | — | Repository validation and the caller report, one module per lint family |
+| `maintenance/` | `crew-lint.py`, `crew-prune.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `prune_callers.py` | — | Repository validation and the caller report, one module per lint family |
 | `lib/` | — | `files.py`, `git.py`, `gh_reads.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
@@ -66,7 +66,7 @@ dependency order (`memory_paths` → `memory_frontmatter` → `memory_store` →
 `review_findings` → `review_render`/`review_layers` → `review_coverage` → `review_report`; `task_status`
 → `task_progress` → `task_state` → `task_resolve`/`task_gates`/`ls_data` → `task_report`; `evals_query` →
 `evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_catalog`/`lint_prompts`/
-`lint_references`/`lint_writing`/`lint_python`), so a module never imports back
+`lint_references`/`lint_writing`/`lint_python`, `lint_writing` → `lint_style`), so a module never imports back
 into one that imports it. Import paths: "Imports" in `.agent/tools/AGENTS.md`. The entry points
 re-export the names their public contract names, listed in each one's `__all__`, so
 `crew-assemble-packages.py` and the tests can keep importing them from the command file rather than
@@ -178,6 +178,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `lint_references.py`: reference integrity in documents and the `> Next:` handoff grammar
 - `lint_python.py`: the repository Python rules (module size, single owner, bootstrap, git argv)
 - `lint_writing.py`: removed command forms, docstrings, narration, pipeline prose rules
+- `lint_style.py`: the writing standard for prompt files (emphasis, emoji, narration, shared
+  passages, glossary, vendor scope, placeholders, the closing confirmation)
 - `prune_callers.py`: the caller set for a catalog command (`crew-prune.py`)
 
 ## Contracts
@@ -484,6 +486,15 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - The repository is standard-library-only. `requirements.txt` documents that deliberate absence of
   third-party dependencies.
 
+## PROGRESS.md and METRIC lines
+
+- **PROGRESS.md** is a task's append-only event log. It is never a source for gate or status
+  decisions: SPEC.md plus git and gh are. Skills may read it for resume context. Its format and
+  owner are `task_progress.py` (above); `crew-progress.py` writes a transition only.
+- **METRIC lines** are append-only audit records for offline analysis, never parsed for gates or
+  transitions. Write one with `~/.agent/bin/crew-metric.py "$TASK_DIR" <event> [key=value ...]`; the
+  events and fields are the ones `crew-metric.py` validates ("Gates and cost" above).
+
 ## Hooks
 
 `.claude/hooks/` holds the harness hooks; `.claude/settings.json` (Claude Code) and
@@ -523,7 +534,7 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 | `memory-context.sh`, `cursor-memory-context.sh` | SessionStart | bounded memory context |
 | `spec-status-reconcile.sh` | SessionStart | applies the status policy, refreshes the anchor |
 | `log-tool-use.sh`, `notify-idle.sh` | PostToolUse / Notification | local telemetry and the idle notification |
-| `memory-capture-prompt.sh` | Stop | asks once for a memory candidate |
+| `memory-capture-prompt.sh` | Stop | queues one memory review: inbox drafts, no question |
 
 One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
 reader sees one purpose per file. `lib/hook.sh` is sourced, never registered; it holds the command

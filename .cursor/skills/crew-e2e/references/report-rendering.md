@@ -1,6 +1,7 @@
 # Reading the report
 
 Step 4 detail for `crew e2e`. Render the report from the JSON only; never retell it from memory.
+`TASK_DIR` is the task `task-env.sh` resolved, empty for none.
 
 Once `state` is `done`, `report` returns the verdict, summary, `prIntent`, `approach`, `setup`,
 `checks` (each with `status`, `via`, `category`, `details`, `evidence`, `screenshots`, and a computed

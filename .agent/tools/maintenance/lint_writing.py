@@ -47,9 +47,11 @@ REMOVED_FORMS = (
 )
 MAX_MODULE_DOCSTRING_LINES = 6
 # Phrases that narrate what code or a run once did, rather than state what holds now. A present
-# state of something outside the code ("a ref that no longer exists") is not narration.
+# state of something outside the code ("a ref that no longer exists") is not narration, and neither
+# is a participle with an object ("the token used to sign requests").
 NARRATION = re.compile(
-    r"(?i)(?<!\bis )(?<!\bare )(?<!\bbe )(?<!\bwas )\bused to\b"
+    r"(?i)(?<!\bis )(?<!\bare )(?<!\bbe )(?<!\bwas )\bused to\b(?! \w+ (?:the|an?|its|their|each|every|\w+s)\b)"
+    r"|\b(?:this|it|that|we|they) used to\b"
     r"|\bno longer\b(?! (?:exists?|matches|covers|denies))"
     r"|\b(?:how|in|from) an earlier (?:run|version)\b"
     r"|\bmeasured\b[^.\n]{0,40}?\b\d+ of \d+\b|\b\d+ of \d+ (?:measured|recorded)\b"

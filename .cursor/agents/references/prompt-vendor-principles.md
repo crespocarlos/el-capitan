@@ -10,7 +10,7 @@ technique names a model, it was measured on that model: flag the risk, never a u
 - Use consistent, descriptive tag names across prompts; wrap each kind of content in its own tag and
   nest tags when the content has a natural hierarchy.
 - Provide instructions as sequential steps when the order or completeness of steps matters.
-- Give the reason behind a rule: a bare "NEVER do X" is weaker than "X, because Y".
+- Give the reason behind a rule: a bare `NEVER do X` is weaker than "X, because Y".
 - Be clear and direct: if a colleague with minimal context would be confused, the model will be too.
 - Replace blanket defaults with targeted instructions, and remove over-prompting.
 - Put long-form data at the top of the prompt, above the query, instructions, and examples.

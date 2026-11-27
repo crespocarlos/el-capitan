@@ -17,6 +17,7 @@ report. There is nothing to reimplement, only to call.
 A run takes roughly 30 minutes and lives in nightshift's own process, so this skill **starts and
 returns**. Never block waiting for a report; `crew e2e status` is a separate invocation. Nothing polls
 unless the user opts in (Step 3) — say that in the start message instead of waiting to be asked.
+`TASK_DIR` is the active task (`source ~/.agent/bin/task-env.sh`), empty without one.
 
 ## Step 0: preflight (always first)
 
@@ -71,11 +72,10 @@ Build nightshift's key as `<owner>__<repo>__<number>`, with `/` replaced by `__`
 Refuse anything but `elastic/kibana` or `elastic/sandbox-service`. Nightshift reports the rejection
 itself; naming the limit here saves a round trip.
 
-If that PR read succeeds but you cannot confirm nightshift tracks the PR (review-requested, a
-test-plan subject, or previously reviewed — see
-[setup and limits](references/setup-and-limits.md#known-limits)), say so now with the exact UI link to
-start it there first: `<nightshift base URL>/pr/<key>/e2e`. Do not wait for `start` to fail with `PR
-not found`; that is the most common Step-3 failure and the fix is always the same link.
+If you cannot confirm nightshift tracks the PR (review-requested, a test-plan subject, or previously
+reviewed — see [setup and limits](references/setup-and-limits.md#known-limits)), say so now with the
+UI link to start it there first, `<nightshift base URL>/pr/<key>/e2e`, rather than waiting for
+`start` to fail with `PR not found`.
 
 ## Step 2: pick the worktree
 
@@ -94,18 +94,15 @@ documented convention for the user's own dev checkout rather than a dedicated e2
 - If no worktree carries that risk and exactly one exists, use it and say which.
 - Otherwise ask, listing `label`, `branch`, and the risk flags for each.
 
-If `worktrees` returns nothing and the user has no dedicated worktree, that is a one-time setup gap,
-not a missing argument: say so and point at `crew e2e setup` rather than deploying into whatever came
-back.
+If `worktrees` returns nothing, that is a one-time setup gap, not a missing argument: point at
+`crew e2e setup` rather than deploying into whatever came back.
 
-`--deploy` replaces whatever is deployed in that worktree, which is why it is never implied. The PR
-counts as already deployed only when the worktree's `branch` equals the PR's `headRefName` **and**
-`kibanaRunning` is true; then start without `--deploy`. Otherwise (a matching branch with Kibana not
-running is not deployed, and a `null` branch is unknown, so not deployed), ask. Never start without
-`--deploy` first to see whether it works: a start nightshift rejects as not deployed costs a round
-trip and a second confirmation. When asking, say what it does before the user answers: `git checkout
---force --detach <headRefOid>`, removes untracked files, clears the rspack cache — a real reset, not
-an incremental update.
+`--deploy` replaces whatever is deployed in that worktree, so it is never implied. The PR counts as
+deployed only when the worktree's `branch` equals the PR's `headRefName` **and** `kibanaRunning` is
+true; then start without `--deploy`. Otherwise ask, rather than trying a start without `--deploy` (a
+rejected start costs a round trip and a second confirmation). When asking, say what it does: `git
+checkout --force --detach <headRefOid>`, removes untracked files, clears the rspack cache — a real
+reset, not an incremental update.
 
 **Record the starting state** before any `--deploy` (skip for a worktree you are not deploying into):
 
@@ -165,11 +162,10 @@ returns `fatal`: the dev-stack log's last `FATAL` line, usually the real cause, 
 `error` is often an earlier, misleading symptom. Report `fatal` when present, instead of or beside
 `error`.
 
-**Stale runs.** `waiting-deploy` with no change across two consecutive polls (10+ minutes, no state
-transition) is stuck, not merely slow: report it as stale rather than polling silently to the 30-minute
-cap, and suggest `crew e2e stop` then a fresh `start`. The same applies if `stop` was already run but
-`worktrees` still reports `kibanaRunning: true` — offer `crew e2e teardown` before a retry, since a
-leftover stack from a killed run can make the next `start` sit in `waiting-deploy` indefinitely.
+**Stale runs.** `waiting-deploy` unchanged across two consecutive polls (10+ minutes) is stuck: report
+it as stale and suggest `crew e2e stop` then a fresh `start`. If `stop` already ran but `worktrees`
+still reports `kibanaRunning: true`, offer `crew e2e teardown` first: a leftover stack keeps the next
+`start` in `waiting-deploy`.
 
 While `state` is `waiting-deploy` or `running` and not stale, report that and stop.
 
@@ -192,10 +188,9 @@ Render and persist the report per [report rendering](references/report-rendering
   launchd:uninstall` for the LaunchAgent; this skill does neither.
 
   **Before and after.** If `$TASK_DIR/e2e-state.json` exists from Step 2, read the worktree's current
-  branch/HEAD/dirty state the same way, and print both: the state before the deploy and the state now.
-  Never restore automatically — nightshift exposes no verified previous ref for this tool to act on, so
-  the only safe move is to show the diff and let the user decide. Treat a stash count that grew as a
-  signal something was stashed during the run, and say so.
+  state the same way and print both. Never restore automatically: nightshift exposes no verified
+  previous ref, so show the diff and let the user decide. A stash count that grew means something was
+  stashed during the run; say so.
 
 ## crew e2e setup, recovery, and known limits
 

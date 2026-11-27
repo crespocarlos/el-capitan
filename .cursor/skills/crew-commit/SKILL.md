@@ -69,7 +69,7 @@ feat(evals): convert feature duplication evaluators to createPrompt pattern
 fix(streams): handle empty feature array in duplication check
 refactor(synthtrace): extract template generation into separate module
 test(evals): add semantic uniqueness evaluator coverage
-chore(deps): bump @kbn/inference-common to 1.4.0
+chore(deps): bump @acme/inference-common to 1.4.0
 ```
 
 ### Types

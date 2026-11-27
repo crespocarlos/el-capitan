@@ -30,14 +30,14 @@ store. Write in **prose paragraphs** — not bullets, not section headers. Each 
 coherent idea and evidence for later consolidation. Write the "why", not just the "what".
 
 ```bash
-~/.agent/bin/crew-mem.py journal add --title "Title" --tags kibana mapping --repo <scope> <<'EOF'
+~/.agent/bin/crew-mem.py journal add --title "Title" --tags api mapping --repo <scope> <<'EOF'
 First paragraph: what happened and why it matters.
 
 Second paragraph (if there's a distinct second idea): another self-contained insight.
 EOF
 ```
 
-`<scope>` is the bare repository name (`kibana`); `OWNER/REPO` is normalized to it. Omit `--repo`
+`<scope>` is the bare repository name (`widgets` for `acme/widgets`); `OWNER/REPO` is normalized to it. Omit `--repo`
 for global entries. The command prints the observation ID.
 
 ## After writing

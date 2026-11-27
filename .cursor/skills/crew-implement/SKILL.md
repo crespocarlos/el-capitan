@@ -70,17 +70,12 @@ Set `SPEC_TITLE` to the SPEC.md title without the leading `#`, and `SPEC_PATHS` 
 the file paths the spec names, for example `SPEC_PATHS=(src/a.ts src/b.ts)` (empty array when none).
 
 ```bash
-if [ "${#SPEC_PATHS[@]}" -gt 0 ]; then
-  MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode implement --query "$SPEC_TITLE" --paths "${SPEC_PATHS[@]}" 2>&1); MEM_RC=$?
-else
-  MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode implement --query "$SPEC_TITLE" 2>&1); MEM_RC=$?
-fi
-case $MEM_RC in 0) RECALLED_PATTERNS="${MEM_OUT:-none}" ;; 2) echo "warning: memory unavailable — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; *) echo "error: crew-mem.py exit $MEM_RC — $MEM_OUT" >&2; RECALLED_PATTERNS="none" ;; esac
+RECALLED_PATTERNS=$(~/.agent/bin/crew-mem.py context --mode implement --query "$SPEC_TITLE" --paths "${SPEC_PATHS[@]}" --warn-unavailable)
+RECALLED_PATTERNS=${RECALLED_PATTERNS:-none}
 ```
 
-Store as `RECALLED_PATTERNS` to pass to the subagent. If the output is empty (no journal entries or
-search unavailable), set `RECALLED_PATTERNS="none"` — do **not** leave it as an empty string.
-Passing an empty string causes crew-builder to re-run auto-recall redundantly.
+`--warn-unavailable` prints `none` when the store is unavailable, and the fallback covers any other
+failure, so `RECALLED_PATTERNS` is never empty: an empty value makes crew-builder run the recall again.
 
 ### Step 4: Where the worker runs
 
@@ -123,13 +118,13 @@ This snapshot is used by `crew commit` to detect out-of-scope modifications.
 `~/.claude/agents/crew-builder.md` (whichever exists).
 
 Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code:
-follow crew-builder's protocol directly). This avoids terminating a healthy implementation run at
-the synchronous turn limit. Pass these inputs:
+follow crew-builder's protocol directly), per [dispatch reliability](references/worker-dispatch.md#dispatch-reliability).
+Pass these inputs:
 
 - `TASK_DIR` — the resolved task directory path (absolute)
-- `WORK_DIR` — the worktree or repo directory (absolute path, e.g.
-  `/Users/you/repo-feature/feature-xyz`). This is the directory where ALL file reads, edits, and
-  shell commands must run. It is not a shell variable — pass the literal path.
+- `WORK_DIR` — the worktree or repo directory (absolute path, for example
+  `/Users/you/repo-feature/feature-xyz`), where every file read, edit, and shell command runs. Pass
+  the literal path, not a shell variable.
 - `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
 - The task delta: the unchecked tasks (about 400 words, a guideline, not a gate) and the `SPEC.md`
   path. The worker reads `~/.cursor/agents/crew-builder.md` itself, so never paste rules into the prompt.
@@ -141,7 +136,7 @@ consecutive batches of at most 6, never splitting a declared atomic group, and l
 worker per batch with `TASK_RANGE` set. Launch the next batch only after the previous batch's
 `REPORT.part-*.md` exists and reports no failed task; on a failure, stop and go to Step 7 with that
 part report. The batch containing the last task runs the Completion Protocol and writes `REPORT.md`,
-merging the part reports' task results, decisions, and quality gates.
+merging the part reports' task results, decisions, and verification results.
 
 ### Step 7: Handle results
 
@@ -165,11 +160,10 @@ When the Implementation Report is available:
    ```bash
    ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
    ```
-2. **Draft the post-run memory writes** per [completion handoff](references/completion-handoff.md):
-   the optional journal entry first (ask `Store this journal entry? (yes / no)`), then zero to three
-   typed candidates in `~/.agent/memory/.inbox/`, which are never imported here. Both are drafts; the
-   approval step is mandatory (`memory-capture.mdc`).
-3. **Tell the user — this output is mandatory, do not skip it:**
+2. **Draft memory candidates** per [completion handoff](references/completion-handoff.md): zero to
+   three typed drafts in `~/.agent/memory/.inbox/`, written without asking. Nothing is stored or
+   imported here; `crew open pr` asks the one closing question.
+3. **Tell the user**, because the next stages need the tree and the status:
    > "All tasks done. Status stays `IMPLEMENTING` until the PR is opened."
    > "Working directory: `<WORK_DIR>` — run tests from there."
 
@@ -185,12 +179,14 @@ When the Implementation Report is available:
 
 ## Rules
 
-- Never start the worker without a gate-checked, approved SPEC.md
-- The skill handles ALL user interaction — the worker is non-interactive
-- If the worker returns failures, always surface them to the user with options
-- Tests the run adds follow the [testing policy](~/.cursor/agents/references/testing-policy.md)
-- **Stop after all tasks pass.** Never commit, push, or create a PR. Always output the handoff message (Step 7) before stopping.
-- **ALWAYS follow crew-builder's protocol for implementation.** The orchestrator handles setup and gates. Code changes follow crew-builder's instructions — either via a subagent (Cursor Task tool) or by reading and following crew-builder's protocol directly. Never skip crew-builder's protocol and implement ad-hoc.
+- Never start the worker without an approved SPEC.md.
+- The skill handles every user interaction; the worker is non-interactive.
+- Surface worker failures to the user with options.
+- Tests the run adds follow the [testing policy](~/.cursor/agents/references/testing-policy.md).
+- **Stop after all tasks pass.** Never commit, push, or create a PR; output the Step 7 handoff
+  before stopping.
+- **Code changes follow crew-builder's protocol**, through the subagent or by reading and following
+  the protocol directly, never ad hoc. The orchestrator handles setup and verification.
 
 ## Plain-language gates
 
