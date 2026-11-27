@@ -1,9 +1,9 @@
 """What a review covered: persona selection and coverage, the package rules, and the persist gates.
 
 Coverage: each dispatched persona produced output. A `<persona>.in.md` carries no builder sections of
-the spec (Product Flow excepted) and no generated-file hunks. Persist always checks persona evidence;
-`--strict` adds the diff gates (layer map, hunk references, package rules). An absent input is skipped.
-The probe gate: an unsettled self or changes finding needs the saved probe reply or a valid skip line.
+the spec (Product Flow excepted), no generated-file hunks, and (before dispatch) its lens questions. Persist
+checks persona evidence; `--strict` adds the diff gates (layer map, hunk references, package rules). An absent
+input is skipped. The probe gate: an unsettled self or changes finding needs the probe reply or a skip line.
 """
 from __future__ import annotations
 
@@ -20,11 +20,16 @@ from review_vocabulary import (
     ASSESSMENT_WORDS,
     CODE_MODES,
     PROBE,
+    QUESTIONS_HEADING,
+    QUESTIONS_MAX,
+    QUESTIONS_MIN,
+    QUESTIONS_STAMP,
     SELECT_RULES,
     assessment_of,
     canonical_personas,
     persona_outcome,
 )
+from review_workspace import MANIFEST_FILE
 
 from lib.files import read_json_object
 from lib.output import bounded_json
@@ -178,6 +183,49 @@ def spec_context(args: argparse.Namespace) -> int:
     return 0
 
 
+# An unindented list item: a nested bullet under a question is part of that question.
+QUESTION_LINE = re.compile(r"^(?:\d+[.)]|[-*+])[ \t]+\S")
+
+
+def questions_stamped(review_dir: Path) -> bool:
+    """True when the assembler that wrote these packages records the questions rule in `manifest.json`."""
+    try:
+        record = json.loads((review_dir / MANIFEST_FILE).read_text(encoding="utf-8")).get("personas") or {}
+    except (OSError, ValueError, AttributeError):
+        return False
+    return isinstance(record, dict) and record.get(QUESTIONS_STAMP) is True
+
+
+def question_violations(review_dir: Path, personas: list[str], report: dict) -> list[str]:
+    """Each stamped package carries `QUESTIONS_HEADING` (the last one counts, since a pasted prompt may quote it)
+    with `QUESTIONS_MIN` to `QUESTIONS_MAX` unindented list items under it.
+
+    Only a directory the current assembler stamped is held to it; an older one (a resume included) passes with a
+    note under `skipped`. Pre-dispatch only: `persist` does not repeat it.
+    """
+    if not questions_stamped(review_dir):
+        report["skipped"]["questions"] = "packages not stamped by the assembler's questions rule; not checked"
+        return []
+    errors = []
+    for persona in canonical_personas(personas, split_commas=False):
+        package = review_dir / f"{persona}.in.md"
+        if not package.is_file():
+            continue
+        lines = [line.rstrip() for line in package.read_text(encoding="utf-8", errors="replace").splitlines()]
+        if QUESTIONS_HEADING not in lines:
+            errors.append(f"{package.name} has no `{QUESTIONS_HEADING}` section; write {QUESTIONS_MIN} to "
+                          f"{QUESTIONS_MAX} questions for this lens from the diff and the spec's risks "
+                          "(assemble.json `questions`)")
+            continue
+        body = lines[len(lines) - lines[::-1].index(QUESTIONS_HEADING):]
+        end = next((index for index, line in enumerate(body) if line.startswith(("#", "---"))), len(body))
+        count = sum(bool(QUESTION_LINE.match(line)) for line in body[:end])
+        if not QUESTIONS_MIN <= count <= QUESTIONS_MAX:
+            errors.append(f"{package.name} asks {count} question(s) under `{QUESTIONS_HEADING}`; "
+                          f"write {QUESTIONS_MIN} to {QUESTIONS_MAX}, one list item each")
+    return errors
+
+
 def check_packages(args: argparse.Namespace) -> int:
     """Check written `<persona>.in.md` packages before dispatch."""
     review_dir = args.review_dir.resolve()
@@ -189,6 +237,7 @@ def check_packages(args: argparse.Namespace) -> int:
     spec = args.spec or review_dir.parent.parent / "SPEC.md"
     violations, report = package_violations(review_dir, args.personas, args.mode, spec,
                                             review_dir / HUNKS_FILE)
+    violations += question_violations(review_dir, args.personas, report)
     if not report["read"]:
         violations.append(f"no <persona>.in.md found in {review_dir} for {', '.join(args.personas)}")
     for violation in violations:

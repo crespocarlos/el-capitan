@@ -33,6 +33,12 @@ PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prom
 LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs still normalize
 PROBE = "probe"  # the reviewer-probe reply: saved with provenance like a persona's, never a lens
 CODE_MODES = {"self", "changes", "pr"}
+# The orchestrator's per-lens questions, written from the diff and the spec's risks: the assembler renders
+# them under this heading and records `QUESTIONS_STAMP` in manifest.json `personas`; `check-packages` refuses a
+# stamped package without the section or outside the count.
+QUESTIONS_HEADING = "## Questions for this lens"
+QUESTIONS_MIN, QUESTIONS_MAX = 2, 5
+QUESTIONS_STAMP = "questions_rule"
 PERSONA_STATUSES = {"failed", "skipped", "truncated"}
 # Tiered output cap, counted separately so polish cannot evict severity: a nit has a 4-slot budget
 # and non-nits a 12-slot one, so a flat cap cannot bind a real finding out to make room for polish.

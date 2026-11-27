@@ -97,8 +97,9 @@ heading plus that sentence is what lets every persona cite the ids `persist` req
 Write `$REVIEW_ROOT/assemble.json`, then run `~/.agent/bin/crew-assemble-packages.py "$REVIEW_ROOT"`.
 Keys: `repo` (path), `mode` (a markdown block), `size_gate` (one line), `consumers` (`[[path, start,
 end, label], …]`), `prompt_files` (`[path, …]`), `guidance_keep` (`{persona: [level-2 heading prefix,
-…]}`, optional), and `mode_kind` (`"pr"` when the review reads a PR head, which refuses `consumers`
-and `prompt_files` because those would come from the local checkout). Exact shapes: the tool's
+…]}`, optional), `questions` (`{persona: [question, …]}`, below), and `mode_kind` (`"pr"` when the
+review reads a PR head, which refuses `consumers` and `prompt_files` because those would come from the
+local checkout). Exact shapes: the tool's
 docstring — read it at `.agent/tools/review/crew-assemble-packages.py` in the repository, or through
 `readlink -f ~/.agent/bin/crew-assemble-packages.py` when the repository is not the working tree.
 `~/.agent/bin` holds symlinks, so a search tool scoped there finds nothing.
@@ -108,6 +109,20 @@ and keeps every unchanged line, so a rule that collides with surrounding text st
 `guidance_keep` narrows repository guidance per lens — `Testing` and `Verification pattern` to Code
 Quality, `File layout` and `Symlink rules` to Architecture — because every lens otherwise pays for the
 whole file. A prefix matching no section fails the run and lists the available ones.
+
+## Questions for each lens
+
+Every package ends with `## Questions for this lens`: 2 to 5 questions you write for that persona from
+the diff and the spec's risks. Each names a concrete input, path or claim and asks what happens, in the
+persona's lens: an input that breaks the change (Adversarial), a consumer or contract (Architecture),
+the user's next step (Product Flow), a rule that collides or fires too late (Prompt Quality), a test a
+wrong implementation would pass (Code Quality). A question the diff already answers spends the
+persona's budget.
+
+Diff modes put them in `assemble.json` `questions`; the tool renders them last, after the evidence,
+and stamps the run in `manifest.json`. Spec and idea packages append them by hand. `check-packages`
+refuses a stamped package without the section, or with other than 2 to 5 unindented list items under
+its last copy; an unstamped directory passes with a note.
 
 ## The PR-head excerpt pass
 

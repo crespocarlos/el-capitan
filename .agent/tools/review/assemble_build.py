@@ -22,9 +22,11 @@ from assemble_inputs import (
     decide,
     guidance_block,
     prior_section,
+    questions_block,
     read_artifact,
     reading_map,
 )
+from review_vocabulary import QUESTIONS_STAMP
 from review_workspace import MANIFEST_FILE
 from task_verify_report import capped
 
@@ -119,6 +121,9 @@ def build(persona: str, review_dir: Path, config: dict, shared: str,
     tail_parts, report = tail(persona, review_dir, config)
     parts += tail_parts
     parts += extras(persona, config, diff, hunks_json, report)
+    asked = questions_block(persona, config)
+    if asked:
+        parts += ["\n---\n\n", asked]
     return "".join(parts), report
 
 
@@ -361,6 +366,7 @@ def record(review_dir: Path, sizes: dict[str, int], skipped: dict[str, str], sli
         "schema_version": SCHEMA_VERSION, "packaged": sorted(sizes), "bytes": sizes,
         "skipped": [{"persona": p, "reason": r} for p, r in sorted(skipped.items())],
         "sliced": {p: {"files": n["files"], "of": n["of"], "closure": n["closure"]} for p, n in sliced.items()},
+        QUESTIONS_STAMP: True,  # these packages are held to the questions rule by `check-packages`
     }
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return target

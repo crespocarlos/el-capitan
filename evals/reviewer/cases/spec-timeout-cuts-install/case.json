@@ -1,0 +1,41 @@
+{
+  "id": "spec-timeout-cuts-install",
+  "lens": "specwriter-adversarial",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded from task 1D001C12 (review 20261127163032, adversarial finding on evals/test.sh)",
+  "summary": "A spec that adds a per-test timeout to the test runner.",
+  "defect": "A blanket 60 s per-test limit kills the install and upgrade tests the summary says need up to 300 s, so the suite fails on a slow runner; the criteria name no exemption or per-test override.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 16
+    }
+  ],
+  "refs": [
+    "60 s",
+    "criterion 1",
+    "AC 1",
+    "AC1"
+  ],
+  "keywords": [
+    [
+      "install*",
+      "upgrade*",
+      "300",
+      "end-to-end",
+      "slow*",
+      "long-running",
+      "legitimate*"
+    ],
+    [
+      "timeout*",
+      "time limit",
+      "60 s",
+      "60s",
+      "60-second"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

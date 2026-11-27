@@ -1,0 +1,40 @@
+diff --git a/.agent/tools/maintenance/lint_prompts.py b/.agent/tools/maintenance/lint_prompts.py
+--- a/.agent/tools/maintenance/lint_prompts.py
++++ b/.agent/tools/maintenance/lint_prompts.py
+@@ -5,6 +5,36 @@
+ from pathlib import Path
+ 
+ TOOLS_LINE = re.compile(r"^tools:[ \t]*(.*)$", re.MULTILINE)
++# The review lenses and spec critics declare their tool-call budget once (`tool_budget:`), say it in their text,
++# and get two turns past it, so the reply never competes with a tool call for the last turn.
++BUDGETED_AGENTS = ("reviewer-adversarial", "reviewer-architecture", "reviewer-code-quality", "reviewer-product-flow",
++                   "reviewer-prompt-quality", "specwriter-adversarial", "specwriter-scope")
++REPLY_TURNS = 2
++STATED_BUDGET = re.compile(r"stop calling tools at (\d+)\b", re.IGNORECASE)
++
++
++def lint_turn_budget(root: Path) -> Findings:
++    """Each budgeted agent declares `tool_budget: N` with `maxTurns` at least N + 2 and states "stop calling tools
++    at N" once in its text; any other agent that declares a budget is held to the same two checks."""
++    findings: Findings = []
++    for path in sorted((root / ".cursor/agents").glob("*.md")):
++        text = path.read_text(errors="replace")
++        frontmatter_text, _, error = parse_frontmatter(text)
++        if error:
++            continue
++        name, body = rel(root, path), text.split("\n---\n", 1)[1]
++        budget = re.search(r"^tool_budget:[ \t]*(\d+)[ \t]*$", frontmatter_text, re.MULTILINE)
++        if not budget:
++            if path.stem in BUDGETED_AGENTS:
++                findings.append((name, 1, "persona-turn-budget", "declare tool_budget: N in the frontmatter"))
++            continue
++        calls = int(budget.group(1))
++        turns = re.search(r"^maxTurns:[ \t]*(\d+)[ \t]*$", frontmatter_text, re.MULTILINE)
++        if not turns or int(turns.group(1)) < calls + REPLY_TURNS:
++            findings.append((name, 1, "persona-turn-budget", f"set maxTurns to at least {calls + REPLY_TURNS}"))
++        if STATED_BUDGET.findall(body) != [str(calls)]:
++            findings.append((name, 1, "persona-turn-budget", f"say the budget once: \"stop calling tools at {calls}\""))
++    return findings
+ 
+ 
+ def lint_native_tool_ids(root: Path, native: set[str]) -> Findings:

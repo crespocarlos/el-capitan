@@ -1,0 +1,45 @@
+{
+  "id": "lookups-pointer-too-late",
+  "lens": "prompt-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 2D916668, review 20261127143927, prompt-quality finding 4",
+  "summary": "Lookup guidance for the code index and the docs server moves into one shared reference, `lookups.md`, and the reviewer contract keeps a one-line pointer to it instead of its own copy. The intent is unchanged: an agent searches the code index before a text search.",
+  "defect": "The pointer fires only \"when you need code you cannot locate\", which reads as after a search failed: an agent that greps first and gets a hit never opens lookups.md, so the index-first rule the contract used to state unconditionally never applies.",
+  "locations": [
+    {
+      "file": ".cursor/agents/references/reviewer-contract.md",
+      "line": 7
+    },
+    {
+      "file": ".cursor/agents/references/lookups.md",
+      "line": 12
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "cannot locate",
+      "can't locate",
+      "trigger*",
+      "fires",
+      "too late",
+      "after a failed",
+      "after failing",
+      "never fire*",
+      "never appl*",
+      "never read*",
+      "never open*",
+      "already found",
+      "gets a hit"
+    ],
+    [
+      "index*"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".cursor/agents/references/lookups.md": "# Lookups\n\nHow an agent finds code it cannot name and checks a product or API fact. Your own file still\nsets your budget, your tools and where a note goes in your output; this file sets which lookup to\nmake and what to do when it cannot be made.\n\nThe servers are the ones named in `~/.agent/config.json` `mcp`: `code_search` for the code index,\n`docs` for the docs server.\n\n## Code you cannot locate\n\nSearch the code index before a text search: it ranks by relevance across whole repositories, so it\nfinds implementations you could not have guessed the words for. When you already know the file and\nline, read it directly; the index is for discovery.\n\nWhen the index is not in your tools, or a call fails, use the equivalent `Grep`/`Glob`/`Read` call and\nsay so in one line of your output: `code search unreachable: used text search`. Your own file says\nwhere that line goes; without such a place, put it at the end. The reader needs it to know the\nresults were not ranked.\n\n## Product and API facts\n\nAny claim about product, API, query-language or configuration behaviour that your work depends on\n(writing it, reviewing it, or answering a comment about it) is checked on the docs server and cited\nby URL. Search the docs (`search_internal_docs`), then fetch the page you cite. Never settle such a\nclaim from memory: a guessed option reads the same as a verified one.\n\nWith no docs server in your tools, or a failed lookup, mark the claim\n`unverified (docs server unreachable)` and leave it unsettled rather than deciding it from code or\nmemory.\n",
+    ".cursor/agents/references/reviewer-contract.md": "# Shared reviewer contract\n\nYour persona file sets your lens; this file sets your output.\n\n## Evidence\n\nLookups: follow `~/.cursor/agents/references/lookups.md` when you need code you cannot locate or a product or API fact.\nIts `code search unreachable` line goes on the line after your `Assessment:` line.\n\n## Labels\n\nExactly one label per finding: `[blocking]`, `[attention]`, `[needs more info]`, `[nit]`.\n"
+  }
+}

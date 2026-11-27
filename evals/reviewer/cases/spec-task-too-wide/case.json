@@ -1,0 +1,38 @@
+{
+  "id": "spec-task-too-wide",
+  "lens": "specwriter-scope",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded, modelled on task 82FCCD58's notify-idle work",
+  "summary": "A spec for a desktop notification when a background job goes idle.",
+  "defect": "Task 2 touches seven files across the hook, two hook configs, install, two docs and the test rows: too wide for one builder task with one verify line, and it overlaps Task 3 on docs/hooks.md.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 23
+    }
+  ],
+  "refs": [
+    "Task 2",
+    "T2"
+  ],
+  "keywords": [
+    [
+      "seven",
+      "7 files",
+      "too many",
+      "wide*",
+      "split*",
+      "too large",
+      "too big",
+      "granular*",
+      "many files"
+    ],
+    [
+      "Task 2",
+      "notify-idle*"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

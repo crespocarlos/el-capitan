@@ -1,0 +1,26 @@
+{
+  "id": "ship-closed-pr-counts",
+  "lens": "product-flow",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 1D001C12, review 20261127171102, consolidated finding (adversarial and code-quality)",
+  "summary": "`crew-task.py ship` is the one command that ships a task: commit, merge the base, re-run the tests, push, open a draft PR, mark the task DONE. It is idempotent: after a stop the owner fixes the cause and runs `ship` again, and it continues from the first step that no longer holds, re-checking the earlier ones.",
+  "defect": "The `pr` step holds whenever a URL was recorded: if the owner closed that PR (or it was merged) before the re-run, `ship` reports \"pr already done\" and marks the task DONE against a closed PR instead of opening a new one.",
+  "locations": [
+    {
+      "file": ".agent/tools/task/task_ship.py",
+      "line": 32
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "closed",
+      "merged"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/task/task_ship.py": "\"\"\"`crew-task.py ship`: each step records `SHIP: <step> <value>` and a re-run resumes (excerpt).\"\"\"\nfrom __future__ import annotations\n\nfrom pathlib import Path\n\n\ndef open_pr(ship: Ship) -> str:\n    listed = gh(\"pr\", \"list\", \"--repo\", ship.target, \"--head\", ship.branch, \"--state\", \"open\", \"--json\", \"url\",\n                \"--jq\", \".[0].url // empty\")\n    existing = pr_url(listed.stdout) if listed.returncode == 0 else \"\"\n    if existing:\n        print(f\"ship: a PR is already open: {existing}\")\n        return existing\n    created = gh(\"pr\", \"create\", \"--draft\", \"--title\", ship.title, \"--body-file\", str(ship.body_file),\n                 \"--base\", ship.base, \"--repo\", ship.target, \"--head\", ship.head_ref)\n    url = pr_url(created.stdout)\n    if created.returncode or not url:\n        raise Stop(f\"gh pr create failed: {(created.stderr or created.stdout).strip() or 'no PR URL printed'}\")\n    print(f\"ship: opened {url}\")\n    return url\n\n\ndef push_holds(ship: Ship, _: str) -> bool:\n    try:\n        return rev_parse(ship.tree, f\"refs/remotes/origin/{ship.branch}\") == head_sha(ship.tree)\n    except GitError:\n        return False\n\n\nSTEP_RUNS = {\"stage\": stage, \"commit\": commit, \"merge\": merge, \"test\": test, \"push\": push, \"pr\": open_pr, \"done\": done}\nSTEP_HOLDS = {\"stage\": stage_holds, \"commit\": commit_holds, \"merge\": merge_holds, \"test\": test_holds,\n              \"push\": push_holds, \"pr\": lambda _, value: bool(value), \"done\": done_holds}\n\n\ndef run(ship: Ship) -> int:\n    \"\"\"Re-check each recorded step in order; run from the first that is missing or no longer holds.\"\"\"\n    recorded = recorded_steps(ship.task.task)\n    for step, action in STEP_RUNS.items():\n        if step in recorded and STEP_HOLDS[step](ship, recorded[step]):\n            print(f\"ship: {step} already done ({recorded[step] or 'ok'})\")\n            continue\n        value = action(ship)\n        append_entry(ship.task.task, \"SHIP\", f\"{step} {value}\".strip())\n    return 0\n"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "id": "spec-task-order",
+  "lens": "specwriter-scope",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded, modelled on task B0334A9C's remote comparison",
+  "summary": "A spec that makes record-pr compare repositories by normalised slug.",
+  "defect": "Task 1 calls `slug_from_url`, which only Task 3 creates, and runs its verify line before then: the builder's sequential loop fails Task 1. Task 3 must come first.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 21
+    },
+    {
+      "file": "SPEC.md",
+      "line": 24
+    }
+  ],
+  "refs": [
+    "Task 1",
+    "T1",
+    "Task 3",
+    "T3"
+  ],
+  "keywords": [
+    [
+      "order*",
+      "depend*",
+      "reorder*",
+      "doesn't exist",
+      "does not exist",
+      "undefined",
+      "sequen*",
+      "only Task 3",
+      "created in Task 3",
+      "added in Task 3",
+      "move Task 3"
+    ],
+    [
+      "slug_from_url",
+      "helper"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

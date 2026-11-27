@@ -414,7 +414,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `check-packages --review-dir <task>/review/<ts> --personas <names>` rejects written `.in.md`
   packages that break that rule or embed filename-generated hunks, and reports any check it skipped
   for a missing `SPEC.md` or `hunks.json`; `persist` runs it only for a directory holding
-  a `package.diff`.
+  a `package.diff`. When the assembler stamped the run (`manifest.json` `personas.questions_rule`), it also
+  refuses a package whose last `## Questions for this lens` lacks 2 to 5 unindented list items; an unstamped
+  directory passes with a `skipped.questions` note, and `persist` never runs that check.
 - `crew-task.py mark-done --force` is a deliberate, user-invoked escape hatch that skips every
   evidence check, including review ancestry, and accepts a free-text note (`none (committed to
   main)`) in place of a PR URL, logged as `<from> → DONE (closed: <note>)` (stripped, a leading
@@ -487,7 +489,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   vocabulary and return shape), `mode_kind` (`pr` refuses `consumers` and `prompt_files`, which read
   the local index), `size_gate`, `consumers` (`[path, start, end, label]`), `prompt_files`,
   `guidance_keep` (`{persona: [level-2 heading prefix]}`), `report` (its Unverified claims go to every
-  persona), `slice`, `skip_personas` (`{persona: why}`) and `selected`.
+  persona), `slice`, `skip_personas` (`{persona: why}`), `selected`, and `questions` (`{persona:
+  [question]}`, rendered last as `## Questions for this lens`; `check-packages` requires 2 to 5 per package).
 - **Evidence trail.** `crew-review-findings.py save-out` stores a persona's raw reply from stdin and a
   `<persona>.provenance.json` (`harness`, `agent_id|null`, `model|null`, `time`, `sha256`); `persist`
   verifies the hash when the record exists and passes a review directory without one with

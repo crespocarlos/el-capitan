@@ -1,0 +1,37 @@
+{
+  "id": "spec-force-any-state",
+  "lens": "specwriter-adversarial",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded from task 285059E1 (its review's findings 1 and 2), reduced to a spec",
+  "summary": "A spec for closing stale tasks as done from the CLI and the TUI.",
+  "defect": "\"Any state but DONE\" lets `--force` with a real PR URL close a DRAFTING or APPROVED spec as shipped work that skipped Gate 1, and turns the owner's ABANDONED into DONE; no criterion restricts the states or the value.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 18
+    }
+  ],
+  "refs": [
+    "any state but DONE",
+    "criterion 1",
+    "AC 1",
+    "AC1"
+  ],
+  "keywords": [
+    [
+      "approv*",
+      "gate 1",
+      "drafting",
+      "abandon*",
+      "unapproved"
+    ],
+    [
+      "force*",
+      "close as done",
+      "any state"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

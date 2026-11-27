@@ -1,0 +1,35 @@
+{
+  "id": "record-pr-duplicate",
+  "lens": "adversarial",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task B0334A9C, SPEC.md Summary item 1 (a duplicate task created in use); code from commit 130353e",
+  "summary": "A PostToolUse hook runs after `gh pr create` and records the new PR on its task: the task whose `.task-id` `branch` is the PR's head branch. A PR opened with no spec gets a minimal DONE task, so every PR shows up in `crew ls`. `crew-task.py mark-done --pr-url <url>` also records the PR on the task (in its PR list) when the orchestrator closes it by hand, and `mark-implementing` records `branch` only when `--branch` is passed.",
+  "defect": "Tasks are matched by `.task-id` `branch` only: a task that already holds the PR URL (closed by `mark-done` before the hook fired) or whose branch was left as the drafting branch is not found, so the hook creates a duplicate minimal DONE task for work that already has one.",
+  "locations": [
+    {
+      "file": ".agent/tools/task/task_record_pr.py",
+      "line": 49
+    },
+    {
+      "file": ".agent/tools/task/task_record_pr.py",
+      "line": 35
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "duplicate*",
+      "second task",
+      "new task",
+      "minimal task",
+      "another task",
+      "extra task",
+      "two tasks"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/task/task_record_pr.py": "\"\"\"`record-pr`: after `gh pr create`, record the PR on its task and run the DONE gate (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport json\nimport re\nimport uuid\nfrom pathlib import Path\n\nCLOSED = (\"DONE\", \"ABANDONED\")\n\n\ndef slug_of(title: str) -> str:\n    \"\"\"A task slug from a PR title: lowercase words joined by `-`, at most 60 characters.\"\"\"\n    return re.sub(r\"[^a-z0-9]+\", \"-\", title.lower()).strip(\"-\")[:60].rstrip(\"-\") or \"pr\"\n\n\ndef minimal_task(tasks_dir: Path, found: Pull, scoped: list[TaskState]) -> str:\n    \"\"\"A DONE task for a PR opened with no spec, in a repo that already has tasks; no gate runs.\"\"\"\n    owner = next(r for repo in found.repos for r in scoped if r.repo.lower() == repo)\n    directory = tasks_dir / str(uuid.uuid4()).upper()\n    directory.mkdir(parents=True)\n    meta = {\"uuid\": directory.name, \"repo_remote_url\": owner.meta[\"repo_remote_url\"], \"branch\": found.branch,\n            \"slug\": slug_of(found.title), \"created_at\": utc_stamp()}\n    atomic_write(directory / \".task-id\", json.dumps(meta, indent=2) + \"\\n\")\n    title = found.title or found.url\n    atomic_write(directory / \"SPEC.md\", f\"# {title}\\n\\n## Status\\nDONE\\n\\n## Summary\\n\"\n                 f\"Recorded by the PR hook: {found.url} was opened with no spec.\\n\")\n    append_pr(directory, found.url)\n    return f\"record-pr: no task for {found.branch}; recorded {found.url} as DONE task {directory} (no spec)\"\n\n\ndef place(found: Pull, tasks_dir: Path) -> list[str]:\n    \"\"\"Record the PR on its task: the single open `branch` match, else the single match; never on a spec branch.\"\"\"\n    scoped = tasks_in(tasks_dir, found.repos)\n    matches = [r for r in scoped if r.meta.get(\"branch\") == found.branch]\n    chosen = [r for r in matches if head(r) not in CLOSED] or matches\n    if len(chosen) > 1:\n        return candidates(f\"{len(chosen)} tasks match {found.repos[0]} {found.branch}\", chosen, found.url)\n    if chosen:\n        r = chosen[0]\n        if head(r) == \"IMPLEMENTING\":\n            return close(r, found.url, found.branch)\n        done = \"recorded PR\" if append_pr(r.task, found.url) else \"already has\"\n        return [f\"record-pr: {r.slug} ({head(r) or 'no status'}): {done} {found.url}\"]\n    drafted = [r for r in scoped if r.meta.get(\"spec_branch\") == found.branch]\n    if drafted:\n        names = \", \".join(r.slug for r in drafted)\n        return candidates(f\"{found.branch} is the spec branch of {names}\", drafted, found.url)\n    return [minimal_task(tasks_dir, found, scoped)] if scoped else []\n"
+  }
+}

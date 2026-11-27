@@ -1,0 +1,48 @@
+{
+  "id": "lookups-docs-scope",
+  "lens": "prompt-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 2D916668, review 20261127143927, prompt-quality finding 1 (vendor names neutralised)",
+  "summary": "Lookup guidance for the code index and the docs server moves into one shared reference, `lookups.md`, and every agent gets a one-line pointer to it: the reviewer contract and the always-loaded router rule (every main session, every repository, builders included). The docs server configured today indexes one vendor's product documentation.",
+  "defect": "The docs rule was opt-in, for artifacts with the docs server's product; it now applies to every product or API claim in every project for every agent, writers included. A claim about an unrelated library finds no page and is marked `unverified (docs server unreachable)`, though the server answered; the rule never says which products it covers.",
+  "locations": [
+    {
+      "file": ".cursor/agents/references/lookups.md",
+      "line": 23
+    },
+    {
+      "file": ".cursor/agents/references/lookups.md",
+      "line": 29
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "every product",
+      "all products",
+      "any product",
+      "scope*",
+      "widen*",
+      "every project",
+      "every repo*",
+      "opt-in",
+      "opt in",
+      "librar*",
+      "third-party",
+      "no page",
+      "not cover*",
+      "doesn't cover",
+      "does not cover",
+      "other vendor*",
+      "one vendor",
+      "unrelated"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".cursor/agents/references/lookups.md": "# Lookups\n\nHow an agent finds code it cannot name and checks a product or API fact. Your own file still\nsets your budget, your tools and where a note goes in your output; this file sets which lookup to\nmake and what to do when it cannot be made.\n\nThe servers are the ones named in `~/.agent/config.json` `mcp`: `code_search` for the code index,\n`docs` for the docs server.\n\n## Code you cannot locate\n\nSearch the code index before a text search: it ranks by relevance across whole repositories, so it\nfinds implementations you could not have guessed the words for. When you already know the file and\nline, read it directly; the index is for discovery.\n\nWhen the index is not in your tools, or a call fails, use the equivalent `Grep`/`Glob`/`Read` call and\nsay so in one line of your output: `code search unreachable: used text search`. Your own file says\nwhere that line goes; without such a place, put it at the end. The reader needs it to know the\nresults were not ranked.\n\n## Product and API facts\n\nAny claim about product, API, query-language or configuration behaviour that your work depends on\n(writing it, reviewing it, or answering a comment about it) is checked on the docs server and cited\nby URL. Search the docs (`search_internal_docs`), then fetch the page you cite. Never settle such a\nclaim from memory: a guessed option reads the same as a verified one.\n\nWith no docs server in your tools, or a failed lookup, mark the claim\n`unverified (docs server unreachable)` and leave it unsettled rather than deciding it from code or\nmemory.\n",
+    ".cursor/agents/references/reviewer-contract.md": "# Shared reviewer contract\n\nYour persona file sets your lens; this file sets your output.\n\n## Evidence\n\nLookups: follow `~/.cursor/agents/references/lookups.md` when you need code you cannot locate or a product or API fact.\nIts `code search unreachable` line goes on the line after your `Assessment:` line.\n\n## Labels\n\nExactly one label per finding: `[blocking]`, `[attention]`, `[needs more info]`, `[nit]`.\n",
+    "rules/crew-router.mdc": "# Crew router\n\nEvery main session in every repository loads this rule.\n\nLookups: follow `~/.cursor/agents/references/lookups.md` when you need code you cannot locate or a product or API fact.\n\n## Routing\n\n| Request | Route |\n| --- | --- |\n| `crew spec` | crew-specwriter |\n| `crew implement` | crew-implement |\n| `crew review` | crew-reviewer |\n"
+  }
+}

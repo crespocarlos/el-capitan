@@ -1,0 +1,35 @@
+{
+  "id": "doctor-plugin-prefix",
+  "lens": "code-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 2D916668, review 20261127143927, adversarial finding 3",
+  "summary": "`crew doctor` reports whether each configured MCP server is reachable. Claude Code names a plugin's server `plugin_<plugin>_<server>`; doctor now credits a configured server to an installed, enabled plugin, so a server that comes from a plugin is no longer reported missing.",
+  "defect": "The match is a name prefix: with plugin `a` installed, `plugin_a_b_srv` (plugin `a_b`) matches `plugin_a_`, so doctor reports ok for a server whose plugin is missing or disabled; underscores make the name ambiguous.",
+  "locations": [
+    {
+      "file": ".agent/tools/maintenance/doctor_mcp.py",
+      "line": 16
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "prefix*"
+    ],
+    [
+      "underscore*",
+      "ambiguous*",
+      "another plugin",
+      "other plugin",
+      "wrong plugin",
+      "collision*",
+      "collide*",
+      "different plugin"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".agent/tools/maintenance/doctor_mcp.py": "\"\"\"`crew doctor` MCP checks: which configured servers each Claude config dir can reach (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport os\nfrom pathlib import Path\n\n\ndef plugin_servers(directory: Path, settings: dict, names: set[str]) -> tuple[set[str], dict[str, set[str]]]:\n    \"\"\"The configured `plugin_<plugin>_<server>` names the dir's installed plugins provide: at user scope, and per\n    project path; a plugin `enabledPlugins` sets to false provides none.\"\"\"\n    installed = read_object(directory / \"plugins\" / \"installed_plugins.json\").get(\"plugins\")\n    enabled = settings.get(\"enabledPlugins\") if isinstance(settings.get(\"enabledPlugins\"), dict) else {}\n    user: set[str] = set()\n    projects: dict[str, set[str]] = {}\n    for plugin_id, installs in (installed.items() if isinstance(installed, dict) else []):\n        served = {name for name in names if name.startswith(f\"plugin_{plugin_id.split('@')[0]}_\")}\n        if enabled.get(plugin_id) is False or not served or not isinstance(installs, list):\n            continue\n        for install in (entry for entry in installs if isinstance(entry, dict)):\n            if install.get(\"scope\") == \"user\":\n                user |= served\n            elif isinstance(path := install.get(\"projectPath\"), str):\n                projects.setdefault(os.path.realpath(path), set()).update(served)\n    return user, projects\n"
+  }
+}

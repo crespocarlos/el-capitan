@@ -1,0 +1,41 @@
+{
+  "id": "record-pr-wrong-folder",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task B0334A9C, SPEC.md Summary item 2 (the DONE gate failed in use); code from commit 130353e",
+  "summary": "The PR hook fires in whatever folder the Claude Code session runs (the payload `cwd`). After recording a PR on its task it runs the DONE gate, which checks that the latest review covers the HEAD of the current directory, so the hook first changes into the worktree that holds the PR's branch. Tasks live in `~/.agent/tasks` and record their repository's remote URL and the worktree they were implemented in (`.task-id` `worktree`).",
+  "defect": "`branch_tree` lists the worktrees of the process cwd, which `record` set to the payload cwd: a session opened in another repository never finds the task's worktree, so the gate runs in the wrong folder and fails. The task's recorded worktree or repository is ignored.",
+  "locations": [
+    {
+      "file": ".agent/tools/task/task_record_pr.py",
+      "line": 13
+    },
+    {
+      "file": ".agent/tools/task/task_record_pr.py",
+      "line": 45
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "cwd",
+      "working directory",
+      "current directory",
+      "session*",
+      "another repo*",
+      "other repo*",
+      "different repo*",
+      "wrong folder",
+      "wrong directory",
+      "wrong repo*",
+      "recorded worktree"
+    ]
+  ],
+  "context": {
+    ".agent/tools/lib/git.py": "\"\"\"Git reads used by the task tools (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport subprocess\nfrom pathlib import Path\n\n\ndef worktrees(root: Path | None = None) -> list[tuple[Path, str]]:\n    \"\"\"`(path, branch)` for every worktree of the repository at `root`, default the current directory.\"\"\"\n    out = subprocess.run([\"git\", \"worktree\", \"list\", \"--porcelain\"], cwd=root, capture_output=True, text=True,\n                         timeout=10, check=True).stdout\n    found, path = [], None\n    for line in out.splitlines():\n        if line.startswith(\"worktree \"):\n            path = Path(line[9:])\n        elif line.startswith(\"branch refs/heads/\") and path:\n            found.append((path, line[18:]))\n    return found\n"
+  },
+  "after": {
+    ".agent/tools/task/task_record_pr.py": "\"\"\"`record-pr`: after `gh pr create`, record the PR on its task and run the DONE gate (excerpt).\"\"\"\nfrom __future__ import annotations\n\nimport contextlib\nimport io\nimport os\nfrom pathlib import Path\n\n\ndef branch_tree(branch: str) -> Path | None:\n    \"\"\"The worktree that has `branch` checked out, so `mark_done` checks the review against that branch's HEAD.\"\"\"\n    try:\n        return next((path for path, name in worktrees() if name == branch), None)\n    except GitError:\n        return None\n\n\ndef close(r: TaskState, url: str, branch: str) -> list[str]:\n    \"\"\"Append the PR, then run the DONE gate from the branch's worktree when one exists; its words are the output.\"\"\"\n    append_pr(r.task, url)\n    lines = [f\"record-pr: {r.slug}: recorded PR {url}\"]\n    out, saved = io.StringIO(), os.getcwd()\n    tree = branch_tree(branch)\n    try:\n        if tree is not None:\n            os.chdir(tree)\n        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):\n            code = mark_done(r.task, url, False)\n    finally:\n        os.chdir(saved)\n    lines += [f\"record-pr: {line}\" for line in out.getvalue().splitlines() if line.strip()]\n    if code != 0:\n        lines.append(f\"record-pr: {r.slug} stays {head(r)}; after fixing it run: {MARK_DONE.format(dir=r.task, url=url)}\")\n    return lines\n\n\ndef record(payload: dict, tasks_dir: Path, read: Reader = gh_read) -> list[str]:\n    \"\"\"Record the PR of one hook payload; the printed lines, empty when the payload is not a PR creation.\"\"\"\n    urls = created_urls(payload)\n    if len(urls) != 1:\n        return []\n    saved, cwd = os.getcwd(), payload.get(\"cwd\")\n    try:\n        if isinstance(cwd, str) and Path(cwd).is_dir():\n            os.chdir(cwd)\n        found = pull(urls[0], read)\n        if found is None:\n            return [f\"record-pr: cannot read {urls[0]} with gh pr view; reconcile records it at the next session start\"]\n        return place(found, tasks_dir)\n    finally:\n        os.chdir(saved)\n"
+  }
+}

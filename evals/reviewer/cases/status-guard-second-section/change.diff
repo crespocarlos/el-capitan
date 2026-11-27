@@ -1,0 +1,50 @@
+diff --git a/.claude/hooks/check-task-spec-owner.sh b/.claude/hooks/check-task-spec-owner.sh
+--- a/.claude/hooks/check-task-spec-owner.sh
++++ b/.claude/hooks/check-task-spec-owner.sh
+@@ -1,5 +1,10 @@
+ #!/usr/bin/env bash
+ # Guard: a task SPEC.md is written only by the task that owns it (the `.task-id` slug).
++#
++# It also guards the Status line. Install allows every edit under `~/.agent/tasks` without a prompt, so
++# an Edit or Write that changes the value under `## Status` of an existing task SPEC.md is denied: the
++# status moves only through `crew-task.py`, which keeps Gate 1 and Gate 2 with the user. A Write is
++# compared with the file on disk; an Edit is applied to the file on disk and the result compared.
+ set -euo pipefail
+ HOOK_NAME=check-task-spec-owner
+ # shellcheck source=lib/hook.sh
+@@ -13,11 +18,33 @@
+ # `<tasks>/<uuid>/SPEC.md` only: a nested path such as `<uuid>/review/.../SPEC.md` is not a task spec.
+ [ "$(dirname "$task_dir")" = "$tasks_root" ] || hook_allow
+ 
+-metadata="$task_dir/.task-id"
+-[ -f "$metadata" ] || hook_allow
+ # Nothing to protect: a directory with no SPEC.md cannot lose one, and this is where every new task
+ # starts.
+ [ -f "$task_dir/SPEC.md" ] || hook_allow
++
++# The first non-blank line under `## Status`, trimmed; empty when the document has no such section.
++status_of() {
++  printf '%s\n' "$1" | awk '/^## Status[ \t]*$/ { f = 1; next } f && /^#/ { exit } f && NF { gsub(/^[ \t]+|[ \t]+$/, ""); print; exit }'
++}
++old_string=$(hook_field old_string)
++written=""
++if [ -n "$old_string" ]; then
++  disk=$(cat "$task_dir/SPEC.md") || hook_fail "cannot read $task_dir/SPEC.md"
++  new_string=$(hook_field new_string)
++  if [ "$(hook_field replace_all)" = true ]; then written=${disk//"$old_string"/"$new_string"}; else written=${disk/"$old_string"/"$new_string"}; fi
++else
++  written=$(hook_field content)
++  if [ -n "$written" ]; then disk=$(cat "$task_dir/SPEC.md") || hook_fail "cannot read $task_dir/SPEC.md"; fi
++fi
++if [ -n "$written" ]; then
++  before=$(status_of "$disk")
++  after=$(status_of "$written")
++  [ "$before" = "$after" ] \
++    || hook_deny "Task spec guard: this changes the Status of $task_dir/SPEC.md from '${before:-none}' to '${after:-none}'. The status moves only through crew-task.py mark-approved | mark-implementing | mark-done."
++fi
++
++metadata="$task_dir/.task-id"
++[ -f "$metadata" ] || hook_allow
+ owner=$(jq -r '.slug // empty' "$metadata" 2>/dev/null) || hook_allow
+ [ -n "$owner" ] || hook_allow
+ title=$(head -1 "$task_dir/SPEC.md" | sed 's/^# Spec: //')

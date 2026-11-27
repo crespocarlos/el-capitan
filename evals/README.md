@@ -1,5 +1,9 @@
 # el-capitan evals
 
+The reviewer eval (how often each review persona and spec critic catches a seeded defect, and the
+owner's opt-in live run) is documented in [reviewer/README.md](reviewer/README.md). The rest of this
+file covers the spec-template harness.
+
 Three-arm eval harness for measuring whether the SPEC.md template format improves spec quality over free-form prompts.
 
 ## Arms

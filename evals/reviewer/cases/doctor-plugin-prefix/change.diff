@@ -1,0 +1,29 @@
+diff --git a/.agent/tools/maintenance/doctor_mcp.py b/.agent/tools/maintenance/doctor_mcp.py
+new file mode 100644
+--- /dev/null
++++ b/.agent/tools/maintenance/doctor_mcp.py
+@@ -0,0 +1,24 @@
++"""`crew doctor` MCP checks: which configured servers each Claude config dir can reach (excerpt)."""
++from __future__ import annotations
++
++import os
++from pathlib import Path
++
++
++def plugin_servers(directory: Path, settings: dict, names: set[str]) -> tuple[set[str], dict[str, set[str]]]:
++    """The configured `plugin_<plugin>_<server>` names the dir's installed plugins provide: at user scope, and per
++    project path; a plugin `enabledPlugins` sets to false provides none."""
++    installed = read_object(directory / "plugins" / "installed_plugins.json").get("plugins")
++    enabled = settings.get("enabledPlugins") if isinstance(settings.get("enabledPlugins"), dict) else {}
++    user: set[str] = set()
++    projects: dict[str, set[str]] = {}
++    for plugin_id, installs in (installed.items() if isinstance(installed, dict) else []):
++        served = {name for name in names if name.startswith(f"plugin_{plugin_id.split('@')[0]}_")}
++        if enabled.get(plugin_id) is False or not served or not isinstance(installs, list):
++            continue
++        for install in (entry for entry in installs if isinstance(entry, dict)):
++            if install.get("scope") == "user":
++                user |= served
++            elif isinstance(path := install.get("projectPath"), str):
++                projects.setdefault(os.path.realpath(path), set()).update(served)
++    return user, projects

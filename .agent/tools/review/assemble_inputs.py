@@ -13,7 +13,7 @@ from pathlib import Path
 
 from review_parse import header_paths
 from review_vocabulary import PERSONAS as REGISTERED
-from review_vocabulary import SELECT_RULES
+from review_vocabulary import QUESTIONS_HEADING, SELECT_RULES
 
 from lib.cli import fail
 from lib.files import read_json_object
@@ -288,6 +288,22 @@ def common(review_dir: Path, config: dict) -> str:
     memory = memory_path.read_text(encoding="utf-8") if memory_path.is_file() else ""
     parts.append(memory.strip() or "warning: memory unavailable\n")
     return "".join(parts)
+
+
+def questions_block(persona: str, config: dict) -> str:
+    """The orchestrator's questions for one lens (`assemble.json` `questions`), last in the package; "" when none.
+
+    Placed last so they are read after the evidence they point into; `check-packages` refuses a package without
+    them, so a missing entry surfaces before dispatch rather than as a silently weaker review.
+    """
+    asked = [str(item).strip() for item in (config.get("questions") or {}).get(persona) or [] if str(item).strip()]
+    if not asked:
+        return ""
+    lines = [QUESTIONS_HEADING, "",
+             "Questions the orchestrator wrote for your lens from this diff and the spec's risks. Answer each, as a "
+             "finding when the answer is a defect, else in one line after your `Assessment:` line. They add to your "
+             "lens; they never narrow it.", ""]
+    return "\n".join(lines + [f"{number}. {question}" for number, question in enumerate(asked, 1)]) + "\n"
 
 
 def guidance_block(review_dir: Path, persona: str, config: dict) -> tuple[str, dict]:

@@ -100,6 +100,21 @@ def test_a_wildcard_keeps_every_section(tmp: Path) -> None:
     assert "## Code Style Guidelines" in text and "## Data model" in text
 
 
+def test_lens_questions_come_last_and_check_packages_requires_them(tmp: Path) -> None:
+    asked = ["Does any other prompt still state the old rule?", "Which agent loads prompt.md and when?"]
+    run = build(tmp, {"questions": {"prompt-quality": asked}})
+    text = read(run, "prompt-quality")
+    section = text[text.index("## Questions for this lens"):]
+    assert text.index("# Prompt tier") < text.index("## Questions for this lens"), "questions follow the evidence"
+    assert f"1. {asked[0]}" in section and f"2. {asked[1]}" in section
+    assert "## Questions for this lens" not in read(run, "adversarial"), "a persona without questions gets no section"
+    findings_tool = TOOL.with_name("crew-review-findings.py")
+    ok = cli(findings_tool, "check-packages", "--review-dir", str(run), "--personas", "prompt-quality")
+    assert ok.returncode == 0, ok.stderr
+    missing = cli(findings_tool, "check-packages", "--review-dir", str(run), "--personas", "adversarial")
+    assert missing.returncode == 1 and "has no `## Questions for this lens` section" in missing.stderr
+
+
 def test_a_missing_layer_map_still_produces_a_package(tmp: Path) -> None:
     run = build(tmp)
     (run / "layers.json").unlink()

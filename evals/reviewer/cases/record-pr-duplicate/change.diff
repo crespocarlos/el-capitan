@@ -1,0 +1,54 @@
+diff --git a/.agent/tools/task/task_record_pr.py b/.agent/tools/task/task_record_pr.py
+new file mode 100644
+--- /dev/null
++++ b/.agent/tools/task/task_record_pr.py
+@@ -0,0 +1,49 @@
++"""`record-pr`: after `gh pr create`, record the PR on its task and run the DONE gate (excerpt)."""
++from __future__ import annotations
++
++import json
++import re
++import uuid
++from pathlib import Path
++
++CLOSED = ("DONE", "ABANDONED")
++
++
++def slug_of(title: str) -> str:
++    """A task slug from a PR title: lowercase words joined by `-`, at most 60 characters."""
++    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60].rstrip("-") or "pr"
++
++
++def minimal_task(tasks_dir: Path, found: Pull, scoped: list[TaskState]) -> str:
++    """A DONE task for a PR opened with no spec, in a repo that already has tasks; no gate runs."""
++    owner = next(r for repo in found.repos for r in scoped if r.repo.lower() == repo)
++    directory = tasks_dir / str(uuid.uuid4()).upper()
++    directory.mkdir(parents=True)
++    meta = {"uuid": directory.name, "repo_remote_url": owner.meta["repo_remote_url"], "branch": found.branch,
++            "slug": slug_of(found.title), "created_at": utc_stamp()}
++    atomic_write(directory / ".task-id", json.dumps(meta, indent=2) + "\n")
++    title = found.title or found.url
++    atomic_write(directory / "SPEC.md", f"# {title}\n\n## Status\nDONE\n\n## Summary\n"
++                 f"Recorded by the PR hook: {found.url} was opened with no spec.\n")
++    append_pr(directory, found.url)
++    return f"record-pr: no task for {found.branch}; recorded {found.url} as DONE task {directory} (no spec)"
++
++
++def place(found: Pull, tasks_dir: Path) -> list[str]:
++    """Record the PR on its task: the single open `branch` match, else the single match; never on a spec branch."""
++    scoped = tasks_in(tasks_dir, found.repos)
++    matches = [r for r in scoped if r.meta.get("branch") == found.branch]
++    chosen = [r for r in matches if head(r) not in CLOSED] or matches
++    if len(chosen) > 1:
++        return candidates(f"{len(chosen)} tasks match {found.repos[0]} {found.branch}", chosen, found.url)
++    if chosen:
++        r = chosen[0]
++        if head(r) == "IMPLEMENTING":
++            return close(r, found.url, found.branch)
++        done = "recorded PR" if append_pr(r.task, found.url) else "already has"
++        return [f"record-pr: {r.slug} ({head(r) or 'no status'}): {done} {found.url}"]
++    drafted = [r for r in scoped if r.meta.get("spec_branch") == found.branch]
++    if drafted:
++        names = ", ".join(r.slug for r in drafted)
++        return candidates(f"{found.branch} is the spec branch of {names}", drafted, found.url)
++    return [minimal_task(tasks_dir, found, scoped)] if scoped else []

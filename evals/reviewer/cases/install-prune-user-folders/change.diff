@@ -1,0 +1,41 @@
+diff --git a/install.sh b/install.sh
+--- a/install.sh
++++ b/install.sh
+@@ -6,22 +6,25 @@
+     run ln -sf "$SCRIPT_DIR/.cursor/skills/$name/SKILL.md" ~/.cursor/skills/$name/SKILL.md
+     link_dir_files "$SCRIPT_DIR/.cursor/skills/$name/references" ~/.cursor/skills/$name/references
+   done
+-  shopt -u nullglob
+-  # Prune skill subdirs whose SKILL.md symlink is broken (skill was deleted from source)
+-  shopt -s nullglob
++  # A file deleted or moved in the repo leaves a dangling link in its skill folder, at any depth (a whole
++  # skill, or one reference). Drop the dangling links into this checkout, then the folders that left empty.
++  # `find` does not follow links, and a link elsewhere or a regular file is the user's, so both stay.
+   for d in ~/.cursor/skills/*/; do
+-    skill_md="$d/SKILL.md"
+-    [[ -L "$skill_md" ]] || continue
+-    target=$(readlink "$skill_md")
+-    [[ "$target" == "$SCRIPT_DIR"* ]] || continue
+-    if [ ! -e "$skill_md" ]; then
++    [[ -L "${d%/}" ]] && continue
++    pruned=0
++    while IFS= read -r link; do
++      target=$(readlink "$link")
++      [[ "$target" == "$SCRIPT_DIR"/* && ! -e "$link" ]] || continue
++      pruned=1
+       if [ "$DRY_RUN" -eq 1 ]; then
+-        echo "  [dry-run] remove stale skill dir: $d"
++        echo "  [dry-run] remove broken symlink: $link -> $target"
+       else
+-        echo "  Removing stale skill: $(basename "$d")"
+-        rm -f "$skill_md"
+-        rmdir "$d" 2>/dev/null || true
++        echo "  Removing stale symlink: ${link#"$HOME"/}"
++        rm -f "$link"
+       fi
++    done < <(find "$d" -type l)
++    if [ "$pruned" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
++      find "$d" -depth -type d -empty -delete
+     fi
+   done
+   shopt -u nullglob

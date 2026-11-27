@@ -1,0 +1,43 @@
+{
+  "id": "lookups-critic-verdict",
+  "lens": "prompt-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 2D916668, review 20261127143927, prompt-quality finding 3",
+  "summary": "Lookup guidance moves into one shared reference, `lookups.md`; the spec critic contract, which `crew-specwriter` appends to every critic dispatch, gains the one-line pointer to it.",
+  "defect": "lookups.md puts the `code search unreachable` line \"at the end\" when the agent's file names no place, and the critic contract names none: a critic that follows it ends after its `Verdict:` line, so the specwriter treats a complete critique as incomplete.",
+  "locations": [
+    {
+      "file": ".cursor/agents/references/lookups.md",
+      "line": 18
+    },
+    {
+      "file": ".cursor/agents/references/critic-contract.md",
+      "line": 8
+    },
+    {
+      "file": ".cursor/agents/references/critic-contract.md",
+      "line": 18
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "verdict"
+    ],
+    [
+      "last line",
+      "final line",
+      "at the end",
+      "ends",
+      "end of",
+      "after the",
+      "last"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".cursor/agents/references/lookups.md": "# Lookups\n\nHow an agent finds code it cannot name and checks a product or API fact. Your own file still\nsets your budget, your tools and where a note goes in your output; this file sets which lookup to\nmake and what to do when it cannot be made.\n\nThe servers are the ones named in `~/.agent/config.json` `mcp`: `code_search` for the code index,\n`docs` for the docs server.\n\n## Code you cannot locate\n\nSearch the code index before a text search: it ranks by relevance across whole repositories, so it\nfinds implementations you could not have guessed the words for. When you already know the file and\nline, read it directly; the index is for discovery.\n\nWhen the index is not in your tools, or a call fails, use the equivalent `Grep`/`Glob`/`Read` call and\nsay so in one line of your output: `code search unreachable: used text search`. Your own file says\nwhere that line goes; without such a place, put it at the end. The reader needs it to know the\nresults were not ranked.\n\n## Product and API facts\n\nAny claim about product, API, query-language or configuration behaviour that your work depends on\n(writing it, reviewing it, or answering a comment about it) is checked on the docs server and cited\nby URL. Search the docs (`search_internal_docs`), then fetch the page you cite. Never settle such a\nclaim from memory: a guessed option reads the same as a verified one.\n\nWith no docs server in your tools, or a failed lookup, mark the claim\n`unverified (docs server unreachable)` and leave it unsettled rather than deciding it from code or\nmemory.\n",
+    ".cursor/agents/references/critic-contract.md": "# Spec critic contract\n\n`crew-specwriter` appends this file to the dispatch prompt of each spec critic. The critic's own file sets\nits lens; this file sets evidence, budget and output.\n\n## Evidence\n\nLookups: follow `~/.cursor/agents/references/lookups.md` when you need code you cannot locate or a product or API fact.\n\nVerify the spec's claims against the codebase, and flag a claim you could not verify instead of\nassuming it.\n\n## Output\n\nGroup findings by severity (**Critical**, **Important**, **Consider**), omitting an empty level. At most 5\nfindings across all levels.\n\n**End with one outcome line.** `Verdict: N finding(s)` after the findings, and `Verdict: 0 finding(s)` for a\nclean pass. The specwriter cannot tell a budget stop from a clean pass, so a reply whose last line is not\nthe Verdict line is treated as incomplete, not as approval.\n"
+  }
+}

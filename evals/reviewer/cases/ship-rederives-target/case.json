@@ -1,0 +1,43 @@
+{
+  "id": "ship-rederives-target",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 1D001C12, review 20261127171102, consolidated finding (adversarial and code-quality)",
+  "summary": "`crew-task.py ship <TASK_DIR>` commits, pushes and opens the task's draft PR in one step. Gate 2 (`mark-implementing`) records the task's repository (`repo_remote_url`), branch, worktree and base in `.task-id` (an example is in the working directory as `.task-id`); `ship` runs in that worktree and refuses when it is not on the task's branch.",
+  "defect": "`where_to` re-derives remote, base and target from whatever remotes the worktree has (upstream first) and the default branch, instead of the values Gate 2 recorded, and never checks that the worktree's remote is the task's `repo_remote_url`: a stray `upstream` or a reused path sends the PR to another repository or base.",
+  "locations": [
+    {
+      "file": ".agent/tools/task/task_ship.py",
+      "line": 10
+    },
+    {
+      "file": ".agent/tools/task/task_ship.py",
+      "line": 13
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "recorded",
+      "task's repo*",
+      "gate 2",
+      "source of truth",
+      "re-deriv*",
+      "rederiv*",
+      "deriv*"
+    ],
+    [
+      "remote*",
+      "upstream",
+      "base",
+      "target*"
+    ]
+  ],
+  "context": {
+    ".task-id": "{\n  \"uuid\": \"6F0C1D2E-0000-4000-8000-000000000001\",\n  \"repo_remote_url\": \"git@github.com:acme/widgets.git\",\n  \"slug\": \"widgets-retry-budget\",\n  \"spec_branch\": \"main\",\n  \"branch\": \"feat/retry-budget\",\n  \"worktree\": \"/home/dev/worktrees/widgets-retry-budget\",\n  \"base\": \"main\",\n  \"created_at\": \"2026-11-20T10:00:00Z\"\n}\n"
+  },
+  "after": {
+    ".agent/tools/task/task_ship.py": "\"\"\"`crew-task.py ship`: stage, commit, merge the base, re-run the spec's tests, push, open a draft PR (excerpt).\"\"\"\nfrom __future__ import annotations\n\nfrom pathlib import Path\n\n\ndef where_to(task: TaskState, tree: Path) -> tuple[str, str, str, str]:\n    \"\"\"(remote, base, target, head ref): a fork's PR targets `upstream`; the base is the spec's `## Base:` or the\n    remote's default branch. Raises `Stop` when the target repository cannot be named.\"\"\"\n    remote = \"upstream\" if remote_url(tree, \"upstream\") else \"origin\"\n    named = SPEC_BASE.search(task.text)\n    base = named.group(1) if named else default_branch(tree, remote)\n    target = slug_from_url(remote_url(tree, remote)) or (task.repo if remote == \"origin\" else \"\")\n    if not target:\n        raise Stop(f\"cannot name the GitHub repository of '{remote}' or of the task\")\n    branch = current_branch(tree)\n    if remote == \"origin\":\n        return remote, base, target, branch\n    owner = (slug_from_url(remote_url(tree, \"origin\")) or \"\").split(\"/\")[0]\n    return remote, base, target, f\"{owner}:{branch}\" if owner else branch\n\n\ndef prepare(task_dir: Path, title: str, body_file: Path) -> Ship | str:\n    \"\"\"The ship context, or why it cannot start (exit 2).\"\"\"\n    task = load(task_dir)\n    branch, recorded = task.meta.get(\"branch\") or \"\", task.meta.get(\"worktree\") or \"\"\n    tree = Path(recorded) if recorded else None\n    if tree is None or not tree.is_dir():\n        return f\"{name(task)}: the recorded worktree {recorded or '(none)'} is missing; run mark-implementing --root\"\n    actual = current_branch(tree)\n    if not branch or actual != branch:\n        return f\"{name(task)}: {tree} is on {actual}, not the task's branch {branch or '(none recorded)'}\"\n    remote, base, target, head_ref = where_to(task, tree)\n    return Ship(task, tree, branch, remote, base, target, head_ref, title, body_file)\n"
+  }
+}
