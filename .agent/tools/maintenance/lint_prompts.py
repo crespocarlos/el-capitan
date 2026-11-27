@@ -107,29 +107,31 @@ def lint_budget(root: Path, all_files: list[Path], rules: set[str]) -> Findings:
 
 # The source of truth for skills that may activate without an explicit `crew` command.
 MODEL_INVOCABLE_SKILLS = {"crew-evals", "spec-writing", "prompt-authoring"}
-# No agent has a `tools:` line, so each inherits every session tool in Claude Code, MCP servers
-# included, and its class's exact `disallowedTools` denies the rest: the native writers and the tools
-# that act outside the review, and by pattern the MCP servers whose tools write. Read-only search
-# servers (the docs server, Sourcerer, semantic code search) stay available; a server added later and
-# not listed is inherited until it is added here (.agent/tools/AGENTS.md).
-READONLY_AGENT_DENY = ("Write", "Edit", "NotebookEdit", "Bash", "Agent", "Artifact", "ArtifactData", "ArtifactComments", "EnterWorktree", "ExitWorktree",
-                       "SendMessage", "TaskStop", "Skill", "mcp__github__*", "mcp__gitlab__*", "mcp__slack__*", "mcp__linear__*", "mcp__jira__*",
-                       "mcp__atlassian__*", "mcp__notion__*", "mcp__filesystem__*", "mcp__claude_ai_Claude_Docs__*")
-# crew-pr-resolver keeps Bash for `gh` reads and probes, and still never edits, pushes or posts.
-RESOLVER_AGENT_DENY = tuple(tool for tool in READONLY_AGENT_DENY if tool != "Bash")
-# reviewer-probe keeps Write and Bash for the throwaway artifact it runs and deletes.
-PROBE_AGENT_DENY = tuple(tool for tool in READONLY_AGENT_DENY if tool not in {"Write", "Bash"})
-# The agents outside the read-only class: (readonly: true expected, exact disallowedTools). A probe
-# and the builder write, so `readonly` would block them; the orchestrators run inline (the router
-# refuses to dispatch them), so `readonly`, a subagent-only field, never applies (None), and neither
-# they nor the builder carry a deny list. Every other agent is (True, READONLY_AGENT_DENY).
-AGENT_CLASSES: dict[str, tuple[bool | None, tuple[str, ...]]] = {
-    "crew-pr-resolver": (True, RESOLVER_AGENT_DENY),
-    "reviewer-probe": (False, PROBE_AGENT_DENY),
-    "crew-builder": (False, ()),
-    "crew-reviewer": (None, ()),
-    "crew-specwriter": (None, ()),
+# A dispatched agent's `tools:` line is an allowlist: its class's native tools, then the placeholder install
+# fills with one `mcp__<server>__*` per server in `mcp` of ~/.agent/config.json (.claude/install_blocks.py).
+# A deny list cannot keep out claude.ai connectors, plugin servers or tools the harness adds later; an
+# allowlist names exactly what the agent reaches. Agents that inherit (the writer and the inline
+# orchestrators) carry no `tools:` line, and no agent carries `disallowedTools`.
+MCP_PLACEHOLDER = "{{mcp_servers}}"
+READONLY_AGENT_TOOLS = ("Read", "Grep", "Glob")
+# crew-pr-resolver is told never to edit, push or post; Bash (kept for `gh` reads and probes) makes that an
+# instruction, not a deny.
+RESOLVER_AGENT_TOOLS = (*READONLY_AGENT_TOOLS, "Bash")
+# reviewer-probe writes one throwaway artifact and runs it; with Bash, "no edit outlives the run" is likewise
+# an instruction, not a deny.
+PROBE_AGENT_TOOLS = (*READONLY_AGENT_TOOLS, "Write", "Bash")
+# The agents outside the read-only class: (readonly: true expected, native tools, or None to inherit). The
+# probe and the builder write, so `readonly` would block them; the orchestrators run inline (the router
+# refuses to dispatch them), so `readonly`, a subagent-only field, never applies (None). Every other agent
+# is (True, READONLY_AGENT_TOOLS).
+AGENT_CLASSES: dict[str, tuple[bool | None, tuple[str, ...] | None]] = {
+    "crew-pr-resolver": (True, RESOLVER_AGENT_TOOLS),
+    "reviewer-probe": (False, PROBE_AGENT_TOOLS),
+    "crew-builder": (False, None),
+    "crew-reviewer": (None, None),
+    "crew-specwriter": (None, None),
 }
+TOOLS_LINE = re.compile(r"^tools:[ \t]*(.*)$", re.MULTILINE)
 MANIFEST = ".agent/tools/tools.json"
 MCP_REFERENCE = re.compile(r"mcp__([a-z0-9-]+)__([a-z0-9_]+)")
 
@@ -195,10 +197,15 @@ def lint_skill_setup(root: Path) -> Findings:
     return findings
 
 
+def expected_tools(native: tuple[str, ...]) -> str:
+    """The exact `tools:` value of an allowlist class: its native tools, then the placeholder install fills."""
+    return ", ".join(native) + MCP_PLACEHOLDER
+
+
 def lint_agent_readonly(root: Path) -> Findings:
-    """Each agent follows its class in AGENT_CLASSES (else the read-only class): `readonly: true` as
-    the class says (Cursor), no `tools:` line, and `disallowedTools` equal to the class list (Claude
-    Code), so every agent inherits the session's MCP servers and denies only what its class must not use."""
+    """Each agent follows its class in AGENT_CLASSES (else the read-only class): `readonly: true` as the
+    class says (Cursor), and in Claude Code either exactly its class's `tools:` line with the placeholder
+    or, for an inheriting agent, none; no agent carries `disallowedTools`."""
     findings: Findings = []
     agent_dir = root / ".cursor/agents"
     if not agent_dir.is_dir():
@@ -209,24 +216,39 @@ def lint_agent_readonly(root: Path) -> Findings:
             findings.append((rel(root, path), 1, f"{error_kind}-agent-frontmatter", error))
             continue
         name = rel(root, path)
-        readonly, deny = AGENT_CLASSES.get(path.stem, (True, READONLY_AGENT_DENY))
+        readonly, native = AGENT_CLASSES.get(path.stem, (True, READONLY_AGENT_TOOLS))
         declared = re.search(r"^readonly:\s*(true|false)\s*$", frontmatter_text, re.MULTILINE)
         if readonly is False and declared and declared.group(1) == "true":
             findings.append((name, 1, "unexpected-readonly", f"{path.stem} writes, so readonly: true would block every edit"))
         elif readonly and (not declared or declared.group(1) != "true"):
             findings.append((name, 1, "missing-readonly", "set readonly: true, or give the agent a class in AGENT_CLASSES in lint_prompts.py "
-                             "(READONLY_AGENT_DENY, RESOLVER_AGENT_DENY, PROBE_AGENT_DENY, or none for a writer) with a reason"))
-        tools_line = re.search(r"^tools:", frontmatter_text, re.MULTILINE)
-        if tools_line:
-            findings.append((name, line_no(frontmatter_text, tools_line.start()) + 1, "agents-inherit-tools",
-                             "drop the tools: line: an allowlist shuts out every MCP server in Claude Code; deny by class with disallowedTools"))
-        listed = re.search(r"^disallowedTools:(.*)$", frontmatter_text, re.MULTILINE)
-        entries = {item.strip() for item in (listed.group(1) if listed else "").split(",")} - {""}
-        if entries != set(deny):
-            missing, extra = sorted(set(deny) - entries), sorted(entries - set(deny))
-            findings.append((name, 1, "agents-inherit-tools", f"disallowedTools differs from the {path.stem if path.stem in AGENT_CLASSES else 'read-only'} "
-                             f"class list (missing: {', '.join(missing) or 'none'}; extra: {', '.join(extra) or 'none'}); "
-                             + (f"set it to {', '.join(deny)}" if deny else "remove it")))
+                             "(READONLY_AGENT_TOOLS, RESOLVER_AGENT_TOOLS, PROBE_AGENT_TOOLS, or None to inherit) with a reason"))
+        tools_line = TOOLS_LINE.search(frontmatter_text)
+        where = line_no(frontmatter_text, tools_line.start()) + 1 if tools_line else 1
+        if native is None and tools_line:
+            findings.append((name, where, "agents-inherit-tools", f"{path.stem} inherits the session's tools: drop the tools: line"))
+        elif native is not None and (not tools_line or tools_line.group(1).strip() != expected_tools(native)):
+            findings.append((name, where, "agents-inherit-tools", f"set tools: {expected_tools(native)} (the class list in AGENT_CLASSES, "
+                             "then the placeholder install fills with the configured MCP servers)"))
+        if re.search(r"^disallowedTools:", frontmatter_text, re.MULTILINE):
+            findings.append((name, 1, "agents-inherit-tools", "drop disallowedTools: the tools: allowlist decides what the agent reaches"))
+    return findings
+
+
+def lint_native_tool_ids(root: Path, native: set[str]) -> Findings:
+    """Each native id of an agent's `tools:` line and of every class list is in `native_tools`, so a typo fails."""
+    findings: Findings = []
+    for stem, (_, tools) in {"read-only class": (True, READONLY_AGENT_TOOLS), **AGENT_CLASSES}.items():
+        findings += [(".agent/tools/maintenance/lint_prompts.py", 1, "tool-id-unknown", f"{tool} ({stem} in AGENT_CLASSES) is not in native_tools")
+                     for tool in tools or () if tool not in native]
+    for path in sorted((root / ".cursor/agents").glob("*.md")):
+        text = path.read_text(errors="replace")
+        frontmatter_text, _, error = parse_frontmatter(text)
+        match = TOOLS_LINE.search(frontmatter_text or "") if not error else None
+        for tool in (match.group(1).replace(MCP_PLACEHOLDER, "").split(",") if match else []):
+            if tool.strip() and not tool.strip().startswith("mcp__") and tool.strip() not in native:
+                findings.append((rel(root, path), line_no(frontmatter_text or "", match.start()) + 1, "tool-id-unknown",
+                                 f"{tool.strip()} is not in native_tools of tools.json"))
     return findings
 
 
@@ -267,8 +289,8 @@ def lint_mcp_references(root: Path, paths: list[Path], servers: dict[str, list[s
 
 
 def lint_tool_surface(root: Path, all_files: list[Path]) -> Findings:
-    """The catalog check, then the MCP reference check; a malformed catalog suppresses the references."""
-    servers, _, findings = load_tool_surface(root)
+    """The catalog check, then the MCP reference and native id checks; a malformed catalog suppresses both."""
+    servers, native, findings = load_tool_surface(root)
     if findings:
         return findings
-    return lint_mcp_references(root, all_files, servers)
+    return lint_mcp_references(root, all_files, servers) + lint_native_tool_ids(root, native)

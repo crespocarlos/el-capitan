@@ -8,7 +8,9 @@ anything changes. Then the settings entries install recorded as added (`~/.agent
 and the managed blocks go, and only then the links, so a guard is never registered without its
 script. A link whose script a remaining registration still runs is kept. The links are found by the
 install layout (`install_blocks.LINKS`) and removed when they point into the recorded checkout, by
-real path; the directories install created go when empty. Exit 0 when nothing of the install is left,
+real path; each recorded Claude config dir loses its settings entries, blocks and `agents`/`skills`
+links into ~/.cursor; the rendered agent copies the manifest records (`rendered_agents`) go with the links;
+the directories install created go when empty. Exit 0 when nothing of the install is left,
 1 when links remain (each is reported), 2 when the run refused before changing anything.
 ~/.agent data stays.
 """
@@ -25,7 +27,6 @@ import merge_claude_settings
 import merge_cursor_hooks
 from install_blocks import MANIFEST, commands_in, hook_scripts, inside, layout_links, target_of, write_json
 
-SETTINGS = {"claude_settings": Path(".claude/settings.json"), "cursor_hooks": Path(".cursor/hooks.json")}
 TEMPLATES = {"claude_settings": Path(".claude/settings.json"), "cursor_hooks": Path(".cursor/hooks.template.json")}
 SHOWN = 5
 # A dangling link whose target ends in a path the install layout links from: an install from a checkout
@@ -50,9 +51,43 @@ def checkout_of(path: str) -> str | None:
     return None
 
 
+def settings_files(home: Path) -> dict[str, Path]:
+    """Each settings file install merges into, by manifest section: every Claude config dir's, then Cursor's."""
+    found = {install_blocks.settings_section(home, directory): directory / "settings.json"
+             for directory in install_blocks.config_dirs(home)}
+    return {**found, "cursor_hooks": home / ".cursor" / "hooks.json"}
+
+
+def template_of(section: str) -> Path:
+    return TEMPLATES["claude_settings" if section.startswith("claude_settings") else section]
+
+
+def config_links(home: Path) -> list[Path]:
+    """The links install wrote into the other config dirs: `agents` and `skills`, or, inside a real one, each link
+    named after the ~/.cursor entry it points to. A user's link elsewhere, or under another name, is not one."""
+    cursor = os.path.realpath(home / ".cursor")
+    found = []
+    for directory in install_blocks.config_dirs(home)[1:]:
+        for name in ("agents", "skills"):
+            link = directory / name
+            if link.is_symlink():
+                found += [link] if target_of(link) == os.path.join(cursor, name) else []
+            elif link.is_dir():
+                found += [entry for entry in sorted(link.iterdir()) if entry.is_symlink()
+                          and points_at(entry, os.path.join(cursor, name))]
+    return found
+
+
+def points_at(entry: Path, directory: str) -> bool:
+    """True when the link names `directory`/<its own name>; the entry there may itself be a link, so the
+    link text is compared, not its fully resolved target."""
+    raw = os.readlink(entry)
+    return os.path.basename(raw) == entry.name and os.path.realpath(os.path.dirname(raw)) == directory
+
+
 def owned_links(home: Path, roots: set[str]) -> tuple[list[Path], dict[str, int]]:
-    """The links into `roots` (plus `~/.claude/agents|skills` into `~/.cursor`), and other checkouts' link counts."""
-    owned, others = [], {}
+    """The links into `roots` (plus the config dirs' agents and skills links), and other checkouts' link counts."""
+    owned, others = config_links(home), {}
     for link in layout_links(home):
         target = target_of(link)
         if link.parent == home / ".claude":
@@ -68,8 +103,7 @@ def owned_links(home: Path, roots: set[str]) -> tuple[list[Path], dict[str, int]
 def read_settings(home: Path) -> dict[str, dict | None]:
     """Each settings file as JSON (None when absent); an unreadable one or a non-object refuses."""
     found = {}
-    for section, relative in SETTINGS.items():
-        path = home / relative
+    for section, path in settings_files(home).items():
         if not path.exists():
             found[section] = None
             continue
@@ -89,7 +123,7 @@ def capped(items: list[str]) -> str:
 
 def entry_ids(section: str, data: dict) -> tuple[set[str], set[tuple[str, str]]]:
     """The rules and (event, command) registrations a settings document holds."""
-    if section == "claude_settings":
+    if section.startswith("claude_settings"):
         return merge_claude_settings.held_rules(data), merge_claude_settings.hook_ids(data.get("hooks"))
     return set(), merge_cursor_hooks.pairs(data.get("hooks"))
 
@@ -116,7 +150,7 @@ def resolve_legacy(home: Path, section: str, recorded: dict, template: dict, sin
     if not legacy:
         return recorded, []
     before = since if isinstance(since, (int, float)) and not isinstance(since, bool) else None
-    oldest = install_blocks.oldest_backup(home / SETTINGS[section], before)
+    oldest = install_blocks.oldest_backup(settings_files(home)[section], before)
     try:
         snapshot = json.loads(oldest.read_text(encoding="utf-8")) if oldest else None
     except (OSError, ValueError):
@@ -134,7 +168,8 @@ def resolve_legacy(home: Path, section: str, recorded: dict, template: dict, sin
              "hooks": [pair for pair in legacy.get("hooks", []) if tuple(pair) not in hooks],
              "events": [event for event in template.get("hooks", {}) if event not in old_hooks],
              "lists": [name for name in template.get("permissions", {}) if name not in old_lists],
-             "keys": [key for key in (*template, "version") if key not in snapshot]}
+             "keys": [key for key in (*template, *merge_claude_settings.AUTO_MEMORY_OFF, "version")
+                      if key not in snapshot]}
     return install_blocks.union(recorded, extra), []
 
 
@@ -145,8 +180,8 @@ def plan_settings(home: Path, checkout: Path, manifest: dict | None, current: di
     for section, data in current.items():
         if data is None:
             continue
-        template = json.loads((checkout / TEMPLATES[section]).read_text(encoding="utf-8"))
-        name = tilde(home / SETTINGS[section], home)
+        template = json.loads((checkout / template_of(section)).read_text(encoding="utf-8"))
+        name = tilde(settings_files(home)[section], home)
         left = json.loads(json.dumps(data))
         recorded = (manifest or {}).get(section)
         if manifest is None:
@@ -169,8 +204,8 @@ def plan_settings(home: Path, checkout: Path, manifest: dict | None, current: di
 
             def warn(text: str, name: str = name) -> None:
                 print(f"  warning: {name}: {text}")
-            left = (merge_claude_settings.unmerge(left, recorded, template, warn) if section == "claude_settings"
-                    else merge_cursor_hooks.unmerge(left, recorded, template, warn))
+            merger = merge_claude_settings if section.startswith("claude_settings") else merge_cursor_hooks
+            left = merger.unmerge(left, recorded, template, warn)
         after[section] = left
     return after, notes
 
@@ -192,7 +227,8 @@ def uninstall(home: Path, checkout: Path, dry_run: bool) -> int:
     # This checkout and every one install recorded: a link into any of them is the install's.
     roots = {os.path.realpath(checkout), str(checkout), *(manifest or {}).get("checkouts", [])}
     links, others = owned_links(home, roots)
-    if others and all(link.parent == home / ".claude" for link in links):
+    in_config = set(config_links(home))
+    if others and all(link.parent == home / ".claude" or link in in_config for link in links):
         other = max(others, key=others.get)
         raise Refused(f"installed from {other}; run {other}/install.sh --uninstall")
     current = read_settings(home)
@@ -203,7 +239,7 @@ def uninstall(home: Path, checkout: Path, dry_run: bool) -> int:
     kept = {link: keep[link] for link in links if link in keep}
     verb = "would remove" if dry_run else "removed"
     for section, data in after.items():
-        path = home / SETTINGS[section]
+        path = settings_files(home)[section]
         if data == current[section]:
             continue
         # A symlinked file (dotfiles) keeps its link: it is written as `{}` rather than deleted.
@@ -225,11 +261,16 @@ def uninstall(home: Path, checkout: Path, dry_run: bool) -> int:
         else:
             install_blocks.write_atomically(path, text)
     print(f"  {verb} {len(removing)} link(s) into {', '.join(sorted(roots))}")
+    rendered = install_blocks.rendered_files(home, manifest)
+    if rendered:
+        print(f"  {verb} {len(rendered)} rendered agent(s) from ~/.cursor/agents")
     if not dry_run:
-        for link in removing:
-            link.unlink()
-        for name in sorted((manifest or {}).get("dirs", []), key=lambda d: d.count("/"), reverse=True):
-            directory = home / name
+        for path in [*removing, *rendered]:
+            path.unlink()
+        # `dirs` are relative to HOME; `created_config_dirs` are absolute, wherever the config dir lives.
+        relative = sorted((manifest or {}).get("dirs", []), key=lambda d: d.count("/"), reverse=True)
+        absolute = [Path(name) for name in (manifest or {}).get("created_config_dirs", []) if os.path.isabs(name)]
+        for directory in [home / name for name in relative if not os.path.isabs(name)] + absolute:
             if directory.is_dir() and not directory.is_symlink() and not any(directory.iterdir()):
                 directory.rmdir()
     for line in review:

@@ -104,11 +104,14 @@ feature list.
 
 | Path | What lands there |
 |---|---|
-| `~/.cursor/rules/`, `~/.cursor/agents/`, `~/.cursor/skills/` | Symlinks into this repository; `~/.cursor/hooks.json` is merged, not replaced |
+| `~/.cursor/rules/`, `~/.cursor/agents/`, `~/.cursor/skills/` | Symlinks into this repository, except the read-only agents, written as files rendered with your `mcp` servers; `~/.cursor/hooks.json` is merged, not replaced |
 | `~/.claude/CLAUDE.md`, `~/.claude/agents/`, `~/.claude/skills/`, `~/.claude/hooks/` | Symlinks and a managed block, plus hook registrations and permission rules merged into `~/.claude/settings.json` (backed up first) |
+| Every other Claude config dir: `$CLAUDE_CONFIG_DIR`, each `--claude-config-dir DIR` | The same settings merge (the hooks stay in `~/.claude/hooks`); no CLAUDE.md block, because Claude Code reads the user CLAUDE.md from `~/.claude` whatever the config dir. `agents` and `skills` are linked into `~/.cursor`, or, when one is a real directory, each crew entry is linked inside it beside your own; your own links and files there are kept and named, never replaced. The dirs are recorded, so a later install, uninstall and `crew doctor` cover them; a recorded dir you deleted is dropped, not recreated |
+| Each config dir's `settings.json`: `autoMemoryEnabled` | `false`, so crew memory is the one memory store; written only once that dir's Claude auto-memory entries are imported ([Memory](docs/memory.md#claude-code-auto-memory)). A value you set is kept |
 | `~/.codex/AGENTS.md` | A managed instruction block, the same content as the Claude Code one |
 | `~/.agent/bin/` | One symlink per command in `.agent/tools/tools.json` |
-| `~/.agent/install-manifest.json` | What install added to your settings files, so uninstall removes exactly that |
+| `~/.agent/install-manifest.json` | What install added to your settings files and the read-only agents it rendered, so uninstall removes exactly that |
+| `~/.agent/config.json` `mcp` | Your docs and code-search MCP server names (`{"docs": [...], "code_search": [...]}`); install adds them to the read-only agents' tool allowlists |
 | `~/.agent/memory/`, `~/.agent/tasks/`, `~/.agent/journal/` | Your data: memory units, task state, journal. Created once, never overwritten |
 
 No file is copied: the links point into your clone, so `git pull` updates everything. Run

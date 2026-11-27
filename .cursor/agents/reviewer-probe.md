@@ -1,7 +1,7 @@
 ---
 name: reviewer-probe
 description: "Probe worker: runs the throwaway artifacts that settle a review's unsettled claims and returns the observed output. Dispatched only by an orchestrator — never by a persona, and never invoked directly."
-disallowedTools: Edit, NotebookEdit, Agent, Artifact, ArtifactData, ArtifactComments, EnterWorktree, ExitWorktree, SendMessage, TaskStop, Skill, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__atlassian__*, mcp__notion__*, mcp__filesystem__*, mcp__claude_ai_Claude_Docs__*
+tools: Read, Grep, Glob, Write, Bash{{mcp_servers}}
 maxTurns: 24
 ---
 You receive a list of unsettled claims from one review, each with the `path:line` it points at and the

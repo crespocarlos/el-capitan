@@ -2,7 +2,8 @@
 
 An entry is `[<UTC stamp>] <KIND>: <body>` (`YYYY-MM-DDTHH:MM:SSZ`, `lib.clock`); legacy local stamps
 still parse. `CREW_WORKFLOW`/`CREW_MEMBER` add a JSON suffix to a transition. A stage cost line
-(`stage_start`/`stage_end ... tokens_reported=<n|unknown>`) is validated here; `unknown` is a value.
+(`stage_start`/`stage_end ... tokens_reported=<n|unknown>`) and `agent_end ... tokens=<n>` are validated here;
+an `agent_end` counts toward the stage of the `stage_start` before it, and replaces that stage's `tokens_reported`.
 """
 from __future__ import annotations
 
@@ -18,7 +19,10 @@ from lib.clock import parse_stamp, utc_stamp
 
 STAGES = {"implement": "workers", "review": "personas"}
 KEYS = ("stage_start", "stage_end")
-METRIC = re.compile(r"METRIC:\s+(stage_start|stage_end)\b(.*)$")
+METRIC = re.compile(r"METRIC:\s+(stage_start|stage_end|agent_end)\b(.*)$")
+AGENT_END = "agent_end"
+AGENT_COUNTS = ("tokens", "input", "output", "cache_read", "cache_write")
+UNSTAGED = "other"  # the stage of an `agent_end` with no `stage_start` before it
 
 
 def fields(words: list[str]) -> dict[str, str]:
@@ -31,6 +35,11 @@ def validate(words: list[str]) -> str | None:
     tokens = given.get("tokens_reported")
     if tokens is not None and tokens != "unknown" and not tokens.isdigit():
         return f"tokens_reported must be a count or `unknown`, got {tokens!r}"
+    if words and words[0] == AGENT_END:
+        if "tokens" not in given:
+            return "agent_end needs tokens=<n>"
+        bad = [key for key in AGENT_COUNTS if key in given and not given[key].isdigit()]
+        return f"{bad[0]} must be a count, got {given[bad[0]]!r}" if bad else None
     if not words or words[0] not in KEYS:
         return None
     if given.get("stage") not in STAGES:
@@ -51,11 +60,14 @@ def tokens_text(value: str | None) -> str:
 
 
 def cost_line(given: dict[str, str]) -> str:
-    """`implement: 3 workers, 410k tokens`; a missing count is left out, an unreported total is `unknown`."""
+    """`implement: 3 workers, 410k tokens` (`, 12k output` from `agent_end`); a missing count is left out, an
+    unreported total is `unknown`."""
     stage = given.get("stage", "?")
     noun = STAGES.get(stage, "workers")
     count = given.get(noun)
+    output = given.get("output", "")
     parts = ([f"{count} {noun}"] if count else []) + [tokens_text(given.get("tokens_reported"))]
+    parts += [tokens_text(output).replace("tokens", "output")] if output.isdigit() else []
     return f"{stage}: " + ", ".join(parts)
 
 
@@ -71,8 +83,41 @@ def stage_ends(progress: str) -> dict[str, dict[str, str]]:
     return latest
 
 
+def agent_ends(entries: list[Entry]) -> list[tuple[Entry, dict[str, str]]]:
+    """The one stage attribution of `agent_end` entries, for `crew ls --cost` and `crew report`: each agent's latest
+    entry (one per `agent_id`; a resumed agent's later stop replaces its earlier one; an entry with no id counts
+    alone), its fields with `stage`: the last `stage_start` before it, else `other`."""
+    stage, latest = UNSTAGED, {}
+    for index, entry in enumerate(entries):
+        words = entry.body.split()
+        if entry.kind != "METRIC" or not words:
+            continue
+        given = fields(words)
+        if words[0] == "stage_start" and given.get("stage") in STAGES:
+            stage = given["stage"]
+        elif words[0] == AGENT_END and given.get("tokens", "").isdigit():
+            key = given.get("agent_id") or f"#{index}"
+            latest.pop(key, None)
+            latest[key] = (entry, {**given, "stage": stage})
+    return list(latest.values())
+
+
+def stage_costs(progress: str) -> dict[str, dict[str, str]]:
+    """The cost fields per stage: the last `stage_end`, its tokens replaced by any `agent_end` total (each agent's
+    final context, never the summed cache reads), with the summed `output` beside it."""
+    costs = stage_ends(progress)
+    agents = [given for _, given in agent_ends([parse_entry(line) for line in progress.splitlines() if line.strip()])]
+    for stage in dict.fromkeys(agent["stage"] for agent in agents):
+        mine = [agent for agent in agents if agent["stage"] == stage]
+        given = {"stage": stage, **costs.get(stage, {}), "tokens_reported": str(sum(int(a["tokens"]) for a in mine)),
+                 "output": str(sum(int(a.get("output", "0")) for a in mine if a.get("output", "0").isdigit()))}
+        given.setdefault(STAGES.get(stage, "workers"), str(len(mine)))
+        costs[stage] = given
+    return costs
+
+
 def task_summary(task_dir: Path) -> str:
-    return "; ".join(cost_line(g) for g in stage_ends(read_text(task_dir)).values())
+    return "; ".join(cost_line(g) for g in stage_costs(read_text(task_dir)).values())
 
 
 def print_cost(tasks_dir: Path) -> int:

@@ -15,7 +15,7 @@ and gates; the skill wins for spec content.
 **Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and
 Cursor, never through Agent, Task, or Subagent, because it dispatches `specwriter-explorer`,
 `specwriter-scope`, and `specwriter-adversarial` one level deep with the main session's Task or
-Agent capability.
+Agent capability. Each dispatch prompt opens with `crew-task: <TASK_DIR>`.
 
 ## Execution model
 
@@ -101,7 +101,7 @@ Task/Agent tool call:
     Explore now. Follow the output format in your persona definition.
 ```
 
-Claude Code dispatches the same prompt through its Agent tool by name.
+Claude Code: the same prompt, through Agent by name.
 
 #### Vendor docs check (opt-in: Kibana and Elasticsearch tasks)
 
@@ -184,7 +184,7 @@ they see only the improved spec in the output.
        Produce your critique now, in the shape the contract and your persona define.
    ```
 
-Claude Code dispatches the same prompt through its Agent tool by name.
+Claude Code: the same prompt, through Agent by name.
 
 3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error, or
    a turn-limit stop with no reply), proceed anyway. **A reply without a `Verdict:` line is

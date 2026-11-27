@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """`crew-review-findings.py`: normalize, persist and their evidence gates, coverage, outcomes, probes, review-dir.
 
-Every subcommand runs in this process through `evals/tools/cli_runner.py`.
+Every subcommand runs in this process through `evals/tools/cli_runner.py`; the reply-capture hook runs under bash.
 """
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
 # The tool is loaded by path below; its package directory holds the bootstrap it imports first.
@@ -1088,6 +1090,100 @@ def test_distinct_agent_ids_are_not_degraded(tmp: Path) -> None:
     done = persist_dir(review_dir, report, ("adversarial", "code-quality"))
     assert done.returncode == 0, done.stderr
     assert "Verdict: PASS" in (review_dir / "REVIEW.md").read_text()
+
+
+HOOK = TOOL.parents[3] / ".claude" / "hooks" / "capture-reply.sh"
+RESUMED = "### Findings: none\n\nAssessment: approve — re-emitted in full.\n"
+
+
+def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool = True) -> subprocess.CompletedProcess:
+    """Run capture-reply.sh on a fixture transcript: the dispatch prompt, then one assistant turn that hands back
+    `reply` (or, without `handback`, ends with it as `last_assistant_message`)."""
+    home = tmp / "home"
+    if not (home / ".agent" / "bin" / TOOL.name).exists():
+        (home / ".agent" / "bin").mkdir(parents=True, exist_ok=True)
+        (home / ".agent" / "bin" / TOOL.name).symlink_to(TOOL)
+    content = [{"type": "text", "text": "Reviewing."}]
+    if handback:
+        content.append({"type": "tool_use", "name": "SubagentHandback", "input": {"message": reply}})
+    usage = {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+    lines = [{"type": "user", "message": {"role": "user", "content": prompt}},
+             {"type": "assistant", "message": {"role": "assistant", "model": "m-1", "content": content, "usage": usage}}]
+    path = tmp / f"{agent}-{len(list(tmp.glob('*.jsonl')))}.jsonl"
+    path.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    payload = {"hook_event_name": "SubagentStop", "agent_id": agent, "agent_type": "general-purpose",
+               "agent_transcript_path": str(path), "last_assistant_message": "Handed back." if handback else reply}
+    return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
+                          env={**os.environ, "HOME": str(home)})
+
+
+def marker(review_dir: Path, persona: str) -> str:
+    done = run("expect", "--review-dir", str(review_dir), "--persona", persona)
+    assert done.returncode == 0 and (review_dir / f"{persona}.expect").is_file(), done.stderr
+    return done.stdout.strip()
+
+
+@pytest.mark.parametrize("persona,handback", [("adversarial", True), ("adversarial", False), ("probe", True)])
+def test_capture_hook_saves_the_reply_its_marker_names(tmp: Path, persona: str, handback: bool) -> None:
+    """The handback message (else the last assistant message) is saved with the hook's harness, agent id and model;
+    the `.expect` file goes."""
+    review_dir, _ = provenance_review(tmp, (persona,))
+    done = capture_hook(tmp, f"{marker(review_dir, persona)}\n\nReview this package.", "a1", RAW_REPLY, handback)
+    assert done.returncode == 0 and "capture-reply: saved" in done.stdout, (done.stdout, done.stderr)
+    assert (review_dir / f"{persona}.out.md").read_text() == RAW_REPLY
+    record = json.loads((review_dir / f"{persona}.provenance.json").read_text())
+    assert (record["harness"], record["agent_id"], record["model"], record["resumed"]) == ("claude-code", "a1", "m-1", False)
+    assert not (review_dir / f"{persona}.expect").exists()
+
+
+@pytest.mark.parametrize("case,says", [("quoted marker", "adversarial: no adversarial.expect for this marker; nothing saved"),
+                                       ("wrong nonce", "the marker's nonce does not match adversarial.expect; nothing saved"),
+                                       ("another agent", "adversarial.out.md is another agent's reply; kept")])
+def test_capture_hook_saves_nothing_it_cannot_trust(tmp: Path, case: str, says: str) -> None:
+    """A marker with no `.expect`, a nonce that does not match, or a reply another agent saved: nothing is written,
+    each for its own stated reason."""
+    review_dir, _ = provenance_review(tmp, ("adversarial",))
+    line = f"crew-review-out: {review_dir} adversarial {'0' * 32}"
+    if case != "quoted marker":
+        real = marker(review_dir, "adversarial")
+        line = real if case == "another agent" else line
+    if case == "another agent":
+        assert save_out(review_dir, "adversarial", RAW_REPLY, "--agent-id", "a2").returncode == 0
+    done = capture_hook(tmp, f"Quoting a dispatch:\n{line}\n", "a1", RESUMED)
+    assert done.returncode == 0 and says in done.stdout, done.stdout
+    out = review_dir / "adversarial.out.md"
+    assert (out.read_text() == RAW_REPLY) if case == "another agent" else not out.exists()
+    assert (review_dir / "adversarial.expect").exists() is (case != "quoted marker")
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+def test_capture_hook_records_usage_through_an_accepted_marker_only(tmp: Path, accepted: bool) -> None:
+    """With no `crew-task:` line, the task above the review directory gets the persona's `agent_end` only when the marker
+    was accepted; a quoted marker the nonce check refused records nothing there."""
+    task = tmp / "home" / ".agent" / "tasks" / "T"
+    review_dir = task / "review" / "20261127000000"
+    review_dir.mkdir(parents=True)
+    (task / "SPEC.md").write_text("# T\n\n## Status\nIMPLEMENTING\n")
+    (review_dir / "adversarial.in.md").write_text("package")
+    line = marker(review_dir, "adversarial") if accepted else f"crew-review-out: {review_dir} adversarial {'0' * 32}"
+    done = capture_hook(tmp, f"{line}\nReview this package.", "a1", RAW_REPLY)
+    progress = (task / "PROGRESS.md").read_text() if (task / "PROGRESS.md").exists() else ""
+    assert done.returncode == 0 and ("agent_end agent=general-purpose persona=adversarial agent_id=a1 tokens=150" in progress) is accepted, (
+        done.stdout, progress)
+
+
+def test_capture_hook_resumes_its_own_reply_and_persist_accepts_the_folder(tmp: Path) -> None:
+    """The same agent answering again is saved as a resume (its `.expect` already gone); persist verifies the folder."""
+    review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
+    first = marker(review_dir, "adversarial")
+    assert "saved" in capture_hook(tmp, first, "a1", "- see above\n").stdout
+    assert "resumed" in capture_hook(tmp, first, "a1", RESUMED).stdout
+    assert (review_dir / "adversarial.out.md").read_text() == RESUMED
+    assert json.loads((review_dir / "adversarial.provenance.json").read_text())["resumed"] is True
+    assert "saved" in capture_hook(tmp, marker(review_dir, "code-quality"), "a2", RAW_REPLY).stdout
+    done = persist_dir(review_dir, report, ("adversarial", "code-quality"))
+    assert done.returncode == 0, done.stderr
+    assert "provenance: verified" in (review_dir / "REVIEW.md").read_text()
 
 
 def degraded_findings(tmp: Path, label: str | None) -> None:

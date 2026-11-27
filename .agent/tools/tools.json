@@ -413,6 +413,15 @@
       "smoke": "imported by crew-doctor.py"
     },
     {
+      "name": "doctor_mcp.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-doctor.py: the rendered read-only agents and the docs and code-search MCP servers per harness",
+      "smoke": "imported by crew-doctor.py"
+    },
+    {
       "name": "lint_python.py",
       "dir": "maintenance",
       "kind": "module",
@@ -620,6 +629,24 @@
       "smoke": "imported by crew-task.py"
     },
     {
+      "name": "task_usage.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by review_capture.py: a subagent run's token usage (the last call's context, per-field sums beside it), appended as an `agent_end` METRIC to the task its `crew-task:` line names",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "task_record_pr.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-task.py: `record-pr`, the PR hook: the task of a `gh pr create` PR, marked done or given the PR",
+      "smoke": "imported by crew-task.py"
+    },
+    {
       "name": "task_verify.py",
       "dir": "task",
       "kind": "module",
@@ -770,6 +797,15 @@
       "category": "memory",
       "owner": "crew-memory",
       "help": "imported by crew-mem.py: intake: `.inbox` drafts",
+      "smoke": "imported by crew-mem.py"
+    },
+    {
+      "name": "memory_claude.py",
+      "dir": "memory",
+      "kind": "module",
+      "category": "memory",
+      "owner": "crew-memory",
+      "help": "imported by crew-mem.py and doctor_checks.py: `import-claude`: Claude Code auto-memory drafted into the inbox, `--check`, `--archive`",
       "smoke": "imported by crew-mem.py"
     },
     {
@@ -977,6 +1013,15 @@
       "category": "review",
       "owner": "crew-reviewer",
       "help": "imported by crew-review-findings.py: rendered findings, generated sections, the degraded mark, `save-out` and provenance",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_capture.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py: `expect` (the dispatch nonce and marker) and `capture` (the SubagentStop reply hook)",
       "smoke": "imported by crew-review-findings.py"
     }
   ],

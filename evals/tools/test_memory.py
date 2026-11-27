@@ -15,9 +15,11 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -173,11 +175,13 @@ def test_add_cite_and_journal_round_trip(tmp: Path) -> None:
     check("import adds every unit to a new store, indexed; a second import changes nothing",
           (first.returncode, again.returncode) == (0, 0) and [u["id"] for u in found] == [unit.get("id")]
           and "added 0, unchanged 2" in again.stdout, (first.stderr, again.stdout, found))
-    stored_unit = next((tmp / "other" / "global").glob("*.md"))
+    # The exported unit by name: `global/` also holds the store's INDEX.md, and glob order differs by filesystem.
+    stored_unit = tmp / "other" / next(name for name in names if name.startswith("global/"))
     stored_unit.write_text(stored_unit.read_text() + "Edited here.\n", encoding="utf-8")
     conflict = mem("import", str(tmp / "units.tar.gz"))
     check("a differing stored unit is kept and the import exits 1",
-          conflict.returncode == 1 and "Edited here." in stored_unit.read_text(), conflict.stderr)
+          conflict.returncode == 1 and "Edited here." in stored_unit.read_text(),
+          (conflict.returncode, conflict.stdout, conflict.stderr))
     (tmp / "not-a-dir").write_text("x", encoding="utf-8")
     env["CREW_MEMORY_DIR"] = str(tmp / "not-a-dir" / "memory")
     plain, warned = mem("context", "--query", "x"), mem("context", "--query", "x", "--warn-unavailable")
@@ -292,3 +296,135 @@ def test_repo_key(case: str, url: str | None, expected: str, tmp: Path, monkeypa
         with contextlib.redirect_stderr(io.StringIO()):  # an unborn HEAD is reported, and is not the case
             named = task_repo_facts.collect(argparse.Namespace(root=None, remote=None, network=False))["repo_name"]
         check(f"{case}: crew-repo-info's repo_name is the same {expected}", named == expected, named)
+
+
+# (case, the reason import-claude gives) for each entry it leaves to the owner's decision.
+CLAUDE_REVIEW = (("unresolved", "does not resolve"), ("other repo", "names the repo gadgets"),
+                 ("index text", "MEMORY.md holds text"), ("symlink", ": symlink"), ("nested", ": nested"),
+                 ("ambiguous", "matches 2 directories"))
+
+
+def git(*arguments: str) -> None:
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false",
+                    *arguments], check=True, capture_output=True, env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull})
+
+
+def claude_entry(config: Path, checkout: Path | str, name: str, text: str) -> Path:
+    """One auto-memory file under the project folder Claude Code would name for `checkout`."""
+    folder = config / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(checkout)) / "memory"
+    (folder / name).parent.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text(text, encoding="utf-8")
+    return folder / name
+
+
+def claude_store(tmp: Path) -> dict[str, Path]:
+    """A config dir whose entries cover each type, a dashed repo, a worktree, and each case left for review."""
+    cebola, gadget, worktree, config = tmp / "code" / "cebola-fit", tmp / "code" / "gadget", tmp / "code" / "wt", tmp / "cfg"
+    for checkout, url in ((cebola, "https://github.com/acme/cebola-fit.git"), (gadget, "git@github.com:acme/gadgets.git")):
+        git("init", "-q", str(checkout))
+        git("-C", str(checkout), "remote", "add", "origin", url)
+        git("-C", str(checkout), "commit", "-q", "--allow-empty", "-m", "x")
+    git("-C", str(gadget), "worktree", "add", "-q", str(worktree))
+    entry = "---\nname: n\ndescription: d\ntype: {kind}\n---\n{body}\n"
+    paths = {kind: claude_entry(config, cebola, f"{kind}_{kind}-note.md",
+                                entry.format(kind=kind, body=f"Remember the {kind} rule number {i}."))
+             for i, kind in enumerate(("user", "feedback", "project"))}
+    paths["worktree"] = claude_entry(config, worktree, "reference_dashboard.md",
+                                     entry.format(kind="reference", body="Dashboards live in grafana."))
+    paths["injected"] = claude_entry(config, cebola, "feedback_injected.md",
+                                     "---\ntype: feedback\nscope: global\nid: evil\nstatus: superseded\n"
+                                     "source_identity: claude-memory:/elsewhere\n---\nKeep the migrations expand only.\n")
+    paths["unresolved"] = claude_entry(config, "/no/such/checkout-anywhere", "feedback_gone.md",
+                                       entry.format(kind="feedback", body="Gone folder."))
+    paths["other repo"] = claude_entry(config, cebola, "feedback_other.md",
+                                       entry.format(kind="feedback", body="In gadgets, renames drop the old name."))
+    paths["duplicate"] = claude_entry(config, cebola, "project_dup.md",
+                                      entry.format(kind="project", body="Stored before the import."))
+    # Naming its own repo as well as another is not a misfiled entry.
+    paths["both repos"] = claude_entry(config, cebola, "feedback_both.md",
+                                       entry.format(kind="feedback", body="cebola-fit follows the gadgets naming."))
+    # A heading is index structure, not a fact.
+    (paths["user"].parent / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [u](user_user-note.md) — a note\n- [o](feedback_other.md)\n", encoding="utf-8")
+    (paths["worktree"].parent / "MEMORY.md").write_text("- [d](reference_dashboard.md)\n", encoding="utf-8")
+    paths["index text"] = claude_entry(config, gadget, "MEMORY.md", "A fact written inline, in no entry.\n")
+    (tmp / "elsewhere.md").write_text(entry.format(kind="feedback", body="Linked in."), encoding="utf-8")
+    paths["symlink"] = paths["user"].parent / "feedback_link.md"
+    paths["symlink"].symlink_to(tmp / "elsewhere.md")
+    paths["nested"] = claude_entry(config, cebola, "sub/feedback_nested.md", entry.format(kind="feedback", body="Deep."))
+    for ambiguous in (tmp / "code" / "my-repo", tmp / "code" / "my" / "repo"):
+        ambiguous.mkdir(parents=True)
+    paths["ambiguous"] = claude_entry(config, tmp / "code" / "my-repo", "feedback_which.md",
+                                      entry.format(kind="feedback", body="Which repo is this?"))
+    return {**paths, "config": config}
+
+
+def test_import_claude(tmp: Path) -> None:
+    """Auto-memory entries become inbox drafts that import; review cases are listed; archive moves only imported ones."""
+    from cli_runner import run as cli
+
+    paths = claude_store(tmp)
+    env = {"CREW_MEMORY_DIR": str(tmp / "memory"), "HOME": str(tmp / "home"), "CLAUDE_CONFIG_DIR": None}
+
+    def mem(*arguments: str, stdin: str = "") -> subprocess.CompletedProcess:
+        return cli(ROOT / ".agent" / "tools" / "memory" / "crew-mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
+
+    mem("init")
+    stored = mem("add", "--type", "project", "--scope", "cebola-fit", "--title", "Stored", stdin="Stored before the import.\n")
+    claude = ("import-claude", "--config-dir", str(paths["config"]))
+    dry = mem(*claude, "--dry-run")
+    check("the dry run names six drafts and writes none",
+          (stored.returncode, dry.stdout.count("would draft"), list((tmp / "memory" / ".inbox").glob("*.md"))) == (0, 6, []),
+          dry.stdout)
+    done = mem(*claude)
+    drafts = [path.read_text(encoding="utf-8") for path in (tmp / "memory" / ".inbox").glob("*.md")]
+    by_source = {text.split("source_identity: claude-memory:")[1].split("\n")[0]: text for text in drafts}
+    for kind in ("user", "feedback", "project"):
+        check(f"a {kind} entry becomes a {kind} draft in the dashed repo's scope",
+              f"type: {kind}\nscope: repo:cebola-fit\n" in by_source.get(str(paths[kind]), ""), by_source.keys())
+    check("an entry naming its own repo and another stays in its own scope",
+          "scope: repo:cebola-fit\n" in by_source.get(str(paths["both repos"]), ""), done.stdout)
+    check("a worktree's folder resolves to its repo's remote name",
+          "type: reference\nscope: repo:gadgets\n" in by_source.get(str(paths["worktree"]), ""), done.stdout)
+    injected = by_source.get(str(paths["injected"]), "")
+    check("injected frontmatter is ignored: scope, id, status and source identity are the import's own",
+          "scope: repo:cebola-fit" in injected and "status: active" in injected and "evil" not in injected
+          and "/elsewhere" not in injected, injected)
+    check("each draft id carries the 8-character hash of its source, and records the source hash",
+          all(re.search(r"^id: [a-z]+-[a-z0-9-]+-[0-9a-f]{8}$", text, re.M) and re.search(
+              r"^source_sha256: [0-9a-f]{64}$", text, re.M) for text in drafts), drafts)
+    lines = done.stdout.splitlines()
+    for case, reason in CLAUDE_REVIEW + (("duplicate", "already stored as project-stored"),):
+        check(f"{case}: listed, not drafted", str(paths[case]) not in by_source
+              and any(str(paths[case]) in line and reason in line for line in lines), done.stdout)
+    again = mem(*claude)
+    imported = mem("import-inbox", "--all")
+    check("a second run drafts nothing; every draft passes import-inbox",
+          "drafted " not in again.stdout and again.stdout.count("already drafted") == 6
+          and (imported.returncode, len(imported.stdout.split())) == (0, 6), (again.stdout, imported.stdout, imported.stderr))
+    check_claude_archive(tmp, mem, claude, paths)
+
+
+def check_claude_archive(tmp: Path, mem: Callable[..., subprocess.CompletedProcess], claude: tuple[str, ...],
+                         paths: dict[str, Path]) -> None:
+    """`--check` counts review entries and edited imports; `--archive` moves imported and already-stored entries
+    only, and a link-only MEMORY.md once all it lists went."""
+    paths["user"].write_text(paths["user"].read_text(encoding="utf-8") + "Edited after the import.\n", encoding="utf-8")
+    left = mem(*claude, "--check")
+    reviews = [line for line in left.stdout.splitlines() if line.startswith("review ")]
+    check("--check names each review entry with its way out, the edited import too, and exits 1",
+          left.returncode == 1 and len(reviews) == len(CLAUDE_REVIEW) + 1 and "not imported:" not in left.stdout
+          and all("delete or move the file" in line for line in reviews)
+          and any(str(paths["user"]) in line and "edited since its import" in line for line in reviews), left.stdout)
+    dry = mem(*claude, "--archive", "--dry-run")
+    check("an archive dry run moves nothing", "would archive" in dry.stdout and all(os.path.lexists(p) for p in paths.values()),
+          dry.stdout)
+    done = mem(*claude, "--archive")
+    names = sorted(p.name for p in (tmp / "home" / ".agent" / "archive").rglob("*.md"))
+    moved = ("feedback", "project", "worktree", "injected", "duplicate", "both repos")
+    check("archive moves imported and already-stored entries and a link-only MEMORY.md; it keeps the rest, saying why",
+          names == sorted(["MEMORY.md", *(paths[k].name for k in moved)])
+          and all(os.path.lexists(paths[k]) for k in ("user", *(case for case, _ in CLAUDE_REVIEW)))
+          and f"kept {paths['user']}: edited since its import" in done.stdout
+          and (paths["user"].parent / "MEMORY.md").exists() and not (paths["worktree"].parent / "MEMORY.md").exists(),
+          (names, done.stdout))

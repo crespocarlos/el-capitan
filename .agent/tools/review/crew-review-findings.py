@@ -2,8 +2,8 @@
 """Normalize review findings, persist review reports, and append outcome records.
 
 Subcommands: `normalize`, `persist`, `select`, `coverage`, `spec-context`,
-`check-packages`, `outcome`, `outcomes`, `review-dir`, `save-out`, `consolidate`. Entry point only:
-logic in `review_findings`, `review_cli`, `review_coverage`, `review_layers`, `review_report`.
+`check-packages`, `outcome`, `outcomes`, `review-dir`, `save-out`, `expect`, `capture`, `consolidate`.
+Entry point only: logic in `review_findings`, `review_cli`, `review_coverage`, `review_layers`, `review_report`.
 Contract (fields, fingerprints, evidence gates, `--files`, `--head`): `.agent/tools/TOOLS.md`.
 """
 from __future__ import annotations
@@ -13,6 +13,8 @@ import json
 import sys
 
 import review_bootstrap  # noqa: F401
+
+from review_capture import add_capture_parsers, capture, expect
 
 # Re-exported deliberately: `assemble-packages.py` imports PERSONAS from this file as the single
 # persona registry, and the contract tests import the classifier and the label pattern to exercise
@@ -112,13 +114,15 @@ def main() -> int:
     add_context_parsers(commands)
     add_review_dir_parser(commands)
     add_save_out_parser(commands)
+    add_capture_parsers(commands)
     add_consolidate_parser(commands)
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
                 "spec-context": spec_context,
                 "check-packages": check_packages, "review-dir": review_dir_command,
-                "prior-review": prior_review, "save-out": save_out, "consolidate": consolidate,
+                "prior-review": prior_review, "save-out": save_out, "expect": expect, "capture": capture,
+                "consolidate": consolidate,
                 "comments": comments, "check-map": check_map}
     try:
         return handlers[args.command](args)

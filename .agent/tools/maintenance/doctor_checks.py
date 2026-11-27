@@ -1,4 +1,4 @@
-"""The checks `crew-doctor.py` runs on an install: links, hook registrations, managed blocks, tools, state, MCP.
+"""The checks `crew-doctor.py` runs against an install: links, hooks, blocks, auto-memory, tools, state.
 
 Each check returns `Line`s; a `FAIL` line is a problem the command's exit code counts, `ok`, `note` and
 `WARN` are not. The checkout is the one this file resolves into, so a doctor run through `~/.agent/bin`
@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
+from memory_claude import remaining
 from task_gc import TELEMETRY_NOTICE, Places, size_of
 from task_gc import shown as tilde
 
@@ -77,6 +78,50 @@ def check_links(home: Path, root: Path = ROOT) -> list[Line]:
         lines.append(Line("FAIL", "links", f"{len(broken)} broken: {shown}{RERUN}"))
     if elsewhere:
         lines.append(Line("note", "links", f"{len(elsewhere)} commands resolve outside {root}: {capped(elsewhere)}"))
+    return lines + check_config_links(home, root)
+
+
+def config_dirs(home: Path, root: Path = ROOT) -> list[Path]:
+    """The Claude config dirs install recorded, ~/.claude first (only it when the manifest is unreadable)."""
+    blocks = install_blocks(root)
+    try:
+        return blocks.config_dirs(home)
+    except blocks.ManifestError:
+        return [home / ".claude"]
+
+
+def config_dir_links(directory: Path, cursor: Path, root: Path) -> tuple[list[str], list[str]]:
+    """The `agents`/`skills` entries of one config dir that are missing, and those the user owns (kept by install)."""
+    missing, kept = [], []
+    for name in ("agents", "skills"):
+        path, source = directory / name, cursor / name
+        if path.is_symlink() and os.path.realpath(path) != os.path.realpath(source):
+            kept.append(name)
+        elif path.is_dir() and not path.is_symlink():
+            for entry in sorted(p.name for p in (root / ".cursor" / name).iterdir() if not p.name.startswith(".")):
+                link = path / entry
+                if os.path.realpath(link) == os.path.realpath(source / entry):
+                    continue
+                (kept if os.path.lexists(link) else missing).append(f"{name}/{entry}")
+        elif os.path.realpath(path) != os.path.realpath(source):
+            missing.append(name)
+    return missing, kept
+
+
+def check_config_links(home: Path, root: Path = ROOT) -> list[Line]:
+    """Each other config dir links `agents` and `skills`, or each crew entry inside a real one, to ~/.cursor.
+
+    An entry the user owns there (a link elsewhere, or a file of the same name) is kept by install: a WARN.
+    """
+    lines = []
+    for directory in config_dirs(home, root)[1:]:
+        missing, kept = config_dir_links(directory, home / ".cursor", root)
+        if missing:
+            text = f"{tilde(directory, home)}: not linked to ~/.cursor: {capped(missing)}{RERUN}"
+            lines.append(Line("FAIL", "links", text))
+        if kept:
+            text = f"{tilde(directory, home)}: yours, so crew entries are not linked there: {capped(kept)}"
+            lines.append(Line("WARN", "links", text))
     return lines
 
 
@@ -105,12 +150,13 @@ def registrations(path: Path, nested: bool) -> set[tuple[str, str, str]] | None:
 
 
 def check_hooks(home: Path, root: Path = ROOT) -> list[Line]:
-    """Every template hook is registered under its event and matcher, and every registered script exists."""
+    """Each config dir registers every template hook under its event and matcher; every registered script exists."""
     lines = []
     scripts = install_blocks(root).hook_scripts
+    claude = [(f"Claude Code ({tilde(directory, home)})", root / ".claude" / "settings.json",
+               directory / "settings.json", True) for directory in config_dirs(home, root)]
     for harness, template, installed, nested in (
-            ("Claude Code", root / ".claude" / "settings.json", home / ".claude" / "settings.json", True),
-            ("Cursor", root / ".cursor" / "hooks.template.json", home / ".cursor" / "hooks.json", False)):
+            *claude, ("Cursor", root / ".cursor" / "hooks.template.json", home / ".cursor" / "hooks.json", False)):
         wanted, have = registrations(template, nested) or set(), registrations(installed, nested)
         if have is None:
             lines.append(Line("FAIL", "hooks", f"{harness}: {tilde(installed, home)} is missing or unreadable{RERUN}"))
@@ -128,6 +174,42 @@ def check_hooks(home: Path, root: Path = ROOT) -> list[Line]:
     return lines
 
 
+def check_auto_memory(home: Path, root: Path = ROOT) -> list[Line]:
+    """Claude Code auto-memory is off in each recorded config dir and the environment; entries left are named.
+
+    Crew memory is the one store. A user's own `true` is kept by install, so it is a WARN, never a FAIL;
+    project-level settings are not checked.
+    """
+    lines, switch = [], os.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY")
+    if switch == "0":
+        lines.append(Line("WARN", "memory", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0 forces Claude Code auto-memory on; "
+                                            "crew memory is the only store"))
+    for directory in config_dirs(home, root):
+        name, (pending, review) = tilde(directory, home), remaining([directory])
+        left = pending or review
+        try:
+            value = json.loads((directory / "settings.json").read_text(encoding="utf-8")).get("autoMemoryEnabled")
+        except (OSError, ValueError, AttributeError):
+            value = None
+        if pending:
+            lines.append(Line("note", "memory", f"{name}: Claude auto-memory entries to import: {len(pending)}; "
+                                                f"run ~/.agent/bin/crew-mem.py import-claude --config-dir "
+                                                f"{directory}, import the drafts, then re-run install.sh"))
+        if review:
+            lines.append(Line("note", "memory", f"{name}: Claude auto-memory entries for your review: {len(review)} "
+                                                f"(crew-mem.py import-claude --check --config-dir {directory} "
+                                                "lists them); decide, then delete or move each file"))
+        if value is True:
+            lines.append(Line("WARN", "memory", f"{name}/settings.json: autoMemoryEnabled is true (your value, kept); "
+                                                "crew memory is the only store, so set it to false"))
+        elif value is None and switch != "1" and not left:
+            lines.append(Line("note", "memory", f"{name}: auto-memory is on (autoMemoryEnabled unset){RERUN}"))
+    if not lines:
+        text = "Claude Code auto-memory off in every config dir (project settings not checked)"
+        lines.append(Line("ok", "memory", text))
+    return lines
+
+
 def install_blocks(root: Path = ROOT) -> ModuleType:
     """`.claude/install_blocks.py` of the checkout, loaded by path: the one writer of the block text."""
     spec = importlib.util.spec_from_file_location("install_blocks", root / ".claude" / "install_blocks.py")
@@ -142,10 +224,13 @@ def check_blocks(home: Path, root: Path = ROOT) -> list[Line]:
     """Each managed block in CLAUDE.md and AGENTS.md equals what install.sh would write today."""
     blocks = install_blocks(root)
     stale = []
-    for target, wanted in blocks.expected(root).items():
-        path = home / target
+    try:
+        wanted_blocks = blocks.expected(root, home)
+    except blocks.ManifestError as error:
+        return [Line("FAIL", "blocks", f"{error}{RERUN}")]
+    for path, wanted in wanted_blocks.items():
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-        stale += [f"~/{target} {name} block {'missing' if blocks.current(text, name) is None else 'stale'}"
+        stale += [f"{tilde(path, home)} {name} block {'missing' if blocks.current(text, name) is None else 'stale'}"
                   for name, body in wanted.items() if blocks.current(text, name) != body]
     return [Line("FAIL", "blocks", capped(stale) + RERUN) if stale else Line("ok", "blocks", "managed blocks current")]
 
@@ -204,79 +289,3 @@ def check_state(places: Places, limits: dict) -> list[Line]:
                 "crew-task.py gc --only telemetry --apply removes only it")
         lines.append(Line("FAIL", "state", text))
     return lines
-
-
-CAPABILITIES = (("docs", "docs server"), ("code_search", "code search"))
-MCP_HOWTO = ('no mcp section in ~/.agent/config.json, so no MCP server is checked; add '
-             '"mcp": {"docs": ["<server>"], "code_search": ["<server>"]} with your server names')
-UNCHECKED = "servers from plugins and claude.ai connectors are not checked"
-
-
-def mcp_servers(path: Path) -> tuple[set[str], dict[str, set[str]]]:
-    """The user-level `mcpServers` names of an MCP config file, and each `projects` entry's; empty if unreadable."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set(), {}
-    if not isinstance(data, dict):
-        return set(), {}
-
-    def names(entry: object) -> set[str]:
-        servers = entry.get("mcpServers") if isinstance(entry, dict) else None
-        return set(servers) if isinstance(servers, dict) else set()
-
-    projects = data.get("projects")
-    return names(data), {key: names(value) for key, value in projects.items()} if isinstance(projects, dict) else {}
-
-
-def repo_root(cwd: Path) -> Path | None:
-    """The nearest directory at or above `cwd` holding `.git`, without running git."""
-    return next((path for path in (cwd, *cwd.parents) if (path / ".git").exists()), None)
-
-
-def claude_config_dirs(home: Path, environ: dict[str, str]) -> list[Path]:
-    """`~/.claude`, `$CLAUDE_CONFIG_DIR` when set, and the install manifest's `config_dirs`, each once."""
-    dirs = [home / ".claude"]
-    try:
-        recorded = (install_blocks().load_manifest(home) or {}).get("config_dirs")
-    except ValueError:
-        recorded = None
-    extra = [environ.get("CLAUDE_CONFIG_DIR", ""), *(recorded if isinstance(recorded, list) else [])]
-    for item in extra:
-        path = Path(os.path.expanduser(item)) if isinstance(item, str) and item else None
-        if path and path.resolve() not in {seen.resolve() for seen in dirs}:
-            dirs.append(path)
-    return dirs
-
-
-def claude_capability(where: str, names: set[str], user: set[str], projects: dict[str, set[str]]) -> Line:
-    """One capability in one Claude config dir: at user level, or in every project, else a WARN naming the gaps."""
-    missing = sorted(project for project, servers in projects.items() if not servers & names)
-    if user & names:
-        return Line("ok", "mcp", f"{where} at user level")
-    if projects and not missing:
-        return Line("ok", "mcp", f"{where} in every project ({len(projects)})")
-    gaps = f" for {len(missing)} of {len(projects)} projects: {capped(missing)}" if projects else ""
-    return Line("WARN", "mcp", f"{where} missing{gaps}; add it at user level")
-
-
-def check_mcp(home: Path, wanted: dict[str, list[str]], cwd: Path, environ: dict[str, str]) -> list[Line]:
-    """The docs and code-search capabilities by the `mcp` config's server names, per harness; a gap is a WARN."""
-    capabilities = [(label, set(wanted.get(key) or [])) for key, label in CAPABILITIES if wanted.get(key)]
-    if not capabilities:
-        return [Line("note", "mcp", MCP_HOWTO)]
-    repo = repo_root(cwd)
-    lines = []
-    for config_dir in claude_config_dirs(home, environ):
-        # The default config dir keeps its MCP config beside it, in ~/.claude.json.
-        user, projects = mcp_servers((home if config_dir == home / ".claude" else config_dir) / ".claude.json")
-        if repo:
-            projects[str(repo)] = projects.get(str(repo), set()) | mcp_servers(repo / ".mcp.json")[0]
-        lines += [claude_capability(f"Claude Code {tilde(config_dir, home)}: {label} ({', '.join(sorted(names))})",
-                                    names, user, projects) for label, names in capabilities]
-    cursor = set().union(*(mcp_servers(base / ".cursor" / "mcp.json")[0] for base in (home, repo) if base))
-    sources = "~/.cursor/mcp.json" + (" or the repo's .cursor/mcp.json" if repo else "")
-    lines += [Line("ok", "mcp", f"Cursor: {label} ({', '.join(sorted(cursor & names))})") if cursor & names
-              else Line("WARN", "mcp", f"Cursor: {label} missing: none of {', '.join(sorted(names))} in {sources}")
-              for label, names in capabilities]
-    return [*lines, Line("note", "mcp", UNCHECKED)]

@@ -14,6 +14,7 @@
       {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": false},
       {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\"", "failClosed": false}
     ],
+    "afterShellExecution": [{"command": "bash \"$HOME/.claude/hooks/record-pr.sh\" 2>/dev/null; exit 0"}],
     "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "postToolUseFailure": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "stop": [{"command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\"", "loop_limit": 1}]

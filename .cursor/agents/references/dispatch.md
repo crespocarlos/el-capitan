@@ -1,16 +1,19 @@
 # Shared dispatch instructions
 
 Run orchestrators inline. Dispatch personas only from the main session: use Cursor Task or Claude
-Agent, preserve inherited model selection, and use the documented fallback only when native dispatch
-is unavailable. `REVIEW_ROOT` is the review directory `crew-reviewer` resolved.
+Agent, and preserve inherited model selection. `REVIEW_ROOT` is the review directory `crew-reviewer`
+resolved.
 
 **Dispatch a persona by its agent type.** In Claude Code, pass `subagent_type: reviewer-<name>` (the
-critics and explorers by their own names), so the persona's frontmatter applies: it inherits the
-session's tools, the docs MCP server and semantic code search included, and its `disallowedTools`
-denies the writers. A generic agent told to read the persona file inherits everything with no deny
-list, so never dispatch that way. When the agent type is not registered in this session, stop and tell
-the user so, naming `crew doctor`, which checks that the agents are linked into every Claude config
-dir; do not fall back to a generic agent.
+critics and explorers by their own names), so the persona's frontmatter applies: its `tools:`
+allowlist grants the read tools and the docs and code-search MCP servers install rendered into it,
+and nothing else. A generic agent told to read the persona file gets every session tool instead, so
+never dispatch that way. When the agent type is not registered in this session, stop: tell the user
+the agents are not installed for this config dir and to re-run `install.sh`.
+
+**The `claude -p` fallback** is only for a harness with no native subagent dispatch at all. It runs a
+top-level session that does not read the persona's frontmatter, so the persona gets that session's
+tools, not its allowlist; name that in the report's `### Reviewers` section.
 
 Reviewer personas may run read-only: Cursor Ask mode, or a Claude Code read-only subagent, where
 artifact writes are unavailable, and the `claude -p` fallback likewise returns only stdout. Dispatch
@@ -69,7 +72,16 @@ complete list in this final message, in the finding shape, nothing else. Then sa
 trail holds the findings rather than a reference to them. If the resume also points backwards, persist
 the failure artifact and name the gap under `### Reviewers`.
 
-**Saving replies with `save-out`.** Personas never write their own artifacts, and the orchestrator
+**Under Claude Code the hook saves the reply.** Each dispatch carries the marker line from
+`crew-review-findings.py expect` ([packaging](~/.cursor/agents/crew-reviewer/references/packaging.md),
+"The reply marker"), and the `SubagentStop` hook saves the reply with `--harness claude-code`, the
+agent id and the model, a resume included; there is no manual `save-out`. Check that
+`<persona>.out.md` exists and `<persona>.expect` is gone; a remaining `.expect` means the hook saved
+nothing, so save that reply by hand as below. `--degraded` stays a manual flag, and a manual
+`save-out` overwrites what the hook saved.
+
+**Saving replies with `save-out`** (Cursor, Codex, the `claude -p` fallback, and the cases above).
+Personas never write their own artifacts, and the orchestrator
 does not re-type a reply into `<persona>.out.md` either: it pipes the reply to the tool, which stores
 the raw bytes and a provenance record beside them:
 

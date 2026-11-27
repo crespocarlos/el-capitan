@@ -4,13 +4,13 @@ Four changes, two of them in code (steps 2 and 4). Miss one and the persona is d
 no package, or never dispatched at all.
 
 1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
-   `description`, no `tools:` line, `disallowedTools` equal to `READONLY_AGENT_DENY` in
-   `lint_prompts.py`, `readonly: true`, `maxTurns: 12`) and a persona prompt: identity, scope
-   boundaries, focus areas, the lens's label table, and its `Assessment:` question (the appended
-   `reviewer-contract.md` owns the output shape). Copy the frontmatter from an existing persona
-   rather than inventing tool ids; a `tools:` allowlist would shut out the MCP servers
-   (`agents-inherit-tools`). Never require a specific tool by name in the prompt body: the harnesses'
-   tool surfaces differ, so a named tool may not exist on the other side.
+   `description`, `tools: Read, Grep, Glob{{mcp_servers}}`, `readonly: true`, `maxTurns: 12`) and
+   a persona prompt: identity, scope boundaries, focus areas, the lens's label table, and its
+   `Assessment:` question (the appended `reviewer-contract.md` owns the output shape). Copy the
+   frontmatter from an existing persona rather than inventing tool ids; install fills the placeholder
+   with the configured docs and code-search servers, and `agents-inherit-tools` fails any other line.
+   Never require a specific tool by name in the prompt body: the harnesses' tool surfaces differ, so
+   a named tool may not exist on the other side.
    Reviewers are analysis-only; leaving out `readonly: true` fails `crew-lint` with `missing-readonly`,
    and setting it false requires giving the name a class in `AGENT_CLASSES` in `lint_prompts.py`,
    where the exemption and its reason are reviewable. That table is not limited to the agents that

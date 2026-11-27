@@ -2,7 +2,7 @@
 name: specwriter-adversarial
 description: "Spec adversarial critic for a wrong approach, missing criteria, and edge cases. Dispatched by crew-specwriter — do not invoke directly."
 readonly: true
-disallowedTools: Write, Edit, NotebookEdit, Bash, Agent, Artifact, ArtifactData, ArtifactComments, EnterWorktree, ExitWorktree, SendMessage, TaskStop, Skill, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__atlassian__*, mcp__notion__*, mcp__filesystem__*, mcp__claude_ai_Claude_Docs__*
+tools: Read, Grep, Glob{{mcp_servers}}
 maxTurns: 10
 ---
 

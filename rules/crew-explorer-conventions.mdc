@@ -90,7 +90,7 @@ Impact ("what breaks if I change X?"):     sourcerer_code_grep('X') for every ca
 ```
 
 Without an index in the current invocation, fall back to the harness's own search, then read only the
-range it identified, and say in the report that index search was unavailable.
+range it identified, and name the fallback as the Availability section below says.
 
 ## Availability and fallback
 
@@ -120,6 +120,6 @@ range it identified, and say in the report that index search was unavailable.
   `sourcerer` MCP server and credentials.
 - For any ES|QL query or Elasticsearch/Kibana docs question, also use a docs MCP server if one is
   configured: its search tool to find the command, function, or syntax, then its fetch-by-URL tool to
-  confirm it. Without one, or when a call fails, mark the claim `unverified (docs server unreachable)`
-  rather than guessing or settling it from code. Use the code index only
-  to find how Kibana code builds or consumes the query.
+  confirm it. When it is unreachable, follow the Elastic docs section of
+  `~/.cursor/agents/references/reviewer-contract.md`, which holds that rule once. Use the code index
+  only to find how Kibana code builds or consumes the query.

@@ -2,9 +2,13 @@
 # install.sh migration and idempotency, against a throwaway HOME with a legacy layout.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../.." && pwd)
-home=$(mktemp -d)
-trap 'rm -rf "$home"' EXIT
-unset CREW_MEMORY_DIR CREW_JOURNAL_DIR CREW_TASK_DIR
+# One scratch directory holds every throwaway HOME and config dir, so one trap removes them all.
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+fresh_dir() { mkdir "$scratch/$1" && printf '%s' "$scratch/$1"; }
+home=$(fresh_dir home)
+# A config dir from the caller's environment would be installed into: only the rows below name one.
+unset CREW_MEMORY_DIR CREW_JOURNAL_DIR CREW_TASK_DIR CLAUDE_CONFIG_DIR CLAUDE_CODE_DISABLE_AUTO_MEMORY
 
 # Legacy layout: real ~/.claude/agents|skills directories holding a user file plus a stale
 # managed copy, and the older ~/.cursor/rules symlink form pointing at $root/rules.
@@ -144,8 +148,7 @@ test "$before" = "$(find "$home" -type f | wc -l | tr -d ' ')"
 # `Bash(git *)` and SessionStart hook equal template entries, and survive: uninstall removes only what
 # install recorded as added. `Bash(ls:*)` is the legacy spelling of the template's `Bash(ls *)`: install
 # keeps the user's spelling, adds no second rule, and records nothing for it.
-round=$(mktemp -d)
-trap 'rm -rf "$home" "$round"' EXIT
+round=$(fresh_dir round)
 mkdir -p "$round/.claude" "$round/.cursor/agents"
 printf '# Mine\n\n@AGENTS.md\n' > "$round/.claude/CLAUDE.md"
 printf -- '---\nname: mine\n---\n' > "$round/.cursor/agents/mine.md"
@@ -172,6 +175,17 @@ settings_mode=$(mode "$round/.claude/settings.json")
 HOME="$round" bash "$root/install.sh" >/dev/null
 grep -q '"Bash(ls:\*)"' "$round/.claude/settings.json"
 if grep -q '"Bash(ls \*)"' "$round/.claude/settings.json"; then exit 1; fi
+# The record-keeping hooks are merged (and, by the pristine check below, removed again by uninstall).
+python3 - "$round" <<'PY'
+import json, sys
+home = sys.argv[1]
+claude, cursor = json.load(open(f"{home}/.claude/settings.json"))["hooks"], json.load(open(f"{home}/.cursor/hooks.json"))["hooks"]
+def has(entries, script, matcher=None):
+    return any(script in hook.get("command", "") and (matcher is None or entry.get("matcher") == matcher)
+               for entry in entries for hook in entry.get("hooks", [entry]))
+assert has(claude["PostToolUse"], "record-pr.sh", "Bash") and has(claude["SubagentStop"], "capture-reply.sh")
+assert has(cursor["afterShellExecution"], "record-pr.sh")
+PY
 installed=$(tree_state "$round")
 HOME="$round" bash "$root/install.sh" --uninstall --dry-run >/dev/null
 test "$installed" = "$(tree_state "$round")"
@@ -182,8 +196,7 @@ test -d "$round/.agent/memory"                              # data stays
 
 # Uninstall unregisters before it deletes. An unreadable settings file stops it before any change; odd but
 # valid shapes are skipped with a warning, and no remaining registration runs a script that is gone.
-odd=$(mktemp -d)
-trap 'rm -rf "$home" "$round" "$odd"' EXIT
+odd=$(fresh_dir odd)
 HOME="$odd" bash "$root/install.sh" >/dev/null
 links=$(find "$odd" -type l | wc -l | tr -d ' ')
 cp "$odd/.cursor/hooks.json" "$odd/hooks.good" && cp "$odd/.claude/settings.json" "$odd/settings.good"
@@ -217,8 +230,7 @@ PY
 # A registration uninstall keeps keeps its script, whatever form names it: `~/` in settings.json, an
 # absolute path in a failClosed Cursor entry. The user's own credentials.sh hook loses only the
 # `onFailure` install added to it.
-kept=$(mktemp -d)
-trap 'rm -rf "$home" "$round" "$odd" "$kept"' EXIT
+kept=$(fresh_dir kept)
 mkdir -p "$kept/.claude"
 printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\""}]}]}}' > "$kept/.claude/settings.json"
 HOME="$kept" bash "$root/install.sh" >/dev/null
@@ -245,8 +257,7 @@ PY
 
 # A settings.json that is a link (dotfiles) keeps its link; a rule install added that the template has
 # since dropped is named when it goes.
-linked=$(mktemp -d)
-trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked"' EXIT
+linked=$(fresh_dir linked)
 mkdir -p "$linked/.claude" "$linked/dotfiles"
 ln -s "$linked/dotfiles/settings.json" "$linked/.claude/settings.json"
 HOME="$linked" bash "$root/install.sh" >/dev/null
@@ -265,8 +276,7 @@ test -L "$linked/.claude/settings.json" && test "$(cat "$linked/dotfiles/setting
 
 # An install from before the manifest: the template entries it left are removed unless the oldest
 # backup already held them, so the user's `Bash(git *)` stays and every el-capitan entry goes.
-legacy=$(mktemp -d)
-trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked" "$legacy"' EXIT
+legacy=$(fresh_dir legacy)
 mkdir -p "$legacy/.claude" "$legacy/.cursor"
 printf '%s\n' '{"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"]}}' > "$legacy/.claude/settings.json"
 printf '%s\n' '{"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}}' > "$legacy/.cursor/hooks.json"
@@ -284,8 +294,7 @@ assert cursor == {"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}
 PY
 # The same, when the first install created hooks.json, so its only backup is the one the upgrading
 # install wrote: that backup is no evidence, and a hook whose script is an install link is the install's.
-fresh=$(mktemp -d)
-trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked" "$legacy" "$fresh"' EXIT
+fresh=$(fresh_dir fresh)
 mkdir -p "$fresh/.claude"
 printf '%s\n' '{"permissions": {"allow": ["Bash(mine *)"]}}' > "$fresh/.claude/settings.json"
 HOME="$fresh" bash "$root/install.sh" >/dev/null
@@ -301,10 +310,73 @@ cursor = f"{home}/.cursor/hooks.json"
 assert not os.path.exists(cursor) or ".claude/hooks/" not in open(cursor).read(), open(cursor).read()
 PY
 
+# Other Claude config dirs, from $CLAUDE_CONFIG_DIR and two --claude-config-dir: each gets the settings
+# merge and the crew agents and skills, never a CLAUDE.md block. What is the user's is kept and named: a real
+# `agents` dir with its own agent and a link under a crew agent's name, a `skills` link into dotfiles, a real
+# `skills` dir with `synced` and a link under a crew skill's name. A later plain run covers the recorded
+# dirs and drops one that is gone; uninstall restores every dir and removes the one install created.
+two=$(fresh_dir two)
+cfg=$(fresh_dir cfg)
+c2=$(fresh_dir c2)
+mkdir -p "$cfg/agents" "$cfg/dotfiles/skills/mine" "$c2/skills/synced" "$c2/mine"
+printf -- '---\nname: myagent\n---\n' > "$cfg/agents/myagent.md"
+printf -- '---\nname: crew-builder\n---\nMINE\n' > "$cfg/dotfiles/my-builder.md"
+ln -s "$cfg/dotfiles/my-builder.md" "$cfg/agents/crew-builder.md"
+ln -s "$cfg/dotfiles/skills" "$cfg/skills"
+printf -- '---\nname: synced\n---\n' > "$c2/skills/synced/SKILL.md"
+ln -s "$c2/mine" "$c2/skills/crew-memory"
+python3 -c 'import json, sys; open(sys.argv[1], "w").write(json.dumps({"permissions": {"allow": ["Bash(mine *)"]}}, indent=2) + "\n")' "$cfg/settings.json"
+pristine_two=$(tree_state "$two")
+pristine_cfg=$(tree_state "$cfg")
+pristine_c2=$(tree_state "$c2")
+CLAUDE_CONFIG_DIR="$cfg" HOME="$two" bash "$root/install.sh" --claude-config-dir "$two/c1" --claude-config-dir "$c2" > "$two.out"
+for dir in "$two/.claude" "$cfg" "$two/c1" "$c2"; do grep -q 'guard/credentials.sh' "$dir/settings.json"; done
+grep -q 'Bash(mine \*)' "$cfg/settings.json"
+# The blocks go into ~/.claude/CLAUDE.md only: Claude Code reads the user CLAUDE.md from there.
+grep -q 'el-capitan:imports' "$two/.claude/CLAUDE.md" && test ! -e "$cfg/CLAUDE.md" && test ! -e "$c2/CLAUDE.md"
+test "$(readlink "$two/c1/agents")" = "$two/.cursor/agents" && test "$(readlink "$two/c1/skills")" = "$two/.cursor/skills"
+test -f "$cfg/agents/myagent.md" && test "$(readlink "$cfg/agents/crew-builder.md")" = "$cfg/dotfiles/my-builder.md"
+test "$(readlink "$cfg/agents/crew-specwriter.md")" = "$two/.cursor/agents/crew-specwriter.md"
+test "$(readlink "$cfg/skills")" = "$cfg/dotfiles/skills" && test ! -e "$cfg/dotfiles/skills/crew-memory"
+test "$(readlink "$c2/skills/crew-memory")" = "$c2/mine" && test -f "$c2/skills/synced/SKILL.md"
+test "$(readlink "$c2/skills/crew-commit")" = "$two/.cursor/skills/crew-commit" && test "$(readlink "$c2/agents")" = "$two/.cursor/agents"
+grep -q "kept $cfg/agents/crew-builder.md" "$two.out" && grep -q "kept $cfg/skills" "$two.out"
+grep -q "kept $c2/skills/crew-memory" "$two.out"
+rm -r "$two/c1"
+rm "$c2/settings.json"
+HOME="$two" bash "$root/install.sh" > "$two.out"
+grep -q "dropped $two/c1" "$two.out" && test ! -e "$two/c1"
+grep -q 'guard/credentials.sh' "$c2/settings.json" && grep -q 'guard/credentials.sh' "$cfg/settings.json"
+if HOME="$two" bash "$root/install.sh" --uninstall --claude-config-dir "$c2" >/dev/null 2>&1; then exit 1; fi
+rm "$two"/.claude/*.bak.* "$two"/.cursor/*.bak.*   # the second run's backups stay by design and keep the dirs
+HOME="$two" bash "$root/install.sh" --uninstall >/dev/null
+test "$pristine_two" = "$(tree_state "$two")"
+test "$pristine_cfg" = "$(tree_state "$cfg")"
+test "$pristine_c2" = "$(tree_state "$c2")"
+
+# Auto-memory goes off only after the move: an entry to import and one for review keep the key out and
+# print both ways forward; with none left, `autoMemoryEnabled: false` is written. (Keeping a user's value and
+# removing the key on uninstall are the merger's: test_install_blocks.py `test_settings_merge`.)
+mem=$(fresh_dir mem)
+# The checkout's .claude/settings.json is also its project settings, so it never carries the key itself.
+if grep -q autoMemoryEnabled "$root/.claude/settings.json"; then exit 1; fi
+auto_memory() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("autoMemoryEnabled"))' "$1"; }
+folder=$(printf '%s' "$mem" | tr -c 'A-Za-z0-9' '-')
+mkdir -p "$mem/.claude/projects/$folder/memory" "$mem/.claude/projects/-gone/memory"
+printf -- '---\ntype: feedback\n---\nA lesson.\n' > "$mem/.claude/projects/$folder/memory/feedback_lesson.md"
+printf -- '---\ntype: feedback\n---\nAnother lesson.\n' > "$mem/.claude/projects/-gone/memory/feedback_gone.md"
+HOME="$mem" bash "$root/install.sh" > "$mem/out"
+grep -q "Run ~/.agent/bin/crew-mem.py import-claude --config-dir $mem/.claude," "$mem/out"
+grep -q "for your review: 1" "$mem/out"
+test "$(auto_memory "$mem/.claude/settings.json")" = None
+rm -r "$mem/.claude/projects"
+HOME="$mem" bash "$root/install.sh" > "$mem/out"
+test "$(auto_memory "$mem/.claude/settings.json")" = False
+if grep -q 'import-claude' "$mem/out"; then exit 1; fi
+
 # Preflight and the README `bash -c "$(curl ...)"` form: an empty cwd, a fake HOME, no checkout next
 # to the script, and no network (the clone reads a local copy of this tree).
-bare=$(mktemp -d)
-trap 'rm -rf "$home" "$round" "$odd" "$kept" "$linked" "$legacy" "$fresh" "$bare"' EXIT
+bare=$(fresh_dir bare)
 bash_bin=$(command -v bash)
 script=$(cat "$root/install.sh")
 mkdir -p "$bare/cwd" "$bare/nogh" "$bare/oldpy"

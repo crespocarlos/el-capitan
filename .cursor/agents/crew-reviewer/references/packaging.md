@@ -158,14 +158,21 @@ package opens with the same contract and hunk reference.
 In spec and idea reviews there is no diff, so the tool does not apply: compose by hand in the same
 order, contract first.
 
+## The reply marker (Claude Code)
+
+Before each Claude Code dispatch, the probe included, run `~/.agent/bin/crew-review-findings.py
+expect --review-dir "$REVIEW_ROOT" --persona <persona>` and make the line it prints the first line
+of the dispatch prompt, unchanged. It writes `<persona>.expect` with a random nonce; the
+`SubagentStop` hook saves the reply when the marker's nonce matches, then removes the file. Cursor
+has no such hook, so it saves with `save-out`. With a task, the next line is `crew-task: <TASK_DIR>`,
+so the hook records the persona's token usage on it, in any harness's prompt.
+
 ## Elastic docs trigger (opt-in: artifacts with ES|QL or Elasticsearch/Kibana API claims)
 
 Every persona already carries the docs rule from `~/.cursor/agents/references/reviewer-contract.md`;
 the trigger only tells the persona this artifact needs it. When the reviewed content contains ES|QL
 (`FROM … |` queries, `.esql` files, `esql` identifiers) or Elasticsearch/Kibana API claims, add to
-every persona's package: "This artifact contains ES|QL or Elasticsearch API claims. Verify the syntax,
-function availability, and API behavior with the docs MCP server before reporting, and cite the URL.
-When the docs server is unreachable (not in your tools, or a call fails), mark each such claim
-`unverified (docs server unreachable)`; never settle it from code or memory." A persona dispatched by
-its agent type inherits the docs server whenever the session has it configured
-([dispatch](~/.cursor/agents/references/dispatch.md)).
+every persona's package: "This artifact contains ES|QL or Elasticsearch API claims; the reviewer
+contract's Elastic docs section applies." That section holds the rule, including what to write when
+the docs server is unreachable. A persona dispatched by its agent type has the docs server when
+install rendered it into the persona's allowlist ([dispatch](~/.cursor/agents/references/dispatch.md)).

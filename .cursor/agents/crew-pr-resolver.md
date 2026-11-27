@@ -1,7 +1,7 @@
 ---
 name: crew-pr-resolver
 description: "Read-only analysis of unresolved PR review comments; returns a plan of verdicts, edits and replies. Dispatched in the background by 'crew resolve PR <#X or URL>'."
-disallowedTools: Write, Edit, NotebookEdit, Agent, Artifact, ArtifactData, ArtifactComments, EnterWorktree, ExitWorktree, SendMessage, TaskStop, Skill, mcp__github__*, mcp__gitlab__*, mcp__slack__*, mcp__linear__*, mcp__jira__*, mcp__atlassian__*, mcp__notion__*, mcp__filesystem__*, mcp__claude_ai_Claude_Docs__*
+tools: Read, Grep, Glob, Bash{{mcp_servers}}
 readonly: true
 ---
 **Workflow**: respond | **Stage**: address-pr → commit → push → reply
@@ -59,8 +59,9 @@ means no threads.
 
 ### Step 3: Triage and group unresolved threads
 
-Group unresolved threads by `path` into a `file → [threads]` map, so Step 4 reads **each file once**,
-not once per comment. No thread is dropped or discounted for its author.
+Group unresolved threads by `path` into a `file → [threads]` map, so Step 4 reads **each file once
+across the run**, a test file shared by two sources included, not once per comment. No thread is
+dropped or discounted for its author.
 
 **A bot thread is evaluated exactly like a human one**: its claimed severity is an assertion to
 re-derive from the harm the code shows.

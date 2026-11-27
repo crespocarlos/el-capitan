@@ -46,7 +46,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py` | — | Durable units and immutable observations |
+| `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
 | `maintenance/` | `crew-doctor.py`, `crew-lint.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
 | `lib/` | — | `files.py`, `git.py`, `gh_reads.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
@@ -62,7 +62,7 @@ file at that exact path.
 and `crew-lint.py` are argparse entry points over their modules: each parses the command line and
 dispatches, and holds no command logic. Modules import each other by their namespaced name in
 dependency order (`memory_paths` → `memory_frontmatter` → `memory_store` → `memory_add`/`memory_search`/
-`memory_journal`/`memory_inbox` → `memory_maintenance`, `memory_store` → `memory_transfer`; `review_vocabulary` → `review_models` →
+`memory_journal`/`memory_inbox` → `memory_maintenance`, `memory_store` → `memory_transfer`/`memory_claude`; `review_vocabulary` → `review_models` →
 `review_findings` → `review_render`/`review_layers` → `review_coverage` → `review_report`; `task_status`
 → `task_progress` → `task_state` → `task_resolve`/`task_gates`/`ls_data` → `task_report`; `evals_query` →
 `evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_catalog`/`lint_prompts`/
@@ -74,15 +74,16 @@ reaching into a private module.
 
 **Packages import along these edges only** (crew-lint `package-direction`; a module's package is the
 directory it lives in, `lib` imports nothing from a package). `review` may read task state (PROGRESS
-METRIC lines, the report check) and `maintenance` reads the retention policy and sizes (`task_gc.py`) for `crew-doctor.py`; `task`
-never imports `review`, and nothing imports `maintenance`, `memory` or `evals` across packages:
+METRIC lines, the report check) and `maintenance` reads the retention policy and sizes (`task_gc.py`) and the
+Claude auto-memory entries not yet imported (`memory_claude.py`) for `crew-doctor.py`; `task` never imports
+`review`, and nothing imports `maintenance` or `evals` across packages, nor `memory` except that one read:
 
 ```package-edges
 task -> lib
 review -> task lib
 memory -> lib
 evals -> lib
-maintenance -> task lib
+maintenance -> task memory lib
 lib ->
 ```
 
@@ -90,6 +91,25 @@ lib ->
 wherever it lives: `crew-lint`'s `module-size` rule derives the capped set from the tree rather than
 from a list, so a package added tomorrow is capped the moment its directory exists. There is no
 per-package exception and no exception by filename.
+
+**Claude config dirs.** `install.sh` merges the settings and links `agents` and `skills` into every
+Claude config dir (`~/.claude`, `$CLAUDE_CONFIG_DIR`, each `--claude-config-dir`), but writes the
+CLAUDE.md blocks into `~/.claude/CLAUDE.md` only. The docs (claude-directory.md) say "If you set
+`CLAUDE_CONFIG_DIR`, every `~/.claude` path on this page lives under that directory instead", which
+would include `CLAUDE.md`. Observed: the user CLAUDE.md is read from ~/.claude even with
+CLAUDE_CONFIG_DIR set (2026-11-27): a `CLAUDE_CONFIG_DIR=~/.claude-work` session with no
+`~/.claude-work/CLAUDE.md` (and no link) loaded `~/.claude/CLAUDE.md`. A block in the second dir could
+therefore load every rule twice. `autoMemoryEnabled: false` is written by the settings merge
+(`AUTO_MEMORY_OFF`), not carried in `.claude/settings.json`, because that file is also this checkout's
+project settings.
+
+**Rendered agents.** An agent whose `tools:` line ends in `{{mcp_servers}}` is not linked:
+`install_blocks.py render-agents` writes it into `~/.cursor/agents` (which every config dir's `agents`
+points to) as a regular file, the placeholder replaced by one `, mcp__<server>__*` per server in
+`mcp.docs` and `mcp.code_search` of `~/.agent/config.json`, and records it as `rendered_agents` in the
+manifest; a re-install re-renders, uninstall removes it. The repo ships no project-level agents link
+under `.claude/`, so a session inside the checkout uses the rendered user-level agents too
+(`sync-skills.yml` checks it).
 
 ## Module maps
 
@@ -102,6 +122,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_state.py`: the SPEC record (its issue and PR list included), the status write, reconcile rules, the status migration
 - `task_progress.py`: PROGRESS.md: append and read every entry (BLOCKED, METRIC, stage cost and PR lines included)
 - `task_gates.py`: the transition gates: approve, implement, close out
+- `task_usage.py`: a subagent run's token usage from its transcript, appended as `agent_end` to the task its `crew-task:` line names
+- `task_record_pr.py`: `crew-task.py record-pr`, the PR hook: the task of a `gh pr create` PR (from `gh pr view`), marked done, given the PR, or created minimal and DONE
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`
 - `task_report.py`: rendering task state for `crew-ls.py`, the ISSUE, PR, PROGRESS and ACTIVITY cells, and `reconcile`
 - `ls_data.py`: what `crew ls`, `--report` and the TUI read: rows, the repo filter (`--repo`, else `ls.repo` of `~/.agent/config.json`: `here`, `all` or an `owner/name`) and the state filter, stale, the `landed` lines, landing bases, `--watch`
@@ -129,6 +151,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `review_layers.py`: the layer map: validation, hunk references, per-layer reports
 - `review_consolidate.py`: the `consolidate` subcommand: grouping and `candidates.json`
 - `review_render.py`: rendered findings, generated sections, the degraded mark, `save-out` and provenance
+- `review_capture.py`: `expect` (a persona's dispatch nonce and marker line) and `capture`, the `SubagentStop` hook that saves the reply
 - `review_report.py`: `persist`: writing the report and gating it against the findings JSON
 - `review_records.py`: deferred and dropped records, the cost METRIC, the outcome journal
 - `review_workspace.py`: where a review writes, and the content manifest of what it read
@@ -190,12 +213,16 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `lint_docs.py`: the one generator of the README command table and counts (`--commands`, `crew
   help`; `--write-readme`), their staleness rules, and the release files
 - `lint_dead_code.py`: the caller set for a catalog command (`--dead-code`)
-- `doctor_checks.py`: the `crew-doctor.py` checks: links, hook registrations, managed blocks (`.claude/install_blocks.py`), tools, state sizes, and
-  the docs and code-search MCP capabilities. Their server names come only from `mcp` in `~/.agent/config.json`; with none, one `note` says how
-  to add them and nothing is checked. Claude Code: per config dir (`~/.claude`, `$CLAUDE_CONFIG_DIR`, the install manifest's `config_dirs`), the
-  user `mcpServers` of its `.claude.json` (`~/.claude.json` for `~/.claude`) and each `projects` entry's, plus the cwd repo's
-  `<repo>/.mcp.json`; a capability is present for a project when that project or the user level has a matching server. Cursor:
-  `~/.cursor/mcp.json` and the cwd repo's `<repo>/.cursor/mcp.json`. A missing capability is a `WARN`, never a `FAIL`; plugin and claude.ai connector servers are named as unchecked
+- `doctor_checks.py`: the `crew-doctor.py` checks: links, hook registrations, managed blocks (`.claude/install_blocks.py`), auto-memory, tools,
+  state sizes
+- `doctor_mcp.py`: the rendered read-only agents (a copy in `~/.cursor/agents` that differs from what install renders now is a `FAIL`) and the
+  docs and code-search MCP capabilities. Server names come only from `mcp` in `~/.agent/config.json`; with none, one `note` says how to add
+  them, and with an invalid config one `note` says so; nothing is checked then. Claude Code: each existing config dir (the recorded ones and
+  `$CLAUDE_CONFIG_DIR`), reading `$CLAUDE_CONFIG_DIR/.claude.json` for the dir the variable names and `~/.claude.json` for `~/.claude`
+  otherwise: a project reaches the user `mcpServers` minus its `disabledMcpServers`, its own, and the cwd repo's `<repo>/.mcp.json` servers
+  that are approved (`enabledMcpjsonServers` or `enableAllProjectMcpServers`, in the project entry or the dir's `settings.json`) and not in
+  `disabledMcpjsonServers`. Cursor: `~/.cursor/mcp.json` and `<repo>/.cursor/mcp.json`. A missing capability is a `WARN`, never a `FAIL`;
+  plugin and claude.ai connector servers are named as unchecked
 
 ## Contracts
 
@@ -238,12 +265,12 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   log or a report whose identity fields come last, which keeps its tail — the same rule
   `crew-task-context.py` applies per artifact.
 - `tools.json` also declares the external tool surface that lint resolves. `mcp_servers` maps an MCP
-  server name to the tool names this repository uses on it; `native_tools` lists the harness tool ids.
-  `crew-lint.py` reports `mcp-tool-unknown` for an `mcp__<server>__<tool>` reference that
-  `mcp_servers` does not declare; a project that adds an MCP server adds it here in the same change.
-  No agent has a `tools:` line, which would shut out every MCP server in Claude Code:
-  `agents-inherit-tools` fails one, and fails a `disallowedTools` that differs from the agent's class
-  list in `lint_prompts.py` (`.agent/tools/AGENTS.md`, "Authoring agent and skill files").
+  server name to the tool names this repository uses on it; `native_tools` lists the harness tool ids
+  an agent's `tools:` line may name. `crew-lint.py` reports `mcp-tool-unknown` for an
+  `mcp__<server>__<tool>` reference that `mcp_servers` does not declare and `tool-id-unknown` for a
+  native id outside `native_tools`; a project that adds either adds it here in the same change.
+  `agents-inherit-tools` checks each agent's `tools:` line against its class in `lint_prompts.py`
+  (`.agent/tools/AGENTS.md`, "Authoring agent and skill files").
 - `crew-diff.sh` is source-only; it exports review context and intentionally does not implement an
   executable `--help`.
 - `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state
@@ -268,7 +295,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   writes DONE; it refuses an unchecked criterion and a reviewed commit that is not an ancestor of HEAD
   (no review: skipped), but not a review verdict or a branch other than the task's. A refusal exits
   non-zero with the reason and still records the PR; `crew open pr` stops on it. On a DONE task it
-  only appends the PR. `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
+  only appends the PR. The `record-pr.sh` hook runs the same gate the moment `gh pr create` prints a
+  URL (`crew-task.py record-pr`, `task_record_pr.py`). `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
   read-only, for each IMPLEMENTING task with no PR recorded and a branch off its repository's default
   branch, on 8 threads. When the task's repository is a fork and lists no PR, it asks the parent too
   and keeps the PRs whose head repository belongs to the fork's owner (`gh pr list --head` takes no
@@ -435,7 +463,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `<persona>.provenance.json` (`harness`, `agent_id|null`, `model|null`, `time`, `sha256`); `persist`
   verifies the hash when the record exists and passes a review directory without one with
   `provenance: absent (legacy)` (tamper evidence applies to new reviews only). Fewer agents than lenses
-  is a `Degraded: 1 agent, N lenses` review capped at `WARN`. `consolidate --review-dir D` only GROUPS
+  is a `Degraded: 1 agent, N lenses` review capped at `WARN`. Under Claude Code the `capture-reply.sh`
+  hook calls the same writer: `expect` writes `<persona>.expect` (a nonce) and prints the
+  `crew-review-out:` marker the dispatch prompt carries; `capture` saves the reply when they match. `consolidate --review-dir D` only GROUPS
   candidates (`raw-candidates.json`; identical file and overlapping `line`..`line_end`, never title
   similarity) into a draft `candidates.json` that `normalize` reads unchanged: every original keeps its
   label, the representative carries `group_severity`, the others get `disposition: merged`, and hunk ids
@@ -533,6 +563,17 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - **METRIC lines** are append-only audit records for offline analysis, never parsed for gates or
   transitions. Write one with `~/.agent/bin/crew-metric.py "$TASK_DIR" <event> [key=value ...]`; the
   events and fields are the ones `crew-metric.py` validates ("Gates and cost" above).
+- **`agent_end`** is written by the `capture-reply.sh` hook (`task_usage.py`), never by hand: one per
+  Claude Code subagent whose prompt carries `crew-task: <TASK_DIR>`. `tokens` is the last call's
+  context (its input + cache write + cache read + output), the figure the harness reports; `input`,
+  `output`, `cache_read` and `cache_write` are each summed over the calls (each assistant message
+  once). Summed `cache_read` counts the cached context once per call, so it never enters the
+  headline. The named directory must sit under `~/.agent/tasks` and hold `SPEC.md`. Each entry carries
+  `agent_id`, and only an agent's latest entry counts, so a resumed agent's stops are not added up.
+  `task_progress.agent_ends` is the one attribution both views use: an entry belongs to the stage of
+  the `stage_start` before it (else `other`), and per task a stage with any
+  `agent_end` shows their `tokens` total and the summed `output` in `crew ls --cost` and `crew
+  report` instead of `tokens_reported`. A transcript with no usage field records nothing.
 
 ## Hooks
 
@@ -574,6 +615,13 @@ after one stderr line, so a broken hook never blocks a tool call. One rule is th
 | `spec-status-reconcile.sh` | SessionStart | applies the status policy, refreshes the anchor |
 | `log-tool-use.sh`, `notify-idle.sh` | PostToolUse / Notification | local telemetry and the idle notification |
 | `memory-capture-prompt.sh` | Stop | queues one memory review: inbox drafts, no question |
+| `record-pr.sh` | PostToolUse Bash / `afterShellExecution` | `crew-task.py record-pr`: the PR a `gh pr create` printed, recorded on its task (`task_record_pr.py`) |
+| `capture-reply.sh` | SubagentStop (Claude Code) | `crew-review-findings.py capture`: the persona reply its `crew-review-out:` marker and `.expect` nonce name (`review_capture.py`) |
+
+The two record-keeping hooks never block and never stay silent about what they did: each prints its
+outcome on stdout (`record-pr.sh` as Claude `additionalContext`), and every other command or subagent
+ends in shell before Python starts. Both are `SILENT` in `hook_cases.py`, which checks their failure
+handling only; their behavior is pinned in `test_lifecycle.py` and `test_review_findings.py`.
 
 One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
 reader sees one purpose per file. `lib/hook.sh` is sourced, never registered; it holds the command
