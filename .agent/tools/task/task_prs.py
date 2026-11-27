@@ -68,10 +68,12 @@ def repo_facts(read: Reader, repo: str, timeout: float) -> tuple[str, str] | Non
     return (info.get("defaultBranchRef") or {}).get("name") or "", f"{owner}/{name}" if owner and name else ""
 
 
-def branch_urls(read: Reader, repo: str, branch: str, owner: str | None, timeout: float) -> list[str] | None:
-    """The PR URLs of `branch` in `repo`, only those whose head is `owner`'s when given; None when the read failed."""
+def branch_urls(read: Reader, repo: str, branch: str, owner: str | None, timeout: float,
+                state: str = "all") -> list[str] | None:
+    """The PR URLs of `branch` in `repo` in `state` (gh's `--state`), only those whose head is `owner`'s when given;
+    None when the read failed."""
     fields = "url,headRepositoryOwner" if owner else "url"
-    listed = parsed(read, ["pr", "list", "--head", branch, "--repo", repo, "--state", "all", "--json", fields], timeout)
+    listed = parsed(read, ["pr", "list", "--head", branch, "--repo", repo, "--state", state, "--json", fields], timeout)
     if not isinstance(listed, list):
         return None
     def head_owner(item: dict) -> str:

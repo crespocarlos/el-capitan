@@ -22,12 +22,12 @@
       "why": "a blocking finding is resolved before the change is committed"
     },
     "build.review.pass": {
-      "command": "crew commit",
-      "why": "nothing blocks, so the change is committed"
+      "command": "crew open pr",
+      "why": "nothing blocks, so the change is shipped: committed and opened as a draft PR"
     },
     "build.review.warn": {
-      "command": "crew commit",
-      "why": "attention findings do not block, so the change is committed"
+      "command": "crew open pr",
+      "why": "attention findings do not block, so the change is shipped: committed and opened as a draft PR"
     },
     "build.review.pr": {
       "human": "paste the bodies from `comments.md` onto the PR; nothing was posted",

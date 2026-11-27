@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Change a task's state: the transition gates, reconcile, record-pr, status migration, BLOCKED, lock, worktree, gc.
+"""Change a task's state: transition gates, reconcile, record-pr, status migration, BLOCKED, lock, worktree, gc, ship.
 
-`crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every
-other write goes through here (`gc`: retention, `task_gc.py`). `lock`, `blocked`, `worktree` and `report`
-parse their own arguments (`task_lock.py`, `task_worktrees.py`, `task_builder_report.py`); see each one's `--help`.
+`crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every other write goes
+through here (`gc`: retention, `task_gc.py`; `ship`: commit to DONE, `task_ship.py`). `lock`, `blocked`,
+`worktree` and `report` parse their own arguments (`task_lock.py`, `task_worktrees.py`, `task_builder_report.py`).
 """
 from __future__ import annotations
 
@@ -95,6 +95,16 @@ def collect_garbage(args: argparse.Namespace) -> int:
     return gc(args)
 
 
+def ship(args: argparse.Namespace) -> int:
+    """Commit, merge the base, re-test, push, open a draft PR and mark done, resuming a stopped run (`task_ship.py`)."""
+    from task_ship import ship_task
+
+    if (args.task_dir is None) != args.no_task or (args.phase and args.no_task):
+        print("error: give TASK_DIR or --no-task, not both and not neither (--phase needs TASK_DIR)", file=sys.stderr)
+        return 2
+    return ship_task(args.task_dir, args.title, args.body_file, args.base, args.repo, args.attribution, args.phase)
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="crew-task.py", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -131,6 +141,19 @@ def make_parser() -> argparse.ArgumentParser:
     collect.add_argument("--only", choices=["telemetry"], help="select only the legacy ~/.agent/telemetry")
     collect.add_argument("--tasks-dir", type=Path, default=None, help="default ~/.agent/tasks")
     collect.set_defaults(run=collect_garbage)
+    shipper = commands.add_parser("ship", help="after the owner's go: commit, merge the base, re-run ## Tests, push, "
+                                  "open a draft PR, mark done; a re-run resumes")
+    shipper.add_argument("task_dir", metavar="TASK_DIR", type=Path, nargs="?")
+    shipper.add_argument("--no-task", action="store_true", help="ship the current checkout's branch; no mark-done")
+    shipper.add_argument("--phase", action="store_true",
+                         help="one PR of a program: record the PR, keep IMPLEMENTING; later phases' boxes may be open")
+    shipper.add_argument("--title", required=True, help="the commit message and the PR title")
+    shipper.add_argument("--body-file", required=True, type=Path, help="the PR description")
+    shipper.add_argument("--base", required=True, help="the base branch approved at Gate 2")
+    shipper.add_argument("--repo", required=True, help="the owner/repo the PR targets, approved at Gate 2")
+    shipper.add_argument("--attribution", default="",
+                         help="the commit's trailer line (empty: Co-Authored-By: Claude <noreply@anthropic.com>)")
+    shipper.set_defaults(run=ship)
     for name, text in DELEGATED.items():
         commands.add_parser(name, help=text, add_help=False)
     return parser

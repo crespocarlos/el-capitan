@@ -37,7 +37,7 @@ Every command is typed into the AI chat. `crew help` prints these tables.
 | `crew spec` issue/URL/description | Draft a SPEC.md, then stop at Gate 1 for approval. |
 | `crew implement` | Orchestrate implementation of an approved SPEC.md. |
 | `crew commit` | Generate a semantic commit message and commit. |
-| `crew open pr` | Push the current branch, open a PR with a generated description, and mark the task DONE. |
+| `crew open pr` | Write the PR description, then after approval ship the task (commit, push, draft PR, DONE) with crew-task.py ship. |
 | `crew review address` | Work through findings from the most recent crew review inline. |
 | `crew review` [PR #X \| spec \| idea \| changes \| (self)] | Multi-lens review of code, a PR, a spec or an idea. |
 | `crew pr` view\|diff\|repo\|issue | Read a PR, its diff, the repository or an issue through one read-only tool; writes stay `gh`. |

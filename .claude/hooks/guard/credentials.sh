@@ -21,8 +21,6 @@ internal() {
   hook_allow
 }
 trap 'rc=$?; [ "$rc" = 0 ] || [ "$rc" = 2 ] || internal "unexpected exit $rc"' EXIT
-# High-precision formats only: a false positive blocks a real commit.
-SECRET='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}'
 hook_segments "$cmd"
 commits="" adds="" i=0
 while [ "$i" -lt "${#HOOK_SEGS[@]}" ]; do
@@ -42,6 +40,9 @@ done
 [ -n "$commits" ] || hook_allow
 
 scanning=1 added="" HOOK_FAIL_BLOCKS=1
+# One pattern, shared with `crew-task.py ship`, high-precision formats only (a false positive blocks a real
+# commit); when it cannot be read the scan fails and the commit is blocked.
+SECRET=$(head -n 1 "$(dirname "$0")/../lib/token-patterns.ere")
 for k in $adds $commits; do
   hook_seg "$k"
   hook_git

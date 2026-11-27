@@ -198,7 +198,8 @@ When the Implementation Report is available:
 - Surface worker failures to the user with options.
 - Tests the run adds follow the [testing policy](~/.cursor/agents/references/testing-policy.md).
 - **Stop after all tasks pass.** Never commit, push, or create a PR; output the Step 7 handoff
-  before stopping.
+  before stopping. Committing and opening the PR belong to `crew-task.py ship`, which `crew open pr`
+  runs after the owner approves the PR.
 - **Code changes follow crew-builder's protocol**, through the subagent or by reading and following
   the protocol directly, never ad hoc. The orchestrator handles setup and verification.
 
@@ -212,4 +213,4 @@ Use plain language, without compressed summaries, at each gate checkpoint:
 
 Continue once the user provides direction.
 
-> Next: run `crew review` to verify the change, then `crew commit`, then `crew open pr`.
+> Next: run `crew review` to verify the change, then `crew open pr`, which ships it with `crew-task.py ship`.
