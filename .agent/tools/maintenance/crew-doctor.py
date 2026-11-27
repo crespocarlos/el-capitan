@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Install health on one screen: links, hook registrations, managed blocks, tools and gh, state sizes.
+"""Install health on one screen: links, hook registrations, managed blocks, auto-memory, tools and gh, state sizes.
 
-Read only. Exit 0 healthy, 1 at least one problem (each `FAIL` line names its fix). The checks are
+Read only. Exit 0 healthy, 1 at least one problem (each `FAIL` line names its fix; a `WARN` is not one). The checks are
 `doctor_checks.py`; the size limits are the `doctor` object of `~/.agent/config.json` (`task_gc.py`
 holds the defaults, which apply, with a `FAIL config` line, when the file is invalid).
 """
@@ -13,7 +13,16 @@ from pathlib import Path
 
 import maintenance_bootstrap  # noqa: F401
 
-from doctor_checks import ROOT, Line, check_blocks, check_hooks, check_links, check_state, check_tools
+from doctor_checks import (
+    ROOT,
+    Line,
+    check_auto_memory,
+    check_blocks,
+    check_hooks,
+    check_links,
+    check_state,
+    check_tools,
+)
 from task_gc import DEFAULTS, ConfigError, Places, load_config
 
 
@@ -30,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as error:
         limits = dict(DEFAULTS["doctor"])
         lines.append(Line("FAIL", "config", f"{error}; fix the file (the default limits apply meanwhile)"))
-    lines += [*check_links(home), *check_hooks(home), *check_blocks(home),
+    lines += [*check_links(home), *check_hooks(home), *check_blocks(home), *check_auto_memory(home),
               *check_tools(sign_in=not args.offline), *check_state(places, limits)]
     print(f"crew doctor: install from {ROOT}")
     for line in lines:

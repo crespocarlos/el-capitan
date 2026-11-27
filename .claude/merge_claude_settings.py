@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Merge el-capitan hooks into an existing ~/.claude/settings.json (idempotent).
 
-Usage: merge_claude_settings.py <src_settings.json> <dest_settings.json> [--manifest <home>]
+Usage: merge_claude_settings.py <src_settings.json> <dest_settings.json> [--manifest <home>] [--auto-memory-off]
+
+`autoMemoryEnabled: false` (`AUTO_MEMORY_OFF`, not in the template) is merged only with `--auto-memory-off`,
+which install passes once the dir's Claude memory entries are in crew memory; a value the destination holds
+is never changed, and uninstall removes the key only while it is still false.
 
 With `--manifest`, what the merge added (rules, hooks and keys the destination lacked) is recorded in
-`<home>/.agent/install-manifest.json`; `uninstall.py` removes only that (`unmerge`).
+`<home>/.agent/install-manifest.json`, under the destination's config dir (`install_blocks.settings_section`);
+`uninstall.py` removes only that (`unmerge`).
 
 hooks is a dict keyed by event type, with each value an array of
 {matcher, hooks} entries. Merge per event type at the inner hook level:
@@ -32,6 +37,10 @@ from pathlib import Path
 import install_blocks
 from hooks_retirement import retired
 from install_blocks import write_json
+
+# Written by install, not carried in the template: the template is also this checkout's project settings,
+# and a key there would turn auto-memory off for every session inside the checkout before any migration.
+AUTO_MEMORY_OFF = {"autoMemoryEnabled": False}
 
 
 def template_commands(entries):
@@ -236,7 +245,7 @@ def unmerge(dest, recorded, src, warn):
         if key in ("hooks", "permissions"):
             if dest.get(key) in ({}, None):
                 dest.pop(key, None)
-        elif key in dest and dest[key] == src.get(key):
+        elif key in dest and dest[key] == {**AUTO_MEMORY_OFF, **src}.get(key):
             del dest[key]
     return dest
 
@@ -266,18 +275,28 @@ def drop_hooks(hooks, recorded, warn):
             del hooks[event]
 
 
+def read_template(src_path: str, auto_memory_off: bool) -> dict:
+    """The template, plus `AUTO_MEMORY_OFF` when install found no Claude memory entry left to import."""
+    with open(src_path, encoding="utf-8") as f:
+        src = json.load(f)
+    if auto_memory_off and isinstance(src, dict):
+        src = {**AUTO_MEMORY_OFF, **src}
+    return src
+
+
 def main() -> int:
     arguments = sys.argv[1:]
+    auto_memory_off = "--auto-memory-off" in arguments
+    arguments = [argument for argument in arguments if argument != "--auto-memory-off"]
     manifest_home = None
     if arguments[2:3] == ["--manifest"] and len(arguments) == 4:
         manifest_home, arguments = arguments[3], arguments[:2]
     if len(arguments) != 2:
-        print("usage: merge_claude_settings.py <src> <dest> [--manifest <home>]", file=sys.stderr)
+        print("usage: merge_claude_settings.py <src> <dest> [--manifest <home>] [--auto-memory-off]", file=sys.stderr)
         return 2
     src_path, dest_path = arguments
     try:
-        with open(src_path, encoding="utf-8") as f:
-            src = json.load(f)
+        src = read_template(src_path, auto_memory_off)
     except (OSError, json.JSONDecodeError) as error:
         print(f"merge_claude_settings: cannot read template: {error}", file=sys.stderr)
         return 2
@@ -318,7 +337,8 @@ def main() -> int:
             install_blocks.backup(Path(dest_path), original)
         write_json(dest, Path(dest_path))
         if manifest_home:
-            install_blocks.record(Path(manifest_home), "claude_settings", record, present)
+            section = install_blocks.settings_section(Path(manifest_home), Path(dest_path).parent)
+            install_blocks.record(Path(manifest_home), section, record, present)
     except (OSError, install_blocks.ManifestError) as error:
         print(f"merge_claude_settings: cannot write {dest_path} or its install record: {error}", file=sys.stderr)
         return 2

@@ -48,17 +48,17 @@ def tokens(value: str) -> list[str]:
     return re.findall(r"[a-z0-9]{2,}", value.lower())
 
 
-def repo_key() -> str:
-    """The repository scope: the upstream (or origin) repository's bare name, else the directory.
+def repo_key(directory: Path | None = None) -> str:
+    """The repository scope of `directory` (default: the cwd): the upstream (or origin) repository's bare name.
 
     A fork's `upstream` wins over `origin`; a local-path or file:// remote gives its last path
     segment (`lib.git.repo_name_from_url`), so existing scopes keep their key. Git failing is not an
     error for a scope (the store must still open): the directory name is the fallback.
     """
     try:
-        top = toplevel(None)
+        top = toplevel(directory)
     except GitError:
-        return Path.cwd().name
+        return (directory or Path.cwd()).name
     for remote_name in ["upstream", "origin", *remotes(top)]:
         url = remote_url(top, remote_name)
         if not url:

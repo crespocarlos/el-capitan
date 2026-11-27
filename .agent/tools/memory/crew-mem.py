@@ -11,6 +11,7 @@ import sys
 import memory_bootstrap  # noqa: F401
 
 from memory_add import add, cite, listing, show, supersede
+from memory_claude import import_claude
 from memory_frontmatter import STATUSES, TYPES
 from memory_inbox import import_inbox
 from memory_journal import journal_add, journal_import
@@ -82,7 +83,7 @@ def add_write_parsers(commands) -> None:
 
 
 def add_maintenance_parsers(commands) -> None:
-    """Bulk operations: consolidate, import-inbox, and the units' export and import between machines."""
+    """Bulk operations: consolidate, import-inbox, import-claude, and the units' export and import between machines."""
     consolidate_parser = commands.add_parser("consolidate")
     consolidate_parser.add_argument("--dry-run", action="store_true")
     inbox_parser = commands.add_parser("import-inbox")
@@ -95,6 +96,17 @@ def add_maintenance_parsers(commands) -> None:
     import_parser = commands.add_parser("import", help="add an export's units; a differing stored one is kept (exit 1)")
     import_parser.add_argument("file")
     import_parser.add_argument("--dry-run", action="store_true")
+    claude_parser = commands.add_parser(
+        "import-claude", help="draft Claude Code auto-memory entries into the inbox, one per entry")
+    claude_parser.add_argument("--dry-run", action="store_true", help="print what would be drafted or archived")
+    claude_parser.add_argument("--config-dir", action="append", default=[],
+                               help="a Claude config dir (repeatable); default: ~/.claude and $CLAUDE_CONFIG_DIR")
+    claude_mode = claude_parser.add_mutually_exclusive_group()
+    claude_mode.add_argument("--archive", action="store_true",
+                             help="move the originals already imported, or whose text is already stored, to "
+                                  "~/.agent/archive/claude-memory-<stamp>/")
+    claude_mode.add_argument("--check", action="store_true",
+                             help="list the entries not imported and those left for review; exit 1 when any remain")
 
 
 def add_journal_parsers(commands) -> None:
@@ -138,6 +150,7 @@ def main() -> int:
         "init": lambda _: init_store(), "add": add, "search": search, "context": context,
         "show": show, "list": listing, "supersede": supersede, "cite": cite,
         "import-inbox": import_inbox, "consolidate": consolidate, "export": export_units, "import": import_units,
+        "import-claude": import_claude,
     }
     try:
         if args.command == "journal":
