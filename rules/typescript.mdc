@@ -16,8 +16,8 @@ guide win over this file; don't restate rules that lint already enforces.
 - Use `import type` and `export type` for type-only symbols.
 - Replace magic numbers, strings, and regexes with named `UPPER_CASE` constants at module top.
 - Keep a type or constant local to its file until a second file needs it; then move it to the
-  package's shared `types.ts` or `constants.ts` (in Kibana plugins, under `common/` when both server
-  and browser use it). Sharing a type or constant this way is not an abstraction.
+  package's shared `types.ts` or `constants.ts`. Sharing a type or constant this way is not an
+  abstraction.
 - Import from a package's public entry point, not its internal paths. Don't add `export *` to plugin
   `index.ts` files or barrel files that defeat tree-shaking.
 
@@ -25,7 +25,7 @@ guide win over this file; don't restate rules that lint already enforces.
 
 - Avoid `any`; use `unknown` only at true boundaries and narrow it immediately.
 - Use explicit types for public APIs; rely on inference for straightforward internal code.
-- When a runtime schema exists (`@kbn/config-schema`, zod, io-ts), derive the type from it
+- When a runtime schema exists (zod, io-ts, a framework's config schema), derive the type from it
   (`TypeOf<typeof schema>`, `z.infer`) instead of declaring a parallel interface.
 - Model variants as discriminated unions, and make `switch` statements exhaustive with a `never`
   check in the default branch.
@@ -49,11 +49,17 @@ guide win over this file; don't restate rules that lint already enforces.
 - Name handler props `on<Subject><Change>` (for example, `onFilterChange`).
 - Don't memoize by default; add `useMemo`, `useCallback`, or `React.memo` when the re-render or
   computation cost is measured or evident (for example, large lists or expensive derivations).
-- Prefer Emotion (CSS-in-JS) and EUI theme tokens over new SCSS.
-- In Kibana, translate user-facing strings with `@kbn/i18n` (`i18n.translate` or `FormattedMessage`)
-  using stable, namespaced IDs; use placeholders instead of concatenating translated fragments.
-- Keep UI accessible: prefer EUI components' built-in semantics, label every form control, give
-  icon-only buttons an `aria-label`, and don't convey state through color alone.
+- Translate user-facing strings with the project's i18n library, using stable, namespaced IDs and
+  placeholders instead of concatenating translated fragments.
+- Keep UI accessible: prefer the component library's built-in semantics, label every form control,
+  give icon-only buttons an `aria-label`, and don't convey state through color alone.
+
+## Kibana (opt-in: Kibana and EUI code)
+
+- Shared types and constants used by both server and browser live under the plugin's `common/`.
+- Derive types from `@kbn/config-schema` schemas (`TypeOf<typeof schema>`).
+- Prefer Emotion (CSS-in-JS) and EUI theme tokens over new SCSS, and EUI components' semantics.
+- Translate user-facing strings with `@kbn/i18n` (`i18n.translate` or `FormattedMessage`).
 
 ## Tests
 

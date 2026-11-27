@@ -5,8 +5,9 @@ no package, or never dispatched at all.
 
 1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
    `description`, the search/read `tools` for Claude Code, `readonly: true`, `maxTurns: 12`) and a
-   persona prompt: identity, scope boundaries, focus areas, severity definitions, output format. Copy
-   the frontmatter from an existing persona rather than inventing tool ids. Never require a specific
+   persona prompt: identity, scope boundaries, focus areas, the lens's label table, and its
+   `Assessment:` question (the appended `reviewer-contract.md` owns the output shape). Copy the
+   frontmatter from an existing persona rather than inventing tool ids. Never require a specific
    tool by name in the prompt body: the harnesses' tool surfaces differ — one inherits every parent
    tool, the other honours a declared subset — so a named tool may not exist on the other side.
    Reviewers are analysis-only; leaving out `readonly: true` fails `crew-lint` with `missing-readonly`,
@@ -37,14 +38,5 @@ Primary-kinds table in `context-tiers.md`, and `check_layers` in `crew-review-fi
 
 ## Frontmatter keys per harness
 
-Cursor reads `name`, `description`, `model`, `readonly`, and `is_background`, ignores `tools` and
-`maxTurns`, and inherits every parent tool — so `readonly: true` is its only tool restriction, and
-`crew-lint`'s `missing-readonly` rule fails any agent that lacks it without an exemption. Claude Code
-reads `tools` and `maxTurns` and ignores `readonly`; `maxTurns` therefore binds under Claude Code only,
-and the explorer budgets are prose-enforced in Cursor. Each frontmatter states which harness reads
-which key. Never set `model:`: subagents inherit the invoking model.
-
-**`is_background` is not set in frontmatter here.** Backgrounding is a per-call decision, and the
-call sites that need it already pass `run_in_background: true` (`crew-implement` Step 6, and the two
-worker rules in `crew-router.mdc`). Setting it in frontmatter would put that fact in two places with
-nothing to catch them disagreeing.
+Which harness reads which key, `model:`, and backgrounding: `.agent/tools/AGENTS.md` → Authoring
+agent and skill files.

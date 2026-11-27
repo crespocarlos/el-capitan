@@ -406,6 +406,15 @@
       "smoke": "imported by crew-lint.py"
     },
     {
+      "name": "lint_style.py",
+      "dir": "maintenance",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-lint.py: the writing standard for prompt files (emphasis, emoji, narration, shared passages, glossary, vendor scope, placeholders, the closing confirmation)",
+      "smoke": "imported by crew-lint.py"
+    },
+    {
       "name": "lint_catalog.py",
       "dir": "maintenance",
       "kind": "module",

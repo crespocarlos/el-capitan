@@ -8,16 +8,15 @@ readonly: true
 
 **A review comment is a proposal, not an obligation.** An engineer reads it, judges whether the code
 agrees, and replies with the decision; applying it is one possible outcome, not the default. Every open
-thread gets the same evaluation and one of seven verdicts, and the reply states the decision and why.
+thread gets the same evaluation and one of seven verdicts; the reply states the decision and why.
 
 ## Execution model
 
 **Two parts, one approval gate.** The main session first resolves or creates the PR worktree
 (`crew-worktree.py <branch>`) and passes its path, OWNER/REPO and the PR number in the launch prompt.
 Steps 1-5 are a background, read-only subagent whose final message is the Step 6 plan: it never edits
-a file, creates a worktree, pushes, posts to GitHub, or asks. Bash stays for `gh` reads and probes, so
-under Claude Code (which ignores `readonly`) read-only holds by instruction. Steps 6-7 run inline in
-the main session, which reads this file from Step 6 and [acting on
+a file, creates a worktree, pushes, posts to GitHub, or asks (Bash stays for `gh` reads and probes).
+Steps 6-7 run inline in the main session, which reads this file from Step 6 and [acting on
 threads](crew-pr-resolver/references/acting-on-threads.md).
 
 ## When Invoked
@@ -26,7 +25,7 @@ threads](crew-pr-resolver/references/acting-on-threads.md).
 
 `cd` into the launch prompt's worktree path, then load repo patterns, project guidance, and task
 context. A read-only `gh` call refused by the sandbox (`Forbidden`) is retried with network elevation
-(`full_network` in Cursor; the equivalent grant elsewhere), holding for the run. Never alter the read
+(`full_network` in Cursor), holding for the run. Never alter the read
 or fall back to a local PR ref; auth and scope failures are terminal.
 
 ```bash
@@ -38,14 +37,12 @@ PR=$(~/.agent/bin/crew-pr-actions.py view --pr PR_NUMBER --repo OWNER/REPO --fie
 
 ~/.agent/bin/crew-task-context.py --branch "$PR_BRANCH" --artifacts task_id,handoff --max-chars 2000
 
-MEM_OUT=$(~/.agent/bin/crew-mem.py context --mode review --query "$PR_TITLE" 2>&1); MEM_RC=$?
-if [ "$MEM_RC" -eq 2 ]; then echo "warning: memory unavailable — $MEM_OUT" >&2; fi
+~/.agent/bin/crew-mem.py context --mode review --query "$PR_TITLE" --warn-unavailable
 ```
 
-`crew-agent-context.py` takes `paths ...`: call it **once** with every path the PR touches,
-never per thread (each call re-reads the same `AGENTS.md`); guidance for a path governs every thread
-on it. `crew-task-context.py` is context for the branch, not authority over the PR or the user's
-instructions.
+Call `crew-agent-context.py` once with every path the PR touches, never per thread; guidance for a
+path governs every thread on it. `crew-task-context.py` is context for the branch, not authority over
+the PR or the user's instructions.
 
 ### Step 2: Fetch review threads
 
@@ -53,7 +50,7 @@ Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr
 object, shape in `TOOLS.md`; `--cursor` merges later pages). Failure exits nonzero, so `threads: []`
 means no threads.
 
-**Mandatory filter:**
+**Filter every thread first:**
 
 - **Drop** every `isResolved: true` thread — never evaluated, edited, replied to, or resolved again.
 - **Route to Outdated Threads** every `isOutdated: true AND isResolved: false` thread; Step 6 surfaces
@@ -95,16 +92,13 @@ Process the `file → [threads]` map. For each file:
      records why the suggestion is not taken. **Decide** means the comment asks to change a decision
      the author owns: no edit, the reply names it, and the thread stays open.
    - An edit that moves a test's expected value to match new behavior is overfitting: report it and
-     classify **Decide**, because it proves the test agrees with the change, not that the change is
-     right.
+     classify **Decide**.
    - For Apply/Adapt, draft every edit for this file together, so Step 7 applies them as one batch.
    - Evaluation has no side effects: no edit, reply, or resolution happens until Step 7, and a probe
      writes nothing. The verdicts go in the final report, not mid-stream.
-5. **Refute every verdict once, against the same reads.** Before the next file, argue the other side of
-   each verdict you just assigned: state what would have to be true for the opposite, then check it
-   against the lines already loaded. No new reads — its only job is to catch a verdict the comment did
-   not deserve. Follow [refuting a verdict](crew-pr-resolver/references/refuting-a-verdict.md) for the
-   per-verdict counter-argument, and record the result as one `refuted:` clause on the row.
+5. **Refute every verdict once, against the same reads**, before the next file: follow [refuting a
+   verdict](crew-pr-resolver/references/refuting-a-verdict.md) and record the result as one
+   `refuted:` clause on the row.
 
 Never read a file twice.
 
@@ -169,25 +163,26 @@ Name the expected value a flagged row moves. A reply holding a `|` goes beneath 
 table, counts, outdated list, and the questions go out either way, counts reading zero.
 
 Outdated threads are listed read-only, in the same table shape, marked `Outdated — verify it applies`.
-Follow [reporting a run](crew-pr-resolver/references/reporting-a-run.md) for that table and the summary
-line. Then ask one question, and surface threads needing input separately:
+Follow [reporting a run](crew-pr-resolver/references/reporting-a-run.md) for that table, the summary
+line, and the journal draft (none when nothing qualifies). Then ask one question, the only one of the
+run, and surface threads needing input separately:
 
 **"Apply the plan? (1) apply the edits, push, and reply to every thread / (2) apply the edits only /
-(3) choose: name the edit and thread numbers"**
+(3) choose: name the edit and thread numbers. Add `+ journal` to store the journal draft."**
 
 Option 1 is the only blanket authorization of the push. Option 2 applies and verifies the edits, posts
 nothing, and the handoff names the commit, push and replies as still owed. Under option 3 the chosen
 edits are pushed before any chosen reply posts, and a chosen thread tied to an unchosen edit gets no
-reply: there is no change to describe.
+reply: there is no change to describe. Without `+ journal` the draft is not stored.
 
-### Step 7: Execute approved actions, then journal (main session)
+### Step 7: Execute approved actions (main session)
 
 Only after the user responds: follow [acting on threads](crew-pr-resolver/references/acting-on-threads.md)
-for the edit, verify, commit, push, reply and resolve mechanics, and for the opt-in journal step. Three
-rules stay here because they govern what this run reports: with edits approved, no reply or resolution
-happens before the commit is pushed; with none, replies go out directly. Every reply is written under
-`~/.cursor/rules/voice.mdc`, no exceptions; and an `Ask` thread gets the reply alone and stays open, as
-does a `Decide` thread, and neither is ever resolved.
+for the edit, verify, commit, push, reply, resolve and journal mechanics. Three rules stay here
+because they govern what this run reports: with edits approved, no reply or resolution happens before
+the commit is pushed; with none, replies go out directly. Every reply is written under
+`~/.cursor/rules/voice.mdc`; and an `Ask` thread gets the reply alone and stays open, as does a
+`Decide` thread, and neither is ever resolved.
 
 After Step 7, the main session (not the plan) ends with:
 

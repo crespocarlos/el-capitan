@@ -333,9 +333,9 @@ Not a pipeline stage; run it when you need it.
 
 ## The crew
 
-4 orchestrator agents, 11 persona subagents, 12 skills (including the portable `spec-writing` skill, usable without crew).
+4 orchestrator agents, 11 personas, 13 skills (including the portable `spec-writing` and `prompt-authoring` skills, usable without crew).
 
-**Orchestrators** dispatch persona subagents in parallel for multi-lens analysis. **Skills** run inline for interactive pipeline steps. All agents are markdown files — readable, editable, version-controlled.
+**Orchestrators** dispatch personas in parallel for multi-lens analysis. **Skills** run inline for interactive pipeline steps. All agents are markdown files — readable, editable, version-controlled.
 
 ### 📋 crew-specwriter
 
@@ -346,7 +346,7 @@ Drafts a `SPEC.md` from a GitHub issue or plain description. Sends the explorer 
 - Critiques cover: scope creep, missing edge cases in AC, implementation ambiguity
 - Stops at Gate 1 — waits for your approval before any code is written
 
-**Persona subagents:** `specwriter-scope`, `specwriter-adversarial`, `specwriter-explorer`
+**Personas:** `specwriter-scope`, `specwriter-adversarial`, `specwriter-explorer`
 
 **Skills:** `crew-implement`, `crew-commit`, `crew-open-pr`, `crew-create-issue`, `crew-address-review`
 
@@ -357,8 +357,8 @@ The implementation engine. Reads a SPEC.md, works through each task in order, ru
 - Runs as a subagent launched by `crew implement`
 - Per-task acceptance checks and a spec-compliance check run before marking each task done
 - Specs with more than 8 tasks run in batches of up to 6, with a fresh worker per batch
-- Runs the spec's `## Tests` commands plus lint and type-check as quality gates before completion
-- Hands back a REPORT.md — pass/fail results, decisions made, quality gates, changed files
+- Runs the spec's `## Tests` commands plus lint and type-check as verification before completion
+- Hands back a REPORT.md — pass/fail results, decisions made, verification results, changed files
 
 ### 🔍 crew-reviewer
 
@@ -392,7 +392,6 @@ el-capitan/
 │   ├── agent-output.mdc               # Output format for agent replies
 │   ├── memory-capture.mdc             # When to propose durable memory
 │   ├── personal.mdc                   # Personal engineering preferences (always loaded)
-│   ├── prompt-engineering.mdc         # Prompt authoring guidance (loaded for *.md, *.mdc)
 │   ├── voice.mdc                      # Writing voice for authored text
 │   └── typescript.mdc                 # TypeScript/React guidance (loaded for *.ts, *.tsx)
 ├── .cursor/
@@ -444,21 +443,19 @@ Always-loaded context is kept minimal on purpose:
 | File | Lines | Loaded |
 |---|---|---|
 | `agent-output.mdc` | 56 | Every session |
-| `crew-orchestrator.mdc` | 122 | Every session |
-| `crew-router.mdc` | 103 | Every session |
-| `personal.mdc` | 146 | Every session |
-| `memory-capture.mdc` | 38 | Every session |
-| `prompt-engineering.mdc` | 117 | When editing `.md` / `.mdc` files |
-| `typescript.mdc` | 62 | When editing `.ts` / `.tsx` files |
-| `.claude/CLAUDE.md` | 88 | Every session (Claude Code) |
+| `crew-orchestrator.mdc` | 62 | Every session |
+| `crew-router.mdc` | 62 | Every session |
+| `personal.mdc` | 106 | Every session |
+| `memory-capture.mdc` | 35 | Every session |
+| `typescript.mdc` | 68 | When editing `.ts` / `.tsx` files |
+| `prompt-authoring` skill | 136 | When its description applies (prompt edits, LLM workflows) |
+| `.claude/CLAUDE.md` | 41 | Every session (Claude Code) |
 
-Counts are checked by `crew-lint.py --budget`, which also fails when the always-on set exceeds
-`MAX_ALWAYS_RULE_TOKENS` in `crew-lint.py`, currently 7,500 estimated tokens (chars ÷ 4). That cap is
-a ceiling on per-request context, not a target: it was raised from 7,000 because the set measured
-6,972 and the 28 remaining tokens could not fit a routing row. Load conditions are for Cursor; Claude
-Code imports `prompt-engineering.mdc` through `.claude/CLAUDE.md`, so it loads every Claude session,
-while `typescript.mdc` gets a one-line `Read ... before writing a .ts or .tsx file` pointer that
-`install.sh` copies into the managed block of `~/.claude/CLAUDE.md`.
+`crew-lint.py --budget` prints the always-on set's estimated tokens (chars ÷ 4) and fails when it
+exceeds `MAX_ALWAYS_RULE_TOKENS` in `lint_prompts.py`, the measured total plus 300 tokens of
+headroom. Load conditions are for Cursor; for Claude Code, `typescript.mdc` and the
+`prompt-authoring` skill each get a one-line `Read ... before ...` pointer that `install.sh` copies
+into the managed block of `~/.claude/CLAUDE.md`, so neither is charged to every request.
 
 Orchestrator agents (crew-specwriter, crew-reviewer, etc.) and skill files are loaded per-command, not globally. Persistent memory is retrieved on demand at task start; it is never loaded wholesale into every prompt. Fallback dispatch blocks for degraded environments live in `.agent/tools/` — not in agent files.
 

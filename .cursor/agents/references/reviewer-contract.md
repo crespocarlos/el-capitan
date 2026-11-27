@@ -1,7 +1,9 @@
 # Shared reviewer contract
 
 Your persona file sets your lens; this file sets your output. Where they disagree about output, this
-file wins: `crew-review-findings.py` and `consolidation.md` parse the format defined here.
+file wins: `crew-review-findings.py` and `consolidation.md` parse the format defined here. The
+artifact may be a code diff, a plan, a design proposal, or a session discussion; apply your lens to
+whatever is provided. Your persona's label table says what counts as each label in your lens.
 
 ## Labels
 
@@ -61,11 +63,9 @@ Assessment: approve | request-changes | comment — <one clause of evidence for 
   change has no surface your lens covers. Name which.
 
 The clause is the substance; the word alone is not. Say what you saw that decided it — what would
-have made this the wrong change, or the specific thing you could not judge — and give it at least a
-short sentence of reason (the gate refuses anything under 20 characters, so `Assessment: approve —
-correct.` is rejected). "The trend split is correct but it bounds the symptom, not the 84% re-routing
-loop the spec measured" is the shape to aim for, not the answer: a lens that saw the change work
-should say so and name what settled it.
+have made this the wrong change, or the specific thing you could not judge — in at least a short
+sentence (the gate refuses anything under 20 characters, so `Assessment: approve — correct.` is
+rejected). A lens that saw the change work says so and names what settled it.
 
 This is not the review's verdict. `persist` derives that from your findings (`PASS`/`WARN`/`BLOCK`),
 so the two can disagree, and that disagreement is the useful signal: `request-changes` with no
@@ -77,7 +77,9 @@ Each finding is a comment body the reader can paste without editing:
 `N. [label · 4] **\`path/to/file.ts:42\`** — one-line title`, then a 2-5 line fenced block
 anchoring the finding, then 2-3 sentences on what is wrong and why it breaks, then `Fix:` (that exact
 spelling; the consolidator records it as the `patch` disposition and loses any other). `N` is the list
-index and `L` the line; the score is a literal band, so neither is copied into the wrong slot.
+index and `L` the line; the score is a literal band, so neither is copied into the wrong slot. After
+the `Assessment:` line the findings are one numbered list; a `[needs more info]` finding ends with
+its question and stakes instead of `Fix:`.
 
 - Anchor to `path:line`. In a spec or idea review, anchor to the section and quote the sentence.
 - With a hunk index in the package, a `[blocking]` or `[attention]` finding also cites the hunk ids
@@ -117,13 +119,11 @@ outcome scale and a persona's emptiness declaration must not read as one of them
 
 ## The leading `status:` line
 
-A `status:` line at the very start of your artifact is a completion declaration about your own run,
-and it is reserved for that. Only `failed`, `skipped`, and `truncated` are read from it; anything
-else falls through to the content check, so `ok`, `done`, or `complete` is not a success claim and
-cannot stand in for a finding or the sentinel. Writing `condensed` or `summarized` on that line marks
-the artifact as an orchestrator digest rather than your response: it is refused, because nothing in
-it is attributable to you or re-verifiable later, and the run is reported as a summary instead of as
-your work. State your lens's conclusion in the body; leave the leading line for a failure.
+A `status:` line at the very start of your artifact declares how your own run ended. Only `failed`,
+`skipped`, and `truncated` are read from it; anything else falls through to the content check, so
+`ok`, `done`, or `complete` cannot stand in for a finding or the sentinel. `condensed` or
+`summarized` there marks the artifact as an orchestrator digest, which is refused because nothing in
+it is attributable to you. State your conclusion in the body; leave the leading line for a failure.
 
 ## Evidence rules
 
@@ -158,21 +158,17 @@ come from the harness, so use them when the server is configured and the equival
 | Find files by path once you know the area | a path search (`Glob`) |
 
 These are Sourcerer's ids (`mcp__sourcerer__*`) plus the native `Grep` and `Glob`; in a harness with
-different names, use its equivalents in the same order. Three things to know about the index: it is
-**lexical relevance ranking, not embedding search**, so a query of the words that actually appear in
-the code beats a restatement of the question; it holds snapshots of *refs*, so it may be behind the
-working tree or covering another branch; and leaving its ref filters at `*` blends results across
-every indexed ref. When a claim is version-specific — "does this branch do X" — pass the branch or
-commit as `git_ref`, and check `sourcerer_refs_list` for that ref's `status`: `complete` is safe,
-`indexing` may be partial, `stale` should not be relied on. Never start with a text search while
-exploring; it is correct once search has narrowed the scope, or when the finding already names its
-file and line. Read a whole file only as a last resort.
+different names, use its equivalents in the same order. The index is **lexical ranking, not
+embedding search**, so query with the words the code contains; it holds snapshots of *refs*, so for
+a version-specific claim pass the branch as `git_ref` and check its `status` in `sourcerer_refs_list`
+(`complete` is safe, `indexing` may be partial, `stale` is not). Start exploring with the index, not
+a text search, and read a whole file only as a last resort.
 
 **Tool-call budget: ≤8 file-fetch calls** (text search, read, and index search combined). Fetch
 only when a finding cannot be grounded from the artifact and package; count before each call and
 stop at 8.
 
-## Elastic docs claims
+## Elastic docs claims (opt-in: applies when the package says the artifact has Elastic content)
 
 Verify ES|QL (`.esql` files, `FROM … |`, `esql` identifiers) and Elasticsearch or Kibana API claims
 against the docs server, never from memory: search with `search_internal_docs`, confirm with

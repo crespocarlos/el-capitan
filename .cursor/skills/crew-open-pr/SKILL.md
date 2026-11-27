@@ -84,7 +84,7 @@ Read these sources (in order of priority):
 
 1. **SPEC.md** — use the returned SPEC.md when present for goal, context, and **Acceptance
    criteria** to distill **reviewer-sized** "How to test" bullets (max 3–5). Read typed `## Tests`
-   subsection headings only to mention automation (the builder's quality gates / CI).
+   subsection headings only to mention automation (the builder's verification / CI).
 2. **Commit log** — `git log $BASE..HEAD --oneline` for what was done
 3. **Full diff** — `git diff $BASE...HEAD --stat` for scope; `git diff $BASE...HEAD` for details if
    the stat is small enough (<30 files)
@@ -172,18 +172,12 @@ fi
 
 On a non-zero exit, show the `error:` line and the PR URL, and say the spec is not marked done. Do not
 re-run `gh pr create`. Once the cause is fixed, re-run the same `mark-done` command; `--force`
-skips the evidence checks only when the user asks for it. With no `TASK_DIR` (for example `crew
-quick`), there is nothing to mark.
+skips the evidence checks only when the user asks for it. With no `TASK_DIR`, there is nothing to
+mark.
 
-**Journal (opt-in, never automatic).** Memory writes need explicit approval (`memory-capture.mdc`;
-`CLAUDE.md`: do not write memories automatically). After the PR is open, draft an observation only
-when it holds something non-derivable: a key architectural decision, or a lesson for future similar
-work. Derive it from SPEC.md when a task exists, otherwise from the commit log and PR description;
-1-2 plain-prose paragraphs, each one self-contained idea. Show the title and prose and ask `Store
-this journal entry? (yes / no)`. Only on `yes`, run `~/.agent/bin/crew-mem.py journal add --title "PR
-opened: <title>" --tags <tags> --repo <scope>` with the prose on stdin (heredoc). On `no`, or when
-nothing qualifies, write nothing and say `journal: none`. On non-zero exit print `warning: memory
-unavailable` and continue.
+**Closing confirmation.** Last, ask the one journal and memory question of the workflow per
+[closing confirmation](references/closing-confirmation.md); it is the build workflow's only place
+either is asked (the respond workflow's is `crew-pr-resolver`'s `+ journal`).
 
 ## Rules
 
@@ -191,9 +185,9 @@ unavailable` and continue.
   code.
 - **Narrative over inventory.** Explain behavior and intent in prose; avoid laundry lists of renamed
   files/fields/steps.
-- **Always ask before creating.** Show the title + description and wait for "looks good" — same
-  pattern as crew-commit.
-- **Always draft.** PRs are opened as drafts. Mark ready manually.
+- **Ask before creating.** Show the title + description and wait for "looks good" — same pattern as
+  crew-commit.
+- **Open as a draft.** The user marks it ready.
 
 ## Plain-language gates
 

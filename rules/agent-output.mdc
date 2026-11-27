@@ -29,8 +29,8 @@ Labels: `status:` `result:` `changed:` `checks:` `error:` `warning:` `fix:` `ris
 blocks, bullets, tables, diffs, code blocks, and compiler-style diagnostics (`error: <what>` /
 `file: <path:line>` / `fix:`).
 
-Decisions list options with pros and cons, then `recommendation:` and `default:`. Ask only when
-ambiguity blocks progress, and always give a default.
+A question (when to ask: `personal.mdc`) lists options with pros and cons, then `recommendation:`
+and `default:`.
 
 ## Voice
 

@@ -11,8 +11,8 @@ installed into a fake HOME; then this tree's `install.sh` runs into the same HOM
 - every command in the fake `~/.claude/settings.json` allow-list exists (a `~/` path under the fake
   HOME, a bare program on PATH unless listed in `EXTERNAL`);
 - the generated `el-capitan:imports` block imports exactly the `.mdc` files `.claude/CLAUDE.md`
-  imports, none of `FORBIDDEN_IMPORTS`, a `Read ~/.cursor/rules/<name> before ...` pointer line for
-  each of those, and is printed so the report records it;
+  imports, none of `FORBIDDEN_IMPORTS`, the `Read <path> before ...` pointer line that replaces each
+  of those, and is printed so the report records it;
 - every command in `NEW_COMMANDS` is allow-listed and runs through its installed link.
 
 Every install runs with HOME set to the temporary directory; the real HOME's install surface is
@@ -31,9 +31,9 @@ PREVIOUS = os.environ.get("UPGRADE_FROM_REF", "origin/main")
 # Bare programs in the allow-list that el-capitan does not install; each needs a reason.
 EXTERNAL = {"agent-builder": "a user tool the allow-list pre-approves; not shipped here",
             "uuidgen": "optional (absent on ubuntu-latest); crew-specwriter falls back to python3 uuid"}
-# Glob-scoped rules the always-on block must not charge every request for (prompt-engineering.mdc
-# joins in Phase D, when it becomes a skill).
-FORBIDDEN_IMPORTS: tuple[str, ...] = ("typescript.mdc",)
+# Rules the always-on block must not charge every request for, each with the pointer that replaces it.
+FORBIDDEN_IMPORTS = {"typescript.mdc": "~/.cursor/rules/typescript.mdc",
+                     "prompt-engineering.mdc": "~/.cursor/skills/prompt-authoring/SKILL.md"}
 PROMPT_GLOBS = ("rules/*.mdc", ".cursor/agents/**/*.md", ".cursor/skills/**/*.md", ".claude/CLAUDE.md")
 HOME_PATH = re.compile(r"~/\.(?:agent/bin|cursor/skills|cursor/agents)/[A-Za-z0-9._/-]+")
 BARE_COMMAND = re.compile(r"\bcrew-[a-z0-9-]+\.(?:py|sh)\b")
@@ -155,8 +155,9 @@ def imports_failures(home: Path) -> list[str]:
     wanted = list(dict.fromkeys(re.findall(r"@(\S+\.mdc)", (ROOT / ".claude" / "CLAUDE.md").read_text())))
     failures = [] if got == wanted else [f"imports block {got} differs from .claude/CLAUDE.md {wanted}"]
     # A rule left out of the imports keeps a one-line pointer, so other repos still learn to read it.
-    pointers = re.findall(r"^Read ~/\.cursor/rules/(\S+\.mdc) before .+$", block.group(0), re.M)
-    failures += [f"imports block has no pointer line for {name}" for name in FORBIDDEN_IMPORTS if name not in pointers]
+    pointers = re.findall(r"^Read (\S+) before .+$", block.group(0), re.M)
+    failures += [f"imports block has no pointer line for {name} ({pointer})"
+                 for name, pointer in FORBIDDEN_IMPORTS.items() if pointer not in pointers]
     return failures + [f"imports block still imports {name}" for name in FORBIDDEN_IMPORTS
                        if any(item.endswith("/" + name) for item in got)]
 

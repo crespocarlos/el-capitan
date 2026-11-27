@@ -334,15 +334,13 @@ Claude Code and Cursor inject session memory at session start; other harnesses r
 def global_rule_imports() -> str:
     """The `@` imports this repo needs in the global CLAUDE.md, in a managed fenced block.
 
-    `.claude/CLAUDE.md` is project-scoped, so in any other checkout — every Kibana worktree —
-    Claude Code loads only `~/.claude/CLAUDE.md`. A rule marked `alwaysApply: true` is therefore
-    invisible there unless the global file imports it, and nothing was propagating those imports:
-    the global file had a one-time copy of the body, so it drifted the moment the project file
-    changed (it still showed a pipeline diagram two revisions stale). Managing a fenced block
-    derived from the project file keeps one source of truth and leaves the user's own prose alone.
-    A glob-scoped rule is not imported (it would charge every request); its one-line
-    `Read ~/.cursor/rules/<name>.mdc before ...` pointer in the project file is copied instead, so
-    other repos still learn when to read it.
+    `.claude/CLAUDE.md` is project-scoped, so in any other checkout Claude Code loads only
+    `~/.claude/CLAUDE.md`, and an `alwaysApply: true` rule is invisible there unless the global file
+    imports it. The block is derived from the project file, so there is one source of truth and the
+    user's own prose is left alone. A glob-scoped rule or an on-demand skill is not imported (it
+    would charge every request); its one-line `Read ~/.cursor/rules/<name>.mdc before ...` or
+    `Read ~/.cursor/skills/<name>/SKILL.md before ...` pointer is copied instead, so other repos
+    still learn when to read it.
     """
     project = source / ".claude" / "CLAUDE.md"
     if not project.is_file():
@@ -352,7 +350,7 @@ def global_rule_imports() -> str:
     for target in re.findall(r"@(\S+\.mdc)", text):
         if target not in targets:
             targets.append(target)
-    pointers = re.findall(r"^Read ~/\.cursor/rules/\S+\.mdc before .+$", text, re.M)
+    pointers = re.findall(r"^Read ~/\.cursor/(?:rules/\S+\.mdc|skills/[\w-]+/SKILL\.md) before .+$", text, re.M)
     if not targets and not pointers:
         return ""
     lines = ["<!-- el-capitan:imports -->",

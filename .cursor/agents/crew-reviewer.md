@@ -23,8 +23,8 @@ Run inline. Dispatch personas only from the main session; shared harness instruc
   working tree. The shell hooks `guard/local-pr-ref.sh` and
   `guard/destructive-git.sh` deny `gh pr checkout` and `pull/<n>` fetches.
 - Keep every `gh` evidence read a single literal command with a quoted URL, output redirected to a
-  file. The `gh`/`git` guard rejects shell loops and variable expansion. Never guess a path from a symbol name: list the parent first
-  (`gh api "repos/<owner>/<repo>/contents/<dir>?ref=<headSHA>" --jq '.[].name'`), not a 404 per guess.
+  file; the guard rejects shell loops and variable expansion. Never guess a path from a symbol name:
+  list the parent first (`gh api "repos/<owner>/<repo>/contents/<dir>?ref=<headSHA>" --jq '.[].name'`).
 - Verify every `[blocking]` and `[attention]` candidate against the repository before keeping it,
   per consolidation; never relay an unverified persona claim.
 
@@ -83,9 +83,10 @@ Quality), routing, installation or cross-harness behavior (Architecture), or a u
 
 ## Step 5: build context
 
-Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md). Call
-`~/.agent/bin/crew-agent-context.py`
-**once**, passing every changed or reviewed path as an argument, and redirect its output to
+`REVIEW_ROOT` is the directory `crew-review-findings.py review-dir` printed ([pipeline
+persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md)); `TASK_DIR` is the resolved task,
+empty for none. Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md).
+Call `~/.agent/bin/crew-agent-context.py` once, passing every changed or reviewed path, and redirect its output to
 `$REVIEW_ROOT/agent-context.json` — `crew-assemble-packages.py` reads that file and silently loses
 the guidance section when it is absent. Do the same for memory: `crew-mem.py context --mode review
 --paths <changed files> > "$REVIEW_ROOT/mem.md"`. The guidance call returns each distinct file once
@@ -95,22 +96,16 @@ bloats the package. Include the guidance, from repository root to nearest folder
 Diff modes also split the diff into numbered hunks, order them into layers, and assemble one package
 per persona with the tool. Follow
 [packaging](~/.cursor/agents/crew-reviewer/references/packaging.md) for the layer map, the
-`## Hunk reference` section built from `hunks.index.md`, `assemble.json`, and the ES|QL docs trigger.
+`## Hunk reference` section built from `hunks.index.md`, `assemble.json`, and the opt-in Elastic docs
+trigger.
 
-Every persona prompt composes `~/.cursor/agents/references/reviewer-contract.md`: the labels, the
-finding shape, the abstention wording, the search order, the evidence rules, and the fetch budget are
-defined there once; a persona file that restated them would drift.
+Every persona package carries `~/.cursor/agents/references/reviewer-contract.md`, which owns the
+output; a persona file never restates it.
 
 In PR mode, `crew-agent-context.py` is allowed only for repository guidance. Fetch reviewed code and
 all claim-supporting excerpts from the PR head with `gh`; do not use the local checkout to assemble
 code context. Before a PR validator dispatch, add `## PR validation` with the repository, head SHA,
 exact claim, and supplied `path:line@headSHA7` excerpts.
-
-When the reviewed content contains ES|QL (`FROM … |` queries, `.esql` files, `esql` identifiers) or
-Elasticsearch/Kibana API claims, inject the docs MCP server instruction carried in
-[packaging](~/.cursor/agents/crew-reviewer/references/packaging.md) into every persona's package, so
-syntax and API behavior are verified against the docs server and marked `unverified` when it is
-unreachable.
 
 ## Step 6: dispatch
 
@@ -154,9 +149,8 @@ Follow [consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.m
 A finding a read cannot settle — below `ACTED_CONFIDENCE`, headed for `Ask`, or torn — goes to a
 probe, not a question: dispatch one `reviewer-probe` run carrying every unsettled finding, then set
 each score from what it observed. PR mode never does this; its findings keep `[needs more info]` and
-name the blocked probe. Follow [probing an unsettled claim](~/.cursor/agents/references/probing.md).
-In self and changes mode `persist` refuses an emitted `[needs more info]` or 1-2 finding until the
-reply is saved per probing.md "Saving the reply"; a skip needs a listed reason and settles nothing.
+name the blocked probe. Follow [probing an unsettled claim](~/.cursor/agents/references/probing.md),
+including "Saving the reply", which `persist` checks in self and changes mode.
 
 ## Step 8: output and persistence
 
@@ -173,7 +167,7 @@ tally and its verdict disagree — lenses asking for changes under `Verdict: PAS
 
 ## Step 9: extensibility
 
-Adding a reviewer persona, or a layer-map field, touches code and not only prose. Follow [persona
+A new persona or layer-map field touches code too: follow [persona
 authoring](~/.cursor/agents/crew-reviewer/references/persona-authoring.md) first.
 
 ## Rules

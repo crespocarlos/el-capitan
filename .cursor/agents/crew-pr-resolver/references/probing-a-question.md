@@ -31,11 +31,10 @@ probe, as it did before.
 
 ## Reporting a thread
 
-The reply quotes the expression or call, the observed output, and the command, then gives the verdict:
+The reply carries what the shared file's "Reporting it" names, then gives the verdict:
 
-- **Probe confirms the comment** → verdict `Apply`, the measurement supporting the edit. A probe worth
-  keeping is proposed as a test inside that edit, through the approval gate — never left behind.
-- **Probe refutes it** → verdict `Reject`, scored on the measurement, the reply citing the observed
-  value instead of reasoning about what the code would do.
+- **Probe confirms the comment** → verdict `Apply`, the measurement supporting the edit (a probe
+  worth keeping becomes a test in that edit, as the shared file says).
+- **Probe refutes it** → verdict `Reject`, scored on the measurement; the reply cites the observed
+  value.
 - **Probe cannot run or does not settle it** → verdict stays `Ask`, and the reply says what stopped it.
-  "Cannot verify here" with its reason is an answer; a guess dressed as a measurement is not.

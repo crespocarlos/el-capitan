@@ -2,7 +2,7 @@
 
 Step-level detail `crew-reviewer` needs only in PR mode or at persistence time. Each section names the
 gap it closes, so the rule that produced it stays visible instead of becoming an unexplained
-requirement.
+requirement. Input: `REVIEW_ROOT`, the review directory.
 
 ## A PR-head finding stores its excerpt
 
@@ -18,8 +18,8 @@ form that cannot be re-read.
 
 ## One base read per regression claim
 
-"This used to behave differently" is a claim about a tree nobody read, and asserting it from the head
-alone is a guess. A regression claim allows exactly one additional `gh api` read at `baseRefOid`, with
+A claim that behavior regressed is about a tree nobody read, and asserting it from the head alone is
+a guess. A regression claim allows exactly one additional `gh api` read at `baseRefOid`, with
 the evidence labeled `path:line@<base7>`, and `validation` names the two reads the comparison rests on.
 The allowance is per claim, not per review, and it opens no local checkout: a base read is a network
 read at a different SHA. Without it the honest outcome is `[needs more info]` naming the base excerpt

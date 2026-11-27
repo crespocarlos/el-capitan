@@ -7,16 +7,16 @@ missing (404), use the fallback templates below.
 ## Default (feature / task)
 
 ```markdown
-## 📓 Summary
+## Summary
 
 One-paragraph description of what this is and why it matters.
 
-## ✔️ Acceptance criteria
+## Acceptance criteria
 
 - [ ] (specific, testable — observable outcome, not implementation step)
 - [ ] (add as many as needed)
 
-## 💡 Implementation hints
+## Implementation hints
 
 - (optional — key files, ordered steps, known risks, merge order constraints)
 ```
@@ -24,7 +24,7 @@ One-paragraph description of what this is and why it matters.
 ## Bug Report
 
 ```markdown
-## 📓 Summary
+## Summary
 
 One-paragraph description of the bug. State what's broken, where it happens, and the impact.
 
@@ -42,7 +42,7 @@ Paste relevant error logs, screenshots, API responses, or profiling data here.
 
 What should happen instead.
 
-## ✔️ Acceptance criteria
+## Acceptance criteria
 
 - [ ] The bug no longer reproduces following the steps above
 - [ ] (add criteria specific to the fix)
@@ -103,7 +103,6 @@ Typical mappings (apply only when the label exists in that repo):
 ## Anti-patterns (do not produce these)
 
 ```markdown
-## Summary          ← wrong: missing 📓 emoji
 ## Issues           ← wrong: not a template section
 ## Domain hierarchy ← wrong: fold into Summary or Implementation hints
 ## Proposed fix     ← wrong: fold decisions into AC as "Decision required: …"
@@ -112,11 +111,11 @@ Typical mappings (apply only when the label exists in that repo):
 ## Filled example (generic refactor)
 
 ```markdown
-## 📓 Summary
+## Summary
 
 The module uses inconsistent naming for the same concept across directories, routes, types, and hooks. Contributors cannot predict which identifier to use, and several public names describe the wrong domain object.
 
-## ✔️ Acceptance criteria
+## Acceptance criteria
 
 - [ ] One documented rule for code-facing identifiers, applied consistently across directories, routes, types, and hooks
 - [ ] Misleading response types and fields renamed to reflect what they actually return
@@ -124,7 +123,7 @@ The module uses inconsistent naming for the same concept across directories, rou
 - [ ] Internal routes follow one namespace prefix for domain entities
 - [ ] **Decision required:** team picks the canonical naming scheme before implementation starts
 
-## 💡 Implementation hints
+## Implementation hints
 
 - **Routes**: list affected route dirs from the session
 - **Hooks / clients**: list affected hook and client files

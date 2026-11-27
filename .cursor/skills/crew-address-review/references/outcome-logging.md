@@ -1,6 +1,7 @@
 # Outcome logging and memory candidates
 
-Step 3b. Applies to both modes whenever a review run directory exists. A spec review has one:
+Step 3b. Input: `TASK_DIR` from Step 1 (empty for none). Applies to both modes whenever a review run
+directory exists. A spec review has one:
 `pipeline.md` sets `REVIEW_ROOT` for self, changes, spec, and idea reviews, and `persist` writes
 `REVIEW.spec.md` beside `SPEC.md`, while `normalize` assigns every finding a fingerprint. Skip this
 step only when `$TASK_DIR` is empty and no review directory exists, and say so.
@@ -14,8 +15,7 @@ that directory does not exist, skip outcome logging and say so; never invent a p
 
 Every finding this run decides on gets one line: applied, adapted, and rejected alike. A finding it
 leaves alone gets none. Recording is part of making the decision, not a report on it, because the
-answer is only known at that moment — a later pass that reconstructs it either guesses or skips, and
-704 of 719 measured findings ended up skipped that way.
+answer is only known at that moment: a later pass that reconstructs it either guesses or skips.
 **Record a raised score with the decision that raised it.** Step 2 may raise a 1-2 finding's
 `confidence` when the read settles what it doubted, and the raise is only evidence while it stays
 attached to the read: pass the final score with the outcome (`--confidence <n> --confidence-from

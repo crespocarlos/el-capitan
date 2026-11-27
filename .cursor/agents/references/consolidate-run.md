@@ -2,7 +2,7 @@
 
 The mechanical half of `crew-reviewer` Step 7. [Consolidation](~/.cursor/agents/crew-reviewer/references/consolidation.md)
 decides what is kept; these tool calls build the files from it, so no `candidates.json`, anchor or
-numbered list is typed by hand.
+numbered list is typed by hand. `REVIEW_ROOT` is the review directory.
 
 1. Save the kept candidates (the contract's finding shape, one object each, with `file`, `line` and
    `kind`) as `$REVIEW_ROOT/raw-candidates.json`.

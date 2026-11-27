@@ -67,6 +67,9 @@ def missing_one(index: int) -> tuple[str, str]:
     return agent(f"reviewer-missing-{index}", f"readonly: true\ndisallowedTools: {rest}\n")
 
 
+SKILL = ".cursor/skills/{}/SKILL.md"
+RULE, RULE_HEAD = "rules/fixture.mdc", "---\ndescription: \"Fixture rule\"\nalwaysApply: false\n---\n"
+PASSAGE = "The reviewer reads every changed file once and records the anchor it used for each finding.\n"
 # (case, files, {rule: findings expected}): a rule absent from the map must not fire at all.
 FIXTURES = (
     ("declared native ids only", dict([agent("reviewer-a", DENY_ALL + "tools: Read, Grep, Glob\n")]), {}),
@@ -101,12 +104,39 @@ FIXTURES = (
       ".agent/tools/TOOLS.md": "Run `bash .claude/hooks/fixtures/run.sh` and `python3 evals/tools/test_hooks_contract.py`.\n"},
      {"removed-command-form": 4}),
     ("a removed flag after another command is not the command's", {".agent/tools/TOOLS.md": "Run crew-verify.py and git log --since 1d.\n"}, {}),
+    ("narration in a prompt; a participle 'used to' is not", {RULE: RULE_HEAD + "This used to crash. The token used to sign requests lives in the vault.\n"},
+     {"no-incident-narration": 1}),
+    ("a nested fence closes only at its own length", {RULE: RULE_HEAD + "````\n```lang\nThis used to crash.\n````\n\nThis used to crash.\n"},
+     {"no-incident-narration": 1}),
+    ("a four-backtick code span opens no fence", {RULE: RULE_HEAD + "```` ```suggestion ```` is a block.\n\nThis used to crash.\n\n```bash\nx=1\n```\n"},
+     {"no-incident-narration": 1}),
+    ("a 12-word passage in two prompt files; the spec templates share by design",
+     {SKILL.format("a"): PASSAGE, SKILL.format("b"): PASSAGE, ".cursor/skills/spec-writing/references/spec-template.md": PASSAGE,
+      ".cursor/skills/spec-writing/references/bug-spec-template.md": PASSAGE},
+     {"duplicate-passages": 5}),
+    ("a glossary missing a term",
+     {".agent/tools/AGENTS.md": "## Glossary\n\n| Term | Meaning |\n| --- | --- |\n"
+      + "".join(f"| {term} | x |\n" for term in ("persona", "worker", "gate"))}, {"glossary-terms": 1}),
+    ("Elastic ids outside the opt-in heading and the Kibana-scoped skills; 5601 only as a port",
+     {SKILL.format("a"): "Check the ES|QL query. PR #5601 at foo.ts:5601; serve on localhost:5601.\n\n## Docs (opt-in: Elastic)\n\n"
+      "Check the ES|QL query.\n\n## Next\n\nUse @kbn/i18n.\n",
+      SKILL.format("crew-e2e"): "Deploy Kibana on 5601.\n"}, {"vendor-tools-scoped": 3}),
+    ("a placeholder used before it is defined",
+     {SKILL.format("a"): "Inputs: `$QUX` is the task, `${QUUX}` the review.\n\nRun `x $FOO $QUX $QUUX`.\n\n`BAR` is the input: `x $BAR`.\n\n"
+      "```bash\nBAZ=1\nx \"$BAZ\" \"$HOME\"\nsource task-env.sh\nx \"$TASK_DIR\"\n```\n"},
+     {"undefined-placeholder": 1}),
+    ("a journal write or draft import outside the closing confirmation, the resolver and the memory commands",
+     {SKILL.format("a"): "Then save a journal entry: `crew-mem.py journal\nadd --title x`.\n", ".claude/hooks/stop.sh": "crew-mem.py import-inbox \"$f\"\n",
+      ".cursor/skills/crew-open-pr/references/closing-confirmation.md": "Run `crew-mem.py journal add`.\n",
+      ".cursor/agents/crew-pr-resolver/references/acting-on-threads.md": "Run `crew-mem.py journal add`.\n",
+      SKILL.format("crew-log"): "Run `crew-mem.py import-inbox --all`.\n"}, {"one-closing-confirmation": 2}),
 )
 FIXTURE_RULES = {"mcp-grant-policy", "mcp-tool-unknown", "tool-id-unknown", "missing-readonly", "unexpected-readonly",
-                 "inherited-tools-can-write", "invalid-agent-frontmatter", "invalid-tool-catalog", "command-name", "removed-command-form"}
+                 "inherited-tools-can-write", "invalid-agent-frontmatter", "invalid-tool-catalog", "command-name", "removed-command-form",
+                 "no-incident-narration", "duplicate-passages", "glossary-terms",
+                 "vendor-tools-scoped", "undefined-placeholder", "one-closing-confirmation"}
 ROUTER = ("# Router\n\n| Trigger | Crew member |\n|---|---|\n| `crew review` | crew-reviewer |\n| `crew commit` | crew-commit |\n"
           "| `crew implement` | crew-builder |\n| `crew check` | crew-check |\n| `crew review address` | crew-address-review skill |\n")
-SKILL = ".cursor/skills/{}/SKILL.md"
 NEXT = "Prose.\n\n> Next: run `crew {}` to continue.\n"
 # (case, files, the handoff rule that must fire, or None for none at all)
 HANDOFFS = (

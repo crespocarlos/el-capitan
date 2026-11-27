@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import memory_bootstrap  # noqa: F401
@@ -25,7 +26,8 @@ def drafts(root: Path) -> list[dict]:
         try:
             unit = parse_unit(path, inferred_scope="global")
         except (OSError, ValueError):
-            found.append({"file": path.name, "type": "invalid", "title": "", "scope": ""})
+            found.append({"file": path.name, "type": "invalid", "title": "", "scope": "",
+                          "modified": path.stat().st_mtime})
             continue
         found.append({"file": path.name, "type": unit.get("type", ""),
                       "title": unit.get("title", ""), "scope": unit.get("scope", ""),
@@ -62,17 +64,31 @@ def drain(root: Path) -> int:
     return 0
 
 
-def report(root: Path, as_json: bool) -> int:
-    """Print what is pending. Exit 0 whether or not anything is, because empty is a valid answer."""
-    pending = drafts(root)
+def since_epoch(value: str) -> float:
+    """An ISO 8601 time (`Z` or an offset; a naive time is local) as epoch seconds."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+
+
+def report(root: Path, as_json: bool, since: str | None = None) -> int:
+    """Print what is pending: with `since`, only drafts modified at or after it, the rest counted.
+
+    Exit 0 whether or not anything is, because empty is a valid answer.
+    """
+    pending, older = drafts(root), 0
+    if since:
+        shown = [item for item in pending if item["modified"] >= since_epoch(since)]
+        older, pending = len(pending) - len(shown), shown
     entries = queued(root)
     if as_json:
-        print(json.dumps({"drafts": pending, "queued_reviews": entries}, indent=2))
+        scoped = {"since": since, "older": older} if since else {}
+        print(json.dumps({"drafts": pending, "queued_reviews": entries, **scoped}, indent=2))
         return 0
+    scope = f" since {since}" if since else ""
+    hidden = f"; {older} older draft(s) not shown" if older else ""
     if not pending and not entries:
-        print("inbox: empty")
+        print(f"inbox: empty{scope}{hidden}")
         return 0
-    print(f"inbox: {len(pending)} draft(s) awaiting a decision")
+    print(f"inbox: {len(pending)} draft(s){scope} awaiting a decision{hidden}")
     for item in pending:
         print(f"  {item['type']:<14} {item['file']}")
         if item["title"]:
@@ -91,11 +107,18 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=None)
     parser.add_argument("--drain", action="store_true",
                         help="clear the ask log once every draft has been decided")
+    parser.add_argument("--since", default=None,
+                        help="ISO 8601 time (a task's .task-id created_at): list only drafts modified at or after it")
     args = parser.parse_args()
+    if args.since:
+        try:
+            since_epoch(args.since)
+        except ValueError:
+            parser.error(f"--since: not an ISO 8601 time: {args.since}")
     root = args.root or memory_root()
     if args.drain:
         return drain(root)
-    return report(root, args.json)
+    return report(root, args.json, args.since)
 
 
 if __name__ == "__main__":

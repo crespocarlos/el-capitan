@@ -1,6 +1,22 @@
 # Worker dispatch
 
-What the orchestrator does around the worker. Step 4 and Step 6 of `crew-implement` link here.
+What the orchestrator does around a worker. Step 4 and Step 6 of `crew-implement` link here; the
+router's `crew resolve PR` dispatch follows the reliability rules too. Inputs: `TASK_DIR` (the task
+directory) and `BRANCH_NAME` (below).
+
+## Dispatch reliability
+
+Both workers, `crew-builder` and the read-only `crew-pr-resolver`, are background subagents.
+
+- Without native persona or worker dispatch, use the documented degraded fallback, never an
+  orchestrator subagent.
+- Preserve model inheritance: no `model` in agent frontmatter.
+- Launch asynchronously in Cursor, because its synchronous turn limit (about 30 seconds) ends a
+  healthy run.
+- Pass the task directory and worktree paths in the launch prompt; read the durable report
+  (`SPEC.md`, `REPORT.md`, the resolver's plan) once the run ends.
+- Retry once, asynchronously, when a dispatch ends without its durable report (a resolver reply
+  without the Step 6 table has none); never restart a task that already produced one.
 
 ## Where the worker runs
 
@@ -41,7 +57,7 @@ if it resolves the main tree itself (the branch is checked out there), tell the 
 A dirty tree or a branch with unpublished work: stop and ask before switching.
 
 Either way the orchestrator runs its own git as `git -C <tree> ...` and never changes the branch of a
-tree a worker holds: an orchestrator `git checkout` under a running worker is how work was lost.
+tree a worker holds, because a checkout under a running worker discards the worker's edits.
 
 ## The worker lock
 
@@ -59,8 +75,8 @@ through `.git/info/exclude`. While it is fresh (younger than 6 hours) the guard 
 `.claude/hooks/guard/worker-tree.sh` denies `git checkout`, `git switch`, `git restore` and `git
 reset --hard` in that tree, whether run from it, as `git -C <path>` or after a leading `cd <path> &&`.
 A stale lock (a worker that died) allows them. The denial gives the lock's age and says to ask the
-user before removing the lock. The guard is defence in depth and now protects the
-main tree when no worktree is used; on a harness without hooks (Codex, plain CLI) it is advisory.
+user before removing the lock. The guard is defence in depth and protects the main tree when no
+worktree is used; on a harness without hooks (Codex, plain CLI) it is advisory.
 
 The builder is exempt from its own lock: it exports `CREW_WORKER_TASK=<the lock's task id>` (the
 `basename` of `TASK_DIR`) and prefixes its own `git checkout|switch|restore` with the same
@@ -92,8 +108,8 @@ blocked gate) records why, once, before the final message:
 Pass the task delta only: the unchecked tasks with their verify lines (a guideline of about 400
 words, not a gate) and the `SPEC.md` path, plus `TASK_DIR`, `WORK_DIR`, `RECALLED_PATTERNS` and
 `TASK_RANGE`. The builder file (`~/.cursor/agents/crew-builder.md`) owns the rules, the report shape
-and the quality gates, so the prompt names its path and does not paste it: pasted rules drift from
-the file and are paid for in every worker.
+and the verification commands, so the prompt names its path and does not paste it: pasted rules
+drift from the file and are paid for in every worker.
 
 ## The stage cost line
 

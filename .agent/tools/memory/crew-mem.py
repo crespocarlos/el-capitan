@@ -55,6 +55,8 @@ def add_read_parsers(commands) -> None:
     context_parser.add_argument("--limit", type=int, default=None, help="print at most N results")
     context_parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS,
                                 help="truncate output past N chars, with a marker")
+    context_parser.add_argument("--warn-unavailable", action="store_true",
+                                help="an unavailable store prints `none` and a stderr warning, exit 0")
     show_parser = commands.add_parser("show", help="print one unit")
     show_parser.add_argument("id")
     show_parser.add_argument("--scope", default=None,
@@ -114,6 +116,16 @@ def make_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def unavailable(args: argparse.Namespace, message: str) -> int:
+    """Exit 2 with the message; `context --warn-unavailable` prints `none` and a warning and exits 0."""
+    if getattr(args, "warn_unavailable", False):
+        print(f"warning: memory unavailable — {message.splitlines()[0]}", file=sys.stderr)
+        print("none")
+        return 0
+    print(message, file=sys.stderr)
+    return 2
+
+
 def main() -> int:
     args = make_parser().parse_args()
     handlers = {
@@ -126,19 +138,13 @@ def main() -> int:
             return journal_add(args) if args.journal_command == "add" else journal_import(args)
         return handlers[args.command](args)
     except MemoryStoreError as error:
-        print(str(error), file=sys.stderr)
-        return 2
+        return unavailable(args, str(error))
     except PermissionError as error:
-        print(
-            f"memory store not writable: {error}\n"
-            "hint: a sandbox likely blocks writes outside the workspace; "
-            "retry this command unsandboxed (or set CREW_MEMORY_DIR to a writable path)",
-            file=sys.stderr,
-        )
-        return 2
+        return unavailable(args, f"memory store not writable: {error}\n"
+                           "hint: a sandbox likely blocks writes outside the workspace; "
+                           "retry this command unsandboxed (or set CREW_MEMORY_DIR to a writable path)")
     except (OSError, sqlite3.Error) as error:
-        print(f"memory store unavailable: {error}", file=sys.stderr)
-        return 2
+        return unavailable(args, f"memory store unavailable: {error}")
 
 
 if __name__ == "__main__":
