@@ -100,8 +100,7 @@ would include `CLAUDE.md`. Observed: the user CLAUDE.md is read from ~/.claude e
 CLAUDE_CONFIG_DIR set (2026-11-27): a `CLAUDE_CONFIG_DIR=~/.claude-work` session with no
 `~/.claude-work/CLAUDE.md` (and no link) loaded `~/.claude/CLAUDE.md`. A block in the second dir could
 therefore load every rule twice. `autoMemoryEnabled: false` is written by the settings merge
-(`AUTO_MEMORY_OFF`), not carried in `.claude/settings.json`, because that file is also this checkout's
-project settings.
+(`AUTO_MEMORY_OFF`) once a dir's Claude memory is imported, never carried in the template.
 
 **Rendered agents.** An agent whose frontmatter `tools:` line ends in the YAML comment
 `  # {{mcp_servers}}` is not linked once rendered: `install_blocks.py render-agents` writes it into
@@ -625,8 +624,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 
 ## Hooks
 
-`.claude/hooks/` holds the harness hooks; `.claude/settings.json` (Claude Code) and
-`.cursor/hooks.template.json` (merged into `~/.cursor/hooks.json`) register them. Every hook follows
+`.claude/hooks/` holds the harness hooks; `.claude/settings.template.json` (Claude Code) and
+`.cursor/hooks.template.json` (merged into `~/.cursor/hooks.json`) register them; in Cursor's copy of
+a Claude-format event a hook stands down when its Cursor entry does the work (docs/hooks.md). Every hook follows
 one contract, implemented once in `.claude/hooks/lib/hook.sh`:
 
 | Outcome | Claude Code | Cursor |
@@ -648,7 +648,7 @@ Observers stay silent on both harnesses.
 
 **Cannot judge is no objection.** A missing `awk`, a command the normaliser cannot read or an unexpected event
 exits `0` after one stderr line. One rule is the exception: `guard/credentials.sh`, which alone
-carries `onFailure: "block"` in `.claude/settings.json`, because a silent gap there is a credential
+carries `onFailure: "block"` in `.claude/settings.template.json`, because a silent gap there is a credential
 leak. In Cursor, a failure before the event is read (no `jq`, unreadable input) prints no JSON, so a
 `failClosed` guard blocks.
 

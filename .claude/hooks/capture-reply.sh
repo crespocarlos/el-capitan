@@ -7,6 +7,7 @@ set -uo pipefail
 HOOK_NAME=capture-reply
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/lib/hook.sh"
+hook_dropped_in_cursor
 hook_input
 path=$(printf '%s' "$HOOK_INPUT" | jq -r '.agent_transcript_path // ""' 2>/dev/null) || path=""
 prompt=$(grep -m1 -E '"type": *"user"' "$path" 2>/dev/null) || prompt=""

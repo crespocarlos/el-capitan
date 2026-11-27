@@ -27,7 +27,8 @@ import merge_claude_settings
 import merge_cursor_hooks
 from install_blocks import MANIFEST, commands_in, hook_scripts, inside, layout_links, target_of, write_json
 
-TEMPLATES = {"claude_settings": Path(".claude/settings.json"), "cursor_hooks": Path(".cursor/hooks.template.json")}
+TEMPLATES = {"claude_settings": Path(".claude/settings.template.json"),
+             "cursor_hooks": Path(".cursor/hooks.template.json")}
 SHOWN = 5
 # A dangling link whose target ends in a path the install layout links from: an install from a checkout
 # that was moved or deleted. A user's own dangling link names some other path.

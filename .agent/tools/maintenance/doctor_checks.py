@@ -153,7 +153,7 @@ def check_hooks(home: Path, root: Path = ROOT) -> list[Line]:
     """Each config dir registers every template hook under its event and matcher; every registered script exists."""
     lines = []
     scripts = install_blocks(root).hook_scripts
-    claude = [(f"Claude Code ({tilde(directory, home)})", root / ".claude" / "settings.json",
+    claude = [(f"Claude Code ({tilde(directory, home)})", root / ".claude" / "settings.template.json",
                directory / "settings.json", True) for directory in config_dirs(home, root)]
     for harness, template, installed, nested in (
             *claude, ("Cursor", root / ".cursor" / "hooks.template.json", home / ".cursor" / "hooks.json", False)):
@@ -207,6 +207,75 @@ def check_cursor_fail_closed(home: Path, root: Path = ROOT, jq: str | None = "")
         return [Line("ok", "hooks", f"Cursor: {len(wanted)} security guards fail closed")]
     return [Line("FAIL", "hooks", "Cursor: security guards without failClosed: true (a crash lets the action "
                                   f"through): {capped(open_guards)}{RERUN}")]
+
+
+HOOK_SCRIPT = re.compile(r"/\.claude/hooks/([\w./-]+\.sh)")
+STAND_DOWN = re.compile(r"^hook_stand_down[ \t]+(\S+)([ \t]+fail-closed)?[ \t]*$", re.M)
+
+
+# A counterpart is `bash "$HOME/.claude/hooks/<script>"`, then only the redirection and `; exit 0` the templates use,
+# under the event `lib/cursor-counterparts.json` names: `hook_stand_down` in lib/hook.sh makes the same match.
+COUNTERPART_COMMAND = 'bash "$HOME/.claude/hooks/{}"'
+COUNTERPART_TAIL = re.compile(r"(\s+2>/dev/null)?(\s*;\s*exit 0)?\s*")
+
+
+def is_counterpart(command: str, script: str) -> bool:
+    head, form = command.lstrip(), COUNTERPART_COMMAND.format(script)
+    return head.startswith(form) and COUNTERPART_TAIL.fullmatch(head[len(form):]) is not None
+
+
+def stands_down(script: str, home: Path, cursor: set[tuple[str, str]], closed: set[tuple[str, str]]) -> bool:
+    """Whether `script` calls `hook_stand_down` and Cursor registers (`cursor`: event, command) the counterpart it
+    names under its expected event, in `closed` too when the call asks for `fail-closed`: the hook's own test."""
+    hooks = home / ".claude" / "hooks"
+    try:
+        call = STAND_DOWN.search((hooks / script).read_text(encoding="utf-8"))
+        events = json.loads((hooks / "lib" / "cursor-counterparts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not call or not isinstance(events, dict):
+        return False
+    return any(event == events.get(call.group(1)) and is_counterpart(command, call.group(1))
+               and (not call.group(2) or (event, command) in closed) for event, command in cursor)
+
+
+def toplevel(path: Path) -> Path | None:
+    return next((folder for folder in (path, *path.parents) if (folder / ".git").exists()), None)
+
+
+def by_script(commands: list[str]) -> dict[str, set[str]]:
+    found: dict[str, set[str]] = {}
+    for command in commands:
+        script = HOOK_SCRIPT.search(command)
+        if script:
+            found.setdefault(script.group(1), set()).add(command)
+    return found
+
+
+def check_cursor_duplicates(home: Path, cwd: Path) -> list[Line]:
+    """A script registered in ~/.cursor/hooks.json and in a Claude-format file Cursor also loads (~/.claude's
+    settings.json, the current repository's `.claude/settings.json` and `settings.local.json`), however each spells
+    its command, runs twice in Cursor unless it stands down there (docs/hooks.md, "Each hook in Cursor"). Claude Code
+    runs an identical command that several of its settings files register once, so it has no such duplicate."""
+    installed = home / ".cursor" / "hooks.json"
+    cursor = {(event, command) for event, _, command in registrations(installed, False) or set()}
+    closed = fail_closed_commands(installed) or set()
+    repo = toplevel(cwd)
+    files = [home / ".claude" / "settings.json"]
+    files += [repo / ".claude" / name for name in ("settings.json", "settings.local.json")] if repo else []
+    claude = by_script([command for path in files for _, _, command in registrations(path, True) or set()])
+    native = by_script([command for _, command in cursor])
+    shared = sorted(set(claude) & set(native))
+    twice = [f"{script} ({' | '.join(sorted(claude[script] | native[script]))})" for script in shared
+             if not stands_down(script, home, cursor, closed)]
+    if twice:
+        return [Line("WARN", "hooks", f"Cursor: {len(twice)} hook scripts run twice, registered in "
+                                      "~/.cursor/hooks.json and in a Claude-format file Cursor loads, with no "
+                                      f"stand-down: {capped(twice)}")]
+    if shared:
+        return [Line("ok", "hooks", f"Cursor: {len(shared)} hook scripts registered in both formats stand down in the "
+                                    "Claude-format copy")]
+    return []
 
 
 def check_auto_memory(home: Path, root: Path = ROOT) -> list[Line]:

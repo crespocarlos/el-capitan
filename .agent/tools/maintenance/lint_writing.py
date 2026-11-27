@@ -62,7 +62,7 @@ SCANNED = ("rules/*.mdc", ".cursor/**/*.md", ".claude/**/*.sh", ".claude/**/*.md
            ".agent/tools/**/*.md", ".agent/tools/**/*.json", "README.md", "AGENTS.md", "install.sh", "docs/*.md",
            "CONTRIBUTING.md", "SECURITY.md",
            "evals/tasks.json", "evals/*.md", ".github/workflows/*.yml", ".claude/settings.json",
-           ".cursor/hooks.template.json")
+           ".claude/settings.template.json", ".cursor/hooks.template.json")
 
 
 def scanned_files(root: Path) -> list[Path]:
@@ -130,7 +130,7 @@ def lint_tool_prose(root: Path) -> list[Finding]:
     return found
 
 
-SETTINGS_FILES = (".claude/settings.json", ".cursor/hooks.template.json")
+SETTINGS_FILES = (".claude/settings.template.json", ".cursor/hooks.template.json")
 PROGRESS_CALL = re.compile(r"crew-progress\.py\"?\s+\"?\$TASK_DIR\"?\s+\"([^\"]*)\"")
 SHELL_EDITS = (
     (re.compile(r"(?<!`)\bsed\s+-[a-zA-Z]*i"), "sed -i rewrites a file in place; use the edit tool"),

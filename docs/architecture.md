@@ -144,7 +144,8 @@ el-capitan/
 ├── .claude/
 │   ├── CLAUDE.md            # Claude Code project context
 │   ├── hooks/               # Guard, telemetry, session, and memory-context hooks (docs/hooks.md)
-│   └── settings.json        # Hook configuration
+│   ├── settings.template.json  # Hook configuration, merged into ~/.claude/settings.json by install
+│   └── settings.json        # This checkout's project settings: permissions, no hooks
 ├── .agent/
 │   ├── tools/               # Commands grouped by responsibility: task/, review/, memory/, evals/, maintenance/, lib/
 │   │   └── tools.json, TOOLS.md, AGENTS.md   # The catalog, the command reference, the tool-tree guide

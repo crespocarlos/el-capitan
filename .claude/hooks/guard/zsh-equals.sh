@@ -13,6 +13,7 @@ set -euo pipefail
 HOOK_NAME=zsh-equals
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/../lib/hook.sh"
+hook_stand_down guard/zsh-equals.sh
 hook_input
 hook_event
 cmd=$(hook_field command)

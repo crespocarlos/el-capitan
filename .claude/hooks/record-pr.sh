@@ -7,6 +7,7 @@ set -uo pipefail
 HOOK_NAME=record-pr
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/lib/hook.sh"
+hook_stand_down record-pr.sh
 hook_input
 case "$HOOK_INPUT" in *'pr create'*) ;; *) exit 0 ;; esac
 case "$HOOK_INPUT" in *'github.com/'*'/pull/'*) ;; *) exit 0 ;; esac
