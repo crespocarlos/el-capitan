@@ -11,10 +11,12 @@ a wrong denial. Every shell row also runs through both parsers of `hook_segments
 PATH and with PATH stripped of it (the awk fallback), and both must give the expected verdict, so they
 agree except on the rows `PARSERS_DIFFER` lists with a reason. Then every hook, the silent ones
 included, must survive unreadable input and a missing `jq` with exit 0 and at most one stderr line,
-and every hook file must be classified here.
+and every hook file must be classified here. `notify-idle.sh` runs the `NOTIFY` rows under a stub
+`osascript` that logs its calls.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -27,7 +29,20 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-from hook_cases import ALLOW, DENY, ENV, FILES, MESSAGES, MISSING, PARSERS_DIFFER, PAYLOADS, SECRET, SILENT
+from hook_cases import (
+    ALLOW,
+    DENY,
+    ENV,
+    FILES,
+    MESSAGES,
+    MISSING,
+    NOTIFY,
+    PARSERS_DIFFER,
+    PAYLOADS,
+    SECRET,
+    SILENT,
+    STATUS_SPEC,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / ".claude" / "hooks"
@@ -88,6 +103,10 @@ def fixture(home: Path) -> dict[str, Path]:
         (tasks / name / ".task-id").write_text(json.dumps({"slug": slug}), encoding="utf-8")
     (tasks / "AAA-other" / "SPEC.md").write_text("# Spec: Align agent tool frontmatter\n", encoding="utf-8")
     (tasks / "BBB-new").mkdir()
+    (tasks / "DDD-status").mkdir()
+    (tasks / "DDD-status" / ".task-id").write_text(json.dumps({"slug": "status-guard"}), encoding="utf-8")
+    (tasks / "DDD-status" / "SPEC.md").write_text(STATUS_SPEC, encoding="utf-8")
+    (home / "linked-task").symlink_to(tasks / "DDD-status")
     return trees
 
 
@@ -132,8 +151,11 @@ def shapes(command: str, cwd: Path) -> list[dict]:
 
 
 def file_shapes(fields: dict, cwd: Path) -> list[dict]:
-    return [{"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": fields, "cwd": str(cwd)},
-            {"hook_event_name": "preToolUse", "tool_name": "Write", **fields, "cwd": str(cwd)}]
+    """Both payload shapes; the tool is the row's `tool_name`, else the one whose fields the row carries."""
+    fields = dict(fields)
+    tool = fields.pop("tool_name", None) or ("MultiEdit" if "edits" in fields else "Edit" if "old_string" in fields else "Write")
+    return [{"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": fields, "cwd": str(cwd)},
+            {"hook_event_name": "preToolUse", "tool_name": tool, **fields, "cwd": str(cwd)}]
 
 
 def path_without(home: Path, *tools: str) -> str:
@@ -193,7 +215,7 @@ def cases(home: Path, places: dict[str, Path]) -> list[dict]:
         rows += [{"label": f"allow payload {label}", "payload": payload, "cwd": places["nogit"], "by": None, "env": {}, "guards": GUARDS}
                  for payload in (claude, cursor)]
     for fields, tree, by in FILES:
-        filled = {key: expand(value, places) for key, value in fields.items()}
+        filled = {key: expand(value, places) if isinstance(value, str) else value for key, value in fields.items()}
         rows += [{"label": f"file {fields}", "payload": payload, "cwd": places[tree], "by": by, "env": {}, "guards": FILE_HOOKS, "shell": False}
                  for payload in file_shapes(filled, places[tree])]
     # A deny row asks only the guard that must deny (on both parsers); the allow rows run every guard.
@@ -419,6 +441,54 @@ def test_a_deep_pipeline_is_denied_quickly(world: tuple) -> None:
     elapsed = time.monotonic() - start
     # The unbounded path took 25 s here; 15 s leaves room for a loaded CI runner.
     assert done.returncode == 2 and elapsed < 15, f"exit {done.returncode} after {elapsed:.1f}s: {done.stderr[:300]}"
+
+
+@pytest.mark.parametrize("label, extra, ago, calls", NOTIFY, ids=[row[0] for row in NOTIFY])
+def test_idle_notification_is_quiet(label: str, extra: dict, ago: int | None, calls: int, world: tuple) -> None:
+    """A banner only, never an app activation; none in a background job, with the off switch, or twice per session in 10 minutes."""
+    env, places, _ = world
+    home = places["home"] / "notify" / label.replace(" ", "-")
+    stub = home / "bin"
+    stub.mkdir(parents=True)
+    log = home / "osascript.log"
+    (stub / "osascript").write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{log}'\n", encoding="utf-8")
+    (stub / "osascript").chmod(0o755)
+    stamp = home / ".agent" / "memory" / ".sessions" / (hashlib.sha256(b"s1").hexdigest()[:24] + ".notified")
+    if ago is not None:
+        stamp.parent.mkdir(parents=True)
+        stamp.write_text(f"{int(time.time()) - ago}\n", encoding="utf-8")
+    run_env = {k: v for k, v in env.items() if k not in ("CLAUDE_JOB_DIR", "CREW_MEMORY_DIR", "EL_CAPITAN_NOTIFY")}
+    run_env.update(extra, HOME=str(home), PATH=f"{stub}{os.pathsep}{env['PATH']}")
+    payload = {"session_id": "s1", "hook_event_name": "Notification", "notification_type": "idle_prompt", "cwd": str(places["clean"])}
+    done = run("bash", HOOKS / "notify-idle.sh", json.dumps(payload), run_env, places["clean"])
+    lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    assert (done.returncode, done.stdout, done.stderr) == (0, "", ""), done
+    assert len(lines) == calls and not any("activate" in line for line in lines), lines
+    assert not calls or stamp.read_text(encoding="utf-8").strip().isdigit()
+
+
+def test_a_status_denial_names_crew_task(world: tuple) -> None:
+    """The Status guard's one line tells the agent which commands move a status."""
+    env, places, _ = world
+    fields = {"file_path": str(places["tasks"] / "DDD-status" / "SPEC.md"), "old_string": "DRAFTING", "new_string": "APPROVED"}
+    done = run("bash", HOOKS / "check-task-spec-owner.sh", json.dumps(file_shapes(fields, places["clean"])[0]), env, places["clean"])
+    assert done.returncode == 2 and "crew-task.py mark-approved | mark-implementing | mark-done" in done.stderr, done
+
+
+def test_only_a_task_spec_needs_the_status_reader(world: tuple) -> None:
+    """With `task_status` missing, a write elsewhere is still allowed and a task spec edit is refused (fail closed)."""
+    env, places, _ = world
+    copy = places["home"] / "no-reader" / ".claude" / "hooks"
+    if not copy.exists():
+        shutil.copytree(HOOKS, copy, symlinks=True)
+    hook = copy / "check-task-spec-owner.sh"
+    elsewhere = run("bash", hook, json.dumps(file_shapes({"file_path": str(places["clean"] / "new.md"), "content": "x"},
+                                                         places["clean"])[0]), env, places["clean"])
+    spec = run("bash", hook, json.dumps(file_shapes({"file_path": str(places["tasks"] / "DDD-status" / "SPEC.md"),
+                                                     "old_string": "- [ ] T1: a", "new_string": "- [x] T1: a"},
+                                                    places["clean"])[0]), env, places["clean"])
+    assert (elsewhere.returncode, elsewhere.stdout, elsewhere.stderr) == (0, "", ""), elsewhere
+    assert spec.returncode == 2 and "no verdict" in spec.stderr, spec
 
 
 def test_every_hook_survives_bad_input(world: tuple) -> None:

@@ -4,7 +4,8 @@
 The block helpers are `.claude/install_blocks.py`, the module install.sh runs, so a change that breaks
 idempotency, removal or user prose fails here first. The permission rules must not let an allow rule
 shadow an ask rule (the outcome would depend on evaluation order), gate commands must prompt, and the
-settings merge retires a broad rule the template narrowed while keeping the user's own. The doctor
+settings merge retires a rule an earlier install added and the template dropped while keeping the
+user's own. The doctor
 runs against a fake HOME installed by install.sh, with a fake `gh` first on PATH.
 """
 from __future__ import annotations
@@ -110,18 +111,49 @@ def test_permission_rules() -> None:
 
 
 def test_settings_merge(tmp: Path) -> None:
-    """The installer retires a broad rule when the template narrows it, and keeps the user's own rules."""
+    """The installer retires the SPEC.md ask rules an earlier install recorded and the template dropped, and
+    keeps the user's own rules, an ask rule on the task directory among them."""
+    spec_rules = ["Edit(~/.agent/tasks/*/SPEC.md)", "Write(~/.agent/tasks/*/SPEC.md)"]
     user = {"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"],
-                            "ask": ["Edit(~/.agent/tasks/**)", "Write(~/.agent/tasks/**)", "Edit(~/.claude/**)"]},
+                            "ask": [*spec_rules, "Edit(~/.agent/tasks/**)", "Edit(~/.claude/**)"]},
             "hooks": {}}
-    dest = tmp / "dest.json"
+    home, dest = tmp / "home", tmp / "home" / "cfg" / "settings.json"
+    dest.parent.mkdir(parents=True)
     dest.write_text(json.dumps(user), encoding="utf-8")
-    result = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest)], capture_output=True, text=True)
+    section = f"claude_settings:{dest.parent}"
+    (home / ".agent").mkdir()
+    manifest = {"version": 1, section: {"rules": {"ask": spec_rules}}}
+    (home / ".agent/install-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest), "--manifest", str(home)],
+                            capture_output=True, text=True)
     merged = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
-    check("the merge retires the broad task rule for the narrow one and keeps unrelated user rules",
-          result.returncode == 0 and "Edit(~/.agent/tasks/**)" not in merged["ask"]
-          and "Edit(~/.agent/tasks/*/SPEC.md)" in merged["ask"] and "Edit(~/.claude/**)" in merged["ask"]
-          and "Bash(my-own *)" in merged["allow"], (result.stderr[-200:], merged))
+    recorded = json.loads((home / ".agent/install-manifest.json").read_text(encoding="utf-8"))[section]
+    check("the merge retires the recorded SPEC.md ask rules, forgets them, and keeps the user's own rules",
+          result.returncode == 0 and merged["ask"] == ["Edit(~/.agent/tasks/**)", "Edit(~/.claude/**)"]
+          and "Bash(my-own *)" in merged["allow"] and "ask" not in recorded.get("rules", {}),
+          (result.stderr[-200:], merged, recorded))
+
+
+def test_settings_merge_task_directory(tmp: Path) -> None:
+    """The task directory, written as an absolute path under HOME, and its Edit rule are merged beside the
+    user's own; the unmerge of the record takes back only them."""
+    home, dest = tmp / "home", tmp / "home" / "cfg" / "settings.json"
+    dest.parent.mkdir(parents=True)
+    before = {"permissions": {"allow": ["Bash(my-own *)"], "additionalDirectories": ["~/mine"]}}
+    dest.write_text(json.dumps(before), encoding="utf-8")
+    merged = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest), "--manifest", str(home)],
+                            capture_output=True, text=True, env={**os.environ, "HOME": str(home)})
+    permissions = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
+    unmerge = ("import json, sys, merge_claude_settings as m; d = json.load(open(sys.argv[1])); "
+               "r = next(v for k, v in json.load(open(sys.argv[2])).items() if k.startswith('claude_settings')); "
+               "print(json.dumps(m.unmerge(d, r, json.load(open(sys.argv[3])), print)['permissions']))")
+    undone = subprocess.run([sys.executable, "-c", unmerge, str(dest), str(home / ".agent/install-manifest.json"),
+                             str(SETTINGS)], capture_output=True, text=True, cwd=MERGE.parent)
+    check("both keys merged beside the user's directory, and uninstall leaves only the user's",
+          merged.returncode == 0 and permissions["additionalDirectories"] == ["~/mine", f"{home}/.agent/tasks"]
+          and "Edit(~/.agent/tasks/**)" in permissions["allow"] and undone.returncode == 0
+          and json.loads(undone.stdout.splitlines()[-1]) == before["permissions"],
+          (merged.stderr[-300:], permissions, undone.stdout[-300:], undone.stderr[-300:]))
 
 
 @pytest.mark.parametrize("case, before, flag, after", [

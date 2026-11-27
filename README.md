@@ -111,6 +111,7 @@ feature list.
 | `~/.cursor/rules/`, `~/.cursor/agents/`, `~/.cursor/skills/` | Symlinks into this repository, except the read-only agents, written as files rendered with your `mcp` servers; `~/.cursor/hooks.json` is merged, not replaced |
 | `~/.claude/CLAUDE.md`, `~/.claude/agents/`, `~/.claude/skills/`, `~/.claude/hooks/` | Symlinks and a managed block, plus hook registrations and permission rules merged into `~/.claude/settings.json` (backed up first) |
 | Every other Claude config dir: `$CLAUDE_CONFIG_DIR`, each `--claude-config-dir DIR` | The same settings merge (the hooks stay in `~/.claude/hooks`); no CLAUDE.md block, because Claude Code reads the user CLAUDE.md from `~/.claude` whatever the config dir. `agents` and `skills` are linked into `~/.cursor`, or, when one is a real directory, each crew entry is linked inside it beside your own; your own links and files there are kept and named, never replaced. The dirs are recorded, so a later install, uninstall and `crew doctor` cover them; a recorded dir you deleted is dropped, not recreated |
+| Each config dir's `settings.json`: the task directory | Your `~/.agent/tasks`, written as an absolute path, in `permissions.additionalDirectories`, and an `Edit(~/.agent/tasks/**)` allow rule (it covers Write and MultiEdit too), so crew agents, background builders included, write task files without a prompt, `SPEC.md` included. The `check-task-spec-owner.sh` guard still refuses another task's spec, any Edit, MultiEdit or Write that changes a spec's `## Status` value (use `crew-task.py mark-approved`, `mark-implementing` or `mark-done`), and writes to `.task-id` and review evidence. It does not see Bash: a shell command that rewrites `SPEC.md` is checked only by the harness's own Bash prompt. The `SPEC.md` `ask` rules an earlier install added are removed on the next install; an `ask` rule you added yourself stays. Uninstall removes only the entries install added; your own directories stay |
 | Each config dir's `settings.json`: `autoMemoryEnabled` | `false`, so crew memory is the one memory store; written only once that dir's Claude auto-memory entries are imported ([Memory](docs/memory.md#claude-code-auto-memory)). A value you set is kept |
 | `~/.codex/AGENTS.md` | A managed instruction block, the same content as the Claude Code one |
 | `~/.agent/bin/` | One symlink per command in `.agent/tools/tools.json` |
@@ -126,7 +127,9 @@ so new commands are linked and removed ones unlinked.
 **It registers hooks that can block your commands**: a destructive-git guard, a secret-scanning
 commit guard, a write-boundary check, a shell-expansion guard, and a worker-tree guard.
 [Hooks](docs/hooks.md) describes each one and its off switch (`EL_CAPITAN_GUARDS=off` for all of
-them); each is one small file you can read first.
+them); each is one small file you can read first. On macOS an idle session also shows a banner, at
+most one per session every 10 minutes and none in a background job; `EL_CAPITAN_NOTIFY=off` turns it
+off.
 
 **To reverse an install**, run `bash ~/el-capitan/install.sh --uninstall` (add `--dry-run` to print
 each step and change nothing; `install.sh --dry-run` does the same for an install). It removes the

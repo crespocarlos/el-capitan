@@ -49,11 +49,11 @@
       "Bash(bash .claude/hooks/fixtures/*)",
       "Bash(agent-builder *)",
       "WebFetch(domain:github.com)",
-      "WebSearch"
+      "WebSearch",
+      "Edit(~/.agent/tasks/**)"
     ],
-    "ask": [
-      "Edit(~/.agent/tasks/*/SPEC.md)",
-      "Write(~/.agent/tasks/*/SPEC.md)"
+    "additionalDirectories": [
+      "~/.agent/tasks"
     ]
   },
   "hooks": {
@@ -89,7 +89,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",

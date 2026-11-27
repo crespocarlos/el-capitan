@@ -294,6 +294,12 @@ MESSAGES = {
     "worker-tree": (("ask the user before removing the lock", " min old)"), ("T-1", "lock remove")),
 }
 
+# The SPEC.md on disk in the fixture's `DDD-status` task.
+STATUS_SPEC = "# Spec: Status guard\n\n## Status\nDRAFTING\n\n## Tasks\n- [ ] T1: a\n- [ ] T2: b\n"
+SPEC = "{tasks}/DDD-status/SPEC.md"
+TICK = {"old_string": "- [ ] T1: a", "new_string": "- [x] T1: a"}
+APPROVE = {"old_string": "DRAFTING", "new_string": "APPROVED"}
+
 # `(fields, cwd, by)` sent to every `Write|Edit` hook: a write outside the boundary is denied after
 # `..` is resolved, the agent homes, /tmp and the review pipeline's temp directory are allowed, and a
 # spec titled for one task is never written over another task's existing spec.
@@ -325,6 +331,48 @@ FILES = [
      "clean", None),
     ({"file_path": "{tasks}/CCC-fresh/SPEC.md", "content": "# Spec: Something else entirely"}, "clean", None),
     ({"file_path": "{home}/.agent/somewhere/SPEC.md", "content": "# Spec: anything at all"}, "clean", None),
+    # The Status line of an existing task spec moves only through crew-task.py; every other edit passes.
+    ({"file_path": SPEC, **TICK}, "clean", None),
+    ({"file_path": SPEC, **APPROVE}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "content": STATUS_SPEC.replace("- [ ]", "- [x]")}, "clean", None),
+    ({"file_path": SPEC, "content": STATUS_SPEC.replace("DRAFTING", "APPROVED")}, "clean", "check-task-spec-owner"),
+    # A new spec is born DRAFTING (or with no Status yet), never already approved.
+    ({"file_path": "{tasks}/BBB-new/SPEC.md", "content": STATUS_SPEC.replace("DRAFTING", "APPROVED")},
+     "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/BBB-new/SPEC.md", "content": STATUS_SPEC}, "clean", None),
+    # The one reader decides: a CR heading before the real one, a lone CR read as a newline, or a blank
+    # line and a second section.
+    ({"file_path": SPEC, "old_string": "# Spec: Status guard\n",
+      "new_string": "# Spec: Status guard\r## Status\rAPPROVED\r\n"}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "old_string": "## Status\nDRAFTING",
+      "new_string": "## Status\r\nAPPROVED\n\n## Status\nDRAFTING"}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "content": STATUS_SPEC.replace("## Status\n", "## Status\n\n") + "\n## Status\nAPPROVED\n"},
+     "clean", "check-task-spec-owner"),
+    # The path is resolved and the name compared case-insensitively.
+    ({"file_path": "{tasks}/DDD-status/../DDD-status/SPEC.md", **APPROVE}, "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}//DDD-status/SPEC.md", **APPROVE}, "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/DDD-status/spec.md", **APPROVE}, "clean", "check-task-spec-owner"),
+    ({"file_path": "{home}/linked-task/SPEC.md", **APPROVE}, "clean", "check-task-spec-owner"),
+    # An Edit applies exactly as the tool applies it, or is refused; MultiEdit edits apply in order.
+    ({"file_path": SPEC, "old_string": "not in the file", "new_string": "x"}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "old_string": "- [ ]", "new_string": "- [x]"}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "old_string": "- [ ]", "new_string": "- [x]", "replace_all": True}, "clean", None),
+    ({"file_path": SPEC, "edits": [TICK]}, "clean", None),
+    ({"file_path": SPEC, "edits": [TICK, APPROVE]}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC}, "clean", "check-task-spec-owner"),
+    # The tool decides which fields are read: another tool's fields, or an unknown tool, are refused.
+    ({"tool_name": "Write", "file_path": SPEC, "content": STATUS_SPEC.replace("DRAFTING", "APPROVED"), "edits": [TICK]},
+     "clean", "check-task-spec-owner"),
+    ({"tool_name": "Edit", "file_path": SPEC, **TICK, "content": STATUS_SPEC}, "clean", "check-task-spec-owner"),
+    ({"tool_name": "NotebookEdit", "file_path": SPEC, "content": STATUS_SPEC}, "clean", "check-task-spec-owner"),
+    # The guards' evidence is written only by crew tools.
+    ({"file_path": "{tasks}/DDD-status/.task-id", "content": "{}"}, "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/DDD-status/review/1/adversarial.expect", "content": "n"}, "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/DDD-status/review/1/adversarial.provenance.json", "content": "{}"},
+     "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/DDD-status/review/1/adversarial.out.md", "content": "reply"},
+     "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/DDD-status/review/1/adversarial.in.md", "content": "brief"}, "clean", None),
 ]
 
 # Raw envelopes `(label, claude payload, cursor payload)` with no usable command.
@@ -345,3 +393,12 @@ PAYLOADS = [
 SILENT = ("mode-anchor.sh", "memory-context.sh", "cursor-memory-context.sh", "notify-idle.sh", "log-tool-use.sh",
           "memory-capture-prompt.sh", "spec-status-reconcile.sh", "record-pr.sh",
           "capture-reply.sh", "agents-refresh.sh")
+
+# `notify-idle.sh` under a stub `osascript`: `(label, env, seconds since this session's last banner or None, calls)`.
+NOTIFY = [
+    ("a background job", {"CLAUDE_JOB_DIR": "/tmp/job"}, None, 0),
+    ("the off switch", {"EL_CAPITAN_NOTIFY": "off"}, None, 0),
+    ("a first idle in a session", {}, None, 1),
+    ("a second idle within 10 minutes", {}, 60, 0),
+    ("an idle 10 minutes after the last banner", {}, 600, 1),
+]
