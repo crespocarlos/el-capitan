@@ -2,7 +2,7 @@
 """Compose one reviewer context package per persona from a review run's artifacts.
 
 Usage: crew-assemble-packages.py <review-dir>. Each package is the shared head
-(contract, mode, hunk reference, memory), the whole `package.diff`, then the per-persona tail, so
+(contract, lookups, mode, hunk reference, memory), the whole `package.diff`, then the per-persona tail, so
 every reviewer reads the same evidence and a cached prefix is paid once. Per-run judgement comes
 from `assemble.json` (keys and rules: `.agent/tools/TOOLS.md`); inputs `assemble_inputs`, build `assemble_build`.
 """

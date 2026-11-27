@@ -51,6 +51,9 @@ the report's `### Guidance applied` section. If an applicable file defines a tes
 command, use it as the default verify command in step 5 when the task's own verify line does not
 specify one; treat forbidden patterns as task failures.
 
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+A claim it marks unverified goes in the report's `unverified_claims`.
+
 **Testing procedure.** Apply `personal.mdc` Testing, detailed in
 [testing policy](~/.cursor/agents/references/testing-policy.md). Before a behavioral task, keep a concise
 mapping from its acceptance criterion or contract to repository test coverage and verification

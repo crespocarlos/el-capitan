@@ -5,10 +5,10 @@ sets its own questions, budget counts, and output sections; this file sets how t
 
 ## Tool priority
 
-Follow `crew-explorer-conventions.mdc` when it is loaded. Either way, prefer a code index
-(Sourcerer's, when configured) over a text search; otherwise use the native search tool, then read
-only the ranges a search identified. Never read a whole file: the summary you return is what the
-consumer reads instead of the file.
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
+Follow `crew-explorer-conventions.mdc` too when it is loaded. Read only the ranges a search
+identified, never a whole file: the summary you return is what the consumer reads instead of the
+file.
 
 ## Budget slots
 
@@ -18,14 +18,15 @@ what is still open.
 | Slot | Calls that count |
 | --- | --- |
 | protocol read | reading this file, once, before any other call |
-| index check | `sourcerer_repos_list` or `sourcerer_refs_list`, once, before any index search |
-| index search | `sourcerer_code_search`, `sourcerer_code_grep`, `sourcerer_files_tree`, or the harness's own index search |
+| lookups read | reading `lookups.md`, once, right after the protocol read |
+| docs lookup | a docs-server search or page fetch, or an official-docs or library-source read, for a product or API fact a question depends on |
+| index check | the index's repository or ref list, once, before any index search |
+| index search | the index's search, grep or tree tool, or the harness's own index search |
 | repository search | a path or text search (`Grep`/`Glob` in Cursor, the native search tool elsewhere) |
-| file read | `sourcerer_files_read_lines`, or a native read of a line range |
+| file read | the index's line-range read, or a native read of a line range |
 
-When the code index is unreachable (not in your tools, or a call fails), the index slots go to
-repository search; name it in the summary as `code search unreachable: used text search`, so the
-consumer knows the results were not ranked.
+When the code index is unreachable, the index slots go to repository search, and the lookups line
+`code search unreachable: used text search` goes in the summary.
 
 ## Returning
 

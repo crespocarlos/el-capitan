@@ -3,7 +3,7 @@ name: reviewer-explorer
 description: "Codebase explorer for diff-context pattern discovery. Dispatched by crew-reviewer — do not invoke directly."
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
-maxTurns: 14
+maxTurns: 16
 ---
 # Reviewer Explorer
 
@@ -32,8 +32,8 @@ contract. If those excerpts cannot settle the claim, return:
 
 Do not attempt pattern discovery or cross-file tracing in PR validator mode.
 
-**Budget: 13 calls** — 1 protocol read, 1 index check, 4 index search, 3 repository search, 4 file
-read; roughly 6 for pattern discovery (items 1–5) and 6 for cross-file tracing (item 6); `maxTurns`
+**Budget: 15 calls** — 1 protocol read, 1 lookups read, 1 index check, 4 index search, 3 repository
+search, 4 file read, 1 docs lookup; roughly 6 for pattern discovery (items 1–5) and 6 for cross-file tracing (item 6); `maxTurns`
 adds one turn for the report.
 
 ## What to find

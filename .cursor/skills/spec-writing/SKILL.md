@@ -32,8 +32,7 @@ what exists, with `path:line` pointers, and do not propose changes yet. Collect:
 - lint, type-check, and other quality-gate commands from the repository's agent or contributor
   guide.
 
-Verify claims about external APIs, query languages, or library behavior against official
-documentation before relying on them.
+Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
 
 ## Step 2: Clarify before drafting
 

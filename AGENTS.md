@@ -43,8 +43,8 @@ anchor into a silent no-op; shell heredocs are for scratch artifacts and task-di
   and autopilot rules. Neither is duplicated in `.claude/CLAUDE.md`.
 - **Templates** — edit `.cursor/skills/spec-writing/references/`; `.agent/_*SPEC_TEMPLATE.md` are
   symlinks, so a change affects every future spec.
-- **Explorer budget** — `specwriter-explorer.md` declares 9 tool calls (the protocol read included)
-  and `maxTurns: 10` (one more for the report); update both when you add a discovery step.
+- **Explorer budget** — `specwriter-explorer.md` declares 12 tool calls (the protocol and lookups reads
+  included) and `maxTurns: 13` (one more for the report); update both when you add a discovery step.
 - **Guards are hooks, not prose** — a rule that must hold every time lives in `.claude/hooks/`,
   registered in both hook configs with an allow and a deny case in `evals/tools/hook_cases.py`.
 - **Reviewer personas** — the procedure is
