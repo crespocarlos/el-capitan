@@ -62,6 +62,13 @@ jobs:
           enable-cache: false
           python-version: ${{ matrix.python }}
 
+      - name: Interpreter on PATH
+        env:
+          WANT: ${{ matrix.python }}
+        run: |
+          uv python install "$WANT"
+          dirname "$(uv python find "$WANT")" >> "$GITHUB_PATH"
+
       - name: Interpreter in use
         env:
           WANT: ${{ matrix.python }}
