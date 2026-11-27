@@ -20,6 +20,7 @@ from typing import Callable
 
 import task_bootstrap  # noqa: F401
 
+from task_gc import Places, load_config
 from task_lock import blocked_lines
 from task_progress import GITHUB_PR_URL, pr_urls
 from task_state import TaskState, head, load, name
@@ -261,15 +262,22 @@ def load_rows(tasks_dir: Path) -> list[TaskState]:
 STALE_DAYS = 14
 
 
+def configured_scope() -> str:
+    """`ls.repo` of `~/.agent/config.json` (`here` when unset), read at call time; a bad file is a ConfigError."""
+    return load_config(Places.here().agent)["ls"]["repo"]
+
+
 def repo_filter(given: str | None, here: Local = local_remotes) -> set[str] | None:
     """The `owner/repo` names `--repo` keeps (lower case), or None for every repository.
 
-    No flag means the repository around the cwd (its `origin` and `upstream`), or every repository
-    outside one; `all` means every repository; a bare name matches any owner.
+    No flag means `configured_scope()`. `here` means the repository around the cwd (its `origin` and
+    `upstream`), or every repository outside one; `all` means every repository; a bare name matches
+    any owner.
     """
-    if given is None:
+    scope = (configured_scope() if given is None else given).lower()
+    if scope == "here":
         return set(here()) or None
-    return None if given.lower() == "all" else {given.lower()}
+    return None if scope == "all" else {scope}
 
 
 def select(rows: list[TaskState], repos: set[str] | None, states: list[str] | None = None) -> list[TaskState]:

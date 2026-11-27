@@ -48,7 +48,7 @@
       "list_flags": ["--limit", "--max-chars"],
       "json_smoke": ["--json", "--tasks-dir", "@tmpdir"],
       "routes": {
-        "crew ls": "Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line; `--json` adds each task's issue, PRs, progress and activity.",
+        "crew ls": "Task table for the current repo, or the `ls.repo` scope of `~/.agent/config.json` (`--repo all` for every one, `--repo here` for the current one); IMPLEMENTING tasks idle for 14 days fold into one stale line; `--json` prints one object whose `items` add each task's issue, PRs, progress and activity.",
         "crew report": "Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures."
       }
     },

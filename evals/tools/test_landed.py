@@ -207,7 +207,7 @@ def test_crew_ls_all_with_a_fake_gh(tmp: Path) -> None:
     check("crew ls --all prints a landed line for a DONE task", "stacked  landed:" in table.stdout, table)
     check("the non-default base is flagged in the listing", "merged into feat/parent, not main" in table.stdout, table.stdout)
     check("the merged-into-a-parent task is never yes", "landed: yes" not in table.stdout, table.stdout)
-    data = json.loads(run("--all", "--json").stdout)
+    data = json.loads(run("--all", "--json").stdout)["items"]
     check("--json carries landed and flag for the DONE task",
           data[0].get("landed") in ("no", "unknown") and "feat/parent" in data[0].get("flag", ""), data)
     calls = log.read_text(encoding="utf-8")
@@ -248,7 +248,7 @@ def test_crew_ls_all_reads_the_landing_bases_of_its_repository(tmp: Path) -> Non
     check("crew ls --all prints `landed: yes (backport to 9.x)`", "backport  landed: yes (backport to 9.x)" in shown.stdout, shown)
     check("a backport is not flagged as a non-default base", "not main" not in shown.stdout, shown.stdout)
     data = json.loads(subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks), "--all", "--json"],
-                                     capture_output=True, text=True, env=env, cwd=repo).stdout)
+                                     capture_output=True, text=True, env=env, cwd=repo).stdout)["items"]
     check("--json carries landed yes and the note", data[0].get("landed") == "yes" and data[0].get("note") == "backport to 9.x", data)
 
 
@@ -440,7 +440,7 @@ def test_crew_ls_age_comes_from_progress(tmp: Path) -> None:
     def ls(*arguments: str) -> subprocess.CompletedProcess:
         return cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), *arguments, cwd=repo)
 
-    records = {r["slug"]: r for r in json.loads(ls("--json").stdout)}
+    records = {r["slug"]: r for r in json.loads(ls("--json").stdout)["items"]}
     check("activity and stale follow PROGRESS; the repo is recorded",
           (records["active"]["activity_days"], records["active"]["stale"], records["quiet"]["activity_days"], records["quiet"]["stale"])
           == (2, False, 20, True) and records["quiet"]["repo"] == "acme/widgets" and records["local"]["repo"] == "", records)

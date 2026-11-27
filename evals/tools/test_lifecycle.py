@@ -209,8 +209,7 @@ def test_gates(tmp: Path) -> None:
           first.returncode == 0 and status_of(branch) == "DONE" and f"IMPLEMENTING → DONE (PR opened: {PR_ONE})" in progress_text(branch), first)
     second = task("mark-done", str(branch), "--pr-url", PR_TWO)
     task("mark-done", str(branch), "--pr-url", PR_TWO)
-    record = json.loads(ls(tasks, "--all", "--json", "--repo", "all"))
-    record = next(r for r in record if r["slug"] == "branch")
+    record = next(r for r in json.loads(ls(tasks, "--all", "--json", "--repo", "all"))["items"] if r["slug"] == "branch")
     check("a second PR on a DONE task is appended once to its PR list, and crew ls --json carries the list and the issue",
           "already done" in second.stdout and task_state.load(branch).prs == [PR_ONE, PR_TWO]
           and (record["prs"], record["issue"], record["progress"]) == ([PR_ONE, PR_TWO], "https://github.com/acme/widgets/issues/12", "1/1"), record)
@@ -298,15 +297,21 @@ def test_reconcile_hook(tmp: Path) -> None:
     check("a missing tool is reported with the fix", "crew-task.py missing; re-run install.sh" in missing, missing)
 
 
+PR_UP = "https://github.com/acme/widgets/pull/7"  # the fork me/widgets's PR, opened on its parent
 GH_STUB = """#!/bin/sh
 echo "$*" >> "$GH_CALLS"
 [ "$GH_OFFLINE" = 1 ] && exit 1
 case "$*" in
-  "repo view acme/widgets --json defaultBranchRef") echo '{"defaultBranchRef":{"name":"main"}}' ;;
+  "repo view acme/widgets --json defaultBranchRef,parent") echo '{"defaultBranchRef":{"name":"main"},"parent":null}' ;;
+  "repo view me/widgets --json defaultBranchRef,parent")
+    echo '{"defaultBranchRef":{"name":"main"},"parent":{"name":"widgets","owner":{"login":"acme"}}}' ;;
   "pr list --head feat/x --repo acme/widgets --state all --json url") echo '[{"url":"<PR>"}]' ;;
+  "pr list --head "*" --repo me/widgets --state all --json url") echo '[]' ;;
+  "pr list --head "*" --repo acme/widgets --state all --json url,headRepositoryOwner")
+    echo '[{"url":"https://github.com/acme/widgets/pull/98","headRepositoryOwner":{"login":"other"}},{"url":"<UP>","headRepositoryOwner":{"login":"me"}}]' ;;
   *) echo '[{"url":"https://github.com/acme/widgets/pull/99"}]' ;;
 esac
-""".replace("<PR>", PR_TWO)
+""".replace("<PR>", PR_TWO).replace("<UP>", PR_UP)
 
 
 @pytest.mark.parametrize("offline", [False, True])
@@ -333,6 +338,34 @@ def test_reconcile_finds_prs(tmp: Path, offline: bool) -> None:
     more = (tmp / "calls").read_text().splitlines()[len(calls):] if (tmp / "calls").exists() else []
     check("a second run asks gh nothing once every task was answered (cached 24 h), and again when offline left them unchecked",
           again.returncode == 0 and bool(more) is offline, (again.stdout, more))
+
+
+@pytest.mark.parametrize("repo,found,lists", [
+    ("acme/widgets", PR_TWO, ["acme/widgets"]),  # not a fork: one pr list, no parent asked
+    ("me/widgets", PR_UP, ["me/widgets", "acme/widgets"]),  # a fork: the parent, only the PR whose head is me's
+])
+def test_reconcile_asks_a_fork_parent(tmp: Path, repo: str, found: str, lists: list[str]) -> None:
+    """A fork's task with no PR in the fork finds its PR on the parent; the parent comes from the cached `repo view`."""
+    tasks, stub, calls = tmp / "tasks", tmp / "bin" / "gh", tmp / "calls"
+    stub.parent.mkdir()
+    stub.write_text(GH_STUB, encoding="utf-8")
+    stub.chmod(0o755)
+    env = {"PATH": f"{stub.parent}{os.pathsep}{os.environ['PATH']}", "GH_CALLS": str(calls), "GH_OFFLINE": "0"}
+
+    def run(name: str, branch: str) -> list[str]:
+        spec(tasks / name, "IMPLEMENTING")
+        (tasks / name / ".task-id").write_text(json.dumps({"slug": name, "branch": branch, "repo_remote_url": f"git@github.com:{repo}.git"}))
+        before = calls.read_text().splitlines() if calls.exists() else []
+        check(f"reconcile for {name}", task("reconcile", "--tasks-dir", str(tasks), "--apply", env=env).returncode == 0)
+        return calls.read_text().splitlines()[len(before):]
+
+    first = run("one", "feat/x")
+    check("the task records its PR; pr list asks the task repo, then the parent of a fork only",
+          task_state.load(tasks / "one").prs == [found] and [c.split("--repo ")[1].split()[0] for c in first if c.startswith("pr list")] == lists
+          and sum(c.startswith("repo view") for c in first) == 1, first)
+    second = run("two", "feat/y")
+    check("a later task of the same repository reads the default branch and the parent from the cache",
+          not any(c.startswith("repo view") for c in second) and [c.split("--repo ")[1].split()[0] for c in second] == lists, second)
 
 
 def test_pr_lookup_budget(tmp: Path) -> None:
@@ -464,11 +497,11 @@ def test_blocked_events(tmp: Path) -> None:
     lines = progress_text(directory).splitlines()
     check("blocked writes one BLOCKED line", written.returncode == 0 and len(lines) == 1
           and "BLOCKED: stacked base: #51 is not main second line" in lines[0], lines)
-    rows = json.loads(ls(tasks, "--json") or "[]")
+    rows = json.loads(ls(tasks, "--json"))["items"]
     check("crew ls and --json show the reason", "BLOCKED: stacked base: #51 is not main" in ls(tasks)
           and rows and rows[0].get("blocked", "").startswith("stacked base"), rows)
     cli(TASK_TOOLS / "crew-progress.py", str(directory), "IMPLEMENTING → IMPLEMENTING")
-    check("the next stage clears it", "BLOCKED" not in ls(tasks) and json.loads(ls(tasks, "--json"))[0].get("blocked") == "")
+    check("the next stage clears it", "BLOCKED" not in ls(tasks) and json.loads(ls(tasks, "--json"))["items"][0].get("blocked") == "")
     check("blocked on a missing directory fails", task("blocked", str(tmp / "none"), "x").returncode == 1)
 
     def append(text: str) -> None:
@@ -659,5 +692,6 @@ def test_gc_dry_run_then_apply(tmp: Path) -> None:
     linked = cli(TASK, "gc", "--apply", env=env)
     check("a .sessions that is a link is skipped with a note, its files kept",
           (outside / "notes.txt").exists() and "skipped ~/.agent/memory/.sessions" in linked.stdout, linked.stdout)
-    (agent / "config.json").write_text(json.dumps({"gc": {"artifact_days": 1}}), encoding="utf-8")
-    check("an unknown setting refuses with exit 2", cli(TASK, "gc", env=env).returncode == 2)
+    for bad in ({"gc": {"artifact_days": 1}}, {"ls": {"repo": "not a repo"}}, {"ls": {"repo": 3}}):
+        (agent / "config.json").write_text(json.dumps(bad), encoding="utf-8")
+        check(f"{bad}: gc and crew ls refuse with exit 2", (cli(TASK, "gc", env=env).returncode, cli(LS, env=env).returncode) == (2, 2))

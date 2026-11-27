@@ -48,7 +48,7 @@ Every command is typed into the AI chat. `crew help` prints these tables.
 | `crew evals` | Inspect, compare and explain evaluation experiments and scores (Kibana repositories only). |
 | `crew e2e` [PR\|status\|setup] | Start and read a nightshift e2e run for a PR on demand: real browser/API tests of a deployed Kibana PR. |
 | `crew handoff` [resume] | Save or resume working state across a context reset or a new session. |
-| `crew ls` [--all] [--repo R] [--status S] | Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line; `--json` adds each task's issue, PRs, progress and activity. |
+| `crew ls` [--all] [--repo R] [--status S] | Task table for the current repo, or the `ls.repo` scope of `~/.agent/config.json` (`--repo all` for every one, `--repo here` for the current one); IMPLEMENTING tasks idle for 14 days fold into one stale line; `--json` prints one object whose `items` add each task's issue, PRs, progress and activity. |
 | `crew report` [--since 30d] [--repo R] | Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures. |
 | `crew doctor` | One screen of install health: links, hook registrations, managed blocks, tool versions, `gh` sign-in, state sizes; exit 1 on a problem. |
 | `crew gc` [--apply] | Retention from `~/.agent/config.json`: artifacts of DONE tasks after 14 days, DONE tasks archived after 90, session files after 30, the legacy telemetry; a dry run unless `--apply`. |
@@ -85,6 +85,12 @@ task's issue and PR in the browser. It needs Textual, pinned in
 `uv run --no-project --with-requirements tui/requirements.txt python3 tui/crew_tui.py`.
 `python3 tui/crew_tui.py --once` prints the same views without Textual, and `crew ls --watch` is
 the view with no dependency at all.
+
+The TUI, `crew ls` and `crew report` list the same repositories. Without `--repo` they read the
+`ls.repo` scope of `~/.agent/config.json`: `here` (the default: the repository around the current
+directory, or every one outside a repository), `all`, or one `owner/name`. `--repo` overrides it for
+one run, and `--repo here` forces the current repository. For example, `{"ls": {"repo": "all"}}`
+lists every repository from anywhere. An invalid value stops the command with exit 2 and names the file.
 
 ## What install changes
 

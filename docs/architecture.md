@@ -162,7 +162,7 @@ el-capitan/
 ├── journal/                 # Legacy monthly journal files (import-only)
 ├── memory/                  # Typed units, observations/, SQLite FTS5 index, .inbox/; .sessions/ holds hook telemetry
 ├── archive/                 # tasks-<stamp>.tar.gz: DONE tasks `crew gc --apply` archived
-├── config.json              # Optional: {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30}, "doctor": {"tasks_mb": 500, "sessions_mb": 100}}
+├── config.json              # Optional: {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30}, "doctor": {"tasks_mb": 500, "sessions_mb": 100}, "ls": {"repo": "here"}}
 └── tasks/<uuid>/            # Per-task state: SPEC.md, PROGRESS.md, REPORT.md, REVIEW.md, DEFERRED.md, HANDOFF.md
     └── .task-id             # JSON: uuid, repo_remote_url, branch, slug, created_at
 ```

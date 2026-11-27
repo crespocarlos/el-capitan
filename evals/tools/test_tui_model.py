@@ -88,11 +88,16 @@ def reader(argv: list[str]) -> tuple[int, str]:
     return 0, json.dumps(record)
 
 
-@pytest.mark.parametrize("filters,slugs", [
-    (Filters(), ["running", "idle", "blocked"]),
-    (Filters(repo="widgets", done=True), ["running", "idle", "shipped"]),
+@pytest.mark.parametrize("config,filters,slugs", [
+    (None, Filters(), ["running", "idle", "blocked"]),
+    (None, Filters(repo="widgets", done=True), ["running", "idle", "shipped"]),
+    ("acme/gadgets", Filters(), ["blocked"]),  # ls.repo is the scope when no repo is given
+    ("acme/gadgets", Filters(repo="all"), ["running", "idle", "blocked"]),  # --repo wins
+    ("acme/gadgets", Filters(repo="here"), ["running", "idle", "blocked"]),  # here: the cwd's, none outside a repo
 ])
-def test_tasks_view_order_and_done_rows(home: Path, filters: Filters, slugs: list[str]) -> None:
+def test_tasks_view_order_and_done_rows(home: Path, config: str | None, filters: Filters, slugs: list[str]) -> None:
+    if config:
+        (home / ".agent" / "config.json").write_text(json.dumps({"ls": {"repo": config}}))
     assert [row[1] for row in views(home, filters)["tasks"].rows] == slugs
 
 

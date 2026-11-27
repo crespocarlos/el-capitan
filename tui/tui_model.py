@@ -32,7 +32,7 @@ LINKED = ("ISSUE", "PR")  # the cells that are terminal links in the app; `o` an
 
 @dataclass(frozen=True)
 class Filters:
-    """What `crew ls` filters on: `repo` (None: the repository around the cwd; `all`), states, done rows."""
+    """What `crew ls` filters on: `repo` (None: `ls.repo` of config.json; `here`; `all`), states, done rows."""
 
     repo: str | None = None
     states: tuple[str, ...] = ()

@@ -169,7 +169,12 @@ def output_cases(tmp: Path, texts: dict[str, str]) -> None:
     clipped = command(by_name["crew-ls.py"], "--tasks-dir", str(tasks), "--max-chars", "120").stdout
     check("crew-ls.py: --limit and --max-chars print a marker naming the bound",
           "[truncated:" in limited and "--limit" in limited and "[truncated:" in clipped, (limited, clipped))
-    check("crew-ls.py: --json stays parseable when bounded", is_json(command(by_name["crew-ls.py"], "--tasks-dir", str(tasks), "--limit", "2", "--json").stdout))
+    for flags, truncated in (((), False), (("--status", "drafting"), False), (("--limit", "2"), True), (("--max-chars", "1000"), True)):
+        out = command(by_name["crew-ls.py"], "--tasks-dir", str(tasks), "--json", *flags).stdout
+        payload = json.loads(out) if is_json(out) else None
+        check(f"crew-ls.py --json {' '.join(flags)}: one object shape, bounded or not",
+              isinstance(payload, dict) and payload["total"] == 6 and payload["truncated"] is truncated
+              and payload["returned"] == len(payload["items"]) and (len(payload["items"]) < 6) is truncated, out)
     hunks = command(by_name["crew-review-hunks.py"], str(diff), "--out", str(tmp / "hunks2"), "--max-chars", "40").stdout
     check("crew-review-hunks.py: --max-chars marks a clipped JSON summary", is_json(hunks) and "truncated" in hunks, hunks)
     path = command(by_name["crew-worktree.py"], "main", "--json", "--max-chars", "5", cwd=repo).stdout

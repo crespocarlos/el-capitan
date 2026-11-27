@@ -1,14 +1,15 @@
 """Retention of local state: `crew-task.py gc` (a dry run unless `--apply`) and the sizes `crew-doctor.py` checks.
 
-The policy is `~/.agent/config.json` (`gc` and `doctor` objects; an unset key takes its default): a DONE
-task's `artifacts/` after `artifacts_days`, the DONE task archived to a tarball after `archive_days`,
-memory `.sessions` files after `sessions_days` (never the review queue), and the legacy
-`~/.agent/telemetry`, which holds raw shell commands and which nothing reads.
+`~/.agent/config.json` holds `gc`, `doctor` and `ls` (`ls.repo`: the scope of `crew ls` without `--repo`); an
+unset key takes its default. The policy: a DONE task's `artifacts/` after `artifacts_days`, the DONE task
+archived after `archive_days`, memory `.sessions` files after `sessions_days` (never the review queue), and
+the legacy `~/.agent/telemetry`, which holds raw shell commands and which nothing reads.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import tarfile
@@ -24,7 +25,10 @@ from lib.clock import utc_stamp
 from lib.files import read_json_object
 
 DEFAULTS = {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30},
-            "doctor": {"tasks_mb": 500, "sessions_mb": 100}}
+            "doctor": {"tasks_mb": 500, "sessions_mb": 100},
+            "ls": {"repo": "here"}}
+REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+RULES = {"ls": "all, here or an owner/name"}  # a section's accepted values when not a number >= 0
 KEEP_SESSIONS = frozenset({"review-queue.jsonl"})  # the capture queue `crew-inbox.py` drains
 TELEMETRY_NOTICE = "legacy telemetry: it holds raw shell commands and nothing reads it"
 DAY = 86400
@@ -56,8 +60,15 @@ class Action:
     size: int
 
 
+def valid(section: str, value: object) -> bool:
+    """`ls.repo` is `all`, `here` or an `owner/name`; every other setting is a number >= 0."""
+    if section == "ls":
+        return isinstance(value, str) and (value.lower() in ("all", "here") or bool(REPO_NAME.match(value)))
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+
+
 def load_config(agent: Path) -> dict:
-    """The defaults overlaid with `<agent>/config.json`; an unknown key or a negative value is a ConfigError."""
+    """The defaults overlaid with `<agent>/config.json`; an unknown key or an invalid value is a ConfigError."""
     merged = {section: dict(values) for section, values in DEFAULTS.items()}
     path = agent / "config.json"
     if not path.exists():
@@ -70,9 +81,9 @@ def load_config(agent: Path) -> dict:
         if section not in DEFAULTS or not isinstance(given, dict):
             raise ConfigError(f"{path}: {section!r} is not one of {sorted(DEFAULTS)} as an object")
         for key, value in given.items():
-            number = isinstance(value, (int, float)) and not isinstance(value, bool)
-            if key not in DEFAULTS[section] or not number or value < 0:
-                raise ConfigError(f"{path}: {section}.{key} must be one of {sorted(DEFAULTS[section])}, a number >= 0")
+            if key not in DEFAULTS[section] or not valid(section, value):
+                raise ConfigError(f"{path}: {section}.{key} must be one of {sorted(DEFAULTS[section])}, "
+                                  f"{RULES.get(section, 'a number >= 0')}")
             merged[section][key] = value
     return merged
 

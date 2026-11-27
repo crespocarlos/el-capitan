@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """List crew task state (read only) without failing on malformed task metadata.
 
-Modes: the table, `--md`, `--json`, `--watch [--interval N]`, `--report [--since Nd]`; `--repo` and
-`--status` filter; `--all` adds done specs with `landed: yes | no | unknown`; `--limit`/`--max-chars`
+Modes: the table, `--md`, `--json`, `--watch [--interval N]`, `--report [--since Nd]`; `--repo` (else
+`ls.repo` of `~/.agent/config.json`) and `--status` filter; `--all` adds done specs with `landed: yes | no | unknown`; `--limit`/`--max-chars`
 bound it; `--status-file SPEC.md` prints one status; `--reconcile` reports ready, stalled and idle
 specs (`transitions.json`). Writes: `crew-task.py`.
 """
@@ -17,6 +17,7 @@ from pathlib import Path
 import task_bootstrap  # noqa: F401
 
 from ls_data import DEFAULT_INTERVAL, LandedCache, load_rows, repo_filter, select, watch
+from task_gc import ConfigError
 from task_report import print_listing, print_status_file, reconcile
 from task_state import RulesError
 from task_status import StatusError, token
@@ -31,10 +32,12 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
     parser.add_argument("--md", action="store_true", help="Markdown table, for pasting into chat")
     parser.add_argument("--json", action="store_true",
-                        help="machine-readable JSON array on stdout, diagnostics on stderr")
+                        help='one JSON object {"items": [...], "returned", "total", "truncated"} on stdout, '
+                             "diagnostics on stderr")
     parser.add_argument("--all", action="store_true", help="list done specs too")
-    parser.add_argument("--repo", metavar="OWNER/NAME|all",
-                        help="one repository's tasks (default: the current repo inside one; all: every repo)")
+    parser.add_argument("--repo", metavar="OWNER/NAME|here|all",
+                        help="one repository's tasks (default: ls.repo of ~/.agent/config.json, else here: "
+                             "the current repo inside one; all: every repo)")
     parser.add_argument("--status", action="append", metavar="STATE",
                         help="only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded")
     parser.add_argument("--report", action="store_true",
@@ -91,7 +94,11 @@ def main() -> int:
             token(state)
         except StatusError as error:
             parser.error(f"--status: {error}")
-    repos = repo_filter(args.repo)
+    try:
+        repos = repo_filter(args.repo)
+    except ConfigError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
     if args.report:
         return report(args, repos)
     scope = f"repo {', '.join(sorted(repos))} (--repo all lists every repo)" if repos else "every repo"
