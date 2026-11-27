@@ -179,8 +179,9 @@ they see only the improved spec in the output.
 
 Claude Code: the same prompt, through Agent by name.
 
-3. **Collect findings** from both background critics. If a critic dispatch fails (timeout, error, or
-   a turn-limit stop with no reply), proceed anyway. **A reply without a `Verdict:` line is
+3. **Collect findings** from both background critics. A critic that returns no reply follows
+   [the no-reply rule](~/.cursor/agents/references/dispatch.md) (one `deliver now` resume); if it
+   errors or still returns nothing, proceed anyway. **A reply without a `Verdict:` line is
    incomplete, not a clean pass:** resume it once for that line, then name the lens and what it could
    not check; silence and "no findings" differ. A criterion about existing code whose behaviour you
    cannot confirm by reading goes to one `reviewer-probe` run:

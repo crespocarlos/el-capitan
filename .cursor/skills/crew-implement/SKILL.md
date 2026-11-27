@@ -140,18 +140,25 @@ Lock, blocked line, cost line and message routing: [worker dispatch](references/
 
 **Batching for large specs:** when the spec has more than 8 unchecked tasks, split them into
 consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh
-worker per batch with `TASK_RANGE` set. Launch the next batch only after the previous batch's
-`REPORT.part-*.md` exists and reports no failed task; on a failure, stop and go to Step 7 with that
-part report. The batch containing the last task runs the Completion Protocol and writes `REPORT.md`,
-merging the part reports' task results, decisions, and verification results.
+worker per batch. Its prompt carries one `TASK_RANGE: <first>-<last>` line in the header, beside
+`crew-task:`; the batch containing the last task gets `TASK_RANGE: <first>-<last> final`. The save
+reads that line, and only from the header, so name earlier ranges elsewhere in other words. Launch the
+next batch only after the previous batch's `REPORT.part-*.md` is saved and reports no failed task; on
+a failure, stop and go to Step 7 with that part report. The final batch runs the Completion Protocol
+and returns the merged report (the part reports' task results, decisions, and verification
+results), which is saved as its part report and as `REPORT.md`.
 
 ### Step 7: Handle results
 
 Read the worker's report first: the file is the contract and everything below is read from it. The
-worker's reply is only a pointer — `report: <path>` and the **Tasks:** line — so treat it as a
-confirmation that the file was written and as the place to look when it was not. The path it names is
-`REPORT.md` for a single run and `REPORT.part-<first>-<last>.md` for a batch, so read the file the
-pointer names rather than assuming the first. If neither the file nor a pointer exists, tell the user:
+worker's final reply is the report itself, from `## Implementation Report` on; a worker cannot write
+the file, so the reply is saved as `REPORT.md` (a batch: `REPORT.part-<first>-<last>.md`; the final
+batch: both). Under Claude Code the `SubagentStop` hook saves it. A harness without that hook (Cursor)
+leaves the save to you: pipe the reply, unchanged, into
+`~/.agent/bin/crew-task.py report save "$TASK_DIR"` (a batch adds `--range <first>-<last>`, the
+final batch also `--final`). A report that fails `report-check` is still saved, with a WARN line
+in PROGRESS.md: read it before trusting the gate results. If neither the file nor a reply with that
+heading exists, tell the user:
 
 > "The worker finished but didn't produce a report. Check `$TASK_DIR/` for SPEC.md task status, or
 > re-run `crew implement` to resume."

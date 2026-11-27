@@ -143,6 +143,7 @@ Your package appends that file after this contract, so following it costs no rea
 to text search, put `code search unreachable: used text search` on its own line directly after the
 `Assessment:` line.
 
-**Tool-call budget: ≤8 file-fetch calls** (text search, read, index search, and docs lookup combined). Fetch
-only when a finding cannot be grounded from the artifact and package; count before each call and
-stop at 8.
+**Tool-call budget: the number your persona file gives** ("stop calling tools at N", its
+`tool_budget` frontmatter), counting text search, read, index search, and docs lookup together. Fetch
+only when a finding cannot be grounded from the artifact and package; count before each call, and
+stop at N and write the review.

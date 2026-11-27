@@ -133,14 +133,14 @@ def capped(text: str, limit: int) -> list[str]:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="crew-verify.py report-check",
                                      description="Check a builder REPORT.md against a crew-verify.py gates.json.")
-    parser.add_argument("report", type=Path, help="the REPORT.md (or part report) to check")
+    parser.add_argument("report", type=Path, help="the REPORT.md (or part report) to check; - reads a draft on stdin")
     parser.add_argument("--gates", type=Path, default=None, help="the JSON file `verify` wrote")
     parser.add_argument("--lenient", action="store_true", help="accept a report without the new sections")
     parser.add_argument("--unverified", type=int, default=None, metavar="N",
                         help="print at most N unverified claims and check nothing")
     args = parser.parse_args(argv)
     try:
-        text = args.report.read_text(encoding="utf-8")
+        text = sys.stdin.read() if str(args.report) == "-" else args.report.read_text(encoding="utf-8")
     except OSError as error:
         print(f"report-check: {error}", file=sys.stderr)
         return 2

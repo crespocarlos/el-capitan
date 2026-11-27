@@ -2,8 +2,8 @@
 
 The marker `crew-review-out: <review dir> <persona> <nonce>` in the subagent's first user message names the reply's
 place, and counts only when `<persona>.expect` holds that nonce, or, with no `.expect`, for a resume of the agent
-that saved it. The reply is the `SubagentHandback` message, else the last assistant message, saved by `store_reply`;
-another agent's reply is never overwritten. The same run's token usage goes to its task (`task_usage`). Exit 0.
+that saved it. The reply (`reply_of`: handback, last assistant text, payload field) is saved by `store_reply`,
+never over another agent's; the run's usage goes to its task, and a builder's reply becomes its REPORT.md. Exit 0.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from review_render import provenance_path, saved_persona, store_reply
+from task_builder_report import capture_builder
 from task_usage import record_usage, text_of
 
 from lib.files import atomic_write
@@ -72,6 +73,18 @@ def handback(found: list[dict]) -> str:
     return ""
 
 
+def last_text(found: list[dict]) -> str:
+    """The text of the last assistant message that has any, or ""."""
+    texts = (text_of(item["message"].get("content")) for item in reversed(found) if item.get("type") == "assistant")
+    return next((text for text in texts if text.strip()), "")
+
+
+def reply_of(found: list[dict], payload: dict) -> str:
+    """The run's reply, one rule for every capture: the handback, else the transcript's last assistant text, else
+    the payload's `last_assistant_message` (which a harness may fill with a summary)."""
+    return handback(found) or last_text(found) or str(payload.get("last_assistant_message") or "")
+
+
 def model_of(found: list[dict]) -> str | None:
     """The model of the last assistant message, or None."""
     return next((str(item["message"]["model"]) for item in reversed(found)
@@ -104,7 +117,7 @@ def save_reply(payload: dict, found: list[dict], match: re.Match | None) -> str:
         return f"{persona}: no {expected_file.name} for this marker; nothing saved"
     if previous is not None and previous != agent:
         return f"{persona}: {persona}.out.md is another agent's reply; kept"
-    reply = handback(found) or str(payload.get("last_assistant_message") or "")
+    reply = reply_of(found, payload)
     args = argparse.Namespace(review_dir=review_dir, persona=persona, harness="claude-code", agent_id=agent or None,
                               model=model_of(found), resume=previous is not None, degraded=False)
     saved = store_reply(args, reply.encode("utf-8"))
@@ -145,6 +158,10 @@ def capture(args: argparse.Namespace) -> int:
         lines.append(recorded_usage(payload, found, prompt, match, lines[-1].startswith("saved ")))
     except (OSError, ValueError) as error:
         lines.append(f"usage not recorded: {error}")
+    try:
+        lines.append(capture_builder(payload, prompt, reply_of(found, payload), model_of(found)))
+    except (OSError, ValueError) as error:
+        lines.append(f"no report saved: {error}")
     for line in filter(None, lines):
         print(f"capture-reply: {line}")
     return 0

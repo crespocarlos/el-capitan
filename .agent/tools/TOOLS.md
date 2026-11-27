@@ -33,7 +33,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
   tool shares, each defined once (crew-lint `single-owner`); its map is below. Import paths:
   "Imports" in `.agent/tools/AGENTS.md`.
 - **PROGRESS.md has one owner, `task/task_progress.py`.** It appends every entry as
-  `[YYYY-MM-DDTHH:MM:SSZ] KIND: body` (TRANSITION, METRIC, BLOCKED, WORKTREE) and reads them back;
+  `[YYYY-MM-DDTHH:MM:SSZ] KIND: body` (TRANSITION, METRIC, BLOCKED, WORKTREE, PR, WARN) and reads them back;
   legacy local `[YYYY-MM-DD HH:MM:SS]` and `[YYYY-MM-DD HH:MM]` lines still parse. No other module names the file in code.
 - **The installed surface is flat.** `install.sh` links basenames into `~/.agent/bin/`, so a
   basename must be unique across every subdirectory; a duplicate aborts the install instead of
@@ -132,6 +132,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_progress.py`: PROGRESS.md: append and read every entry (BLOCKED, METRIC, stage cost and PR lines included)
 - `task_gates.py`: the transition gates: approve, implement, close out
 - `task_usage.py`: a subagent run's token usage from its transcript, appended as `agent_end` to the task its `crew-task:` line names
+- `task_builder_report.py`: a builder's reply saved as its task's `REPORT.md` (a batch's part report; the `final` batch both), by the `capture-reply.sh` hook or `crew-task.py report save` (stdin); a report that fails `report-check` is saved with a `WARN` line in PROGRESS.md
 - `task_live.py`: the TUI's tokens of agents still running: transcripts modified in the last 15 minutes whose first user line names the task, read on from a per-file cache
 - `task_record_pr.py`: `crew-task.py record-pr`, the PR hook: the task of a `gh pr create` PR (from `gh pr view`), marked done, given the PR, or created minimal and DONE
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`

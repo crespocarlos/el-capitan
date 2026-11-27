@@ -64,6 +64,7 @@ RULES: dict[str, tuple[str, str]] = {
     "missing-readonly": ("prompts", "a read-only agent declares readonly: true"),
     "unexpected-readonly": ("prompts", "a write-capable agent does not declare readonly"),
     "agents-inherit-tools": ("prompts", "an agent's tools: line is its class list plus the MCP placeholder, or absent"),
+    "persona-turn-budget": ("prompts", "a persona declares tool_budget, states it once, and maxTurns >= budget + 2"),
     "mcp-tool-unknown": ("prompts", "an MCP tool id is in the catalog"),
     "tool-id-unknown": ("prompts", "a native tool id is in the catalog"),
     # lint_references: paths, installed names and routing
@@ -99,6 +100,7 @@ RULES: dict[str, tuple[str, str]] = {
     "bootstrap-identical": ("python", "the <package>_bootstrap.py copies are byte-identical (sys.path: Ruff TID251)"),
     "no-systemexit-str": ("python", "no raise SystemExit(\"message\") (exit 1); lib.cli.fail exits 2"),
     "no-sibling-subprocess": ("python", "no module runs a sibling crew-*.py as a process to reach its logic"),
+    "pipe-read-eof": ("python", "a while loop reading a subprocess pipe leaves on its read variable's end of file"),
     # lint_writing: what prompts, docs and tool sources say
     "removed-command-form": ("writing", "no prompt, doc, hook or tool names a removed command form"),
     "docstring-length": ("writing", "a module docstring under .agent/tools is at most 6 lines"),

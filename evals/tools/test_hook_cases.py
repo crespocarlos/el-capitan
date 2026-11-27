@@ -48,6 +48,8 @@ ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / ".claude" / "hooks"
 GUARDS = sorted((HOOKS / "guard").glob("*.sh"))
 FILE_HOOKS = [HOOKS / "check-write-boundary.sh", HOOKS / "check-task-spec-owner.sh"]
+# A hook run may take up to 120 s on a loaded runner (`run`), so these tests get more than the suite's 60 s.
+pytestmark = pytest.mark.timeout(300)
 GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
 
 
@@ -107,6 +109,10 @@ def fixture(home: Path) -> dict[str, Path]:
     (tasks / "DDD-status" / ".task-id").write_text(json.dumps({"slug": "status-guard"}), encoding="utf-8")
     (tasks / "DDD-status" / "SPEC.md").write_text(STATUS_SPEC, encoding="utf-8")
     (home / "linked-task").symlink_to(tasks / "DDD-status")
+    # The config dirs an install recorded: a background job's scratch directory under one of them is writable.
+    # An entry outside `$HOME/.claude*` (here a plain directory of the home) counts for nothing.
+    manifest = {"config_dirs": [str(home / ".claude"), str(home / ".claude-work"), str(home / "elsewhere")]}
+    (home / ".agent" / "install-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return trees
 
 

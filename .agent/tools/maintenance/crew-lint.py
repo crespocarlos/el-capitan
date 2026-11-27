@@ -27,6 +27,7 @@ from lint_prompts import (
     lint_rule_setup,
     lint_skill_setup,
     lint_tool_surface,
+    lint_turn_budget,
 )
 from lint_python import lint_python
 from lint_references import lint_documents, lint_handoff, lint_repo_paths
@@ -75,6 +76,7 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_rule_setup(root))
     findings.extend(lint_skill_setup(root))
     findings.extend(lint_agent_readonly(root))
+    findings.extend(lint_turn_budget(root))
     all_files = files(root)
     installed_names = installed_tool_names(root)
     findings.extend(lint_tool_surface(root, all_files))

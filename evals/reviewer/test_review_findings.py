@@ -1098,12 +1098,12 @@ RESUMED = "### Findings: none\n\nAssessment: approve — re-emitted in full.\n"
 
 def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool = True) -> subprocess.CompletedProcess:
     """Run capture-reply.sh on a fixture transcript: the dispatch prompt, then one assistant turn that hands back
-    `reply` (or, without `handback`, ends with it as `last_assistant_message`)."""
+    `reply` (or, without `handback`, says it as its text, which the payload's `last_assistant_message` only summarises)."""
     home = tmp / "home"
     if not (home / ".agent" / "bin" / TOOL.name).exists():
         (home / ".agent" / "bin").mkdir(parents=True, exist_ok=True)
         (home / ".agent" / "bin" / TOOL.name).symlink_to(TOOL)
-    content = [{"type": "text", "text": "Reviewing."}]
+    content = [{"type": "text", "text": "Reviewing." if handback else reply}]
     if handback:
         content.append({"type": "tool_use", "name": "SubagentHandback", "input": {"message": reply}})
     usage = {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
@@ -1112,7 +1112,7 @@ def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool 
     path = tmp / f"{agent}-{len(list(tmp.glob('*.jsonl')))}.jsonl"
     path.write_text("".join(json.dumps(line) + "\n" for line in lines))
     payload = {"hook_event_name": "SubagentStop", "agent_id": agent, "agent_type": "general-purpose",
-               "agent_transcript_path": str(path), "last_assistant_message": "Handed back." if handback else reply}
+               "agent_transcript_path": str(path), "last_assistant_message": "Handed back."}
     return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
                           env={**os.environ, "HOME": str(home)})
 

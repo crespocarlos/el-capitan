@@ -35,6 +35,25 @@ for prefix in "$HOME/.agent" "$HOME/.claude" "$HOME/.cursor" "/tmp"; do
   case "$path" in "$resolved"/*) hook_allow ;; esac
 done
 
+# A background job's own scratch directory, `<config dir>/jobs/<job>/tmp`, for every Claude config dir the
+# install manifest records (~/.claude is allowed whole above). The job is one path segment and the path is
+# already resolved, so `jobs/a/b/tmp` and `..` escapes do not match; the rest of such a config dir stays denied.
+# A missing or unreadable manifest allows no job directory. Any agent may write the manifest (it is under
+# ~/.agent), so an entry counts only when it resolves to a direct child of $HOME named `.claude*`.
+manifest="$HOME/.agent/install-manifest.json"
+config_dirs=$(jq -r '.config_dirs[]? | strings' "$manifest" 2>/dev/null) || config_dirs=""  # crew-lint: allow-swallow
+home_dir=$(resolve "$HOME") || home_dir=""
+while IFS= read -r config_dir; do
+  [ -n "$config_dir" ] && [ -n "$home_dir" ] || continue
+  resolved=$(resolve "$config_dir") || continue
+  case "$resolved" in "$home_dir"/.claude*) ;; *) continue ;; esac
+  case "${resolved#"$home_dir"/}" in */*) continue ;; esac
+  case "$path" in "$resolved"/jobs/?*/tmp | "$resolved"/jobs/?*/tmp/*) ;; *) continue ;; esac
+  job=${path#"$resolved"/jobs/}
+  job=${job%%/*}
+  case "${path#"$resolved"/jobs/"$job"}" in /tmp | /tmp/*) hook_allow ;; esac
+done <<<"$config_dirs"
+
 # The pipeline's scratch directory inside the temp root, matched as a glob rather than resolved:
 # `realpath` keeps `crew-review-*` literal, so a prefix comparison could never match it. Only the
 # directory the tools create is allowed, so a repository checked out elsewhere under `$TMPDIR`

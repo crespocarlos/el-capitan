@@ -347,6 +347,7 @@ def test_parse_filter(text: str, base: Filters | None, expected: object) -> None
         assert parse_filter(text, base) == expected
 
 
+@pytest.mark.timeout(300)  # a nested run allowed 60 s
 def test_once_prints_every_view_without_textual(home: Path) -> None:
     """`-S` leaves site-packages off the path, so Textual cannot be imported even where it is installed."""
     argv = [sys.executable, "-S", str(ENTRY), "--once", "--repo", "all", "--tasks-dir", str(home / ".agent" / "tasks")]
@@ -358,6 +359,7 @@ def test_once_prints_every_view_without_textual(home: Path) -> None:
     assert " TOKENS " in done.stdout and "tokens: new ~518k, cache reads 401k across 3 tasks shown" in done.stdout
 
 
+@pytest.mark.timeout(300)  # nested runs, each allowed 60 s
 def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
     """At COLUMNS=120 every table line fits; when NOTE alone can absorb the excess, every TASK is printed in full and
     the cut NOTE ends with `…`; an ON-HOLD task's STATE is `ON-HOLD` and `was APPROVED` starts its NOTE; REPO drops

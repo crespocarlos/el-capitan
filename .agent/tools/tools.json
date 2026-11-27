@@ -638,6 +638,15 @@
       "smoke": "imported by crew-review-findings.py"
     },
     {
+      "name": "task_builder_report.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by review_capture.py and crew-task.py: a builder's reply saved as its task's REPORT.md (the SubagentStop hook, or `crew-task.py report save` on stdin), report-checked, a WARN entry on failure",
+      "smoke": "imported by crew-task.py"
+    },
+    {
       "name": "task_live.py",
       "dir": "task",
       "kind": "module",

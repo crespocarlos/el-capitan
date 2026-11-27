@@ -72,6 +72,16 @@ complete list in this final message, in the finding shape, nothing else. Then sa
 trail holds the findings rather than a reference to them. If the resume also points backwards, persist
 the failure artifact and name the gap under `### Reviewers`.
 
+**A dispatch that ends with no reply is resumed once, never re-dispatched.** This holds for every
+persona and spec critic, from `crew-reviewer` and `crew-specwriter` alike. A persona stopped by its
+turn limit still holds what it read, and a relaunch starts cold and spends the budget again. Resume
+it once with `deliver now: write your findings (a critic: your critique) from what you have read,
+and name what you did not check`, and save that reply as a resume. If it again returns nothing,
+persist the failure artifact and name the gap (`crew-specwriter`: name the lens and what it could not
+check). When the harness cannot resume a finished subagent (Cursor's Task call has no resume),
+re-dispatch it once instead, with the same prompt behind that `deliver now` line as a preface, and
+treat that run as the one allowed retry.
+
 **Under Claude Code the hook saves the reply.** Each dispatch carries the marker line from
 `crew-review-findings.py expect` ([packaging](~/.cursor/agents/crew-reviewer/references/packaging.md),
 "The reply marker"), and the `SubagentStop` hook saves the reply with `--harness claude-code`, the

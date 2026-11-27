@@ -117,6 +117,19 @@ DENY = [
     ("node - <<'JS'\nrequire('fs').writeFileSync(\"src/pull/handler.ts\", '')\nJS", "source", "source-edit"),
     ("cd src && python3 -c \"open('pull/handler.ts','w')\"", "source", "source-edit"),
     ("python3 -c \"open('handler.ts','w')\"", "source-sub", "source-edit"),
+    # A parsed Python write target: a keyword mode, a copy's destination, a name bound to the literal; and a
+    # snippet that does not parse, which keeps the broader rule (any literal naming a tracked file).
+    ("python3 -c 'open(\"tracked.txt\", mode=\"a\").write(\"x\")'", "source", "source-edit"),
+    ("python3 -c \"import shutil; shutil.copy('/tmp/hook-case.txt', 'tracked.txt')\"", "source", "source-edit"),
+    ("python3 - <<'PY'\np = 'tracked.txt'\nopen(p, 'w').write('x')\nPY", "source", "source-edit"),
+    ("python3 -c \"x = open('tracked.txt').read(); open('/tmp/hook-case-o','w').write(x\"", "source", "source-edit"),
+    # Writes the parser cannot resolve fall back to the broader rule too: a loop variable, an f-string, a name
+    # bound twice, and a copy run as a process.
+    ("python3 -c \"for f in ['tracked.txt']: open(f, 'w')\"", "source", "source-edit"),
+    ("python3 -c \"p = 'tracked.txt'; open(f'{p}', 'w')\"", "source", "source-edit"),
+    ("python3 - <<'PY'\np = '/tmp/hook-case-o'\np = 'tracked.txt'\nopen(p, 'w')\nPY", "source", "source-edit"),
+    ("python3 -c \"import subprocess; subprocess.run(['cp', '/tmp/hook-case.txt', 'tracked.txt'])\"", "source",
+     "source-edit"),
     # A secret staged or added in the same command, a large diff with the secret first, and a scan that cannot run.
     ("git add leak.txt && git commit -m add", "leaky", "credentials"),
     ("git add -A && git commit -m all", "leaky", "credentials"),
@@ -193,6 +206,9 @@ ALLOW = [
     ("cd /tmp && ls", "clean"),
     ("npm test 2>&1 | tail -20", "clean"),
     ("python3 -c \"print(open('tracked.txt').read()[:10])\"", "source"),
+    # A Python snippet that reads a tracked file and writes a scratch one: only the write's target counts.
+    ("python3 - <<'PY'\nimport json\ndata = json.load(open(\"tracked.txt\"))\n"
+     "open(\"/tmp/hook-case-out.json\", \"w\").write(json.dumps(data))\nPY", "source"),
     ("python3 -c 'import json; json.dump({}, open(\"/tmp/hook-case.json\", \"w\"))'", "source"),
     ("node -e \"console.log(require('fs').readFileSync('tracked.txt', 'utf8'))\"", "source"),
     ("perl -ne 'print if /x/' tracked.txt", "source"),
@@ -316,6 +332,13 @@ FILES = [
     ({"file_path": "{tmp}/crew-review-x/f.json"}, "clean", None),
     ({"file_path": "{review}/layers.json"}, "clean", None),
     ({"file_path": "{tmp}/not-a-repo/x.json"}, "clean", "check-write-boundary"),
+    # A background job's scratch directory under a config dir the install manifest records, and nothing beside it.
+    ({"file_path": "{home}/.claude-work/jobs/j1/tmp/out.json"}, "clean", None),
+    ({"file_path": "{home}/.claude-work/jobs/j1/state.json"}, "clean", "check-write-boundary"),
+    ({"file_path": "{home}/.claude-work/jobs/j1/x/tmp/out.json"}, "clean", "check-write-boundary"),
+    ({"file_path": "{home}/.claude-work/jobs/j1/tmp/../../../settings.json"}, "clean", "check-write-boundary"),
+    ({"file_path": "{home}/.claude-other/jobs/j1/tmp/out.json"}, "clean", "check-write-boundary"),
+    ({"file_path": "{home}/elsewhere/jobs/j1/tmp/out.json"}, "clean", "check-write-boundary"),
     ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Reviewer finding kind axis and confidence"},
      "clean", "check-task-spec-owner"),
     ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent"}, "clean", "check-task-spec-owner"),

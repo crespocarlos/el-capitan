@@ -133,6 +133,13 @@ AGENT_CLASSES: dict[str, tuple[bool | None, tuple[str, ...] | None]] = {
     "crew-specwriter": (None, None),
 }
 TOOLS_LINE = re.compile(r"^tools:[ \t]*(.*)$", re.MULTILINE)
+# Every `reviewer-*` and `specwriter-*` agent (the review lenses and spec critics) declares its tool-call budget once
+# (`tool_budget:`), says it in its text, and gets two turns past it, so the reply never competes with a tool call for
+# the last turn. The exempt ones are not personas: explorers, the layer pre-pass and the probe set their own budgets.
+BUDGETED_PREFIXES = ("reviewer-", "specwriter-")
+BUDGET_EXEMPT = ("reviewer-explorer", "reviewer-layers", "reviewer-probe", "specwriter-explorer")
+REPLY_TURNS = 2
+STATED_BUDGET = re.compile(r"stop calling tools at (\d+)\b", re.IGNORECASE)
 MANIFEST = ".agent/tools/tools.json"
 MCP_REFERENCE = re.compile(r"mcp__([a-z0-9-]+)__([a-z0-9_]+)")
 
@@ -233,6 +240,31 @@ def lint_agent_readonly(root: Path) -> Findings:
                              "then the placeholder install fills with the configured MCP servers)"))
         if re.search(r"^disallowedTools:", frontmatter_text, re.MULTILINE):
             findings.append((name, 1, "agents-inherit-tools", "drop disallowedTools: the tools: allowlist decides what the agent reaches"))
+    return findings
+
+
+def lint_turn_budget(root: Path) -> Findings:
+    """Each persona (`BUDGETED_PREFIXES`, less `BUDGET_EXEMPT`) declares `tool_budget: N` with `maxTurns` at least
+    N + 2 and states "stop calling tools at N" once in its text; any agent that declares a budget gets both checks."""
+    findings: Findings = []
+    for path in sorted((root / ".cursor/agents").glob("*.md")):
+        text = path.read_text(errors="replace")
+        frontmatter_text, _, error = parse_frontmatter(text)
+        if error:
+            continue
+        name, body = rel(root, path), text.split("\n---\n", 1)[1]
+        budget = re.search(r"^tool_budget:[ \t]*(\d+)[ \t]*$", frontmatter_text, re.MULTILINE)
+        if not budget:
+            if path.stem.startswith(BUDGETED_PREFIXES) and path.stem not in BUDGET_EXEMPT:
+                findings.append((name, 1, "persona-turn-budget", "declare tool_budget: N in the frontmatter"))
+            continue
+        calls = int(budget.group(1))
+        turns = re.search(r"^maxTurns:[ \t]*(\d+)[ \t]*$", frontmatter_text, re.MULTILINE)
+        if not turns or int(turns.group(1)) < calls + REPLY_TURNS:
+            findings.append((name, 1, "persona-turn-budget", f"set maxTurns to at least {calls + REPLY_TURNS} (tool_budget + "
+                             f"{REPLY_TURNS}), so the reply has its own turn"))
+        if STATED_BUDGET.findall(body) != [str(calls)]:
+            findings.append((name, 1, "persona-turn-budget", f"say the budget once in the text: \"stop calling tools at {calls}\""))
     return findings
 
 

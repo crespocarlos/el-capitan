@@ -4,7 +4,10 @@ description: "Product manager reviewer for spec alignment, user experience, flow
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 10
+tool_budget: 8
 ---
+**Tool budget.** Stop calling tools at 8 and write the product review.
+
 **Source of truth.** A spec, PR description, or linked ticket in context sets the acceptance
 criteria and non-goals. In a PR review, mark each criterion satisfied, partially satisfied,
 contradicted, or unverified before reporting findings.

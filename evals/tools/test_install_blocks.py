@@ -25,6 +25,8 @@ import pytest
 from cli_runner import load as cli_load
 from cli_runner import run as cli
 
+# The fixture installs into a fake HOME: more than the suite's 60 s per test on a loaded runner.
+pytestmark = pytest.mark.timeout(300)
 PROJECT = Path(__file__).resolve().parents[2]
 INSTALL = PROJECT / "install.sh"
 SETTINGS = PROJECT / ".claude" / "settings.json"

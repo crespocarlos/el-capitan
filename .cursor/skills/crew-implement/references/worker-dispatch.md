@@ -111,7 +111,9 @@ words, not a gate) and the `SPEC.md` path, plus `TASK_DIR`, `WORK_DIR`, `RECALLE
 and the verification commands, so the prompt names its path and does not paste it: pasted rules
 drift from the file and are paid for in every worker. The prompt's first line is
 `crew-task: <TASK_DIR>`: under Claude Code the `SubagentStop` hook sums the worker's transcript usage
-and appends an `agent_end` METRIC to that task, which the cost line below then reports.
+and appends an `agent_end` METRIC to that task, which the cost line below then reports, and saves the
+builder's reply as that task's `REPORT.md`. A `TASK_RANGE: <first>-<last>` line right under it makes
+the reply a part report, and `TASK_RANGE: <first>-<last> final` both the part report and `REPORT.md`.
 
 ## The stage cost line
 

@@ -197,8 +197,9 @@ def print_cost(tasks_dir: Path) -> int:
 
 
 PROGRESS_FILE = "PROGRESS.md"
-KINDS = ("TRANSITION", "METRIC", "BLOCKED", "WORKTREE", "PR")
-NEUTRAL = ("METRIC", "WORKTREE", "PR")  # audit, preference and PR lines never end a block (a stage_start does)
+KINDS = ("TRANSITION", "METRIC", "BLOCKED", "WORKTREE", "PR", "WARN")
+# Audit, preference, PR and warning lines never end a block (a stage_start does).
+NEUTRAL = ("METRIC", "WORKTREE", "PR", "WARN")
 # The one PR URL shape: read into a PR list, accepted by `mark-done`, kept from a `gh pr list` answer.
 GITHUB_PR_URL = re.compile(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)")
 

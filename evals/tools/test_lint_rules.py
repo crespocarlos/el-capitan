@@ -78,7 +78,7 @@ def classed(name: str, tools: str | None, readonly: bool) -> tuple[str, str]:
 
 # (agent, its class's native list or None to inherit, readonly: true expected, a tool outside the class): the exact
 # line passes; a missing placeholder, a dropped tool and an extra tool fail; an inheriting agent fails any line.
-CLASSES = (("reviewer-a", READONLY_AGENT_TOOLS, True, "Bash"), ("crew-pr-resolver", RESOLVER_AGENT_TOOLS, True, "Write"),
+CLASSES = (("lens-a", READONLY_AGENT_TOOLS, True, "Bash"), ("crew-pr-resolver", RESOLVER_AGENT_TOOLS, True, "Write"),
            ("reviewer-probe", PROBE_AGENT_TOOLS, False, "Edit"), ("crew-builder", None, False, "Read"))
 CLASS_FIXTURES = tuple(row for name, native, readonly, extra in CLASSES for row in ((
     (f"{name}: its exact line", dict([classed(name, ", ".join(native) + MCP_PLACEHOLDER, readonly)]), {}),
@@ -99,26 +99,37 @@ POINTER = ("Lookups: follow `~/.cursor/agents/references/lookups.md` before you 
            "already know, or rely on a product or API fact.")
 # (case, files, {rule: findings expected}): a rule absent from the map must not fire at all.
 FIXTURES = (
-    ("a wrong native id", dict([agent("reviewer-a", f"readonly: true\ntools: Read, Grap, Glob{MCP_PLACEHOLDER}\n")]),
+    ("a wrong native id", dict([agent("lens-a", f"readonly: true\ntools: Read, Grap, Glob{MCP_PLACEHOLDER}\n")]),
      {"agents-inherit-tools": 1, "tool-id-unknown": 1}),
-    ("a deny list beside the allowlist", dict([agent("reviewer-a", READONLY + "disallowedTools: Write\n")]), {"agents-inherit-tools": 1}),
-    ("a named MCP id in a tools: line", dict([agent("reviewer-a", "readonly: true\ntools: Read, mcp__elastic-docs__search_docs\n")]),
+    ("a deny list beside the allowlist", dict([agent("lens-a", READONLY + "disallowedTools: Write\n")]), {"agents-inherit-tools": 1}),
+    ("a named MCP id in a tools: line", dict([agent("lens-a", "readonly: true\ntools: Read, mcp__elastic-docs__search_docs\n")]),
      {"mcp-tool-unknown": 1, "agents-inherit-tools": 1}),
-    ("an undeclared tool on a declared server", dict([agent("reviewer-a", READONLY, "Use mcp__sourcerer__bogus.\n")]), {"mcp-tool-unknown": 1}),
-    ("a declared MCP id in agent prose", dict([agent("reviewer-a", READONLY, "Use mcp__sourcerer__sourcerer_code_search.\n")]), {}),
+    ("an undeclared tool on a declared server", dict([agent("lens-a", READONLY, "Use mcp__sourcerer__bogus.\n")]), {"mcp-tool-unknown": 1}),
+    ("a declared MCP id in agent prose", dict([agent("lens-a", READONLY, "Use mcp__sourcerer__sourcerer_code_search.\n")]), {}),
     ("an unknown MCP id in rule prose", {"rules/fixture.mdc": "---\ndescription: \"Fixture rule\"\nalwaysApply: false\n---\nUse mcp__retired-server__old_tool.\n"},
      {"mcp-tool-unknown": 1}),
     ("a malformed mcp_servers catalog", {".agent/tools/tools.json": json.dumps({**CATALOG, "mcp_servers": "sourcerer"})}, {"invalid-tool-catalog": 1}),
     ("a catalog with no native_tools list", {".agent/tools/tools.json": json.dumps({k: v for k, v in CATALOG.items() if k != "native_tools"})},
      {"invalid-tool-catalog": 1}),
-    ("a read-only agent without the flag", dict([agent("reviewer-a", READONLY.replace("readonly: true\n", ""))]), {"missing-readonly": 1}),
-    ("readonly: false is not a declaration", dict([agent("reviewer-a", READONLY.replace("true", "false"))]), {"missing-readonly": 1}),
+    ("a read-only agent without the flag", dict([agent("lens-a", READONLY.replace("readonly: true\n", ""))]), {"missing-readonly": 1}),
+    ("readonly: false is not a declaration", dict([agent("lens-a", READONLY.replace("true", "false"))]), {"missing-readonly": 1}),
     ("the resolver analysis must declare readonly",
      dict([classed("crew-pr-resolver", ", ".join(RESOLVER_AGENT_TOOLS) + MCP_PLACEHOLDER, False)]), {"missing-readonly": 1}),
     ("a worker that declares readonly", dict([agent("crew-builder", "readonly: true\n")]), {"unexpected-readonly": 1}),
     ("the builder and the orchestrators inherit", dict([agent("crew-builder", ""), agent("crew-reviewer", ""), agent("crew-specwriter", "")]), {}),
-    ("a read-only agent with no tools: line inherits everything", dict([agent("reviewer-open", "readonly: true\n")]), {"agents-inherit-tools": 1}),
+    ("a read-only agent with no tools: line inherits everything", dict([agent("lens-open", "readonly: true\n")]), {"agents-inherit-tools": 1}),
     *CLASS_FIXTURES,
+    # A persona's turn limit leaves two turns past its tool budget, which its text states once.
+    ("a persona budget with room for the reply", dict([agent("reviewer-adversarial", READONLY + "maxTurns: 12\ntool_budget: 10\n",
+                                                           "Stop calling tools at 10 and write the review.\n")]), {}),
+    ("a persona budget that leaves the reply one turn", dict([agent("reviewer-adversarial", READONLY + "maxTurns: 11\ntool_budget: 10\n",
+                                                                   "Stop calling tools at 10 and write the review.\n")]),
+     {"persona-turn-budget": 1}),
+    ("a persona with no tool_budget", dict([agent("specwriter-scope", READONLY + "maxTurns: 10\n")]), {"persona-turn-budget": 1}),
+    ("a new persona with no tool_budget", dict([agent("reviewer-security", READONLY + "maxTurns: 10\n")]), {"persona-turn-budget": 1}),
+    ("an exempt explorer needs none", dict([agent("reviewer-explorer", READONLY + "maxTurns: 16\n")]), {}),
+    ("a budget the text does not state", dict([agent("reviewer-code-quality", READONLY + "maxTurns: 10\ntool_budget: 8\n",
+                                                    "Stop calling tools at 6 and write the review.\n")]), {"persona-turn-budget": 1}),
     ("a broken frontmatter is its own finding, not a missing flag",
      {".cursor/agents/reviewer-broken.md": "---\nname: reviewer-broken\ndescription: \"Fixture agent.\"\nBody.\n"}, {"invalid-agent-frontmatter": 1}),
     ("an unprefixed command", {".agent/tools/task/task-progress.py": "#!/usr/bin/env python3\n", ".agent/tools/tools.json": json.dumps({**CATALOG, "tools": [
@@ -160,8 +171,19 @@ FIXTURES = (
       ".cursor/skills/crew-open-pr/references/closing-confirmation.md": "Run `crew-mem.py journal add`.\n",
       ".cursor/agents/crew-pr-resolver/references/acting-on-threads.md": "Run `crew-mem.py journal add`.\n",
       SKILL.format("crew-log"): "Run `crew-mem.py import-inbox --all`.\n"}, {"one-closing-confirmation": 2}),
+    # A loop that reads a subprocess pipe leaves on its read variable's end of file, or spins once the pipe closes.
+    ("a pipe read loop with no exit, and a readline loop",
+     {"evals/tools/test_loop.py": "import os\nwhile True:\n    chunk = os.read(child.stdout.fileno(), 9)\n    drawn += chunk\n"
+      "while 'ready' not in line:\n    line = proc.stdout.readline()\n"}, {"pipe-read-eof": 2}),
+    ("a pipe read loop that leaves on another name",
+     {"tui/loop.py": "import os\nwhile True:\n    chunk = os.read(child.stdout.fileno(), 9)\n    if not ready:\n        break\n"},
+     {"pipe-read-eof": 1}),
+    ("pipe read loops that stop at end of file, and a loop that reads no pipe",
+     {"evals/tools/test_loop.py": "import os\nwhile n < 2:\n    chunk = os.read(child.stdout.fileno(), 9)\n    if not chunk:\n"
+      "        break\nwhile True:\n    line = proc.stderr.readline()\n    if line == '':\n        return\nwhile x:\n    x = f.read()\n"},
+     {}),
 )
-FIXTURE_RULES = {"mcp-tool-unknown", "tool-id-unknown", "missing-readonly", "unexpected-readonly",
+FIXTURE_RULES = {"mcp-tool-unknown", "tool-id-unknown", "missing-readonly", "unexpected-readonly", "persona-turn-budget", "pipe-read-eof",
                  "agents-inherit-tools", "invalid-agent-frontmatter", "invalid-tool-catalog", "command-name", "removed-command-form",
                  "no-incident-narration", "duplicate-passages", "glossary-terms",
                  "vendor-tools-scoped", "undefined-placeholder", "one-closing-confirmation"}
@@ -264,11 +286,11 @@ def test_handoff(case: str, files: dict[str, str], rule: str | None, tmp: Path) 
 def test_findings_are_located(tmp: Path) -> None:
     located = lint_handoff(write(tmp / "located", {"rules/crew-router.mdc": ROUTER, SKILL.format("crew-commit"): NEXT.format("frobnicate")}),
                            tmp / "located" / "rules" / "crew-router.mdc")
-    write(tmp / "fixture-0", {".agent/tools/tools.json": json.dumps(CATALOG), **dict([agent("reviewer-a", "tools: Read\n")])})
+    write(tmp / "fixture-0", {".agent/tools/tools.json": json.dumps(CATALOG), **dict([agent("lens-a", "tools: Read\n")])})
     (tmp / "fixture-0" / "rules").mkdir()
     printed = cli(LINT_PATH, "--root", str(tmp / "fixture-0"))
     check("the text report prints `path:line: rule: message` and exits 1",
-          printed.returncode == 1 and ".cursor/agents/reviewer-a.md:1: missing-readonly: " in printed.stdout, printed.stdout)
+          printed.returncode == 1 and ".cursor/agents/lens-a.md:1: missing-readonly: " in printed.stdout, printed.stdout)
     check("an unrouted verb is reported at its file and line, naming the verb",
           [(p, line, rule) for p, line, rule, _ in located] == [(SKILL.format("crew-commit"), 3, "handoff-unrouted-command")]
           and "crew frobnicate" in located[0][3], located)

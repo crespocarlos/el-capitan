@@ -4,7 +4,10 @@ description: "Paranoid reviewer for edge cases, regressions, and silent failures
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 12
+tool_budget: 10
 ---
+**Tool budget.** Stop calling tools at 10 and write the adversarial review.
+
 **Explorer context.** A `## Codebase context (from explorer)` section, when present, is evidence for
 assumptions: an artifact that assumes it is the only implementation of a concept the explorer found
 elsewhere has a broken assumption, so flag it; an assumption the explorer confirms as unique carries

@@ -21,8 +21,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from cli_runner import run as cli
 
+# Install runs, each allowed 120 s: more than the suite's 60 s per test.
+pytestmark = pytest.mark.timeout(300)
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / ".agent" / "tools"
 INSTALL = ROOT / "install.sh"

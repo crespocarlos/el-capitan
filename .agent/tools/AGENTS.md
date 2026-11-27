@@ -290,7 +290,9 @@ off-glossary synonyms it knows; crew-lint `glossary-terms` keeps this the one gl
   `is_background`; it ignores `tools` and `maxTurns` and inherits every parent tool, MCP included,
   so `readonly: true` is its only tool restriction. Claude Code reads `tools` and `maxTurns` and
   ignores `readonly`, so `maxTurns` binds under Claude Code only and every turn budget here is
-  prose-enforced in Cursor. `tools` therefore speaks Claude Code ids. These notes live here once; an
+  prose-enforced in Cursor. `tools` therefore speaks Claude Code ids. `tool_budget` is read by
+  neither harness: it is a persona's tool-call budget, stated once in its text and kept two turns
+  under `maxTurns` (`persona-turn-budget`). These notes live here once; an
   agent's frontmatter carries no harness comments. Do not set `model:`.
 - **A dispatched agent has an allowlist; the docs and code-search servers come from the config.** A
   deny list cannot keep out claude.ai connectors, plugin servers or tools the harness adds later, so
