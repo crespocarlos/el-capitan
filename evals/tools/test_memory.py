@@ -173,11 +173,13 @@ def test_add_cite_and_journal_round_trip(tmp: Path) -> None:
     check("import adds every unit to a new store, indexed; a second import changes nothing",
           (first.returncode, again.returncode) == (0, 0) and [u["id"] for u in found] == [unit.get("id")]
           and "added 0, unchanged 2" in again.stdout, (first.stderr, again.stdout, found))
-    stored_unit = next((tmp / "other" / "global").glob("*.md"))
+    # The exported unit by name: `global/` also holds the store's INDEX.md, and glob order differs by filesystem.
+    stored_unit = tmp / "other" / next(name for name in names if name.startswith("global/"))
     stored_unit.write_text(stored_unit.read_text() + "Edited here.\n", encoding="utf-8")
     conflict = mem("import", str(tmp / "units.tar.gz"))
     check("a differing stored unit is kept and the import exits 1",
-          conflict.returncode == 1 and "Edited here." in stored_unit.read_text(), conflict.stderr)
+          conflict.returncode == 1 and "Edited here." in stored_unit.read_text(),
+          (conflict.returncode, conflict.stdout, conflict.stderr))
     (tmp / "not-a-dir").write_text("x", encoding="utf-8")
     env["CREW_MEMORY_DIR"] = str(tmp / "not-a-dir" / "memory")
     plain, warned = mem("context", "--query", "x"), mem("context", "--query", "x", "--warn-unavailable")
