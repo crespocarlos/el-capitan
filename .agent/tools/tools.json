@@ -584,6 +584,15 @@
       "smoke": "imported by crew-resolve-task-dir.py and crew-task-context.py"
     },
     {
+      "name": "task_record.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-progress.py and crew-ls.py: the status PROGRESS.md records, the [gate] stamp, the transitions crew-progress.py refuses",
+      "smoke": "imported by crew-progress.py"
+    },
+    {
       "name": "task_state.py",
       "dir": "task",
       "kind": "module",

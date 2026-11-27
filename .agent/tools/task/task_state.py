@@ -15,12 +15,15 @@ from pathlib import Path
 
 import task_bootstrap  # noqa: F401
 
-from task_progress import PROGRESS_FILE, append_transition, latest, pr_urls
+from task_progress import PROGRESS_FILE, Entry, append_transition, latest, pr_urls, read_entries
+from task_record import GATE_STAMP, recorded_status
 from task_status import STATUS, StatusError, canonical, read_status, review_file, reviewed_at
 from task_status import head as state_head
 
 from lib.files import atomic_write
 from lib.git import GitError, is_ancestor, slug_from_url
+
+BORN = "DRAFTING"  # the recorded status of a spec no transition has moved
 
 
 @dataclass
@@ -43,6 +46,8 @@ class TaskState:
     activity: int = 0  # days since `last_activity`: the AGE `crew ls` shows
     issue: str = ""  # the GitHub issue URL the spec names (`issue_url`), or ""
     prs: list[str] = field(default_factory=list)  # the PR list, oldest first (`task_progress.pr_urls`)
+    recorded: str = ""  # the status crew-task last recorded in PROGRESS.md (`recorded_status`), "" for none
+    legacy: bool = True  # no gate-stamped transition yet (`recorded_status`)
 
     @property
     def uuid(self) -> str:
@@ -80,6 +85,34 @@ class TaskState:
 def head(r: TaskState) -> str:
     """The normalized state token of a loaded task record (the contract's `head` over its status)."""
     return state_head(r.status)
+
+
+def recorded_state(r: TaskState) -> str:
+    """The status the spec must have: the recorded one, DRAFTING for a task no transition moved."""
+    return r.recorded or BORN
+
+
+def closed_outside(r: TaskState) -> bool:
+    """A legacy task (no gate stamp) whose DONE spec is recorded IMPLEMENTING or nothing: closed by hand before the
+    gates stamped their transitions. Not TAMPERED; a stamped task must reach DONE through `mark-done`."""
+    return r.legacy and head(r) == "DONE" and r.recorded in ("IMPLEMENTING", "")
+
+
+def tampered(r: TaskState) -> str:
+    """`TAMPERED (spec says X, crew-task recorded Y)` when the spec's Status is not the recorded one, else "". Not
+    tampered: a spec with no Status yet and no transition (a draft being written, as the Status guard lets a spec be
+    born), and `closed_outside`; a DONE spec recorded DRAFTING, APPROVED or ON-HOLD skipped implementation and is."""
+    spec, want = head(r), recorded_state(r)
+    if spec == want or (not spec and want == BORN) or closed_outside(r):
+        return ""
+    return f"TAMPERED (spec says {spec or 'unset'}, crew-task recorded {want})"
+
+
+def tamper_refusal(r: TaskState) -> str:
+    """The words every gate refuses a tampered task with, or ""."""
+    found = tampered(r)
+    return (f"error: {name(r)}: {found}; nothing written (crew-task.py restore-status {r.task} writes the recorded "
+            "status back; --accept <note> records the spec's)") if found else ""
 
 
 def review_not_behind(r: TaskState) -> bool:
@@ -204,9 +237,9 @@ def newest_mtime(task: Path) -> float:
     return max([(task / f).stat().st_mtime for f in ACTIVITY_FILES if (task / f).exists()] or [0.0])
 
 
-def last_activity(task: Path) -> float:
+def last_activity(task: Path, entries: list[Entry] | None = None) -> float:
     """When the task last moved, as a POSIX time: its newest PROGRESS entry, else `newest_mtime`."""
-    stamped = latest(task)
+    stamped = latest(task, entries)
     return stamped.timestamp() if stamped else newest_mtime(task)
 
 
@@ -215,7 +248,8 @@ def days_since(moment: float) -> int:
 
 
 def load(task: Path) -> TaskState:
-    """The record every consumer reads: identity, status, verdict, age, activity, and checkbox counts."""
+    """The record every consumer reads: identity, status, verdict, age, activity, checkbox counts, and the status
+    PROGRESS.md records (read once for the PR list, the activity and `recorded`)."""
     spec = task / "SPEC.md"
     text = spec.read_text(encoding="utf-8")
     metadata = task / ".task-id"
@@ -225,12 +259,16 @@ def load(task: Path) -> TaskState:
     status = STATUS.search(text)
     review = review_file(task)
     verdicts = VERDICT.findall(review.read_text(encoding="utf-8")) if review else []
+    entries = read_entries(task)
     record = TaskState(
         task=task, text=text, meta=meta, status=status.group(2).strip() if status else None,
         verdict=verdicts[-1] if verdicts else "?", age=days_since(newest_mtime(task)),
         open=len(OPEN_ITEM.findall(text)), done=len(DONE_ITEM.findall(text)),
-        activity=days_since(last_activity(task)), prs=pr_urls(task),
+        activity=days_since(last_activity(task, entries)), prs=pr_urls(task, entries),
     )
+    record.recorded, record.legacy = recorded_status(entries)
+    # A `.task-id` with a missing or empty PROGRESS.md is strict: deleting the record never makes a task lenient.
+    record.legacy = record.legacy and not (metadata.exists() and not entries)
     record.issue = issue_url(text, record.repo)
     return record
 
@@ -244,7 +282,26 @@ def decide(r: TaskState, rules: dict) -> dict | None:
 
 
 def set_status(r: TaskState, value: str, transition: str) -> bool:
-    """Write the new `## Status` value, refusing when the spec changed since it was read."""
+    """Write the new `## Status` value and record `transition`, refusing a tampered task (`tampered`) and a spec that
+    changed since it was read."""
+    refusal = tamper_refusal(r)
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return False
+    return write_status(r, value, transition)
+
+
+def record_transition(r: TaskState, transition: str) -> None:
+    """Append `transition` with the gate stamp, the only way a status reaches PROGRESS.md; raises `OSError`."""
+    append_transition(r.task, f"{transition} {GATE_STAMP}")
+
+
+def write_status(r: TaskState, value: str, transition: str) -> bool:
+    """The write of `set_status` with no tamper check: `restore-status` uses it to put the recorded value back.
+
+    The stamped transition is appended first: a failed append writes nothing, so a real move never reads as TAMPERED.
+    A spec write that fails after it is undone by a compensating stamped transition back to the spec's status.
+    """
     spec = r.task / "SPEC.md"
     try:
         current = spec.read_text(encoding="utf-8")
@@ -253,14 +310,19 @@ def set_status(r: TaskState, value: str, transition: str) -> bool:
         updated, count = STATUS.subn(lambda m: m.group(1) + value, current, count=1)
         if count != 1:
             raise OSError("no Status value found")
-        atomic_write(spec, updated)
+        record_transition(r, transition)
     except OSError as error:
-        print(f"error: {name(r)}: {error}", file=sys.stderr)
+        print(f"error: {name(r)}: {error}; nothing written", file=sys.stderr)
         return False
     try:
-        append_transition(r.task, transition)
+        atomic_write(spec, updated)
     except OSError as error:
-        print(f"warning: {name(r)}: PROGRESS.md not updated: {error}", file=sys.stderr)
+        print(f"error: {name(r)}: SPEC.md not written: {error}", file=sys.stderr)
+        try:
+            record_transition(r, f"{state_head(value)} → {head(r) or BORN} (reverted: SPEC.md not written)")
+        except OSError as again:
+            print(f"error: {name(r)}: PROGRESS.md not reverted: {again}", file=sys.stderr)
+        return False
     print(f"applied: {name(r)} -> {value.split()[0]}")
     return True
 

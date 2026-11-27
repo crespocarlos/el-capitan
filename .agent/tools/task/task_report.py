@@ -20,12 +20,13 @@ from ls_data import STALE_DAYS, landed_lines, landed_rows, snapshot, stale
 from ls_report import stage_pairs
 from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
 from task_progress import Entry, append_pr, blocked_reason, count_text, read_entries, task_usage_totals
-from task_state import TaskState, decide, done_blockers, head, load_rules, name, set_status
+from task_state import TaskState, closed_outside, decide, done_blockers, head, load_rules, name, set_status, tampered
 from task_status import STATUS, StatusError, token
 
 from lib.output import json_envelope, print_lines, rows_limit
 
 OPEN_ORDER = ["IMPLEMENTING", "APPROVED", "DRAFTING", "ON-HOLD"]
+CLOSED_OUTSIDE = "closed outside crew-task"  # the note of a `task_state.closed_outside` DONE task
 
 
 def held_from(r: TaskState) -> str:
@@ -35,8 +36,12 @@ def held_from(r: TaskState) -> str:
 
 
 def state_label(r: TaskState) -> str:
+    """The STATE cell: `TAMPERED (spec says X, crew-task recorded Y)` first, else the state (an ON-HOLD's prior, a
+    DONE task's `closed outside crew-task`)."""
     was = held_from(r)
-    return f"ON-HOLD (was {was})" if was else head(r) or "?"
+    if closed_outside(r):
+        return f"DONE ({CLOSED_OUTSIDE})"
+    return tampered(r) or (f"ON-HOLD (was {was})" if was else head(r) or "?")
 
 
 def ordered_rows(rows: list[TaskState], show_done: bool) -> list[TaskState]:
@@ -194,7 +199,9 @@ def json_row(r: TaskState, locks: list[Lock], now: float) -> dict:
     (`task_usage_totals`: `new`, `cache_read`, each None when unrecorded, and `approximate`)."""
     entries = read_entries(r.task)
     return {"slug": name(r), "directory": str(r.task), "status": r.status or "",
-            "state": head(r) or "", "repo": r.repo, "branch": r.branch_name(""), "verdict": r.verdict,
+            "state": head(r) or "", "tampered": tampered(r), "closed_outside": closed_outside(r), "repo": r.repo,
+            "branch": r.branch_name(""),
+            "verdict": r.verdict,
             "age_days": r.age, "activity_days": r.activity, "stale": stale(r),
             "open": r.open, "done": r.done, "blocked": blocked_reason(r.task),
             "issue": r.issue, "prs": list(r.prs), "progress": progress_cell(r),
@@ -293,14 +300,15 @@ def record_branch_prs(rows: list[TaskState], find: PrFinder, apply: bool) -> int
 
 
 def reconcile(rows: list[TaskState], apply: bool, find: PrFinder | None = None) -> int:
-    """Report the five reconcile sections, and with `apply` write the idle holds and the branch PRs `find` reads.
+    """Report the five reconcile sections (and the TAMPERED tasks, which no rule moves), and with `apply` write the
+    idle holds and the branch PRs `find` reads.
 
     It never writes a status other than ON-HOLD: a task with an open PR is reported ready to mark done,
     and `crew-task.py mark-done` closes it.
     """
     rules = load_rules()
     failed = record_branch_prs(rows, find, apply) if find else 0
-    decisions = [(r, rule) for r in rows if (rule := decide(r, rules))]
+    decisions = [(r, rule) for r in rows if not tampered(r) and (rule := decide(r, rules))]
     of_kind = lambda kind: [r for r, rule in decisions if rule["kind"] == kind]
     print("ready to mark done (a PR is open, every criterion checked; crew-task.py mark-done closes it):")
     for r in of_kind("done"):
@@ -317,6 +325,11 @@ def reconcile(rows: list[TaskState], apply: bool, find: PrFinder | None = None) 
     print(f"idle DRAFTING/APPROVED (>{rules['idle_days']}d -> ON-HOLD):")
     for r in of_kind("hold"):
         print(f"  {name(r)}\tstatus={r.status}\t{r.age}d")
+    altered = [r for r in rows if tampered(r)]
+    if altered:
+        print("tampered (no rule applies; crew-task.py restore-status <dir> [--accept <note>] clears it):")
+    for r in altered:
+        print(f"  {name(r)}\t{tampered(r)}\tdir={r.task}")
     if apply:
         return apply_holds(decisions, rules["idle_days"]) or failed
     return 0

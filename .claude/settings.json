@@ -75,6 +75,14 @@
           },
           {
             "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/guard/task-files.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/guard/owner-only.sh\""
+          },
+          {
+            "type": "command",
             "command": "bash \"$HOME/.claude/hooks/guard/zsh-equals.sh\""
           },
           {

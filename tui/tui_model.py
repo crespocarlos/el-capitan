@@ -25,8 +25,8 @@ from task_gates import CLOSABLE
 from task_live import Live, Seen, ended_at, running_agents
 from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
 from task_progress import blocked_reason, count_text, read_entries, sum_usage, task_usage_totals, usage_text
-from task_report import aligned, fitted, held_from, ordered_rows, task_cells
-from task_state import TaskState, head, name, spec_branch
+from task_report import CLOSED_OUTSIDE, aligned, fitted, held_from, ordered_rows, task_cells
+from task_state import TaskState, closed_outside, head, name, spec_branch, tampered
 from task_status import StatusError, token
 
 VIEWS = ("tasks", "workers", "report")
@@ -102,6 +102,14 @@ def moves(state: str, task: Path, prs: list[str], branch: str = "") -> list[Move
     return found
 
 
+def restore_moves(task: Path) -> list[Move]:
+    """The only calls a TAMPERED task takes (every gate refuses it): write the recorded status back, or keep the
+    spec's with a note."""
+    return [Move("restore the recorded status (restore-status)", ("restore-status", str(task))),
+            Move("keep the spec's status (restore-status --accept)", ("restore-status", str(task), "--accept"),
+                 ask="note")]
+
+
 def parse_filter(text: str, base: Filters | None = None) -> Filters:
     """`repo:R status:S [status:T] done` applied over `base` (the current filter).
 
@@ -157,7 +165,7 @@ def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], s
     totals, unstarted = [], []
     for r in shown:
         reason, held = blocked_reason(r.task), held_from(r)
-        note = "; ".join(filter(None, [f"was {held}" if held else "",
+        note = "; ".join(filter(None, [f"was {held}" if held else "", CLOSED_OUTSIDE if closed_outside(r) else "",
                                        f"BLOCKED: {reason}" if reason else ("stale" if stale(r) else "")]))
         done = head(r) == "DONE"
         repo = (r.repo.split("/", 1)[1] if shared and "/" in r.repo else r.repo) or "-"
@@ -165,11 +173,12 @@ def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], s
         totals.append(task_usage_totals(entries))
         cells = task_cells(r, entries, seen.locks, seen.now, [agent.new for agent in seen.live.get(r.task, [])],
                            totals[-1])
-        view.rows.append((head(r) or "?", name(r), repo, *(cells[key] for key in view.header[3:8]),
+        altered = tampered(r)
+        view.rows.append((altered or head(r) or "?", name(r), repo, *(cells[key] for key in view.header[3:8]),
                           landed.get(str(r.task), NOT_READ) if done else "-", note))
         view.links.append({key: url for key, url in (("ISSUE", r.issue), ("PR", r.prs[-1] if r.prs else "")) if url})
         branch = spec_branch(r.text)
-        view.moves.append(moves(head(r), r.task, r.prs, branch))
+        view.moves.append(restore_moves(r.task) if altered else moves(head(r), r.task, r.prs, branch))
         if head(r) == "APPROVED" and not branch:
             unstarted.append(name(r))
     open_count = sum(1 for r in rows if head(r) != "DONE")

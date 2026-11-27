@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Change a task's state: transition gates, reconcile, record-pr, status migration, BLOCKED, lock, worktree, gc, ship.
+"""Change a task's state: gates, restore-status, reconcile, record-pr, status migration, BLOCKED, lock, gc, ship.
 
 `crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every other write goes
 through here (`gc`: retention, `task_gc.py`; `ship`: commit to DONE, `task_ship.py`). `lock`, `blocked`,
@@ -49,6 +49,13 @@ def gate(args: argparse.Namespace) -> int:
     if args.command == "mark-implementing":
         return mark_implementing(args.task_dir, args.branch or "", args.root)
     return mark_done(args.task_dir, args.pr_url, args.force)
+
+
+def restore(args: argparse.Namespace) -> int:
+    """Clear a TAMPERED task: the recorded status back into the spec, or `--accept` the spec's (`task_gates.py`)."""
+    from task_gates import restore_status
+
+    return restore_status(args.task_dir, args.accept)
 
 
 def reconcile_tasks(args: argparse.Namespace) -> int:
@@ -121,6 +128,12 @@ def make_parser() -> argparse.ArgumentParser:
     done.add_argument("--pr-url", required=True,
                       help="the GitHub PR URL to add to the task's PR list (with --force, any note)")
     done.add_argument("--force", action="store_true", help="skip the evidence checks (user-invoked only)")
+    restorer = commands.add_parser("restore-status", help="clear a TAMPERED task: write the gate-stamped status back "
+                                   "into SPEC.md")
+    restorer.add_argument("task_dir", metavar="TASK_DIR")
+    restorer.add_argument("--accept", metavar="NOTE", help="the owner only, in their own terminal (guard/owner-only.sh "
+                          "refuses it from an agent): keep the spec's status, recorded with this note")
+    restorer.set_defaults(run=restore)
     for name, run, text in (("reconcile", reconcile_tasks, "report ready, stalled and idle specs; record branch PRs"),
                             ("normalize-status", normalize, "rewrite legacy lowercase status tokens")):
         sub = commands.add_parser(name, help=text)
@@ -156,6 +169,9 @@ def make_parser() -> argparse.ArgumentParser:
     shipper.set_defaults(run=ship)
     for name, text in DELEGATED.items():
         commands.add_parser(name, help=text, add_help=False)
+    # No abbreviated options: `--acc` would be `--accept` past the owner-only guard, which matches words as written.
+    for each in (parser, *commands.choices.values()):
+        each.allow_abbrev = False
     return parser
 
 

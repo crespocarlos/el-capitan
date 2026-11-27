@@ -96,9 +96,10 @@ def test_permission_rules() -> None:
     check("an ask rule on a task directory targets a file, not its whole tree",
           all(not r.endswith("/**") for r in ask_rules if ".agent/tasks" in r), ask_rules)
     task = "~/.agent/bin/crew-task.py"
-    gates = (f"{task} mark-approved /tmp/t", f"{task} mark-done /tmp/t", f"{task} mark-done /tmp/t --force")
+    gates = (f"{task} mark-approved /tmp/t", f"{task} mark-done /tmp/t", f"{task} mark-done /tmp/t --force",
+             f"{task} restore-status /tmp/t", f"{task} restore-status /tmp/t --accept note")
     covered = [c for c in allow for command in gates if command == c or command.startswith(c + " ")]
-    check("no allow rule covers Gate 1 or Gate 2, so each prompts", not covered, covered)
+    check("no allow rule covers Gate 1, Gate 2 or restore-status, so each prompts", not covered, covered)
     routine = ("mark-implementing", "reconcile", "normalize-status", "lock", "blocked", "worktree")
     check("crew-task.py's routine subcommands and crew-review-findings.py are allowed one by one, not bin/*",
           all(f"{task} {name}" in allow for name in routine) and "~/.agent/bin/crew-review-findings.py" in allow
@@ -249,6 +250,13 @@ def absolute_hook(home: Path) -> None:
         {"command": f'bash "{home}/.claude/hooks/absolute-gone.sh"', "failClosed": True}))
 
 
+def fail_open(data: dict) -> None:
+    """The installed Cursor source-edit guard loses `failClosed: true`, as an old install or a hand edit leaves it."""
+    for entry in data["hooks"]["beforeShellExecution"]:
+        if "source-edit" in entry["command"]:
+            entry.pop("failClosed")
+
+
 def over_limit(home: Path) -> None:
     (home / ".agent" / "config.json").write_text(json.dumps({"doctor": {"tasks_mb": 0}}), encoding="utf-8")
     (home / ".agent" / "tasks" / "t").mkdir(parents=True)
@@ -285,6 +293,9 @@ BAD_CONFIG = '{"gc": {"artifact_days": 1}}'
      "hooks", "missing or different PreToolUse Bash"),
     ("missing registration", lambda home: edit_json(home / ".cursor/hooks.json", drop_guard),
      "hooks", "guard/credentials.sh"),
+    ("a Cursor security guard that fails open", lambda home: edit_json(home / ".cursor/hooks.json", fail_open),
+     "hooks", "Cursor: security guards without failClosed: true (a crash lets the action through): "
+              'beforeShellExecution: bash "$HOME/.claude/hooks/guard/source-edit.sh"'),
     ("over-limit state", over_limit, "state", "tasks 0.0 MB (limit 0 MB); crew gc"),
     ("telemetry", telemetry, "state", "crew-task.py gc --only telemetry --apply"),
     ("bad config", lambda home: (home / ".agent/config.json").write_text(BAD_CONFIG), "config", "artifact_days"),
@@ -599,6 +610,31 @@ def test_mcp_config_section(tmp: Path) -> None:
         (tmp / "config.json").write_text(json.dumps({"mcp": bad}), encoding="utf-8")
         with pytest.raises(ConfigError):
             load_config(tmp)
+
+
+def test_cursor_guards_without_jq(installed: Path, tmp: Path) -> None:
+    """Without jq every guard fails before it can answer, so a fail-closed one would block every Cursor call: the merge
+    registers them `failClosed: false` with one warning line, and `crew doctor` fails an install still closed."""
+    empty = tmp / "no-jq-path"
+    empty.mkdir()
+    dest = tmp / "hooks.json"
+    merged = subprocess.run([sys.executable, str(SETTINGS.parent / "merge_cursor_hooks.py"),
+                             str(PROJECT / ".cursor" / "hooks.template.json"), str(dest)],
+                            capture_output=True, text=True, env={**os.environ, "PATH": str(empty)})
+    entries = [entry for group in json.loads(dest.read_text())["hooks"].values() for entry in group]
+    warned = merged.stdout.count("WARNING: jq is not on PATH") == 1
+    check("without jq the merge registers no guard fail-closed and says so once",
+          merged.returncode == 0 and not any(entry.get("failClosed") for entry in entries) and warned,
+          (merged, entries))
+    home = tmp / "home"
+    copy_install(installed, home)
+    cli_load(DOCTOR)
+    from doctor_checks import check_cursor_fail_closed
+    lines = [(line.level, line.text) for line in check_cursor_fail_closed(home, PROJECT, jq=None)]
+    check("crew doctor fails a fail-closed Cursor install on a machine without jq",
+          any(level == "FAIL" and "jq is not on PATH" in text for level, text in lines), lines)
+    found = [(line.level, line.text) for line in check_cursor_fail_closed(home, PROJECT, jq="/usr/bin/jq")]
+    check("with jq the same install is fine", [level for level, _ in found] == ["ok"], found)
 
 
 def claude_memory_entry(home: Path, folder: str) -> None:

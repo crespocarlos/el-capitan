@@ -6,6 +6,8 @@
 #                 Cursor `preToolUse` / `beforeShellExecution`: one JSON deny on stdout, exit 0.
 #   no objection  exit 0 and print nothing on either stream, so the harness's own permission flow
 #                 decides. An explicit allow would skip interactive approval, so none is emitted.
+#                 In Cursor every security guard is `failClosed: true`, so its no objection is `{}`
+#                 (hook_allow); a crash there blocks.
 #   cannot judge  one line on stderr and no objection. A hook that sets `HOOK_FAIL_CLOSED=1` exits 2
 #                 instead while `HOOK_FAIL_BLOCKS` (default: HOOK_FAIL_CLOSED) is 1; the same rule
 #                 carries `onFailure: "block"` in `.claude/settings.json` and `failClosed: true` in
@@ -86,11 +88,14 @@ hook_deny() {
 # decides. An explicit allow would skip interactive approval, so none is emitted.
 #
 # One measured exception: Cursor reads *no output at all* from a hook registered `failClosed: true` as
-# a crash and blocks the command, so silence there is not a decline. The only such hook is
-# `guard/credentials.sh`, and it answers with `{}` — an empty decision object, which carries no
-# permission at all, so it adds nothing to the harness's own flow and skips no approval.
+# a crash and blocks the command, so silence there is not a decline. Every security guard is registered
+# that way in Cursor (`.cursor/hooks.template.json`), so a guard answering Cursor's `beforeShellExecution`
+# or `preToolUse` says `{}` — an empty decision object, which carries no permission at all, so it adds
+# nothing to the harness's own flow and skips no approval. Observers (other events) stay silent.
 hook_allow() {
-  if [ "${HOOK_FAIL_CLOSED:-0}" = 1 ] && [ "${HOOK_SHAPE:-}" = cursor ]; then printf '{}\n'; fi
+  if [ "${HOOK_SHAPE:-}" = cursor ]; then
+    case "${HOOK_FAIL_CLOSED:-0}:${HOOK_EVENT:-}" in 1:* | *:beforeShellExecution | *:preToolUse) printf '{}\n' ;; esac
+  fi
   exit 0
 }
 
@@ -102,7 +107,8 @@ hook_allow() {
 #     `sh|bash|zsh -c PAYLOAD` and `eval` bodies are parsed again as segments of their own;
 #   - leading `VAR=value` assignments and wrappers (`env`, `command`, `sudo`, `timeout`, `if`, ...)
 #     are dropped with their options and option values (`nice -n 5`, `sudo -u me`, `timeout 10`),
-#     redirections and their targets are dropped, comments are skipped;
+#     redirections and their targets are dropped from the words (an output redirection's target is kept
+#     apart, in HOOK_REDIRS, read with hook_redir), comments are skipped;
 #   - each segment carries the directory it runs in: the hook's cwd, moved by every earlier `cd`
 #     whose target holds no `$` or backtick (one the guard cannot resolve leaves it unchanged);
 #   - heredoc bodies and here-strings are data of the segment that reads them, never commands,
@@ -180,6 +186,7 @@ hook_shfmt_fits() {
 hook_segments() {
   local out
   HOOK_SEGS=()
+  HOOK_REDIRS=()
   if command -v shfmt >/dev/null 2>&1 && hook_shfmt_fits "$1" && out=$(hook_shfmt "$1"); then
     hook_records "$out"
     return
@@ -208,6 +215,7 @@ function pushword() {
   if (INW) {
     if (REDIR == 2) HSD = HSD W "\n"
     else if (REDIR == 3) { PN++; PD[PN] = W; PS[PN] = HSTRIP; PO[PN] = 0 }
+    else if (REDIR == 1 && !REDIRIN) { RN++; RD[RN] = DIR; RW[RN] = W }
     else if (REDIR == 0) {
       WSTR = (NW ? WSTR US : "") enc(W); QSTR = QSTR (WQ ? 1 : 0); NW++
       if (WA != W) ADIFF = 1
@@ -467,6 +475,7 @@ END {
   for (k = 1; k <= NSEG; k++) {
     print enc(SD[k]) US enc(SB[k]) US SQ[k] US SW[k]
   }
+  for (k = 1; k <= RN; k++) print US "redir" US enc(RD[k]) US enc(RW[k])
   if (OVERFLOW) print US "overflow"
   if (OPAQUE) print US "stdin"
 }
@@ -482,6 +491,7 @@ hook_records() {
   while IFS= read -r rec; do
     case "$rec" in
       "") ;;
+      "${HOOK_US}redir${HOOK_US}"*) HOOK_REDIRS[${#HOOK_REDIRS[@]}]=${rec#"${HOOK_US}redir${HOOK_US}"} ;;
       "${HOOK_US}overflow")
         hook_deny "Blocked: command too complex for the guard (more than $HOOK_MAX_PAYLOADS nested commands to check). Split it into smaller commands." ;;
       "${HOOK_US}stdin")
@@ -510,6 +520,15 @@ hook_seg() {
     SEG_WORDS[${#SEG_WORDS[@]}]=$HOOK_TEXT
     k=$((k + 1))
   done
+}
+
+# `hook_redir N` loads output redirection N (`>`, `>>`, `>|`, `&>`, `&>>` and a target word, as written) into
+# REDIR_DIR (where its command runs) and REDIR_PATH.
+hook_redir() {
+  hook_unesc "${HOOK_REDIRS[$1]%%"$HOOK_US"*}" nl
+  REDIR_DIR=$HOOK_TEXT
+  hook_unesc "${HOOK_REDIRS[$1]#*"$HOOK_US"}" nl
+  REDIR_PATH=$HOOK_TEXT
 }
 
 # An absolute path for $1 relative to $2, in HOOK_PATH; `~` is the hook's HOME.

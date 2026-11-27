@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The status transitions and their evidence gates: approve, implement, and close out.
+"""The status transitions and their evidence gates: approve, implement, close out, and `restore-status`.
 
-DRAFTING→APPROVED refuses an unresolved clarification and an unapprovable `## Tests` block.
-IMPLEMENTING→DONE means a PR is open: `mark-done` records it in the task's PR list (several allowed)
-and refuses an unchecked criterion or a reviewed commit that is not an ancestor of HEAD; the verdict
+Each gate first refuses a TAMPERED task (`task_state.tampered`) until `restore-status` clears it. DRAFTING→APPROVED
+refuses an open clarification and an unapprovable `## Tests` block. IMPLEMENTING→DONE means a PR is open: `mark-done`
+records it in the PR list and refuses an unchecked criterion or a reviewed commit not an ancestor of HEAD; the verdict
 and the PR's branch do not decide it. The messages are the contract hooks and skills read.
 """
 from __future__ import annotations
@@ -21,10 +21,15 @@ from task_state import (
     head,
     load,
     name,
+    record_transition,
+    recorded_state,
     set_status,
+    tamper_refusal,
+    tampered,
     unresolved,
+    write_status,
 )
-from task_status import review_file, reviewed_at, typed_tests_problem
+from task_status import ACCEPTED, review_file, reviewed_at, typed_tests_problem
 from task_worktrees import default_names
 
 from lib.files import atomic_write
@@ -32,11 +37,51 @@ from lib.git import GitError, current_branch, head_sha, is_ancestor, remote_url,
 
 CLOSABLE = ("DRAFTING", "APPROVED", "IMPLEMENTING", "ON-HOLD")  # the states `mark-done --force` closes; not ABANDONED
 
-def load_task(task_dir: str | Path) -> TaskState | None:
+def load_task(task_dir: str | Path, check: bool = True) -> TaskState | None:
+    """The task, or None said on stderr: no SPEC.md, or (with `check`) a Status crew-task did not record."""
     if not (Path(task_dir) / "SPEC.md").is_file():
         print(f"error: no SPEC.md in {task_dir}", file=sys.stderr)
         return None
-    return load(Path(task_dir))
+    r = load(Path(task_dir))
+    refusal = tamper_refusal(r) if check else ""
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return None
+    return r
+
+
+def restore_status(task_dir: str | Path, accept: str | None = None) -> int:
+    """Clear a TAMPERED task: write the recorded status back into the spec, or with `accept` (the owner's note, in the
+    owner's own terminal: `guard/owner-only.sh` refuses it from an agent) record the spec's status as a stamped
+    transition. Only a gate-stamped status is restored, or DRAFTING for a task nothing recorded; an untampered task is
+    left as it is."""
+    r = load_task(task_dir, check=False)
+    if r is None:
+        return 1
+    want = recorded_state(r)
+    if not tampered(r):
+        print(f"not tampered: {name(r)} is {head(r) or 'unset'}, recorded {want}")
+        return 0
+    if accept is None:
+        if r.legacy and r.recorded:
+            print(f"error: {name(r)}: {want} was recorded by a line no gate stamped, so restore-status does not write "
+                  "it; the owner keeps the spec's status with --accept <note> in their own terminal; nothing written",
+                  file=sys.stderr)
+            return 2
+        return 0 if write_status(r, want, f"{head(r) or 'unset'} → {want} (restore-status)") else 1
+    note, spec_state = " ".join(accept.split()), head(r)
+    if not note or spec_state not in ACCEPTED:
+        print(f"error: {name(r)}: " + ("--accept needs a note" if not note else
+              f"the spec's Status {r.status or 'unset'!r} is not a status token; restore-status writes {want}")
+              + "; nothing written", file=sys.stderr)
+        return 2
+    try:
+        record_transition(r, f"{want} → {spec_state} (accepted: {note})")
+    except OSError as error:
+        print(f"error: {name(r)}: PROGRESS.md not updated: {error}", file=sys.stderr)
+        return 1
+    print(f"accepted: {name(r)} -> {spec_state}")
+    return 0
 
 
 def mark_approved(task_dir: str | Path) -> int:

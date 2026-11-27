@@ -171,7 +171,42 @@ def check_hooks(home: Path, root: Path = ROOT) -> list[Line]:
         if gone:
             text = f"{harness}: registered hook scripts are missing: {capped(gone)}{RERUN}"
             lines.append(Line("FAIL", "hooks", text))
-    return lines
+    return lines + check_cursor_fail_closed(home, root)
+
+
+def fail_closed_commands(path: Path) -> set[tuple[str, str]] | None:
+    """(event, command) of every Cursor hook entry registered `failClosed: true`, or None when unreadable."""
+    try:
+        hooks = json.loads(path.read_text(encoding="utf-8")).get("hooks", {})
+    except (OSError, ValueError, AttributeError):
+        return None
+    return {(event, entry.get("command")) for event, entries in (hooks.items() if isinstance(hooks, dict) else [])
+            for entry in (entries if isinstance(entries, list) else [])
+            if isinstance(entry, dict) and entry.get("failClosed") is True}
+
+
+def check_cursor_fail_closed(home: Path, root: Path = ROOT, jq: str | None = "") -> list[Line]:
+    """Each Cursor security guard the template registers `failClosed: true` is installed that way too: without it a
+    guard that crashes, times out or prints invalid JSON lets the action through. A missing guard is `check_hooks`'s.
+    Without `jq` (`jq`: its path, "" to look it up) a guard cannot answer, so a fail-closed one blocks every Cursor
+    call (FAIL), and install registers them fail-open (WARN)."""
+    wanted = fail_closed_commands(root / ".cursor" / "hooks.template.json") or set()
+    installed = home / ".cursor" / "hooks.json"
+    have = fail_closed_commands(installed)
+    if have is None:
+        return []
+    if not (shutil.which("jq") if jq == "" else jq):
+        if have:
+            return [Line("FAIL", "hooks", f"Cursor: jq is not on PATH and {len(have)} guards are failClosed: true, so "
+                                          f"every Cursor call is blocked; install jq{RERUN}")]
+        return [Line("WARN", "hooks", f"Cursor: jq is not on PATH, so the guards are registered fail-open; install "
+                                      f"jq{RERUN}")]
+    registered = {(event, command) for event, _, command in registrations(installed, False) or set()}
+    open_guards = sorted(f"{event}: {command}" for event, command in (wanted & registered) - have)
+    if not open_guards:
+        return [Line("ok", "hooks", f"Cursor: {len(wanted)} security guards fail closed")]
+    return [Line("FAIL", "hooks", "Cursor: security guards without failClosed: true (a crash lets the action "
+                                  f"through): {capped(open_guards)}{RERUN}")]
 
 
 def check_auto_memory(home: Path, root: Path = ROOT) -> list[Line]:

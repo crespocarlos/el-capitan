@@ -42,7 +42,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_record.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
 | `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
@@ -304,7 +304,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   and other tools import it and must not re-implement it. The listing and the reconcile report live
   in `task_report.py`, and every transition gate (`crew-task.py mark-approved`, `mark-implementing`,
   `mark-done`) lives in `task_gates.py`, so a refused transition's message
-  is defined beside the check that produced it.
+  is defined beside the check that produced it. Each gate first refuses a TAMPERED task: its Status is
+  not the target of the newest status TRANSITION in PROGRESS.md (`task_state.tampered`; DRAFTING when
+  there is none); `crew-task.py restore-status <TASK_DIR> [--accept <note>]` clears it.
 - **DONE means a PR is open.** `mark-done --pr-url <GitHub PR URL>` appends the URL to the task's PR
   list (PROGRESS.md: the `PR opened:` of the DONE transition, then a `PR:` entry per later PR) and
   writes DONE; it refuses an unchecked criterion and a reviewed commit that is not an ancestor of HEAD
@@ -593,9 +595,11 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 
 ## PROGRESS.md and METRIC lines
 
-- **PROGRESS.md** is a task's append-only event log. It is never a source for gate or status
-  decisions: SPEC.md plus git and gh are. Skills may read it for resume context. Its format and
-  owner are `task_progress.py` (above); `crew-progress.py` writes a transition only.
+- **PROGRESS.md** is a task's append-only event log. Its one gate input is the status integrity check:
+  the newest `[gate]`-stamped transition, which only `crew-task.py` writes, must match SPEC.md's Status;
+  otherwise SPEC.md plus git and gh decide. Skills may read it for resume context. Its format and
+  owner are `task_progress.py` (above); `crew-progress.py` writes a pipeline step only and refuses a
+  status target or the stamp (exit 2). The Status guard and `guard/task-files.sh` refuse writes to it.
 - **METRIC lines** are append-only audit records for offline analysis, never parsed for gates or
   transitions. Write one with `~/.agent/bin/crew-metric.py "$TASK_DIR" <event> [key=value ...]`; the
   events and fields are the ones `crew-metric.py` validates ("Gates and cost" above).
@@ -635,14 +639,18 @@ The two mechanisms are never mixed in one run, and a Claude allow is never a
 `permissionDecision: "allow"` payload, which would skip interactive approval.
 
 One measured exception: Cursor treats *no output* from a hook registered `failClosed: true` as a
-failure and blocks the command, so silence there is a block rather than a decline. The only such hook
-is `guard/credentials.sh`, and it therefore answers Cursor's `beforeShellExecution` with Cursor's
-documented allow payload when it has no objection. Every other hook stays silent on both harnesses.
+failure and blocks the command, so silence there is a block rather than a decline. Every Cursor
+security guard (all of `guard/` but `zsh-equals.sh`, plus `check-write-boundary.sh` and
+`check-task-spec-owner.sh`) is registered `failClosed: true`, so a crash, a timeout or invalid JSON
+blocks, and each answers Cursor's `beforeShellExecution` and `preToolUse` with `{}` (no permission)
+when it has no objection (`hook_allow`); `crew doctor` fails an installed one without the flag.
+Observers stay silent on both harnesses.
 
-**Fail open by default.** A missing `jq`, an unreadable payload, or an unexpected event exits `0`
-after one stderr line, so a broken hook never blocks a tool call. One rule is the exception:
-`guard/credentials.sh`, which alone carries `onFailure: "block"` in `.claude/settings.json` and
-`failClosed: true` in `.cursor/hooks.template.json`, because a silent gap there is a credential leak.
+**Cannot judge is no objection.** A missing `awk`, a command the normaliser cannot read or an unexpected event
+exits `0` after one stderr line. One rule is the exception: `guard/credentials.sh`, which alone
+carries `onFailure: "block"` in `.claude/settings.json`, because a silent gap there is a credential
+leak. In Cursor, a failure before the event is read (no `jq`, unreadable input) prints no JSON, so a
+`failClosed` guard blocks.
 
 | File | Event | Purpose |
 | --- | --- | --- |

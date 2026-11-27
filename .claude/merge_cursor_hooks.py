@@ -15,6 +15,7 @@ those (`unmerge`). An existing file is first copied to `<dest>.bak.<epoch>`.
 """
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -84,6 +85,19 @@ def unmerge(dest: dict, recorded: dict, template: dict, warn) -> dict:
     return dest
 
 
+def fail_open_without_jq(template: dict) -> None:
+    """Without `jq` on PATH every guard fails before it can answer, and a `failClosed` guard then blocks every Cursor
+    call, the ones that would install jq included: register them `failClosed: false` and say so in one line."""
+    if shutil.which("jq"):
+        return
+    closed = [entry for entries in template["hooks"].values() for entry in entries if entry.get("failClosed") is True]
+    for entry in closed:
+        entry["failClosed"] = False
+    if closed:
+        print(f"  WARNING: jq is not on PATH: {len(closed)} Cursor guards registered failClosed: false (they would "
+              "block every call); install jq and re-run install.sh")
+
+
 def main() -> int:
     arguments = sys.argv[1:]
     manifest_home = None
@@ -107,6 +121,7 @@ def main() -> int:
     if not isinstance(before, dict) or not isinstance(before.get("hooks", {}), dict):
         print(f"merge_cursor_hooks: {dst} is not a JSON object with a hooks object", file=sys.stderr)
         return 2
+    fail_open_without_jq(template)
     record, present = added(before, template, not os.path.exists(dst))
     dest = json.loads(json.dumps(before)) if before else {"version": 1, "hooks": {}}
     hooks = dest.setdefault("hooks", {})
