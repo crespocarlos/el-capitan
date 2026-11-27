@@ -82,7 +82,8 @@ not the whole workflow, the stored record, or the call path around it.
 ## Saving the reply
 
 In self and changes mode `persist` refuses an emitted `[needs more info]` or 1-2 finding until the
-probe is on record. Pipe the worker's reply, unedited, into `crew-review-findings.py save-out
+probe is on record. Under Claude Code, give the dispatch the `expect --persona probe` marker line and
+the `SubagentStop` hook saves the reply. Elsewhere, pipe the worker's reply, unedited, into `crew-review-findings.py save-out
 --review-dir <review-dir> --persona probe --harness <name>` (add `--agent-id` when known): it writes
 `probe.out.md` with the provenance record `persist` checks, so a hand-written or edited file is
 refused. When the probe cannot run here, the report says `probe: skipped <reason>: <detail>` instead,
@@ -99,7 +100,8 @@ run carrying all of them, never one dispatch per claim. One run keeps the tree s
 the tree comparison mean something; a claim that arrives later joins a second run rather than
 reopening the first.
 
-Give the worker each claim, its `path:line`, and the question a read could not answer. The worker
+Give the worker each claim, its `path:line`, and the question a read could not answer, after the
+marker line and, with a task, the line `crew-task: <TASK_DIR>` (its token usage). The worker
 returns the command, the observed output, and an outcome per claim; the orchestrator sets the score
 from that evidence and records that outcome as `probe`. A claim nobody could probe is not a claim
 nobody dispatched: name it and what blocked it. Surface the worker's closing tree check to the user,

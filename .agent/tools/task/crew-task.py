@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Change a task's state: the transition gates, reconcile, status migration, BLOCKED, lock, worktree, gc.
+"""Change a task's state: the transition gates, reconcile, record-pr, status migration, BLOCKED, lock, worktree, gc.
 
 `crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every
 other write goes through here (`gc`: retention, `task_gc.py`). `lock`, `blocked` and `worktree`
@@ -76,6 +76,13 @@ def normalize(args: argparse.Namespace) -> int:
     return 0 if normalize_all(args.tasks_dir, args.apply) >= 0 else 1
 
 
+def record_pr(args: argparse.Namespace) -> int:
+    """The PR hook: record the PR a `gh pr create` opened on its task (`task_record_pr.py`)."""
+    from task_record_pr import main as record
+
+    return record(args.tasks_dir, sys.stdin.read())
+
+
 def collect_garbage(args: argparse.Namespace) -> int:
     """Old DONE artifacts and tasks, memory session files and the legacy telemetry (`task_gc.py`)."""
     from task_gc import main as gc
@@ -105,6 +112,9 @@ def make_parser() -> argparse.ArgumentParser:
         if name == "reconcile":
             sub.add_argument("--pr-budget", type=float, default=None, metavar="SECONDS",
                              help="stop asking GitHub for branch PRs after SECONDS (the session-start hook: 3)")
+    recorder = commands.add_parser("record-pr", help="the PR hook: record a `gh pr create` PR on its task (stdin)")
+    recorder.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
+    recorder.set_defaults(run=record_pr)
     collect = commands.add_parser("gc", help="retention: old DONE artifacts and tasks, session files, legacy telemetry "
                                   "(policy: ~/.agent/config.json)")
     collect.add_argument("--apply", action="store_true", help="remove and archive (default: list what would go)")

@@ -61,7 +61,16 @@ complete list in this final message, in the finding shape, nothing else. Then sa
 trail holds the findings rather than a reference to them. If the resume also points backwards, persist
 the failure artifact and name the gap under `### Reviewers`.
 
-**Saving replies with `save-out`.** Personas never write their own artifacts, and the orchestrator
+**Under Claude Code the hook saves the reply.** Each dispatch carries the marker line from
+`crew-review-findings.py expect` ([packaging](~/.cursor/agents/crew-reviewer/references/packaging.md),
+"The reply marker"), and the `SubagentStop` hook saves the reply with `--harness claude-code`, the
+agent id and the model, a resume included; there is no manual `save-out`. Check that
+`<persona>.out.md` exists and `<persona>.expect` is gone; a remaining `.expect` means the hook saved
+nothing, so save that reply by hand as below. `--degraded` stays a manual flag, and a manual
+`save-out` overwrites what the hook saved.
+
+**Saving replies with `save-out`** (Cursor, Codex, the `claude -p` fallback, and the cases above).
+Personas never write their own artifacts, and the orchestrator
 does not re-type a reply into `<persona>.out.md` either: it pipes the reply to the tool, which stores
 the raw bytes and a provenance record beside them:
 

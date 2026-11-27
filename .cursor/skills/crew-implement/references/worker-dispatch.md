@@ -109,11 +109,14 @@ Pass the task delta only: the unchecked tasks with their verify lines (a guideli
 words, not a gate) and the `SPEC.md` path, plus `TASK_DIR`, `WORK_DIR`, `RECALLED_PATTERNS` and
 `TASK_RANGE`. The builder file (`~/.cursor/agents/crew-builder.md`) owns the rules, the report shape
 and the verification commands, so the prompt names its path and does not paste it: pasted rules
-drift from the file and are paid for in every worker.
+drift from the file and are paid for in every worker. The prompt's first line is
+`crew-task: <TASK_DIR>`: under Claude Code the `SubagentStop` hook sums the worker's transcript usage
+and appends an `agent_end` METRIC to that task, which the cost line below then reports.
 
 ## The stage cost line
 
-Tokens exist only in the harness, so record what it reported when the workers finish:
+Under Claude Code the `agent_end` entries make the stage's cost line, so `tokens_reported=unknown` is
+enough. Elsewhere tokens exist only in the harness, so record what it reported when the workers finish:
 
 ```bash
 ~/.agent/bin/crew-metric.py "$TASK_DIR" stage_end stage=implement workers=<n> tokens_reported=<n|unknown>

@@ -611,6 +611,203 @@ def test_crew_worktree_creates_lists_fetches_and_removes(tmp: Path) -> None:
           removed.returncode == 0 and not path.exists() and not branch.stdout, removed)
 
 
+VIEW_STUB = """#!/bin/sh
+echo "$*" >> "$GH_CALLS"
+[ "$1 $2" = "pr view" ] || exit 1
+cat "$GH_VIEWS/${3##*/}" 2>/dev/null || exit 1
+"""
+# name: (status, repo, branch, spec_branch)
+RECORD_TASKS = {"wt": ("IMPLEMENTING", "acme/widgets", "feat/wt", ""), "head": ("IMPLEMENTING", "acme/widgets", "feat/h", ""),
+                "repo": ("IMPLEMENTING", "acme/widgets", "feat/r", ""), "fork": ("IMPLEMENTING", "me/widgets", "feat/f", ""),
+                "collide": ("IMPLEMENTING", "acme/widgets", "feat/c", "feat/s"), "twin-a": ("IMPLEMENTING", "acme/widgets", "feat/two", ""),
+                "twin-b": ("IMPLEMENTING", "acme/widgets", "feat/two", ""), "shipped": ("DONE", "acme/widgets", "feat/d", ""),
+                "reuse-old": ("DONE", "acme/widgets", "feat/reuse", ""), "reuse-new": ("IMPLEMENTING", "acme/widgets", "feat/reuse", "")}
+PR_NEW = "https://github.com/acme/widgets/pull/21"
+OPEN_PR_COMMAND = ('PR_URL=$(GH_PAGER=cat gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO")'
+                   ' && echo "$PR_URL"')  # crew-open-pr's own command, verbatim
+
+
+def record_world(tmp: Path) -> tuple[Path, Path, dict]:
+    """A HOME with crew-task.py, the tasks of RECORD_TASKS, a main checkout and a worktree on feat/wt, and a stub gh."""
+    home, repo, env = tmp / "home", tmp / "checkout", {**os.environ, **GIT_ID}
+    (home / ".agent" / "bin").mkdir(parents=True)
+    (home / ".agent" / "bin" / "crew-task.py").symlink_to(TASK)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, env=env)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "base"], check=True, env=env)
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "feat/wt", str(tmp / "wt")], check=True, env=env, capture_output=True)
+    subprocess.run(["git", "-C", str(tmp / "wt"), "commit", "-q", "--allow-empty", "-m", "work"], check=True, env=env)
+    tip = subprocess.run(["git", "-C", str(tmp / "wt"), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    for name, (status, slug, branch, spec_branch) in RECORD_TASKS.items():
+        directory = spec(home / ".agent" / "tasks" / name, status, review=f"Verdict: pass\n\nReviewed at: {tip}" if name == "wt" else None)
+        meta = {"slug": name, "branch": branch, "repo_remote_url": f"git@github.com:{slug}.git", "created_at": "2026-01-01T00:00:00Z"}
+        (directory / ".task-id").write_text(json.dumps({**meta, **({"spec_branch": spec_branch} if spec_branch else {})}), encoding="utf-8")
+        if status == "DONE":
+            (directory / "PROGRESS.md").write_text(f"[2026-01-01T00:00:00Z] TRANSITION: IMPLEMENTING → DONE (PR opened: {PR_ONE})\n", encoding="utf-8")
+    (tmp / "bin").mkdir()
+    (tmp / "bin" / "gh").write_text(VIEW_STUB, encoding="utf-8")
+    (tmp / "bin" / "gh").chmod(0o755)
+    (tmp / "views").mkdir()
+    run_env = {**os.environ, **GIT_ID, "HOME": str(home), "PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}",
+               "GH_CALLS": str(tmp / "calls"), "GH_VIEWS": str(tmp / "views")}
+    return home, repo, run_env
+
+
+def record_hook(tmp: Path, shape: str, command: str, output: str, branch: str, owner: str = "acme",
+                break_task: str = "") -> subprocess.CompletedProcess:
+    """Run record-pr.sh on one payload of the given harness shape, the PR's `gh pr view` answer being `branch` and `owner`;
+    `break_task` turns that task's PROGRESS.md into a directory, so writing the PR fails."""
+    home, repo, env = record_world(tmp)
+    if break_task:
+        (home / ".agent" / "tasks" / break_task / "PROGRESS.md").mkdir()
+    view = {"headRefName": branch, "headRepositoryOwner": {"login": owner}, "headRepository": {"name": "widgets"}, "title": "Fix: the Widget's edge"}
+    (tmp / "views" / "21").write_text(json.dumps(view), encoding="utf-8")
+    payload = ({"hook_event_name": "PostToolUse", "tool_name": "Bash", "cwd": str(repo), "tool_input": {"command": command},
+                "tool_response": {"stdout": output, "stderr": ""}} if shape == "claude"
+               else {"hook_event_name": "afterShellExecution", "cwd": str(repo), "command": command, "output": output})
+    hook = ROOT / ".claude" / "hooks" / "record-pr.sh"
+    return subprocess.run(["bash", str(hook)], input=json.dumps(payload), capture_output=True, text=True, env=env, cwd=repo)
+
+
+@pytest.mark.parametrize("label,shape,command,output,branch,owner,changed,words,asks", [
+    ("main tree, worktree branch", "claude", "gh pr create --fill", PR_NEW, "feat/wt", "acme", {"wt": "DONE"}, "recorded PR", True),
+    ("--head", "claude", "gh pr create --head feat/h --fill", f"Creating pull request\n{PR_NEW}\n", "feat/h", "acme", {"head": "DONE"},
+     "applied: head -> DONE", True),
+    ("-R", "cursor", "gh pr create -R acme/widgets --fill", PR_NEW, "feat/r", "acme", {"repo": "DONE"}, "applied: repo -> DONE", True),
+    ("fork head", "claude", "cd x && gh pr create --repo acme/widgets", PR_NEW, "feat/f", "me", {"fork": "DONE"}, "applied: fork -> DONE", True),
+    ("crew open pr's command", "claude", OPEN_PR_COMMAND, f"{PR_NEW}\n", "feat/h", "acme", {"head": "DONE"}, "applied: head -> DONE", True),
+    ("a chained comment URL is not a PR URL", "claude", "gh pr create --fill && gh pr comment 21 --body hi",
+     f"{PR_NEW}\n{PR_NEW}#issuecomment-123\n", "feat/h", "acme", {"head": "DONE"}, "applied: head -> DONE", True),
+    ("two PR URLs", "claude", "gh pr create --fill && gh pr list", f"{PR_NEW}\nhttps://github.com/acme/widgets/pull/7\n", "feat/h", "acme", {},
+     "the output holds 2 PR URLs", False),
+    ("echoed text", "claude", f"echo gh pr create would open {PR_NEW}", PR_NEW, "feat/h", "acme", {}, "", False),
+    ("spec_branch collision", "claude", "gh pr create --fill", PR_NEW, "feat/s", "acme", {}, "feat/s is the spec branch of collide", True),
+    ("DONE match", "claude", "gh pr create --fill", PR_NEW, "feat/d", "acme", {"shipped": "DONE"}, "shipped (DONE): recorded PR", True),
+    ("reused branch: the open task wins", "claude", "gh pr create --fill", PR_NEW, "feat/reuse", "acme", {"reuse-new": "DONE"},
+     "applied: reuse-new -> DONE", True),
+    ("two matches", "claude", "gh pr create --fill", PR_NEW, "feat/two", "acme", {}, f"crew-task.py mark-done {{tasks}}/twin-a --pr-url {PR_NEW}", True),
+    ("failed create", "claude", "gh pr create --fill", "pull request create failed: GraphQL: No commits", "feat/h", "acme", {}, "", False),
+    ("unrelated command", "claude", "git log --oneline", f"see {PR_NEW}", "feat/h", "acme", {}, "", False),
+])
+def test_record_pr_hook(tmp: Path, label: str, shape: str, command: str, output: str, branch: str, owner: str, changed: dict, words: str,
+                        asks: bool) -> None:
+    """The PR hook acts only on a real `gh pr create` segment with exactly one PR URL in its output, finds the task from
+    `gh pr view` (repo or fork, `branch` only, the open match first), closes an IMPLEMENTING match, appends to a DONE one,
+    records nothing for two or for a spec branch, and never asks gh otherwise; every other task stays as it was."""
+    done = record_hook(tmp, shape, command, output, branch, owner)
+    tasks = tmp / "home" / ".agent" / "tasks"
+    for name, (status, *_) in RECORD_TASKS.items():
+        before = [PR_ONE] if status == "DONE" else []
+        expected = (changed[name], before + [PR_NEW]) if name in changed else (status, before)
+        got = (status_of(tasks / name), task_state.load(tasks / name).prs)
+        check(f"{label}: {name}", got == expected, (got, expected, done.stdout))
+    check(f"{label}: no task created", {path.name for path in tasks.iterdir()} == set(RECORD_TASKS))
+    calls = (tmp / "calls").read_text().splitlines() if (tmp / "calls").exists() else []
+    check(f"{label}: exit 0, the outcome in the hook output, gh asked only about a created PR",
+          done.returncode == 0 and words.replace("{tasks}", str(tasks)) in done.stdout and (bool(words) or done.stdout == "")
+          and bool(calls) is asks, (done.stdout, done.stderr, calls))
+    if shape == "claude" and words:
+        check(f"{label}: Claude reads it as additional context", json.loads(done.stdout)["hookSpecificOutput"]["hookEventName"] == "PostToolUse")
+
+
+@pytest.mark.parametrize("url,owner,created", [(PR_NEW, "acme", True), ("https://github.com/other/thing/pull/21", "other", False)])
+def test_record_pr_with_no_task(tmp: Path, url: str, owner: str, created: bool) -> None:
+    """A PR no task matches becomes a minimal DONE task only in a repo that already has tasks; `crew ls` lists it with its PR."""
+    done = record_hook(tmp, "claude", "gh pr create --fill", url, "feat/new", owner)
+    tasks = tmp / "home" / ".agent" / "tasks"
+    new = sorted({path.name for path in tasks.iterdir()} - set(RECORD_TASKS))
+    check("exit 0; a directory only for the repo in scope", done.returncode == 0 and len(new) == int(created), (new, done.stdout, done.stderr))
+    if not created:
+        return
+    listed = cli(LS, "--tasks-dir", str(tasks), "--all", "--json", "--repo", "all", env={"PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}"})
+    row = next(item for item in json.loads(listed.stdout)["items"] if item["directory"] == str(tasks / new[0]))
+    check("the new task is DONE with its PR, the head branch, the repo and a slug from the title",
+          (row["state"], row["prs"], row["branch"], row["repo"], row["slug"]) == ("DONE", [url], "feat/new", "acme/widgets", "fix-the-widget-s-edge"),
+          row)
+
+
+def test_record_pr_reports_a_failure_in_one_line(tmp: Path) -> None:
+    """A write that fails is one `record-pr: nothing recorded` line in the hook output, never a traceback; exit 0."""
+    done = record_hook(tmp, "cursor", "gh pr create --fill", PR_NEW, "feat/h", break_task="head")
+    check("one record-pr line names the failure", done.returncode == 0 and "record-pr: nothing recorded:" in done.stdout
+          and "Traceback" not in done.stdout and status_of(tmp / "home" / ".agent" / "tasks" / "head") == "IMPLEMENTING", (done.stdout, done.stderr))
+
+
+USAGE_ONE = {"input_tokens": 1000, "output_tokens": 500, "cache_read_input_tokens": 20000, "cache_creation_input_tokens": 3000}
+USAGE_TWO = {"input_tokens": 10, "output_tokens": 2600, "cache_read_input_tokens": 40000, "cache_creation_input_tokens": 0}
+
+
+def usage_world(tmp: Path) -> tuple[Path, Path]:
+    """A HOME with crew-review-findings.py and one IMPLEMENTING task `built` whose implement stage has started."""
+    home, tasks = tmp / "home", tmp / "home" / ".agent" / "tasks"
+    (home / ".agent" / "bin").mkdir(parents=True)
+    (home / ".agent" / "bin" / "crew-review-findings.py").symlink_to(REVIEW_TOOLS / "crew-review-findings.py")
+    task_dir = spec(tasks / "built", "IMPLEMENTING")
+    (task_dir / "PROGRESS.md").write_text("[2026-11-27T10:00:00Z] METRIC: stage_start stage=implement\n", encoding="utf-8")
+    return home, task_dir
+
+
+def stop(tmp: Path, home: Path, prompt: str, calls: list, usage: bool = True) -> subprocess.CompletedProcess:
+    """One SubagentStop of agent a1 over a transcript of `prompt` and `calls` (`(message id, usage)` pairs)."""
+    turns = [{"type": "user", "message": {"role": "user", "content": prompt}}]
+    for message_id, counts in calls:
+        message = {"id": message_id, "role": "assistant", "model": "m-1", "content": [{"type": "text", "text": "ok"}]}
+        turns.append({"type": "assistant", "message": {**message, **({"usage": counts} if usage else {})}})
+    transcript = tmp / "agent.jsonl"
+    transcript.write_text("".join(json.dumps(turn) + "\n" for turn in turns), encoding="utf-8")
+    payload = {"hook_event_name": "SubagentStop", "agent_id": "a1", "agent_type": "crew-builder", "agent_transcript_path": str(transcript),
+               "last_assistant_message": "report: done"}
+    hook = ROOT / ".claude" / "hooks" / "capture-reply.sh"
+    return subprocess.run(["bash", str(hook)], input=json.dumps(payload), capture_output=True, text=True, env={**os.environ, "HOME": str(home)})
+
+
+@pytest.mark.parametrize("case", ["builder", "no marker", "no usage", "outside the tasks directory"])
+def test_agent_end_recorded_by_the_subagent_stop_hook(tmp: Path, case: str) -> None:
+    """The SubagentStop hook writes one `agent_end` on the task its `crew-task:` line names: `tokens` is the LAST call's
+    context (what the harness reports), never the sum of every call's cache reads; input, output, cache_read and
+    cache_write are summed (a message repeated per content block counts once). `crew ls --cost` and `--report` show
+    `tokens` with the summed output beside it, per task: a task with only `tokens_reported` in the same stage keeps it.
+    No marker, no usage field, or a named directory outside `~/.agent/tasks` records nothing."""
+    home, task_dir = usage_world(tmp)
+    outside = spec(tmp / "outside", "IMPLEMENTING")
+    named = {"no marker": "", "outside the tasks directory": f"crew-task: {outside}\n"}.get(case, f"crew-task: {task_dir}\n")
+    done = stop(tmp, home, named + "TASK_DIR: x\nImplement T1.", [("m1", USAGE_ONE), ("m1", USAGE_ONE), ("m2", USAGE_TWO)], case != "no usage")
+    ends = [line for line in progress_text(task_dir).splitlines() + progress_text(outside).splitlines() if "agent_end" in line]
+    check(f"{case}: exit 0", done.returncode == 0, (done.stdout, done.stderr))
+    if case != "builder":
+        check(f"{case}: nothing recorded", ends == [], (ends, done.stdout))
+        return
+    context = sum(USAGE_TWO.values())  # 42,610: the last call; the sum over calls would be 66,110
+    check("one agent_end: the last call's context as tokens, the summed counts beside it", len(ends) == 1 and ends[0].endswith(
+        f"METRIC: agent_end agent=crew-builder persona=crew-builder agent_id=a1 tokens={context} input=1010 output=3100 cache_read=60000 "
+        "cache_write=3000"), (ends, done.stdout))
+    other = spec(task_dir.parent / "cursor", "IMPLEMENTING")
+    (other / "PROGRESS.md").write_text("[2026-11-27T10:00:00Z] METRIC: stage_start stage=implement\n"
+                                       "[2026-11-27T11:00:00Z] METRIC: stage_end stage=implement workers=1 tokens_reported=5000\n", encoding="utf-8")
+    cost = cli(LS, "--tasks-dir", str(task_dir.parent), "--cost").stdout
+    check("crew ls --cost shows that context and the summed output, and the other task its own report",
+          "built: implement: 1 workers, 43k tokens, 3k output" in cost and "cursor: implement: 1 workers, 5k tokens" in cost, cost)
+    report = cli(LS, "--tasks-dir", str(task_dir.parent), "--report", "--since", "36500d", "--repo", "all", env={"HOME": str(home)}).stdout
+    check("crew report applies the replacement per task: 43k + 5k in one stage, and the agent apart",
+          "stage implement: 1 run(s), 48k tokens, 3k output, from 1 agent(s)" in report
+          and "agent crew-builder: 1 run(s), 43k tokens, 3k output" in report, report)
+
+
+def test_agent_end_counts_a_resumed_agent_once(tmp: Path) -> None:
+    """Three stops of one resumed agent on one growing transcript write three entries; only the latest counts."""
+    home, task_dir = usage_world(tmp)
+    calls = []
+    for number in range(1, 4):
+        calls.append((f"m{number}", {"input_tokens": 1000 * number, "output_tokens": 1000, "cache_read_input_tokens": 0,
+                                     "cache_creation_input_tokens": 0}))
+        check(f"stop {number}", stop(tmp, home, f"crew-task: {task_dir}\nImplement.", calls).returncode == 0)
+    ends = [line for line in progress_text(task_dir).splitlines() if "agent_end" in line]
+    cost = cli(LS, "--tasks-dir", str(task_dir.parent), "--cost").stdout
+    report = cli(LS, "--tasks-dir", str(task_dir.parent), "--report", "--since", "36500d", "--repo", "all", env={"HOME": str(home)}).stdout
+    check("three entries, counted as one agent: the last context (4k) and its summed output (3k)",
+          len(ends) == 3 and "built: implement: 1 workers, 4k tokens, 3k output" in cost
+          and "stage implement: 4k tokens, 3k output, from 1 agent(s)" in report, (ends, cost, report))
+
+
 def test_crew_resolve_task_dir_prefers_the_open_task(tmp: Path) -> None:
     """Two tasks on one repo and branch: the open one wins over a newer DONE one, and `--all` lists both."""
     remote, tasks = "git@example.invalid:owner/demo.git", tmp / ".agent" / "tasks"

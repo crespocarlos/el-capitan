@@ -261,16 +261,27 @@ def add_save_out_parser(commands) -> None:
                         help="the orchestrator played this lens itself (no separate agent)")
 
 
+def saved_persona(name: str) -> str:
+    """The file stem a reply is saved under: `probe`, or the canonical persona name (ValueError otherwise)."""
+    named = name.strip().lower().removeprefix("reviewer-")
+    (persona,) = [PROBE] if named == PROBE else canonical_personas([name], split_commas=False)
+    return persona
+
+
 def save_out(args: argparse.Namespace) -> int:
     """Write the raw reply and its provenance record; warn, without refusing, on a digest. `--persona probe`
     saves the reviewer-probe reply as `probe.out.md`, which the probe gate of `persist` reads."""
-    named = args.persona.strip().lower().removeprefix("reviewer-")
-    (persona,) = [PROBE] if named == PROBE else canonical_personas([args.persona], split_commas=False)
+    print(json.dumps(store_reply(args, sys.stdin.buffer.read())))
+    return 0
+
+
+def store_reply(args: argparse.Namespace, raw: bytes) -> dict:
+    """`save-out`'s write, shared with the reply-capture hook: the reply, its record, and what was saved."""
+    persona = saved_persona(args.persona)
     if not args.review_dir.is_dir():
         raise ValueError(f"no such review directory: {args.review_dir}")
-    raw = sys.stdin.buffer.read()
     if not raw.strip():
-        raise ValueError("stdin is empty: there is no reply to save")
+        raise ValueError("the reply is empty: there is nothing to save")
     target = args.review_dir / f"{persona}.out.md"
     target.write_bytes(raw)
     record = {
@@ -285,5 +296,4 @@ def save_out(args: argparse.Namespace) -> int:
     if outcome in ("summarized", "unknown") and persona != PROBE:
         print(f"warning: {target.name} reads as `{outcome}`; persist will refuse it unless it is "
               "the persona's real reply", file=sys.stderr)
-    print(json.dumps({"saved": str(target), "sha256": record["sha256"], "outcome": outcome}))
-    return 0
+    return {"saved": str(target), "sha256": record["sha256"], "outcome": outcome}
