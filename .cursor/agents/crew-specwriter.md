@@ -37,7 +37,7 @@ unrelated work (every task on `main` shares a branch), and a spec written over i
 task directories sit outside version control. Generate a fresh UUID for every spec:
 
 ```bash
-# Generate slug from issue title or description (lowercase, hyphens, ~50 chars max)
+# Slug from the issue title or description: lowercase, hyphens, ~50 chars ("Add retry" -> add-retry)
 SLUG=<slug-from-title>
 
 UUID=$(uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
@@ -59,10 +59,6 @@ fi
 RECALLED_PATTERNS=$(~/.agent/bin/crew-mem.py context --mode plan --query "$SLUG" --warn-unavailable)
 RECALLED_PATTERNS=${RECALLED_PATTERNS:-none}
 ```
-
-The slug comes from the issue title or the description: lowercase, hyphens for spaces and special
-characters, about 50 characters ("Add retry logic for async search" →
-`add-retry-logic-for-async-search`).
 
 **Template selection** — infer it, with no flag: `_BUG_SPEC_TEMPLATE.md` when the request or issue
 has reproduction steps, a "bug" label, "fix" or "bug" in the title, or words like "broken",
@@ -148,6 +144,8 @@ following spec-writing Step 3, then run its Step 4 self-check before dispatching
 `## Branch:` with a concise conventional branch name derived from the type and goal — e.g.
 `feat/sigevents-verdict-rename`, under 50 characters, lowercase, hyphen-separated. Copy the
 explorer's validation commands into `### Validation`. The user can change the branch before approving.
+Given an issue, write `## Issue: https://github.com/<owner>/<repo>/issues/<n>` (a full URL, also for
+`#X`); otherwise delete the line. `crew ls` and the TUI read it.
 
 ### Step 4: Self-critique
 

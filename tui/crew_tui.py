@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Read-only dashboard over crew task state: tasks, workers and locks, and the report.
 
-`--once` prints every view as plain text and exits, with no Textual import; without it the Textual
-app runs (pinned in `tui/requirements.txt`). Filters match `crew ls`. It never writes or calls a model;
-GitHub is read only for `--landed` or the app's `g` key. `crew ls --watch` is the zero-dependency view.
+`--once` prints every view as plain text (ISSUE and PR as `#n`) with no Textual import; without it the
+Textual app runs (pinned in `tui/requirements.txt`), the cells as terminal links. Filters match `crew ls`.
+It never writes or calls a model; GitHub is read only for `--landed` or the app's `g` key.
 """
 from __future__ import annotations
 

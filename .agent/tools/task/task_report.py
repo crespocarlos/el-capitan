@@ -1,17 +1,25 @@
-"""Rendering task state for `crew-ls.py` (table, JSON, the landed section) and `reconcile`.
+"""Rendering task state for `crew-ls.py` (table, JSON, the landed section, the task cells) and `reconcile`.
 
 Rendering never writes, so a listing failure is a display problem; `reconcile` applies holds and
-statuses through `task_state`.
+statuses through `task_state` and records branch PRs through `task_progress`. The ISSUE, PR, PROGRESS
+and ACTIVITY cells are shared by `crew ls --json` and the TUI.
 """
 from __future__ import annotations
 
 import re
 import sys
+import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from task_prs import Lookup
 
 from ls_data import STALE_DAYS, landed_lines, landed_rows, snapshot, stale
-from task_progress import blocked_reason
-from task_state import TaskState, decide, head, load_rules, name, set_status
+from ls_report import stage_pairs
+from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
+from task_progress import Entry, append_pr, blocked_reason, read_entries
+from task_state import TaskState, decide, done_blockers, head, load_rules, name, set_status
 from task_status import STATUS, StatusError, token
 
 from lib.output import json_payload, print_lines, rows_limit
@@ -39,6 +47,48 @@ def ordered_rows(rows: list[TaskState], show_done: bool) -> list[TaskState]:
 def age_cell(r: TaskState) -> str:
     """The AGE cell: `today`, or the days since the task last moved."""
     return "today" if r.activity == 0 else f"{r.activity}d"
+
+
+def number_cell(url: str) -> str:
+    """`#n` for an issue or PR URL, `-` for none."""
+    return "#" + url.rstrip("/").rsplit("/", 1)[-1] if url else "-"
+
+
+def pr_cell(r: TaskState) -> str:
+    """`#n` for one PR, `N PRs` for several, `-` for none."""
+    return number_cell(r.prs[-1] if r.prs else "") if len(r.prs) < 2 else f"{len(r.prs)} PRs"
+
+
+def progress_cell(r: TaskState) -> str:
+    """Checked over total checkboxes in the spec (the criteria `mark-done` counts), `-` for none."""
+    return f"{r.done}/{r.done + r.open}" if r.done + r.open else "-"
+
+
+def activity_cell(r: TaskState, entries: list[Entry], locks: list[Lock], now: float) -> str:
+    """`running <stage>` for an open stage or a live worker lock, `stuck <stage>` for a stage open past 6 h,
+    else `idle Nd`.
+
+    A stage is open from its `stage_start` until its `stage_end`; the lock is the one `crew implement`
+    writes, live while younger than the guard's threshold. A DONE task is never running. `stuck` is not
+    the 14-day `stale` of the listing and the JSON.
+    """
+    if head(r) != "DONE":
+        _, open_starts = stage_pairs(entries)
+        opened = sorted(((at.timestamp(), stage) for stage, (at, _) in open_starts.items()), reverse=True)
+        fresh = [stage for at, stage in opened if now - at < LOCK_STALE_SECONDS]
+        if fresh:
+            return f"running {fresh[0]}"
+        if any(lock.task == r.uuid and now - lock.started < LOCK_STALE_SECONDS for lock in locks):
+            return "running implement"
+        if opened:
+            return f"stuck {opened[0][1]}"
+    return f"idle {r.activity}d"
+
+
+def task_cells(r: TaskState, entries: list[Entry], locks: list[Lock], now: float) -> dict[str, str]:
+    """The ISSUE, PR, PROGRESS and ACTIVITY cells of one task."""
+    return {"ISSUE": number_cell(r.issue), "PR": pr_cell(r), "PROGRESS": progress_cell(r),
+            "ACTIVITY": activity_cell(r, entries, locks, now)}
 
 
 def aligned(table: list[tuple[str, ...]]) -> list[str]:
@@ -86,23 +136,24 @@ def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
         rendered.append(f"stale: {len(folded)} IMPLEMENTING with no activity for {STALE_DAYS}+ days "
                         "(`--status implementing` lists them; `crew-task.py reconcile` reports them)")
     open_count = sum(1 for r in rows if head(r) != "DONE")
-    done_rows = [r for r in rows if head(r) == "DONE"]
-    unreviewed = sum(1 for r in done_rows if r.verdict.lower() not in ("pass", "warn"))
+    done_count = len(rows) - open_count
     rendered.append("")
-    rendered.append(f"{len(rows)} tasks: {open_count} open, {len(done_rows)} done"
-                    + ("" if show_done
-                       else f" ({unreviewed} without a review pass; --all lists them)"))
+    rendered.append(f"{len(rows)} tasks: {open_count} open, {done_count} done"
+                    + ("" if show_done or not done_count else " (--all lists them)"))
     if marker:
         rendered.append(marker)
     return rendered
 
 
-def json_row(r: TaskState) -> dict:
-    """One task as machine-readable state: the fields an agent branches on, no display text."""
+def json_row(r: TaskState, locks: list[Lock], now: float) -> dict:
+    """One task as machine-readable state: the fields an agent branches on, plus the ISSUE, PR, PROGRESS
+    and ACTIVITY cells (`activity` is `running <stage>`, `stale` or `idle Nd`)."""
     return {"slug": name(r), "directory": str(r.task), "status": r.status or "",
             "state": head(r) or "", "repo": r.repo, "branch": r.branch_name(""), "verdict": r.verdict,
             "age_days": r.age, "activity_days": r.activity, "stale": stale(r),
-            "open": r.open, "done": r.done, "blocked": blocked_reason(r.task)}
+            "open": r.open, "done": r.done, "blocked": blocked_reason(r.task),
+            "issue": r.issue, "prs": list(r.prs), "progress": progress_cell(r),
+            "activity": activity_cell(r, read_entries(r.task), locks, now)}
 
 
 def landed_section(landed: list[str]) -> list[str]:
@@ -119,7 +170,8 @@ def print_listing(rows: list[TaskState], args, landed=None, scope: str = "") -> 
     repository line printed under the table (never in `--json`).
     """
     if getattr(args, "json", False):
-        records = [json_row(r) for r in rows]
+        locks, now = read_locks(worktree_paths()), time.time()
+        records = [json_row(r, locks, now) for r in rows]
         if args.all:
             kept = [(record, r) for record, r in list(zip(records, rows))[:args.limit] if head(r) == "DONE"]
             for (record, _), found in zip(kept, landed_rows([r.task for _, r in kept])):
@@ -172,25 +224,54 @@ def apply_holds(decisions: list[tuple[TaskState, dict]], idle_days: int) -> int:
     return 0
 
 
-def reconcile(rows: list[TaskState], apply: bool) -> int:
-    """Report the four reconcile sections, and with `apply` write the idle holds."""
+PrFinder = Callable[[list[TaskState]], "Lookup"]
+
+
+def record_branch_prs(rows: list[TaskState], find: PrFinder, apply: bool) -> int:
+    """Add the PRs `find` read for each task's branch to its PR list (written with `apply`); 1 on a failed write."""
+    lookup, failed = find(rows), 0
+    found = lookup.found
+    if lookup.unchecked:
+        print(f"{lookup.unchecked} task(s) not checked for a PR yet; the next reconcile asks again")
+    for r in rows:
+        for url in [url for url in found.get(r.task, []) if url not in r.prs]:
+            try:
+                if apply:
+                    append_pr(r.task, url)
+            except OSError as error:
+                failed = 1
+                print(f"error: {name(r)}: PR not recorded: {error}", file=sys.stderr)
+                continue
+            r.prs.append(url)
+            print(f"{'recorded' if apply else 'would record'} PR: {name(r)} {url}")
+    return failed
+
+
+def reconcile(rows: list[TaskState], apply: bool, find: PrFinder | None = None) -> int:
+    """Report the five reconcile sections, and with `apply` write the idle holds and the branch PRs `find` reads.
+
+    It never writes a status other than ON-HOLD: a task with an open PR is reported ready to mark done,
+    and `crew-task.py mark-done` closes it.
+    """
     rules = load_rules()
+    failed = record_branch_prs(rows, find, apply) if find else 0
     decisions = [(r, rule) for r in rows if (rule := decide(r, rules))]
     of_kind = lambda kind: [r for r, rule in decisions if rule["kind"] == kind]
-    unreviewed = [r for r in rows if head(r) == "DONE"
-                  and r.verdict.lower() not in ("pass", "warn")]
-    print("ready to open PR (all criteria checked, review pass or warn):")
+    print("ready to mark done (a PR is open, every criterion checked; crew-task.py mark-done closes it):")
+    for r in of_kind("done"):
+        print(f"  {name(r)}\tpr={r.prs[-1]}\tdir={r.task}")
+    print("PR open, not closable (fix the reason, then crew-task.py mark-done):")
+    for r in of_kind("pr-open"):
+        print(f"  {name(r)}\tpr={r.prs[-1]}\t{'; '.join(done_blockers(r))}")
+    print("ready to open PR (all criteria checked, review pass or warn, no PR recorded):")
     for r in of_kind("ready"):
         print(f"  {name(r)}\tstatus={r.status}\tchecked={r.done}")
     print(f"stalled IMPLEMENTING (>{rules['idle_days']}d, flagged only):")
     for r in of_kind("stalled"):
         print(f"  {name(r)}\t{r.age}d")
-    print("done without review pass (flagged only):")
-    for r in unreviewed:
-        print(f"  {name(r)}\tverdict={r.verdict}")
     print(f"idle DRAFTING/APPROVED (>{rules['idle_days']}d -> ON-HOLD):")
     for r in of_kind("hold"):
         print(f"  {name(r)}\tstatus={r.status}\t{r.age}d")
     if apply:
-        return apply_holds(decisions, rules["idle_days"])
+        return apply_holds(decisions, rules["idle_days"]) or failed
     return 0

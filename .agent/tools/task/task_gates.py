@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """The status transitions and their evidence gates: approve, implement, and close out.
 
-Each transition is a gate, not a setter: DRAFTING→APPROVED refuses an unresolved clarification and
-an unapprovable `## Tests` block, and IMPLEMENTING→DONE refuses an unchecked criterion, a verdict
-that is not pass or warn, a mismatched branch, and a reviewed commit that is not an ancestor of
-HEAD. The messages are the contract the hooks and skills read, so they live with the gate.
+DRAFTING→APPROVED refuses an unresolved clarification and an unapprovable `## Tests` block.
+IMPLEMENTING→DONE means a PR is open: `mark-done` records it in the task's PR list (several allowed)
+and refuses an unchecked criterion or a reviewed commit that is not an ancestor of HEAD; the verdict
+and the PR's branch do not decide it. The messages are the contract hooks and skills read.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from pathlib import Path
 
 import task_bootstrap  # noqa: F401
 
+from task_progress import GITHUB_PR_URL, append_pr
 from task_state import (
     PREDICATES,
     TaskState,
@@ -141,45 +142,59 @@ def ancestry_problem(reviewed_at: str) -> str | None:
                 "run from the implementation checkout")
 
 
-def done_problems(r: TaskState, branch: str) -> list[str]:
-    """Every reason this spec may not close out yet, in the order the gates apply."""
+def done_problems(r: TaskState) -> list[str]:
+    """Every reason this spec may not close out yet: unchecked criteria, then a review that does not cover HEAD."""
     problems = []
-    task_branch = r.meta.get("branch")
-    if branch and task_branch and branch != task_branch:
-        problems.append(f"task branch is {task_branch}, current branch is {branch}")
     if not (PREDICATES["all_checked"](r, None) and PREDICATES["has_checkboxes"](r, None)):
         problems.append(f"{r.open} unchecked criteria/tasks" if r.open
                         else "no checked criteria")
-    if not PREDICATES["verdict_ok"](r, None):
-        problems.append(f"review verdict is {r.verdict}, need pass or warn")
     review = review_file(r.task)
     commit = reviewed_at(review)
     if commit:
         problem = ancestry_problem(commit)
         if problem:
             problems.append(problem)
-    elif branch:
+    elif review is not None:
         # Legacy reviews carry no identity; flag rather than block so old tasks still close.
-        print(f'warning: {review or "REVIEW.md"} has no "Reviewed at:" commit; '
-              'cannot confirm it covers HEAD', file=sys.stderr)
+        print(f'warning: {review} has no "Reviewed at:" commit; cannot confirm it covers HEAD',
+              file=sys.stderr)
     return problems
 
 
-def mark_done(task_dir: str | Path, pr_url: str, branch: str, force: bool) -> int:
+def record_pr(r: TaskState, pr_url: str) -> None:
+    """Append a valid PR URL to the task's PR list, saying so; a URL already there or a note adds nothing."""
+    if not GITHUB_PR_URL.fullmatch(pr_url) or pr_url in r.prs:
+        return
+    try:
+        append_pr(r.task, pr_url)
+    except OSError as error:
+        print(f"warning: {name(r)}: PR not recorded: {error}", file=sys.stderr)
+        return
+    print(f"recorded PR: {pr_url}")
+
+
+def mark_done(task_dir: str | Path, pr_url: str, force: bool) -> int:
+    """IMPLEMENTING to DONE with the PR that was opened; a DONE task only gains the PR in its list."""
     r = load_task(task_dir)
     if r is None:
         return 1
+    if not GITHUB_PR_URL.fullmatch(pr_url) and not force:
+        print(f"error: --pr-url {pr_url!r} is not a GitHub PR URL (https://github.com/OWNER/REPO/pull/N); "
+              "nothing written (--force records a free-text note instead)", file=sys.stderr)
+        return 2
     if head(r) == "DONE":
         print(f"already done: {name(r)}")
+        record_pr(r, pr_url)
         return 0
     if head(r) != "IMPLEMENTING":
         print(f"error: {name(r)} is {head(r) or 'unset'}, not IMPLEMENTING; nothing written",
               file=sys.stderr)
         return 1
-    problems = done_problems(r, branch)
+    problems = done_problems(r)
     if problems and not force:
-        print(f"error: {name(r)}: {'; '.join(problems)}; nothing written (--force overrides)",
+        print(f"error: {name(r)}: {'; '.join(problems)}; status not changed (--force overrides)",
               file=sys.stderr)
+        record_pr(r, pr_url)
         print(f"note: {review_location(r.task)}", file=sys.stderr)
         return 1
     print(f"done: {review_location(r.task)}")

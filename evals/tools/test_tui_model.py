@@ -31,29 +31,34 @@ def stamp(hours_ago: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - hours_ago * HOUR))
 
 
+ISSUE = "https://github.com/acme/widgets/issues/12"
+PR = "https://github.com/acme/widgets/pull/{}"
+
+
 def seed(home: Path) -> Path:
-    """Tasks: running, blocked with a dead stage, stale, done with a PR; worktrees: fresh, stale, malformed, no lock."""
+    """Tasks: running with an issue and a PR, blocked with a dead stage, stale under a live lock, done with two PRs;
+    worktrees: fresh, stale, malformed, no lock."""
     tasks = home / ".agent" / "tasks"
     specs = (
-        ("T1", "running", "IMPLEMENTING", "acme/widgets",
+        ("T1", "running", "IMPLEMENTING", "acme/widgets", f"Issue: {ISSUE}\n\n- [x] a\n- [ ] b\n",
          [(5, "METRIC: stage_start stage=review"), (4, "METRIC: stage_end stage=review"),
-          (2, "METRIC: stage_start stage=implement workers=2")]),
-        ("T2", "blocked", "APPROVED", "acme/gadgets",
+          (2, "METRIC: stage_start stage=implement workers=2"), (2, f"PR: {PR.format(9)}")]),
+        ("T2", "blocked", "APPROVED", "acme/gadgets", "",
          [(8, "METRIC: stage_start stage=review"), (1, "BLOCKED: waiting for keys")]),
-        ("T3", "idle", "IMPLEMENTING", "acme/widgets", [(20 * 24, "TRANSITION: APPROVED → IMPLEMENTING")]),
-        ("T4", "shipped", "DONE", "acme/widgets",
-         [(3, "METRIC: stage_start stage=review"), (2, "PR opened: https://github.com/acme/widgets/pull/7")]),
+        ("T3", "idle", "IMPLEMENTING", "acme/widgets", "", [(20 * 24, "TRANSITION: APPROVED → IMPLEMENTING")]),
+        ("T4", "shipped", "DONE", "acme/widgets", "",
+         [(50, "METRIC: stage_start stage=review"), (49, f"PR opened: {PR.format(7)}"), (49, f"PR: {PR.format(8)}")]),
     )
-    for uuid, slug, status, repo, progress in specs:
+    for uuid, slug, status, repo, body, progress in specs:
         task = tasks / uuid
         task.mkdir(parents=True)
-        (task / "SPEC.md").write_text(f"# {slug}\n\n## Status\n{status}\n")
+        (task / "SPEC.md").write_text(f"# {slug}\n\n## Status\n{status}\n\n{body}")
         (task / ".task-id").write_text(json.dumps({"slug": slug, "repo_remote_url": f"git@github.com:{repo}.git"}))
         (task / "PROGRESS.md").write_text("".join(f"[{stamp(h)}] {line}\n" for h, line in progress))
         old = NOW - max(h for h, _ in progress) * HOUR
         for path in task.iterdir():
             os.utime(path, (old, old))
-    locks = (("fresh", f"task=T1\nstarted={int(NOW - 600)}\n"), ("old", f"task=T9\nstarted={int(NOW - 7 * HOUR)}\n"),
+    locks = (("fresh", f"task=T3\nstarted={int(NOW - 600)}\n"), ("old", f"task=T9\nstarted={int(NOW - 7 * HOUR)}\n"),
              ("broken", "task=T1\nstarted=soon\n"), ("bare", None))
     for tree, text in locks:
         (home / tree).mkdir()
@@ -91,13 +96,24 @@ def test_tasks_view_order_and_done_rows(home: Path, filters: Filters, slugs: lis
     assert [row[1] for row in views(home, filters)["tasks"].rows] == slugs
 
 
-def test_task_cells_and_the_explicit_landed_read(home: Path) -> None:
-    unread = {row[1]: row for row in views(home, Filters(done=True))["tasks"].rows}
-    assert (unread["blocked"][5], unread["idle"][5], unread["running"][5]) == ("BLOCKED: waiting for keys", "stale", "")
-    assert (unread["shipped"][4], unread["running"][4]) == ("?", "-")
+@pytest.mark.parametrize("slug,cells,links", [
+    ("running", ("#12", "#9", "1/2", "running implement", "-", ""), {"ISSUE": ISSUE, "PR": PR.format(9)}),
+    ("blocked", ("-", "-", "-", "stuck review", "-", "BLOCKED: waiting for keys"), {}),
+    ("idle", ("-", "-", "-", "running implement", "-", "stale"), {}),
+    ("shipped", ("-", "2 PRs", "-", "idle 2d", "?", ""), {"PR": PR.format(8)}),
+])
+def test_task_cells(home: Path, slug: str, cells: tuple, links: dict) -> None:
+    """ISSUE, PR, PROGRESS, ACTIVITY (an open stage, a live lock, a stage past 6 h, the last entry), LANDED, NOTE."""
+    view = views(home, Filters(done=True))["tasks"]
+    index = [row[1] for row in view.rows].index(slug)
+    assert view.header[3:] == ("ISSUE", "PR", "PROGRESS", "ACTIVITY", "LANDED", "NOTE")
+    assert (view.rows[index][3:], view.links[index]) == (cells, links)
+
+
+def test_the_explicit_landed_read(home: Path) -> None:
     landed = landed_for(home / ".agent" / "tasks", Filters(done=True), reader)
     shipped = [row for row in views(home, Filters(done=True), landed)["tasks"].rows if row[1] == "shipped"]
-    assert shipped[0][4] == "yes"
+    assert shipped[0][7] == "yes"
 
 
 def test_workers_view_lists_running_stages_and_locks(home: Path) -> None:
@@ -106,7 +122,7 @@ def test_workers_view_lists_running_stages_and_locks(home: Path) -> None:
         ("stage", "running", "implement", "workers=2"),
         ("stage", "blocked", "review", "stale: no stage_end"),
         ("lock", "T9", str(home / "old"), "stale: the guard ignores it"),
-        ("lock", "running", str(home / "fresh"), "live"),
+        ("lock", "idle", str(home / "fresh"), "live"),
     ]
     hook = (ROOT / ".claude" / "hooks" / "guard" / "worker-tree.sh").read_text()
     assert f"\nSTALE_SECONDS={tui_model.LOCK_STALE_SECONDS}\n" in hook, "the lock threshold follows worker-tree.sh"
@@ -133,6 +149,7 @@ def test_once_prints_every_view_without_textual(home: Path) -> None:
                           timeout=60)
     assert done.returncode == 0, done.stderr
     assert all(f"== {name} ==" in done.stdout for name in ("tasks", "workers", "report")) and "running" in done.stdout
+    assert " #12 " in done.stdout and "[link" not in done.stdout, "--once prints the issue as plain text"
 
 
 def test_app_switches_views_filters_and_never_writes(home: Path) -> None:
@@ -142,10 +159,14 @@ def test_app_switches_views_filters_and_never_writes(home: Path) -> None:
     tasks = home / ".agent" / "tasks"
     before = {path: path.stat().st_mtime for path in tasks.rglob("*")}
 
-    async def drive() -> tuple[list[tuple[str, int]], dict | None]:
-        app = CrewApp(tasks, Filters(repo="all"), interval=60, reader=reader)
+    opened: list[str] = []
+
+    async def drive() -> tuple[list[tuple[str, int]], dict | None, str]:
+        app = CrewApp(tasks, Filters(repo="all"), interval=60, reader=reader, opener=opened.append)
         seen = []
         async with app.run_test() as pilot:
+            await pilot.press("o", "O")
+            cell = str(app.query_one("#table").get_cell_at((0, 3)))
             for keys in (["r"], ["w"], ["p"], ["t", "a"], ["g"], ["slash", *"status:approved", "enter"]):
                 await pilot.press(*keys)
                 if keys == ["g"]:
@@ -154,9 +175,11 @@ def test_app_switches_views_filters_and_never_writes(home: Path) -> None:
                     landed = app.landed
                     continue
                 seen.append((app.view_name, app.query_one("#table").row_count))
-        return seen, landed
+        return seen, landed, cell
 
-    seen, landed = asyncio.run(drive())
+    seen, landed, cell = asyncio.run(drive())
+    assert opened == [ISSUE, PR.format(9)], "o opens the selected task's issue and O its PR"
+    assert cell == f"[link={ISSUE}]#12[/link]", "the issue cell is a terminal link"
     assert [name for name, _ in seen] == ["tasks", "workers", "report", "tasks", "tasks"]
     assert [count for _, count in seen][0] == 3 and seen[3][1] == 4 and seen[4][1] == 1, seen
     assert landed == {str(tasks / "T4"): "yes"}, "g reads the DONE rows' PRs in a worker, then reloads"

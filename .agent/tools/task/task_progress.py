@@ -1,4 +1,4 @@
-"""The one owner of a task's PROGRESS.md: append and read entries, the BLOCKED, METRIC and cost views.
+"""The one owner of a task's PROGRESS.md: append and read entries, the BLOCKED, METRIC, cost and PR views.
 
 An entry is `[<UTC stamp>] <KIND>: <body>` (`YYYY-MM-DDTHH:MM:SSZ`, `lib.clock`); legacy local stamps
 still parse. `CREW_WORKFLOW`/`CREW_MEMBER` add a JSON suffix to a transition. A stage cost line
@@ -87,8 +87,10 @@ def print_cost(tasks_dir: Path) -> int:
 
 
 PROGRESS_FILE = "PROGRESS.md"
-KINDS = ("TRANSITION", "METRIC", "BLOCKED", "WORKTREE")
-NEUTRAL = ("METRIC", "WORKTREE")  # audit and preference lines never end a block (a stage_start does)
+KINDS = ("TRANSITION", "METRIC", "BLOCKED", "WORKTREE", "PR")
+NEUTRAL = ("METRIC", "WORKTREE", "PR")  # audit, preference and PR lines never end a block (a stage_start does)
+# The one PR URL shape: read into a PR list, accepted by `mark-done`, kept from a `gh pr list` answer.
+GITHUB_PR_URL = re.compile(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)")
 
 
 @dataclass(frozen=True)
@@ -162,6 +164,34 @@ def append_metric(task_dir: Path, payload: str) -> None:
 def append_blocked(task_dir: Path, reason: str) -> None:
     """One `BLOCKED: <reason>` line; a reason spanning lines is collapsed to one."""
     append_entry(task_dir, "BLOCKED", " ".join(reason.split()))
+
+
+def pr_urls(task_dir: Path) -> list[str]:
+    """The task's PR list, oldest first: every PR URL in a `PR:` entry or after `PR opened:`, once each.
+
+    One store, two writers through `append_pr` and the DONE transition: `mark-done` writes `PR opened:
+    <url>` in that transition and a `PR:` entry for a later PR, reconcile a `PR:` entry for a PR it
+    found on the task's branch. `PR opened:` counts only in a transition or an untyped legacy line, so
+    a BLOCKED reason that quotes one adds nothing.
+    """
+    found: list[str] = []
+    for entry in read_entries(task_dir):
+        if entry.kind == "PR":
+            text = entry.body
+        elif entry.kind in ("TRANSITION", ""):
+            text = entry.text.partition("PR opened:")[2]
+        else:
+            continue
+        found.extend(url for url in (match.group(0) for match in GITHUB_PR_URL.finditer(text)) if url not in found)
+    return found
+
+
+def append_pr(task_dir: Path, url: str) -> bool:
+    """Add `url` to the task's PR list; False when it is already there."""
+    if url in pr_urls(task_dir):
+        return False
+    append_entry(task_dir, "PR", url)
+    return True
 
 
 def append_worktree(task_dir: Path, choice: str, marker: object) -> None:

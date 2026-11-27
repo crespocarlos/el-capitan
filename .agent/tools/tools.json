@@ -48,7 +48,7 @@
       "list_flags": ["--limit", "--max-chars"],
       "json_smoke": ["--json", "--tasks-dir", "@tmpdir"],
       "routes": {
-        "crew ls": "Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line.",
+        "crew ls": "Task table for the current repo (`--repo all` for every one); IMPLEMENTING tasks idle for 14 days fold into one stale line; `--json` adds each task's issue, PRs, progress and activity.",
         "crew report": "Tasks opened and closed, review verdicts, findings by label and fixed rate, stage costs and durations, tool failures."
       }
     },
@@ -301,7 +301,7 @@
       "kind": "module",
       "category": "task",
       "owner": "repository",
-      "help": "imported by crew-ls.py, crew-metric.py and crew-progress.py: PROGRESS.md: append and read entries; BLOCKED, METRIC and stage cost lines",
+      "help": "imported by crew-ls.py, crew-metric.py and crew-progress.py: PROGRESS.md: append and read entries; BLOCKED, METRIC, stage cost and PR lines",
       "smoke": "imported by crew-ls.py, crew-metric.py and crew-progress.py"
     },
     {
@@ -580,7 +580,7 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by crew-ls.py and crew-task.py: rendering task state and reconcile",
+      "help": "imported by crew-ls.py and crew-task.py: rendering task state, the task cells and reconcile",
       "smoke": "imported by crew-ls.py and crew-task.py"
     },
     {
@@ -656,12 +656,21 @@
       "smoke": "imported by task_verify.py"
     },
     {
+      "name": "task_prs.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-task.py: the branch PRs reconcile reads from GitHub, cached 24 h, in parallel within a budget",
+      "smoke": "imported by crew-task.py"
+    },
+    {
       "name": "task_lock.py",
       "dir": "task",
       "kind": "module",
       "category": "task",
       "owner": "crew-implement",
-      "help": "imported by crew-task.py: the worker lock and BLOCKED lines (`crew-task.py lock|blocked`)",
+      "help": "imported by crew-task.py: the worker lock (write, read, remove) and BLOCKED lines (`crew-task.py lock|blocked`)",
       "smoke": "imported by crew-task.py"
     },
     {

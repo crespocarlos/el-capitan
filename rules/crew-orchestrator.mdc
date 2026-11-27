@@ -21,7 +21,8 @@ Owns the pipeline state machine, session-start awareness, and autopilot. Routing
 DRAFTING → [gate: approve spec] → APPROVED → IMPLEMENTING → DONE
 ```
 
-Review, commit, and the PR are steps inside `IMPLEMENTING`; their results are evidence, not states.
+Review and commit are steps inside `IMPLEMENTING`; their results are evidence, not states. Opening
+a PR ends it: the review cycle and the merge after that do not change the task's state.
 Side states: `ON-HOLD` (automatic after 14 idle days) and `ABANDONED` (user only).
 
 A gate is a user approval. Gate 1 is the user approving SPEC.md (`crew-task.py mark-approved`,
@@ -31,9 +32,11 @@ then calls `crew-task.py mark-done`. Approving a commit message is not a gate.
 
 Transitions are data in `.agent/tools/task/transitions.json`, applied by `crew-task.py reconcile
 --apply`. Idle DRAFTING/APPROVED go `ON-HOLD` with the prior state in the status; resume by editing
-Status back to the `was` value. IMPLEMENTING specs are reported as ready for a PR or stalled, never
-rewritten. `DONE` is written only by `crew-task.py mark-done` and means the draft PR was opened.
-PROGRESS.md and METRIC lines are audit records, never inputs to a gate (`.agent/tools/TOOLS.md`).
+Status back to the `was` value. Reconcile also records the PR it finds for each IMPLEMENTING task's
+branch; IMPLEMENTING specs are reported as ready to mark done, PR open but not closable (with the
+reason), ready for a PR, or stalled, never rewritten. `DONE` is written only by `crew-task.py mark-done` and means a PR for the
+task is open; a task can hold several PRs. PROGRESS.md and METRIC lines are audit records, never
+inputs to a gate (`.agent/tools/TOOLS.md`).
 
 ## Session-start awareness
 

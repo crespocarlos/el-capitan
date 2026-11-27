@@ -19,7 +19,7 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew spec` issue/URL/description | crew-specwriter |
 | `crew implement` | crew-implement → @crew-builder |
 | `crew commit` | crew-commit |
-| `crew open pr` | crew-open-pr |
+| `crew open pr` | crew-open-pr — an open PR marks the task DONE |
 | `crew review address` | crew-address-review skill — not crew-reviewer |
 | `crew review` [PR #X \| spec \| idea \| changes \| (self)] | crew-reviewer — `changes`: staged; `idea`: proposal |
 | `crew pr` view\|diff\|repo\|issue | `~/.agent/bin/crew-pr-actions.py`; writes stay `gh` |
@@ -30,7 +30,7 @@ Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, per
 | `crew evals` | crew-evals skill |
 | `crew e2e` [PR\|status\|setup] | crew-e2e skill |
 | `crew handoff` [resume] | crew-handoff skill |
-| `crew ls` [--all] [--repo R] [--status S] | `~/.agent/bin/crew-ls.py --md [flags]` |
+| `crew ls` [--all] [--repo R] [--status S] | `~/.agent/bin/crew-ls.py --md [flags]`; `--json` adds issue, PRs, progress, activity |
 | `crew report` [--since 30d] [--repo R] | `~/.agent/bin/crew-ls.py --report [flags]` |
 | `crew doctor` | `~/.agent/bin/crew-doctor.py` |
 | `crew gc` [--apply] | `~/.agent/bin/crew-task.py gc [--apply]`; dry run by default |

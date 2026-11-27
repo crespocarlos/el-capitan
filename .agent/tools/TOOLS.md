@@ -99,15 +99,16 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 
 - `task_bootstrap.py`: puts `.agent/tools` and the package directories on `sys.path`
 - `task_status.py`: the `## Status` contract, the review location, the typed `## Tests` rule
-- `task_state.py`: the SPEC record, the status write, reconcile rules, the status migration
-- `task_progress.py`: PROGRESS.md: append and read every entry (BLOCKED, METRIC and stage cost lines included)
+- `task_state.py`: the SPEC record (its issue and PR list included), the status write, reconcile rules, the status migration
+- `task_progress.py`: PROGRESS.md: append and read every entry (BLOCKED, METRIC, stage cost and PR lines included)
 - `task_gates.py`: the transition gates: approve, implement, close out
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`
-- `task_report.py`: rendering task state for `crew-ls.py`, and `reconcile`
+- `task_report.py`: rendering task state for `crew-ls.py`, the ISSUE, PR, PROGRESS and ACTIVITY cells, and `reconcile`
 - `ls_data.py`: what `crew ls` and `--report` read: rows, the repo and state filters, stale, the `landed` lines, landing bases, `--watch`
+- `task_prs.py`: the branch PRs reconcile asks GitHub for: due tasks, the 24-hour cache, the thread pool and its budget
 - `ls_report.py`: `crew-ls.py --report`: opened and closed, verdicts, findings and fixed rate, stage costs and durations, tool failures
 - `task_gc.py`: the retention policy (`~/.agent/config.json`), `crew-task.py gc`, the state sizes `crew-doctor.py` checks
-- `task_lock.py`: the worker lock and the `crew-task.py lock|blocked` commands
+- `task_lock.py`: the worker lock (written, read across the worktrees, removed) and the `crew-task.py lock|blocked` commands
 - `task_artifacts.py`: bounded task artifacts: read one, render the resolved task
 - `task_repo_facts.py`: the repository record a prompt reads: root, branch, head, remotes, files
 - `task_worktrees.py`: worktree reads: listing, `worktree check`, `worktree pref|record`
@@ -257,6 +258,24 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   in `task_report.py`, and every transition gate (`crew-task.py mark-approved`, `mark-implementing`,
   `mark-done`) lives in `task_gates.py`, so a refused transition's message
   is defined beside the check that produced it.
+- **DONE means a PR is open.** `mark-done --pr-url <GitHub PR URL>` appends the URL to the task's PR
+  list (PROGRESS.md: the `PR opened:` of the DONE transition, then a `PR:` entry per later PR) and
+  writes DONE; it refuses an unchecked criterion and a reviewed commit that is not an ancestor of HEAD
+  (no review: skipped), but not a review verdict or a branch other than the task's. A refusal exits
+  non-zero with the reason and still records the PR; `crew open pr` stops on it. On a DONE task it
+  only appends the PR. `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
+  read-only, for each IMPLEMENTING task with no PR recorded and a branch off its repository's default
+  branch, on 8 threads. Each answer, and each repository's default branch, is cached for 24 hours in
+  `~/.agent/.pr-lookup.json`, so a task is asked at most once a day. `--pr-budget SECONDS` bounds
+  the whole search: the session-start hook passes 3, a task with no answer by then (or a failed read,
+  offline) stays unchecked and is counted in one `N task(s) not checked for a PR yet` line, and a
+  run by hand has no budget. A lookup that raises prints `warning: PR lookup for <task>: …` and
+  stays unchecked. With `--apply` it records the PRs and the cache. It lists the tasks ready to mark
+  done (the reviewed commit checked against the task's branch tip, not the cwd's HEAD), and a task
+  whose PR is open but which fails that rule under `PR open, not closable` with the reason; `ready to
+  open PR` excludes a task with a PR. It never writes DONE. `crew ls --json` adds `issue`, `prs`,
+  `progress` and `activity` (`running <stage>`, `stuck <stage>` past 6 hours, or `idle 3d` from the
+  last PROGRESS entry; not the 14-day `stale`) from `task_report.task_cells`, the same cells the TUI shows.
 - **The status token is canonical and normalized on read.** `DRAFTING`, `APPROVED`, `IMPLEMENTING`,
   `ON-HOLD`, `DONE` are the five states; `ABANDONED` is a user-only side state the store may hold.
   `task_status.head` uppercases and strips trailing punctuation, so `done`, `Done`, and `DONE.` are
@@ -269,9 +288,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   own `REVIEW.md` when present, otherwise the directory `review_dir` in the task's `run.json` names.
   Both `run.json` writers record it — `review_workspace.claim` when the review directory is created,
   and `persist` on every write — because a PR-mode review persists to a temp directory by design and
-  would otherwise leave the close-out gate with nothing readable. The gate reads the verdict and the
-  `Reviewed at:` commit from that one file, so the two cannot disagree, and `mark-done` prints
-  which file it read (`done:` on stdout, `note:` on stderr) so a refusal is auditable.
+  would otherwise leave the close-out gate with nothing readable. The gate reads the `Reviewed at:`
+  commit from that one file, and `mark-done` prints which file it read (`done:` on stdout, `note:`
+  on stderr) so a refusal is auditable.
 - `crew-review-findings.py` records three fields on a finding: `kind` (what sort of defect: its values
   are `KINDS` in the tool, `security`, `correctness`, `reliability`, `documentation`, `testing`,
   `other`), `confidence` (the reviewer's own belief it is real, an integer 1-5: `5 confirmed`,
@@ -335,8 +354,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   for a missing `SPEC.md` or `hunks.json`; `persist` runs it only for a directory holding
   a `package.diff`.
 - `crew-task.py mark-done --force` is a deliberate, user-invoked escape hatch that skips every
-  evidence check, including review ancestry. It exists for a spec whose branch was intentionally
-  rebased; it is never used by a skill on its own initiative.
+  evidence check, including review ancestry, and accepts a free-text note (`none (committed to
+  main)`) in place of a PR URL. It exists for a spec whose branch was intentionally rebased or whose
+  work shipped without a PR; it is never used by a skill on its own initiative.
 - `crew-lint.py --dead-code` reports catalog commands with no caller. A caller is a reference from a prompt
   (rules, agents, skills, the root `AGENTS.md`, the templates), a hook, `install.sh`, another tool's
   code or a CI workflow; a Python docstring or comment, the tool tree's `.md` docs and the catalog

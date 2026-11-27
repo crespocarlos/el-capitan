@@ -71,11 +71,14 @@ Gate 1 is recorded on approval: `crew-specwriter` stops until you approve, then 
 creation in `crew-open-pr`, which shows the title, description, base, and target repository first.
 Autopilot chains between gates, never through them.
 
-A task closes on evidence, not on the PR alone: `crew-task.py mark-done` refuses an unchecked
-criterion, a review whose verdict is not `pass` or `warn`, a mismatched branch, and a review of a
-commit that does not cover `HEAD`. It reads the review from the task directory when `REVIEW.md` is
-there, and otherwise from the review directory the run recorded in the task's `run.json`. `--force`
-skips those checks and is your decision.
+A task is done once a PR for it is open; the review cycle and the merge come after and do not change
+its state. `crew-task.py mark-done` adds the PR to the task's PR list (a task can hold several) and
+refuses an unchecked criterion and a review of a commit that does not cover `HEAD`; the review
+verdict and the branch the PR came from do not decide it. It reads the review from the task
+directory when `REVIEW.md` is there, and otherwise from the review directory the run recorded in the
+task's `run.json`; with no review, that check is skipped. `--force` skips those checks, accepts a
+free-text note instead of a PR URL, and is your decision. At session start, reconcile records the PR
+it finds for each IMPLEMENTING task's branch and lists the tasks ready to mark done.
 
 A spec's status is one of `DRAFTING`, `APPROVED`, `IMPLEMENTING`, `ON-HOLD`, or `DONE`; the reader
 normalizes a legacy lowercase `done` to `DONE`, and `crew-task.py normalize-status --apply` rewrites

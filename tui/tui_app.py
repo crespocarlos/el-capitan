@@ -1,19 +1,33 @@
 """The Textual front end over `tui_model`: one table per view, refreshed on an interval and on `r`.
 
 Keys: `t` tasks, `w` workers, `p` report, `r` refresh, `g` read `landed` from GitHub, `a` DONE rows
-on or off, `/` a filter (`repo:R status:S done`), `q` quit. It shows what the model read; it never writes.
+on or off, `/` a filter (`repo:R status:S done`), `o` and `O` open the selected task's issue and PR in
+the browser, `q` quit. ISSUE and PR cells are terminal links. It shows what the model read; it never writes.
 """
 from __future__ import annotations
 
+import webbrowser
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
+from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
-from tui_model import Filters, View, collect, landed_for, parse_filter
+from tui_model import LINKED, Filters, View, collect, landed_for, parse_filter
+
+
+def cells(view: View, index: int) -> list[str]:
+    """One row as Textual markup: the linked cells as `[link=…]`, every cell's text escaped.
+
+    The URLs come only from `GITHUB_PR_URL` and `ISSUE_URL`, whose owner/repo class holds no bracket,
+    so a URL cannot end the tag early.
+    """
+    links = view.links[index] if index < len(view.links) else {}
+    return [f"[link={links[key]}]{escape(cell)}[/link]" if key in links else escape(cell)
+            for key, cell in zip(view.header, view.rows[index])]
 
 
 class CrewApp(App):
@@ -30,14 +44,17 @@ class CrewApp(App):
         Binding("g", "landed", "GitHub landed"),
         Binding("a", "toggle_done", "DONE on/off"),
         Binding("slash", "filter", "Filter"),
+        Binding("o", "open('ISSUE')", "Open issue"),
+        Binding("O", "open('PR')", "Open PR"),
         Binding("q", "quit", "Quit"),
     ]
 
     def __init__(self, tasks_dir: Path, filters: Filters, interval: float = 5.0,
-                 reader: Callable | None = None) -> None:
-        """`reader` replaces the `gh` read behind `g` (tests pass a stub)."""
+                 reader: Callable | None = None, opener: Callable[[str], object] = webbrowser.open) -> None:
+        """`reader` replaces the `gh` read behind `g`, `opener` the browser behind `o`/`O` (tests pass stubs)."""
         super().__init__()
         self.tasks_dir, self.filters, self.interval, self.reader = tasks_dir, filters, interval, reader
+        self.opener = opener
         self.view_name = "tasks"
         self.landed: dict[str, str] | None = None
         self.views: dict[str, View] = {}
@@ -63,7 +80,7 @@ class CrewApp(App):
         table = self.query_one("#table", DataTable)
         table.clear(columns=True)
         table.add_columns(*view.header)
-        table.add_rows(view.rows)
+        table.add_rows([cells(view, index) for index in range(len(view.rows))])
         self.sub_title = f"{view.title} | filter: {self.describe()}"
         self.query_one("#notes", Static).update("\n".join(view.notes))
 
@@ -75,6 +92,18 @@ class CrewApp(App):
     def action_show(self, name: str) -> None:
         self.view_name = name
         self.draw()
+
+    def action_open(self, key: str) -> None:
+        """Open the selected task's issue (`ISSUE`) or newest PR (`PR`) in the browser; a note when it has none."""
+        view = self.views.get(self.view_name)
+        row = self.query_one("#table", DataTable).cursor_row
+        if key not in LINKED or view is None or not 0 <= row < len(view.links):
+            return
+        url = view.links[row].get(key)
+        if url:
+            self.opener(url)
+        else:
+            self.notify(f"this task has no {key.lower()}")
 
     def action_landed(self) -> None:
         """Read GitHub in a thread worker, so the app stays live; a second press waits for the first."""

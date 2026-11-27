@@ -219,9 +219,14 @@ crew-lint `bootstrap-identical` fails a bootstrap copy that drifts), so Ruff's `
 - Reads normalize: `head` uppercases and strips trailing punctuation, so a legacy `done` and a
   `DONE` are one state. `token` rejects anything outside the set and names the allowed values, which
   is where a typo should fail rather than at a transition that silently matches no rule.
-- Writers emit the canonical spelling. `DONE` is written only by `crew-task.py mark-done`, and the
-  builder never writes a status at all; a hand-written value skips the gate that proves the review
-  passed.
+- Writers emit the canonical spelling. `DONE` is written only by `crew-task.py mark-done`, once a PR
+  for the task is open, and the builder never writes a status at all; a hand-written value skips the
+  gate that records the PR and checks the criteria and the reviewed commit.
+- A task's PR list is the PR URLs in its PROGRESS.md (`task_progress.pr_urls`): the `PR opened:` of
+  its DONE transition and a `PR:` entry for each later one. `mark-done` and `reconcile --apply`
+  (which reads each IMPLEMENTING task's branch PR with `gh pr list --head`, cached for a day and
+  bounded at session start, `task_prs.py`) append through
+  `task_progress.append_pr`; the issue is the spec's `Issue:` line, else its first issue URL.
 - `crew-task.py normalize-status [--apply]` is the migration for a legacy token: it reports each
   file, and a second run reports `0 of N` because a canonical value needs no change.
 

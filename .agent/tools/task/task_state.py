@@ -9,18 +9,18 @@ from __future__ import annotations
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 import task_bootstrap  # noqa: F401
 
-from task_progress import PROGRESS_FILE, append_transition, latest
-from task_status import STATUS, StatusError, canonical, read_status, review_file
+from task_progress import PROGRESS_FILE, append_transition, latest, pr_urls
+from task_status import STATUS, StatusError, canonical, read_status, review_file, reviewed_at
 from task_status import head as state_head
 
 from lib.files import atomic_write
-from lib.git import slug_from_url
+from lib.git import GitError, is_ancestor, slug_from_url
 
 
 @dataclass
@@ -41,6 +41,8 @@ class TaskState:
     open: int
     done: int
     activity: int = 0  # days since `last_activity`: the AGE `crew ls` shows
+    issue: str = ""  # the GitHub issue URL the spec names (`issue_url`), or ""
+    prs: list[str] = field(default_factory=list)  # the PR list, oldest first (`task_progress.pr_urls`)
 
     @property
     def uuid(self) -> str:
@@ -80,13 +82,39 @@ def head(r: TaskState) -> str:
     return state_head(r.status)
 
 
+def review_not_behind(r: TaskState) -> bool:
+    """False only when git proves the review's `Reviewed at:` commit is not an ancestor of the task's branch tip.
+
+    The tip is the task's recorded branch, not the cwd's HEAD: reconcile runs from whatever checkout the
+    session opened, usually the default branch, while the work sits in a worktree sharing its objects.
+    No review, no commit, no branch, or a commit or branch git cannot resolve passes; `mark-done`
+    repeats the check against HEAD in the implementation checkout and refuses what it cannot verify.
+    """
+    commit, branch = reviewed_at(review_file(r.task)), r.meta.get("branch")
+    if not commit or not isinstance(branch, str) or not branch:
+        return True
+    try:
+        return is_ancestor(None, commit, branch)
+    except GitError:
+        return True
+
+
+def done_blockers(r: TaskState) -> list[str]:
+    """Why a task with a PR is not ready to mark done, in the words reconcile prints."""
+    return ([f"{r.open} unchecked" if r.open else "no checked criteria"] if r.open or not r.done else []) + (
+        [] if review_not_behind(r) else ["the review does not cover the branch tip; re-run crew review"])
+
+
 PREDICATES = {
     "all_checked": lambda r, rules: r.open == 0,
     "has_checkboxes": lambda r, rules: r.done > 0,
     "verdict_ok": lambda r, rules: r.verdict.lower() in ("pass", "warn"),
+    "has_pr": lambda r, rules: bool(r.prs),
+    "no_pr": lambda r, rules: not r.prs,
+    "review_not_behind": lambda r, rules: review_not_behind(r),
     "idle": lambda r, rules: r.age > rules["idle_days"],
 }
-KINDS = ("ready", "stalled", "hold")
+KINDS = ("done", "pr-open", "ready", "stalled", "hold")
 SAMPLE_FIELDS = dict(idle_days=0, prior="X", from_state="X")
 OPEN_ITEM = re.compile(r"^\s*[-*]\s\[ \]", re.M)
 DONE_ITEM = re.compile(r"^\s*[-*]\s\[[xX]\]", re.M)
@@ -102,6 +130,29 @@ ACTIVITY_FILES = ("SPEC.md", PROGRESS_FILE, "REVIEW.md", "REPORT.md")
 
 def unresolved(spec_text: str) -> bool:
     return bool(UNRESOLVED.search(FENCED.sub("", spec_text)))
+
+
+ISSUE_URL = re.compile(r"https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)")  # no `[` or `]`: a TUI link carries it
+ISSUE_LINE = re.compile(r"^[#>*\s-]*Issue\**:\**[ \t]*(.*)$", re.M)
+ISSUE_REF = re.compile(r"(?<![\w/])(?:([\w.-]+/[\w.-]+))?#(\d+)\b")
+
+
+def issue_url(spec_text: str, repo: str) -> str:
+    """The GitHub issue a spec names: its `Issue:` line (a URL, `#n` or `owner/repo#n`), else the first issue URL.
+
+    `crew spec` writes the line; older specs name the issue anywhere in their prose. Fenced text is an
+    example, never the task's issue, and `#n` needs the task's `repo` (`owner/repo`).
+    """
+    text = FENCED.sub("", spec_text)
+    for line in ISSUE_LINE.findall(text):
+        found = ISSUE_URL.search(line)
+        if found:
+            return found.group(0)
+        ref = ISSUE_REF.search(line)
+        if ref and (ref.group(1) or repo):
+            return f"https://github.com/{ref.group(1) or repo}/issues/{ref.group(2)}"
+    found = ISSUE_URL.search(text)
+    return found.group(0) if found else ""
 
 
 class RulesError(ValueError):
@@ -165,12 +216,14 @@ def load(task: Path) -> TaskState:
     status = STATUS.search(text)
     review = review_file(task)
     verdicts = VERDICT.findall(review.read_text(encoding="utf-8")) if review else []
-    return TaskState(
+    record = TaskState(
         task=task, text=text, meta=meta, status=status.group(2).strip() if status else None,
         verdict=verdicts[-1] if verdicts else "?", age=days_since(newest_mtime(task)),
         open=len(OPEN_ITEM.findall(text)), done=len(DONE_ITEM.findall(text)),
-        activity=days_since(last_activity(task)),
+        activity=days_since(last_activity(task)), prs=pr_urls(task),
     )
+    record.issue = issue_url(text, record.repo)
+    return record
 
 
 def decide(r: TaskState, rules: dict) -> dict | None:

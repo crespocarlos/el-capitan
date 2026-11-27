@@ -2,14 +2,15 @@
 
 `<tree>/.crew-worker.lock` holds `task=<id>` and integer `started=<epoch>` (read by the bash guard
 `worker-tree.sh`, stale after its `STALE_SECONDS`), excluded through `.git/info/exclude`. The orchestrator
-writes it (`lock write <tree> --task <id>`), the builder removes it (`lock remove <tree>`).
-`blocked <TASK_DIR> "<reason>"` appends one BLOCKED line; `blocked_lines` is what `crew ls` shows.
+writes it (`lock write <tree> --task <id>`), the builder removes it, `read_locks` reads it for `crew ls
+--json` and the TUI. `blocked <TASK_DIR> "<reason>"` appends one BLOCKED line `crew ls` shows.
 """
 from __future__ import annotations
 
 import argparse
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from task_progress import append_blocked, blocked_reason
@@ -19,6 +20,47 @@ from lib.git import GitError, output
 
 LOCK_NAME = ".crew-worker.lock"
 BLOCKED = "BLOCKED: "
+LOCK_STALE_SECONDS = 21600  # `STALE_SECONDS` of .claude/hooks/guard/worker-tree.sh: an older lock does not guard
+
+
+@dataclass(frozen=True)
+class Lock:
+    """A `.crew-worker.lock`: the tree it guards, its task, and its start (POSIX seconds)."""
+
+    tree: Path
+    task: str
+    started: float
+
+
+def parse_lock(tree: Path, text: str) -> Lock | None:
+    """The lock `write_lock` wrote, or None when it has no task or no integer start."""
+    values = dict(line.partition("=")[::2] for line in text.splitlines() if "=" in line)
+    started = values.get("started", "")
+    if not values.get("task") or not started.isdigit():
+        return None
+    return Lock(tree, values["task"], float(started))
+
+
+def read_locks(trees: list[Path]) -> list[Lock]:
+    """The readable locks in `trees`."""
+    found = []
+    for tree in trees:
+        try:
+            lock = parse_lock(tree, (tree / LOCK_NAME).read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        found.extend([lock] if lock else [])
+    return found
+
+
+def worktree_paths() -> list[Path]:
+    """The worktrees of the repository around the cwd; none outside a repository."""
+    from task_worktrees import worktrees
+
+    try:
+        return [path for path, _ in worktrees()]
+    except (GitError, OSError):
+        return []
 
 
 def exclude_path(tree: Path) -> Path:

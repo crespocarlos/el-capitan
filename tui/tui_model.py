@@ -18,18 +18,16 @@ from ls_data import landed_rows, load_rows, repo_filter, select, stale
 from ls_report import gather as gather_report
 from ls_report import render as render_report
 from ls_report import stage_pairs
-from task_lock import LOCK_NAME
+from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
 from task_progress import blocked_reason, read_entries
-from task_report import age_cell, aligned, ordered_rows, state_label
+from task_report import aligned, ordered_rows, state_label, task_cells
 from task_state import TaskState, head, name
 from task_status import StatusError, token
 
-from lib.git import GitError
-
 VIEWS = ("tasks", "workers", "report")
-LOCK_STALE_SECONDS = 21600  # `STALE_SECONDS` of .claude/hooks/guard/worker-tree.sh: an older lock does not guard
 STAGE_STALE_SECONDS = LOCK_STALE_SECONDS  # a stage open this long outlived any worker the guard still protects
 NOT_READ = "?"  # a DONE task's `landed` before the GitHub key is pressed
+LINKED = ("ISSUE", "PR")  # the cells that are terminal links in the app; `o` and `O` open them
 
 
 @dataclass(frozen=True)
@@ -44,21 +42,14 @@ class Filters:
 
 @dataclass
 class View:
-    """One screen: a title, a table header and rows of cells, and note lines under the table."""
+    """One screen: a title, a table header and rows of plain cells, note lines under the table, and per row
+    the URL behind each linked cell (`{"ISSUE": url, "PR": url}`, only the ones the task has)."""
 
     title: str
     header: tuple[str, ...]
     rows: list[tuple[str, ...]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class Lock:
-    """A `.crew-worker.lock`: the tree it guards, its task, and its start (POSIX seconds)."""
-
-    tree: Path
-    task: str
-    started: float
+    links: list[dict[str, str]] = field(default_factory=list)
 
 
 def parse_filter(text: str, base: Filters | None = None) -> Filters:
@@ -93,15 +84,19 @@ def ago(seconds: float) -> str:
     return f"{minutes // 60}h" if minutes < 24 * 60 else f"{minutes // (24 * 60)}d"
 
 
-def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], scope: str) -> View:
-    """STATE, TASK, REPO, AGE, LANDED and a NOTE (the BLOCKED reason, or `stale`) per task, in `crew ls` order."""
-    view = View("tasks", ("STATE", "TASK", "REPO", "AGE", "LANDED", "NOTE"))
+def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], scope: str,
+               entries: dict[Path, list], locks: list[Lock], now: float) -> View:
+    """STATE, TASK, REPO, ISSUE, PR, PROGRESS, ACTIVITY (`task_report.task_cells`), LANDED and a NOTE (the
+    BLOCKED reason, or `stale` past 14 idle days) per task, in `crew ls` order."""
+    view = View("tasks", ("STATE", "TASK", "REPO", "ISSUE", "PR", "PROGRESS", "ACTIVITY", "LANDED", "NOTE"))
     for r in ordered_rows(rows, show_done):
         reason = blocked_reason(r.task)
         note = f"BLOCKED: {reason}" if reason else ("stale" if stale(r) else "")
         done = head(r) == "DONE"
-        view.rows.append((state_label(r), name(r), r.repo or "-", age_cell(r),
+        cells = task_cells(r, entries.get(r.task, []), locks, now)
+        view.rows.append((state_label(r), name(r), r.repo or "-", *(cells[key] for key in view.header[3:7]),
                           landed.get(str(r.task), NOT_READ) if done else "-", note))
+        view.links.append({key: url for key, url in (("ISSUE", r.issue), ("PR", r.prs[-1] if r.prs else "")) if url})
     open_count = sum(1 for r in rows if head(r) != "DONE")
     view.notes.append(f"{len(rows)} tasks: {open_count} open, {len(rows) - open_count} done; scope: {scope}")
     if show_done and any(head(r) == "DONE" and str(r.task) not in landed for r in rows):
@@ -148,39 +143,9 @@ def build(rows: list[TaskState], filters: Filters, scope: str, *, entries: dict[
     """Every view from data already read; pure."""
     show_done = filters.done or "DONE" in filters.states
     moment = time.time() if now is None else now
-    return {"tasks": tasks_view(rows, show_done, landed or {}, scope),
+    return {"tasks": tasks_view(rows, show_done, landed or {}, scope, entries, locks, moment),
             "workers": workers_view(rows, entries, locks, moment),
             "report": report_view(report, scope)}
-
-
-def parse_lock(tree: Path, text: str) -> Lock | None:
-    """The lock `task_lock.write_lock` wrote, or None when it has no task or no integer start."""
-    values = dict(line.partition("=")[::2] for line in text.splitlines() if "=" in line)
-    started = values.get("started", "")
-    if not values.get("task") or not started.isdigit():
-        return None
-    return Lock(tree, values["task"], float(started))
-
-
-def worktree_paths() -> list[Path]:
-    """The worktrees of the repository around the cwd; none outside a repository."""
-    from task_worktrees import worktrees
-
-    try:
-        return [path for path, _ in worktrees()]
-    except (GitError, OSError):
-        return []
-
-
-def read_locks(trees: list[Path]) -> list[Lock]:
-    found = []
-    for tree in trees:
-        try:
-            lock = parse_lock(tree, (tree / LOCK_NAME).read_text(encoding="utf-8"))
-        except OSError:
-            continue
-        found.extend([lock] if lock else [])
-    return found
 
 
 def scope_of(repos: set[str] | None) -> str:

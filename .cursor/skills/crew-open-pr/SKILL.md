@@ -1,7 +1,7 @@
 ---
 disable-model-invocation: true
 name: crew-open-pr
-description: "Push the current branch and open a PR with a generated description. Trigger: 'crew open pr'."
+description: "Push the current branch, open a PR with a generated description, and mark the task DONE. Trigger: 'crew open pr'."
 ---
 
 **Workflow**: build | **Stage**: open-pr
@@ -26,7 +26,9 @@ A nonzero exit here is the ordinary case — no PR exists for this branch yet �
 `EXISTING_PR` rather than stopping. Any other failure looks the same, which is why the PR-create step
 below still reports what `gh` says.
 
-If `EXISTING_PR` is non-empty, stop and report:
+If `EXISTING_PR` is non-empty, the PR was opened another way (by hand, or by an earlier run that
+stopped). Run [Session Capture](#session-capture) with `PR_URL=$URL`, so the task records it and is
+marked done now rather than at a later session start, then stop and report:
 
 > "A PR already exists for this branch: $EXISTING_PR. Run `crew resolve PR` to address review
 > comments, or push new commits directly."
@@ -153,27 +155,33 @@ After creating the PR, resolve `TASK_DIR`:
 source ~/.agent/bin/task-env.sh
 ```
 
-If `TASK_DIR` is non-empty, set the spec to `DONE` and log the transition. `mark-done` writes the
-status and appends to `PROGRESS.md`; it refuses unless the spec is `IMPLEMENTING`, all criteria are
-checked, the last review verdict is pass or warn, the task branch matches the current branch, and the
-last review's `Reviewed at:` commit is an ancestor of HEAD. Because `crew commit` runs after
-`crew review`, HEAD is normally ahead of the reviewed tree — that is fine, but a review of a
-different branch, or one older than a rebase, must be re-run.
+If `TASK_DIR` is non-empty, record the PR and mark the task `DONE`: a task is done once a PR for it is
+open, and the review cycle and the merge happen after. `mark-done` adds the PR URL to the task's PR
+list (a task can hold several; on a task already `DONE` it only adds the URL), writes the status and
+appends to `PROGRESS.md`. It refuses unless the spec is `IMPLEMENTING`, every criterion is checked,
+and, when a review exists, its `Reviewed at:` commit is an ancestor of HEAD. Because `crew commit`
+runs after `crew review`, HEAD is normally ahead of the reviewed tree; a review older than a rebase
+must be re-run.
 
 ```bash
 if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
-  echo "error: task state unreadable — PR opened but spec not marked done" >&2
+  echo "error: task state unreadable; PR opened ($PR_URL) but the task is not marked done" >&2
+  exit 1
 elif [ -n "$TASK_DIR" ]; then
   ~/.agent/bin/crew-task.py mark-done "$TASK_DIR" --pr-url "$PR_URL" \
-    --branch "$(~/.agent/bin/crew-repo-info.py --field branch)" \
-    || echo "warning: PR opened but spec not marked done" >&2
+    || { echo "error: PR opened ($PR_URL) but the task is not marked done" >&2; exit 1; }
+else
+  LIKELY=$(~/.agent/bin/crew-ls.py --json --status implementing --max-chars 1000000 \
+    | jq -r 'sort_by(.activity_days) | .[0].directory // "<TASK_DIR>"')
+  echo "note: no task matches this branch; to attach $PR_URL to one: ~/.agent/bin/crew-task.py mark-done $LIKELY --pr-url $PR_URL (newest IMPLEMENTING task of this repo; check it is the right one)"
 fi
 ```
 
-On a non-zero exit, show the `error:` line and the PR URL, and say the spec is not marked done. Do not
-re-run `gh pr create`. Once the cause is fixed, re-run the same `mark-done` command; `--force`
-skips the evidence checks only when the user asks for it. With no `TASK_DIR`, there is nothing to
-mark.
+A refusal ends the stage with a non-zero exit: show the `error:` line with its reason and the PR URL,
+and say the task is not marked done. The PR stays recorded in the task. Do not re-run `gh pr create`.
+Once the cause is fixed, re-run the same `mark-done` command; `--force` skips the evidence checks only
+when the user asks for it. With no matching task, as when one task ships through PRs on several
+branches, show the `note:` line as printed and run that command only when the user confirms the task.
 
 **Closing confirmation.** Last, ask the one journal and memory question of the workflow per
 [closing confirmation](references/closing-confirmation.md); it is the build workflow's only place

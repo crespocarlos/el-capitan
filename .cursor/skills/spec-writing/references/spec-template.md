@@ -3,6 +3,7 @@
 ## Type: [feature | bugfix | refactor | chore | docs]
 ## Branch: [type/short-description — e.g. feat/sigevents-verdict-rename]
 ## Base: [optional: the parent branch this stacks on, read by `crew open pr`; omit otherwise]
+## Issue: [the GitHub issue URL when the spec starts from one, read by `crew ls` and the TUI; omit otherwise]
 ## Status
 DRAFTING
 
