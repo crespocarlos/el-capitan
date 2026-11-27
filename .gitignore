@@ -2,7 +2,11 @@
 .agent/journal/
 .agent/PROFILE.md
 .agent/vectorstore/
-.agent/tools/__pycache__/
+
+# Python bytecode, in every package (the tools, tui/, evals/)
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 # Per-run local state: task specs, review scratch, and anything else a crew command writes.
 # Everything under .agent/ except the templates and the tool tree is runtime state, so ignore
