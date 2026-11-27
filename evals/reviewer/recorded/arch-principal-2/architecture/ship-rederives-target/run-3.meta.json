@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-ship-rederives-target-6flg5v4s",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".task-id"
+    },
+    {
+      "name": "Grep",
+      "pattern": "repo_remote_url",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

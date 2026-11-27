@@ -1,0 +1,52 @@
+{
+  "id": "spec-wait-stale-result",
+  "lens": "specwriter-adversarial",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded from task 86BF5814 (review 20261126135530, adversarial finding 1), reduced to a spec",
+  "summary": "A spec for running verify in the background and waiting on its result file.",
+  "defect": "The result file is reused across runs and the child writes it only after its first gate, so a `--wait` right after `--background` reads the previous run's `done` file and returns its verdict at once. No criterion makes `--background` reset or remove the file before launching, or ties the waited result to this run (a run id or start time), and the only test starts from a fresh directory.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 22
+    },
+    {
+      "file": "SPEC.md",
+      "line": 20
+    }
+  ],
+  "refs": [
+    "--wait",
+    "criterion 3",
+    "AC 3",
+    "AC3",
+    "criterion 2",
+    "AC 2",
+    "AC2"
+  ],
+  "keywords": [
+    [
+      "previous run*",
+      "earlier run*",
+      "old result*",
+      "stale",
+      "last run*",
+      "prior run*",
+      "leftover",
+      "old file",
+      "old verdict",
+      "already exists",
+      "reused",
+      "left over",
+      "from before"
+    ],
+    [
+      "wait*",
+      "background*",
+      "poll*"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

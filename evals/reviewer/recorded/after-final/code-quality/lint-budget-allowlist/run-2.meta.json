@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def parse_frontmatter|def rel\\(|Findings =|lint_turn_budget|lint_native_tool_ids\\(|^import|^from",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    }
+  ],
+  "num_turns": 3
+}

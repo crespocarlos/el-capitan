@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-persist-strict-old-review-dirs-cttm6pvp",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "spec-context|package_violations|def canonical_personas|def read_json_object|owner\\s*=|--strict",
+      "path": "."
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/review-findings.py"
+    }
+  ],
+  "num_turns": 3
+}

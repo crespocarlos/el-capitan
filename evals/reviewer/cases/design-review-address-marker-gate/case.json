@@ -1,0 +1,99 @@
+{
+  "id": "design-review-address-marker-gate",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": true,
+  "source": "hand-seeded from task EE4BA3D2 SPEC.md (Decisions: the review-address marker protocol is replaced; task 5) and the two hooks it deleted (el-capitan 81477dc to 3d8fa25)",
+  "summary": "`crew review address` presents a verdict table of review findings and must not edit anything until the owner says which fixes to apply. Prose in the skill did not hold that gate, so it is now structural: the skill writes a `pending` marker (session and review directory) when it presents the table, a UserPromptSubmit hook writes `approved` when the owner's own message answers it, and a PreToolUse hook on Edit and Write denies while a pending marker in this session has no matching approval. Both hooks are registered in the settings template that install merges into each Claude config dir.",
+  "defect": "Two hooks, two state files and a model-written marker rebuild an approval gate the harness already has. The model writes `pending`, so it can disarm the gate by not writing it; the markers go stale across sessions and need scoping; a regex over the owner's reply decides what counts as approval. A `permissions.ask` rule on the edits of the review-address flow makes the harness ask the owner before the first edit, with no state and no forgeable marker. History deleted both hooks and the marker reads and added the ask rule (task EE4BA3D2, task 5).",
+  "locations": [
+    {
+      "file": ".claude/hooks/review-address-gate.sh",
+      "line": 17
+    },
+    {
+      "file": ".claude/hooks/review-address-approval.sh",
+      "line": 19
+    },
+    {
+      "file": ".claude/settings.json",
+      "line": 21
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "instead",
+      "rather than",
+      "unnecessary",
+      "not needed",
+      "needless*",
+      "no need",
+      "redundant",
+      "replace*",
+      "over-engineer*",
+      "overengineer*",
+      "overbuilt",
+      "over-built",
+      "reinvent*",
+      "re-implement*",
+      "reimplement*",
+      "hand-roll*",
+      "duplicat*",
+      "parallel",
+      "wrong approach",
+      "wrong layer",
+      "wrong place",
+      "redirect*",
+      "rethink",
+      "reconsider",
+      "heavyweight",
+      "too heavy",
+      "machinery",
+      "not the right",
+      "better approach",
+      "better fit",
+      "belongs in",
+      "should live",
+      "should be a",
+      "should be one",
+      "move this",
+      "move it",
+      "prefer*",
+      "don't build",
+      "do not build"
+    ],
+    [
+      "ask rule*",
+      "ask permission*",
+      "ask-permission*",
+      "ask-before-edit",
+      "ask before",
+      "asks before",
+      "asks the owner",
+      "asks the user",
+      "permission prompt*",
+      "approval prompt*",
+      "permission rule*",
+      "ask list",
+      "ask entry",
+      "ask section",
+      "ask array",
+      "permissions ask",
+      "harness asks",
+      "built-in prompt*",
+      "native prompt*",
+      "native approval",
+      "built-in approval",
+      "native permission*",
+      "built-in permission*"
+    ]
+  ],
+  "context": {},
+  "match_code": true,
+  "after": {
+    ".claude/hooks/review-address-gate.sh": "#!/usr/bin/env bash\n# Deny edits under `crew review address` until the user's own prompt approved a fix set.\n#\n# Two markers under ~/.agent/review-address, both scoped to a session and a review directory:\n#   pending  — written by the skill when it presents the verdict table;\n#   approved — written only by review-address-approval.sh, from the user's own message.\n# No pending marker, or one from another session, means an ordinary edit: allow.\nset -euo pipefail\n# shellcheck source=lib/hook.sh\n. \"$(dirname \"$0\")/lib/hook.sh\"\n\nsession=$(hook_field session_id)\nstate=\"$HOME/.agent/review-address\"\npending=\"$state/pending\"\napproved=\"$state/approved\"\n\n[ -f \"$pending\" ] || hook_allow\narmed_session=$(jq -r '.session // empty' \"$pending\" 2>/dev/null || true)\n[ -n \"$session\" ] && [ \"$armed_session\" = \"$session\" ] || hook_allow\narmed_review=$(jq -r '.review_dir // empty' \"$pending\" 2>/dev/null || true)\n\nif [ -f \"$approved\" ]; then\n  [ \"$(jq -r '.session // empty' \"$approved\")\" = \"$session\" ] \\\n    && [ \"$(jq -r '.review_dir // empty' \"$approved\")\" = \"$armed_review\" ] && hook_allow\nfi\nhook_deny \"Review-address gate: the verdict table for ${armed_review:-this review} has no approval yet. Reply with the fixes to apply (all / none / numbers).\"\n",
+    ".claude/hooks/review-address-approval.sh": "#!/usr/bin/env bash\n# UserPromptSubmit: record the approval half of the review-address gate. Only a user turn reaches this hook, so the\n# model cannot write `approved` itself. Inert until the skill has written `pending`.\nset +e\nstate=\"$HOME/.agent/review-address\"\npending=\"$state/pending\"\napproved=\"$state/approved\"\n[ -f \"$pending\" ] || exit 0\n\ninput=$(cat)\nprompt=$(printf '%s' \"$input\" | jq -r '.prompt // empty' 2>/dev/null)\narmed_session=$(jq -r '.session // empty' \"$pending\" 2>/dev/null)\narmed_review=$(jq -r '.review_dir // empty' \"$pending\" 2>/dev/null)\n[ \"$(printf '%s' \"$input\" | jq -r '.session_id // empty')\" = \"$armed_session\" ] || exit 0\n\n# `none` authorizes no edit, so it records nothing; any other accepted answer authorizes at least one fix.\nif printf '%s' \"$prompt\" | grep -Eqi '^[[:space:]]*(all|yes|ok|approve[d]?|apply( all)?|go ahead|proceed)[[:space:].!]*$|^[[:space:]]*[0-9]+([[:space:],]+[0-9]+)*[[:space:]]*$'; then\n  mkdir -p \"$state\"\n  jq -n --arg s \"$armed_session\" --arg r \"$armed_review\" --arg p \"$prompt\" '{session:$s, review_dir:$r, prompt:$p}' > \"$approved\"\nfi\nexit 0\n",
+    ".claude/settings.json": "{\n  \"permissions\": {\n    \"allow\": [\n      \"Read(~/.agent/**)\"\n    ],\n    \"ask\": [\n      \"Bash(git push --force*)\"\n    ]\n  },\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"bash \\\"$HOME/.claude/hooks/guard/credentials.sh\\\"\" }\n        ]\n      },\n      {\n        \"matcher\": \"Edit|Write|MultiEdit\",\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"bash \\\"$HOME/.claude/hooks/review-address-gate.sh\\\"\" }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"bash \\\"$HOME/.claude/hooks/review-address-approval.sh\\\"; exit 0\" }\n        ]\n      }\n    ]\n  }\n}\n"
+  }
+}

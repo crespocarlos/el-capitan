@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "check-packages|Package delivery|too large|embed",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

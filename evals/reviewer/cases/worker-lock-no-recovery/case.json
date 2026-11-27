@@ -1,0 +1,61 @@
+{
+  "id": "worker-lock-no-recovery",
+  "lens": "product-flow",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task 86BF5814, review 20261126135530, product-flow finding 5",
+  "summary": "A builder can run in the user's main checkout. The orchestrator writes `.crew-worker.lock` into the tree at dispatch and the builder removes it as its last step; a new guard hook denies `checkout`, `switch`, `restore` and `reset --hard` in a tree with a fresh lock (under 6 hours), except for the builder itself.",
+  "defect": "Only the builder removes the lock. A builder that crashes, runs out of context or is stopped leaves it behind, and the person's own `git switch` in their checkout is then denied for up to 6 hours. The deny message says to wait for a builder that no longer exists and never names the way out (`crew-progress.py lock remove <tree>`).",
+  "locations": [
+    {
+      "file": ".claude/hooks/guard/worker-tree.sh",
+      "line": 44
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "crash*",
+      "dead",
+      "died",
+      "dies",
+      "killed",
+      "orphan*",
+      "left behind",
+      "leftover",
+      "no longer running",
+      "no longer exists",
+      "interrupted",
+      "aborted",
+      "never removed",
+      "not removed",
+      "stopped",
+      "out of context",
+      "never cleaned",
+      "not cleaned"
+    ],
+    [
+      "recover*",
+      "remove the lock",
+      "clear the lock",
+      "delete the lock",
+      "lock remove",
+      "unlock*",
+      "6 hours",
+      "six hours",
+      "way out",
+      "what to do",
+      "actionable",
+      "next step",
+      "stuck",
+      "trapped",
+      "locked out"
+    ]
+  ],
+  "context": {
+    ".agent/tools/task/task_lock.py": "\"\"\"`crew-progress.py lock`: the worker lock a live builder holds on its tree (excerpt).\n\nThe lock is the file `<tree root>/.crew-worker.lock`, two `key=value` lines: `task=<id>` and\n`started=<epoch seconds>` (plus `started_at=<UTC time>` for people). The guard hook\n`.claude/hooks/guard/worker-tree.sh` reads it from bash, which is why the start is an integer:\na lock older than `STALE_SECONDS` is stale and no longer denies anything. The file is excluded\nthrough `.git/info/exclude`, so it never shows in a status or a commit.\n\n    crew-progress.py lock write <tree> --task <id>     dispatch: the orchestrator writes it\n    crew-progress.py lock remove <tree>                exit: the builder removes it\n\"\"\"\nfrom __future__ import annotations\n\nfrom pathlib import Path\n\nLOCK_NAME = \".crew-worker.lock\"\nSTALE_SECONDS = 6 * 60 * 60\n\n\ndef remove_lock(tree: Path) -> bool:\n    \"\"\"Delete the lock; True when one was there.\"\"\"\n    lock = tree / LOCK_NAME\n    existed = lock.is_file()\n    lock.unlink(missing_ok=True)\n    return existed\n"
+  },
+  "after": {
+    ".claude/hooks/guard/worker-tree.sh": "#!/usr/bin/env bash\n# A live worker's tree: `git checkout`, `git switch`, `git restore` and `git reset --hard` are denied\n# in a working tree whose `.crew-worker.lock` is fresh (younger than 6 hours; see task_lock.py). The\n# tree is the hook's cwd, or `git -C <path>`, or a leading `cd <path> &&`. Best effort: it does not\n# parse every shell form, and a harness without hooks is protected by nothing but the lock's honesty.\n# The builder is exempt: CREW_WORKER_TASK equal to the lock's task= (the hook's environment, or an\n# inline `CREW_WORKER_TASK=<id>` prefix, which is all a hook can see of the builder's shell).\nset -euo pipefail\nHOOK_NAME=worker-tree\n# shellcheck source=lib/hook.sh\n. \"$(dirname \"$0\")/../lib/hook.sh\"\nhook_input\nhook_event\ncmd=$(hook_field command)\n[ -n \"$cmd\" ] || hook_allow\n\nSTALE_SECONDS=21600\nGIT='git(([[:space:]]+-{1,2}[^[:space:];&|]+([[:space:]]+[^[:space:];&|]+)?)*)[[:space:]]+'\nCHANGES_TREE=\"${GIT}(checkout|switch|restore|reset[[:space:]]+--hard)([[:space:]]|\\$|;|&|\\|)\"\n# Quoted text is data: `git commit -m \"git checkout x\"` is a message, not a command.\nINSPECT=$(printf '%s' \"$cmd\" | sed -E \"s/'[^']*'/''/g; s/\\\"[^\\\"]*\\\"/\\\"\\\"/g\")\ngrep -Eq -- \"$CHANGES_TREE\" <<<\"$INSPECT\" || hook_allow\n\n# An absolute or cwd-relative path, with the quotes the shell would drop.\nresolve() { case \"$1\" in /*) printf '%s' \"$1\" ;; *) printf '%s/%s' \"$2\" \"$1\" ;; esac; }\nbase=$HOOK_CWD\ncd_form='^[[:space:]]*cd[[:space:]]+[\"'\"'\"']?([^[:space:]\"'\"'\"';&|]+)[\"'\"'\"']?[[:space:]]*&&'\nc_form='git[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-C[[:space:]]+[\"'\"'\"']?([^[:space:]\"'\"'\"';&|]+)'\nif [[ $cmd =~ $cd_form ]]; then base=$(resolve \"${BASH_REMATCH[1]}\" \"$HOOK_CWD\"); fi\ndir=$base\nif [[ $cmd =~ $c_form ]]; then dir=$(resolve \"${BASH_REMATCH[2]}\" \"$base\"); fi\n\nroot=$(git -C \"$dir\" rev-parse --show-toplevel 2>/dev/null) || hook_allow\nlock=\"$root/.crew-worker.lock\"\n[ -f \"$lock\" ] || hook_allow\nstarted=$(awk -F= '$1==\"started\"{print $2}' \"$lock\" 2>/dev/null || true)\ntask=$(awk -F= '$1==\"task\"{print $2}' \"$lock\" 2>/dev/null || true)\ncase \"$started\" in '' | *[!0-9]*) hook_allow ;; esac\nwho=${CREW_WORKER_TASK:-}\ninline='(^|[[:space:];&|])CREW_WORKER_TASK=[\"'\"'\"']?([^[:space:]\"'\"'\"';&|]*)'\nif [[ $cmd =~ $inline ]]; then who=${BASH_REMATCH[2]}; fi\nif [ -n \"$who\" ] && [ \"$who\" = \"$task\" ]; then hook_allow; fi\nif [ $(( $(date +%s) - started )) -lt \"$STALE_SECONDS\" ]; then\n  hook_deny \"The builder for task ${task:-unknown} holds $root. Do not change its branch or files from outside; wait for it, or run git -C against another tree.\"\nfi\nhook_allow\n"
+  }
+}

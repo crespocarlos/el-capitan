@@ -1,0 +1,21 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-mcp-mirror-config-dirs-a46pn9ky",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/config.json"
+    },
+    {
+      "name": "Read",
+      "path": ".claude/install_blocks.py"
+    }
+  ],
+  "num_turns": 4
+}

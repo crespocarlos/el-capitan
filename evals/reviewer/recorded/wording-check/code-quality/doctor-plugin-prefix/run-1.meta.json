@@ -1,0 +1,13 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-doctor-plugin-prefix-f70_udaw",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def read_object|import.*read_object"
+    }
+  ],
+  "num_turns": 2
+}

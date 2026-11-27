@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-spec-bundled-contract-rewrite-sd49shvl",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*{review-hunks,review-findings,reviewer-contract,crew-reviewer,test_review,test.sh}*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "One issue per finding|pre-exists|package\\.diff|diff\\.patch"
+    }
+  ],
+  "num_turns": 3
+}

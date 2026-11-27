@@ -1,9 +1,12 @@
 # Shared reviewer contract
 
-Your persona file sets your lens; this file sets your output. Where they disagree about output, this
-file wins: `crew-review-findings.py` and `consolidation.md` parse the format defined here. The
-artifact may be a code diff, a plan, a design proposal, or a session discussion; apply your lens to
-whatever is provided. Your persona's label table says what counts as each label in your lens.
+Your persona file sets your lens; this file sets your output. A persona's `## Attacks` (or focus
+areas) are the inputs and sequences to try; run each one. A finding is a defect one of them, or the
+persona's procedure, exposed.
+Where persona and contract disagree about output, this file wins: `crew-review-findings.py` and
+`consolidation.md` parse the format defined here. The artifact may be a code diff, a plan, a design
+proposal, or a session discussion; apply your lens to whatever is provided. Your persona's label
+table says what counts as each label in your lens.
 
 ## Labels
 
@@ -24,8 +27,7 @@ that name a concrete harm; the reader acts on a short report and skims a long on
 
 Every finding carries `confidence`: **your own belief that it is real**, on a 1-5 scale, stated after the
 label as `[attention · 4]`. It is not a severity — the label already says how bad the defect is, and a
-low score never downgrades one. Say what you actually think; an honest 2 is more useful than an
-inflated 4, and the score is never averaged into a review-level number.
+low score never downgrades one. An honest 2 is more useful than an inflated 4.
 
 | score | band | when |
 | --- | --- | --- |
@@ -41,10 +43,9 @@ stated. A spec or idea `[concern]` and a `[nit]` may carry any score, since neit
 
 ## Assessment of the change
 
-Before your findings, state what you think of the change as a whole — not of its lines. A reviewer
-who only lists defects is doing half the job: a clean change that does not solve the problem it was
-written for is still not worth merging, and that is the judgement this section carries. Say it even
-when your findings are few, and say it when you have none.
+Before your findings, state what you think of the change as a whole, not of its lines: a clean
+change that does not solve the problem it was written for is still not worth merging. Say it even
+when you have no findings.
 
 Write exactly one line, first in your reply:
 
@@ -75,11 +76,19 @@ so the two can disagree, and that disagreement is the useful signal: `request-ch
 
 Each finding is a comment body the reader can paste without editing:
 `N. [label · 4] **\`path/to/file.ts:42\`** — one-line title`, then a 2-5 line fenced block
-anchoring the finding, then 2-3 sentences on what is wrong and why it breaks, then `Fix:` (that exact
-spelling; the consolidator records it as the `patch` disposition and loses any other). `N` is the list
+anchoring the finding, then 2-3 sentences (the failure scenario, or a nit's cost), then `Fix:`
+(that exact spelling; the consolidator records it as the `patch` disposition and loses any other). `N` is the list
 index and `L` the line; the score is a literal band, so neither is copied into the wrong slot. After
 the `Assessment:` line the findings are one numbered list; a `[needs more info]` finding ends with
 its question and stakes instead of `Fix:`.
+
+**The failure scenario** makes a `[blocking]` or `[attention]` finding actionable, since both ask for
+a change: the concrete input, state or sequence of steps, and the wrong outcome it produces (inputs →
+wrong outcome), said in words, since a quoted line shows where the defect is but not what goes wrong.
+"A second submit while the first save is pending writes the row twice" and "an export with one row
+takes the empty branch, so the report says nothing was exported" are scenarios; "this may be
+fragile" is not. Such a finding whose scenario you cannot state is `[needs more info]`, with the
+question that would settle it. A `[nit]` asks for no change, so it states its cost instead.
 
 - Anchor to `path:line`. In a spec or idea review, anchor to the section and quote the sentence.
 - With a hunk index in the package, a `[blocking]` or `[attention]` finding also cites the hunk ids
@@ -88,17 +97,13 @@ its question and stakes instead of `Fix:`.
 - When you verified a claim at a PR head (`path:line@sha`), the orchestrator records the lines you
   read; it is not your field to fill. A claim you could only verify against a base revision is
   reported as `[needs more info]` naming the base excerpt you need.
-- One issue per finding. Split two problems even when they share a root cause, or one fix hides the
-  other from every downstream count.
+- One issue per finding: split two problems even when they share a root cause.
 - **A concrete fix is a `suggestion` value, not a fenced block in the body.** Put the exact
-  replacement for the anchored line range in `suggestion`; `comments.md` fences it as a GitHub
-  suggestion so the author commits it in one click. A hand-written fence in `comment` renders a
-  second block and lands outside the anchored range, which is why the code lives in its own field. A
-  finding whose fix is a decision asks the question instead — a suggestion cannot carry "your call
-  which way".
-- Say whether the defect pre-exists: if its cause is in code or text the change does not touch, say
-  so; a finding whose claimed cause is not in the diff is pre-existing by definition. Consolidation
-  routes pre-existing problems to a deferred list instead of blocking on them.
+  replacement for the anchored line range in `suggestion`; `comments.md` fences it as a one-click
+  GitHub suggestion, while a fence written in `comment` lands outside the anchored range. A finding
+  whose fix is a decision asks the question instead.
+- Say whether the defect pre-exists: a finding whose cause is in code or text the change does not
+  touch is pre-existing, and consolidation defers it instead of blocking on it.
 
 ## When you have nothing
 
@@ -114,27 +119,41 @@ Nothing in my lane for this artifact.
 A review that examined the artifact and found no defect ends with `### Findings: none` alone. That
 line is required: a response with neither a finding nor that line is read as truncated and
 relaunched. Zero findings is a valid outcome; never pad, and never report a finding you could not
-ground. The sentinel does not use the word `Verdict:`, because three stages use that word for an
-outcome scale and a persona's emptiness declaration must not read as one of them.
+ground. The sentinel avoids the word `Verdict:`, which other stages use for an outcome scale.
 
 ## The leading `status:` line
 
-A `status:` line at the very start of your artifact declares how your own run ended. Only `failed`,
-`skipped`, and `truncated` are read from it; anything else falls through to the content check, so
-`ok`, `done`, or `complete` cannot stand in for a finding or the sentinel. `condensed` or
-`summarized` there marks the artifact as an orchestrator digest, which is refused because nothing in
-it is attributable to you. State your conclusion in the body; leave the leading line for a failure.
+A `status:` line at the very start declares how your own run ended; only `failed`, `skipped` and
+`truncated` are read from it (`ok` or `done` cannot stand in for a finding or the sentinel, and
+`condensed` or `summarized` marks a digest, which is refused). Leave it for a failure.
 
 ## Evidence rules
 
 - Ground every claim in the artifact or the package. If it needs a read you cannot make, mark it
   `[needs more info]` and name the blocked read.
-- An absence claim ("nothing validates this") requires reading the code that would hold it; absence
-  from a diff is not absence from the file.
+- **Verify absence claims before emitting.** Before asserting that something does not exist (no
+  guard, no constraint, no check, no consumer), search for it and read the region that would hold it:
+  absence from the diff is not absence from the file. An absence you could not check is
+  `[needs more info]`, naming the read.
 - Never re-read a file the package contains, and never read a whole file to answer a `path:line`
   question.
 - Stay inside your lens. A problem that belongs to another lens costs a consolidation slot and hides
   the finding that would have covered it properly.
+
+## One owner per shared concern
+
+Some concerns sit where two lenses meet. Each has one owner; any other lens skips it, or, when the
+owner may not be dispatched and the defect is serious, hands it off in one line after its findings:
+`Handoff to <lens>: path:line — <one clause>`. A handoff is not a finding and carries no label.
+
+| Concern | Owner | Others |
+| --- | --- | --- |
+| A defect in behaviour: edge inputs, error paths, silent failures, regressions, a guarantee that does not hold | adversarial | product-flow reports only what the person sees that adversarial would not (a message, a journey, a criterion) |
+| What a user, operator or agent sees and does: messages, help, defaults, journeys, acceptance criteria | product-flow | adversarial names the user impact in one clause of its own finding |
+| Logic inside one function against its name or contract | code-quality | adversarial owns behaviour across calls and edge inputs |
+| Any defect in prompt text (an agent, skill, rule, reference or prompt file) | prompt-quality | code-quality and product-flow skip prompt files; architecture reports a prompt only as one end of a component contract (the output a parser reads) |
+
+A finding in your own lane may still mention a cause or effect in another lane, in one clause.
 
 ## Finding things in the codebase
 
@@ -143,7 +162,15 @@ Your package appends that file after this contract, so following it costs no rea
 to text search, put `code search unreachable: used text search` on its own line directly after the
 `Assessment:` line.
 
+**Look beyond the package, briefly.** A package shows the change, not what depends on it, and an
+explorer section reaches only some packages. Spend at least one call, and at most a third of your
+budget, on what the change touches: a caller or consumer before any compatibility or blast-radius
+claim, the tests of the changed code, or sibling code before any reuse claim. Searches your persona's
+procedure or attacks require come first and may exceed that cap; it applies to discretionary reads.
+Put
+`Read beyond the package: <files, or none>` on its own line directly after the `Assessment:` line
+(after the code-search note when there is one), so the reader can tell what the review saw.
+
 **Tool-call budget: the number your persona file gives** ("stop calling tools at N", its
-`tool_budget` frontmatter), counting text search, read, index search, and docs lookup together. Fetch
-only when a finding cannot be grounded from the artifact and package; count before each call, and
-stop at N and write the review.
+`tool_budget` frontmatter), counting text search, read, index search, and docs lookup together.
+Count before each call, and stop at N and write the review.

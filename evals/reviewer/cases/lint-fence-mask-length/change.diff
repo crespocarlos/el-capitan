@@ -1,0 +1,52 @@
+diff --git a/.agent/tools/maintenance/lint_style.py b/.agent/tools/maintenance/lint_style.py
+new file mode 100644
+--- /dev/null
++++ b/.agent/tools/maintenance/lint_style.py
+@@ -0,0 +1,47 @@
++"""The writing standard for prompt files: rules, agents, skills and their references (excerpt).
++
++Prose is read with frontmatter and fenced code masked (inline code too): capitals used as emphasis
++are reported, so a rule gives its reason in one sentence instead of shouting. Code is exempt, since
++a command or a constant is spelled the way the tool spells it.
++"""
++from __future__ import annotations
++
++import re
++from pathlib import Path
++
++from lint_files import line_no, rel
++
++Findings = list[tuple[str, int, str, str]]
++PROMPT_GLOBS = ("rules/*.mdc", ".cursor/agents/**/*.md", ".cursor/skills/**/*.md", ".claude/CLAUDE.md",
++                "AGENTS.md", ".agent/tools/AGENTS.md")
++SHOUTING = re.compile(
++    r"\b(?:MUST|NEVER|ALWAYS|NOT(?! VERIFIED)|ONLY|DO|DON'T|NO|CRITICAL|IMPORTANT|MANDATORY|REQUIRED"
++    r"|STOP|ALL|ANY|EVERY|EXACTLY|IMMEDIATELY)\b|(?i:\bmandatory\b|\bno exceptions\b|\bprotocol violation\b)")
++FRONTMATTER = re.compile(r"\A---\n.*?\n---\n", re.S)
++
++
++def prompt_files(root: Path) -> list[Path]:
++    found = {path for pattern in PROMPT_GLOBS for path in root.glob(pattern) if path.is_file()}
++    return sorted(path for path in found if "fixtures" not in path.parts)
++
++
++def blank(match: re.Match) -> str:
++    return re.sub(r"[^\n]", " ", match.group(0))
++
++
++def mask(text: str, inline: bool = True) -> str:
++    """Frontmatter and fenced code (and inline code when `inline`) as spaces; offsets and lines stay put."""
++    text = FRONTMATTER.sub(blank, text)
++    text = re.sub(r"^(\s*)(```|~~~).*?^\s*\2[^\n]*$", blank, text, flags=re.S | re.M)
++    return re.sub(r"`[^`\n]+`", blank, text) if inline else text
++
++
++def lint_style(root: Path) -> Findings:
++    """The no-shouting rule over every prompt file's prose."""
++    found: Findings = []
++    for path in prompt_files(root):
++        name, text = rel(root, path), path.read_text(encoding="utf-8", errors="replace")
++        prose = mask(text)
++        found += [(name, line_no(prose, m.start()), "no-shouting",
++                   f"`{m.group(0)}` is emphasis; give the reason in one sentence") for m in SHOUTING.finditer(prose)]
++    return found

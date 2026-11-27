@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_status.py"
+    },
+    {
+      "name": "Glob",
+      "pattern": ".claude/hooks/**",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-persist-strict-old-review-dirs-158filnm",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "spec-context|package\\.diff|owner =|def canonical_personas|strict",
+      "path": "."
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/review-findings.py"
+    }
+  ],
+  "num_turns": 3
+}

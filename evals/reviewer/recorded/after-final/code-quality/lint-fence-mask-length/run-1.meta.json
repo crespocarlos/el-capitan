@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def line_no|def rel|lint_style|def mask|FRONTMATTER",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

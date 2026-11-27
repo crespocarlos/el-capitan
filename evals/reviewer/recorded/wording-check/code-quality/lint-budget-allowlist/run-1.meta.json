@@ -1,0 +1,24 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-lint-budget-allowlist-po9u90zp",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "lint_turn_budget|persona-turn-budget|def parse_frontmatter|def rel\\b|lint_native_tool_ids\\(",
+      "path": "."
+    },
+    {
+      "name": "Grep",
+      "pattern": "^(tool_budget|maxTurns):|stop calling tools at",
+      "path": ".cursor/agents",
+      "error": true
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/maintenance/lint_prompts.py"
+    }
+  ],
+  "num_turns": 4
+}

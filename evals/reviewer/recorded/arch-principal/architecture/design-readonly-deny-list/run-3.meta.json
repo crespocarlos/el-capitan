@@ -1,0 +1,21 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-readonly-deny-list-v39lupmp",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/config.json"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "^tools:|disallowedTools|readonly-tools"
+    }
+  ],
+  "num_turns": 4
+}

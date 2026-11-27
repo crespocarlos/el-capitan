@@ -1,0 +1,19 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-persist-strict-old-review-dirs-lyrikk9s",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "spec-context|def canonical_personas|owner =|def read_json_object|spec_context",
+      "path": "."
+    },
+    {
+      "name": "Grep",
+      "pattern": "canonical_personas|read_json_object|^import|^from|add_argument\\(\"--(strict|personas|mode)|SPEC_FULL|spec_sections",
+      "path": ".agent/tools/review-findings.py"
+    }
+  ],
+  "num_turns": 3
+}

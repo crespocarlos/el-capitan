@@ -1,0 +1,56 @@
+{
+  "id": "address-idea-no-files-to-read",
+  "lens": "prompt-quality",
+  "kind": "diff",
+  "hand_seeded": false,
+  "source": "task C5D81C7C, review 20261118141118, consolidated finding (adversarial and prompt-quality; code-quality finding 3)",
+  "summary": "`crew review address` in idea mode used to emit a revised idea as chat text only. A spec review targets `SPEC.md` on disk, so idea mode now reads that file and applies the accepted revision to it as real edits, and keeps emitting text for a pasted idea.",
+  "defect": "Step 2 still opens idea mode with \"No files to read\" (and Step 1 says to use visible findings \"do not read any file\"), unchanged by this edit. An agent that follows the earlier, more emphatic rule evaluates the findings without opening the spec, and the new \"read that file\" branch in Step 4 contradicts it; Step 2 must be scoped to pasted text.",
+  "locations": [
+    {
+      "file": ".cursor/skills/crew-address-review/SKILL.md",
+      "line": 48
+    },
+    {
+      "file": ".cursor/skills/crew-address-review/SKILL.md",
+      "line": 35
+    },
+    {
+      "file": ".cursor/skills/crew-address-review/SKILL.md",
+      "line": 82
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "contradict*",
+      "conflict*",
+      "forbid*",
+      "ban*",
+      "prohibit*",
+      "unreachable",
+      "dead",
+      "never open*",
+      "never read*",
+      "never reach*",
+      "inconsistent",
+      "disagree*"
+    ],
+    [
+      "Step 2",
+      "Step 1",
+      "no files",
+      "read any file",
+      "reading files",
+      "read files",
+      "read the spec",
+      "evaluation step",
+      "silent pass",
+      "earlier step"
+    ]
+  ],
+  "context": {},
+  "after": {
+    ".cursor/skills/crew-address-review/SKILL.md": "---\ndisable-model-invocation: true\nname: crew-address-review\ndescription: \"Work through findings from the most recent crew review inline. Trigger: 'crew review address'.\"\n---\n\n# Address Review (excerpt)\n\n## Execution model\n\n**Two modes; Step 1 selects one:**\n\n- **Code mode** (self-review, changes review, PR review): silent file-check → verdict table → apply\n  edits. 3 turns.\n- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): the artifact is a plan, not code.\n  Findings are conceptual: evaluate inline → present acceptance table → synthesize the revision if\n  approved. The revision is an edit to the spec file when the artifact is one, and emitted text when\n  it is pasted. 3 turns.\n\nNever mix modes. If the review heading contains \"Idea\" or \"Spec\" (case-insensitive), use idea mode\nthroughout.\n\n## When Invoked\n\n### Step 1: Locate findings and detect mode\n\n**Detect mode now, before any other step.** Check the `## Review: <mode>` heading in context\n(case-insensitive):\n- Contains \"idea\" or \"spec\" → **Idea mode**\n- Anything else (self, changes, PR, etc.) → **Code mode**\n\nCarry this mode through Steps 2–4 without re-detecting.\n\nCheck if a `## Review:` heading is visible in the current session conversation. If yes, use those\nfindings directly — do not read any file.\n\n### Step 2: Evaluate findings (silent pass)\n\n**Code mode:** For each finding, before preparing any edits:\n\n1. **Read the relevant file** (if a specific file/line is cited) — check the current state of the\n   code\n2. **Check if already addressed**: if the finding's fix is already present in the working tree,\n   classify as **Already Addressed** — no edit needed\n3. **Assess validity**: is the finding grounded? Classify as **Apply**, **Adapt**, **Reject** or\n   **Defer**, with the reason\n\n**Idea mode:** No files to read. For each finding:\n\n1. **Assess whether the critique holds**: does the reviewer's concern actually apply to the idea as\n   stated?\n   - If the concern is valid and actionable, classify as **Accept** — note what change to the idea\n     it implies\n   - If the concern is misplaced or based on a misreading, classify as **Reject** — explain why\n   - If the concern is valid but needs the user's input to resolve, classify as **Needs Input**\n2. Do not fabricate new direction — only incorporate what the reviewer found plus any clarifications\n   the user provides in the next step\n\nNever apply any change during this step. Collect all verdicts first.\n\n### Step 3: Report and ask for approval\n\nPresent the verdict table (code mode) or the acceptance table (idea mode), then ask which rows to\napply: `all`, `none`, or row numbers.\n\n### Step 4: Apply\n\n**Code mode:** read each file immediately before editing it, apply the approved fixes, and log each\noutcome.\n\n**Idea mode with a file target:** the same edit rules apply — read the file immediately before\nediting, and apply the revision as real edits to it. Idea mode's \"synthesis, not implementation\" rule\nmeans it does not touch code the spec describes; it does write the spec.\n\n**Idea mode:** synthesis, not implementation. The artifact is usually pasted text, but a spec review\ntargets a `SPEC.md` file; in that case the \"revised idea\" is an edit to that file, not a chat reply.\n\n1. If the user chose `none`, skip synthesis entirely — go straight to the summary.\n2. Collect all accepted/nit items plus any user answers to Needs Input items.\n3. Locate the original artifact:\n   - **Spec review, or any review whose target is a file** (the `## Review:` heading names it, or the\n     findings cite `SPEC.md`): read that file. Do not ask the user to paste what is already on disk.\n   - **Idea review of pasted text**: it is in the session conversation (the pasted text or the output\n     of the prior `crew review idea` turn). If it is not recoverable from context (scrolled out or\n     session reset), ask: `\"I can't locate the original idea text in context — please paste it and\n     I'll produce the revised version.\"` Then wait.\n4. Produce the **revision** that incorporates all accepted changes: for a file target, edit that file\n   in place; for pasted text, emit the revised text. Match the original structure and heading levels.\n   Do not add new sections; do not remove content unless a finding specifically called it out.\n5. Present the result:\n   - **File target:** the edit landed in the file; show the changed sections as a diff and name the\n     path. Do not also paste the whole file.\n   - **Pasted text:** present the revised text inline under a heading like `## Revised Idea`.\n"
+  }
+}

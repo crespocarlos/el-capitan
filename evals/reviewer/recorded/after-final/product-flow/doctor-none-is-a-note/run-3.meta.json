@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def claude_capability|def available|def plugin_servers|NONE_IN_DIR",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

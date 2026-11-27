@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "One issue per finding|pre-exists|package\\.diff|diff\\.patch|check-packages|spec-context"
+    }
+  ],
+  "num_turns": 3
+}

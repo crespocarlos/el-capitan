@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/review-findings.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "check_strict|evidence",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

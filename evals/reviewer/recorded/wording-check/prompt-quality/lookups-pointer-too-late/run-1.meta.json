@@ -1,0 +1,19 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-lookups-pointer-too-late-esdwxgbn",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "lookups|Product facts|code search unreachable|docs server",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

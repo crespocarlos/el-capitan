@@ -1,0 +1,19 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "lint_turn_budget|def parse_frontmatter|def rel\\b|lint_native_tool_ids|persona-turn-budget"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*lint_prompts*"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/maintenance/lint_prompts.py"
+    }
+  ],
+  "num_turns": 4
+}

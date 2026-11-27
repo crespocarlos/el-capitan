@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def read_object|plugin_servers|startswith\\(f?\"plugin_",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

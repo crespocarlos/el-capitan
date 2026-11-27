@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "deliver now|resumed once|no reply",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    }
+  ],
+  "num_turns": 3
+}

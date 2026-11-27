@@ -1,0 +1,45 @@
+diff --git a/.agent/tools/maintenance/doctor_worktrees.py b/.agent/tools/maintenance/doctor_worktrees.py
+new file mode 100644
+--- /dev/null
++++ b/.agent/tools/maintenance/doctor_worktrees.py
+@@ -0,0 +1,40 @@
++"""Doctor: each task's recorded worktree exists, is on the task's branch, and has the task's repository as origin."""
++from __future__ import annotations
++
++import json
++import subprocess
++from pathlib import Path
++
++TASKS = Path.home() / ".agent" / "tasks"
++
++
++def _git(tree: Path, *args: str) -> str:
++    """One git read in `tree`: its stripped stdout."""
++    result = subprocess.run(["git", "-C", str(tree), *args], capture_output=True, text=True, check=False)
++    return result.stdout.strip()
++
++
++def _slug(url: str) -> str:
++    """`owner/name` of a remote URL, ssh or https."""
++    tail = url.rstrip("/").removesuffix(".git")
++    return "/".join(tail.replace(":", "/").split("/")[-2:])
++
++
++def check_worktrees(tasks: Path = TASKS) -> list[tuple[str, str]]:
++    """One WARN row per task whose recorded worktree is missing, on another branch, or from another repository."""
++    rows = []
++    for meta_path in sorted(tasks.glob("*/.task-id")):
++        meta = json.loads(meta_path.read_text())
++        if not meta.get("worktree"):
++            continue
++        tree, name = Path(meta["worktree"]), meta.get("slug", meta_path.parent.name)
++        if not tree.is_dir():
++            rows.append(("WARN", f"{name}: the recorded worktree {tree} is missing"))
++            continue
++        branch = _git(tree, "rev-parse", "--abbrev-ref", "HEAD")
++        if branch != meta.get("branch"):
++            rows.append(("WARN", f"{name}: {tree} is on {branch}, not {meta.get('branch')}"))
++        origin = _git(tree, "remote", "get-url", "origin")
++        if _slug(origin) != _slug(meta.get("repo_remote_url", "")):
++            rows.append(("WARN", f"{name}: {tree} has origin {origin or '(none)'}, not the task's repository"))
++    return rows

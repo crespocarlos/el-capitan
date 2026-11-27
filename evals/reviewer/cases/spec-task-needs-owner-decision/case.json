@@ -1,0 +1,44 @@
+{
+  "id": "spec-task-needs-owner-decision",
+  "lens": "specwriter-scope",
+  "kind": "spec",
+  "hand_seeded": true,
+  "source": "hand-seeded, modelled on task 71BB7660's TUI token cost",
+  "summary": "A spec that adds a cost column to the task TUI.",
+  "defect": "Task 2 cannot be built: the builder runs unattended and cannot ask the owner, and the pricing choice is left as an open question, so the builder either stops or invents a policy the owner never chose. The decision belongs in the spec before approval, with a criterion that pins it.",
+  "locations": [
+    {
+      "file": "SPEC.md",
+      "line": 28
+    }
+  ],
+  "refs": [
+    "Task 2",
+    "T2"
+  ],
+  "keywords": [
+    [
+      "owner",
+      "decision",
+      "decide*",
+      "undecided",
+      "open question",
+      "unresolved",
+      "interactive*",
+      "human",
+      "unattended",
+      "TBD",
+      "not decided",
+      "cannot ask",
+      "can't ask"
+    ],
+    [
+      "Task 2",
+      "T2",
+      "pricing",
+      "price*"
+    ]
+  ],
+  "context": {},
+  "after": {}
+}

@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-lint-fence-mask-length-vhyuq_tp",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def (line_no|rel)\\b"
+    }
+  ],
+  "num_turns": 3
+}

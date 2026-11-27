@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*{review-hunks,review-findings,reviewer-contract,crew-reviewer,test_review,test.sh}*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "One issue per finding|Say whether the defect pre-exists|package\\.diff|diff\\.patch"
+    }
+  ],
+  "num_turns": 3
+}

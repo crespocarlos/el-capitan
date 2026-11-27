@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/lib/git.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def worktrees|def mark_done|worktree",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

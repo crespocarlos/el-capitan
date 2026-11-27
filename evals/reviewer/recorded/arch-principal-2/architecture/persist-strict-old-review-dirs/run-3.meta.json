@@ -1,0 +1,26 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-persist-strict-old-review-dirs-b6n7dxqn",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "spec-context|package_violations|canonical_personas|def read_json_object|--strict|\\.in\\.md",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/review-findings.py"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/review-findings.py"
+    }
+  ],
+  "num_turns": 5
+}

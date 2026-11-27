@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/{task_record_pr.py,git.py,test_lifecycle.py,test.sh}"
+    },
+    {
+      "name": "Grep",
+      "pattern": "slug_from_url|def tasks_in"
+    }
+  ],
+  "num_turns": 3
+}

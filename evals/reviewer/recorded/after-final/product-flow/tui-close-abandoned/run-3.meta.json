@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "force|ABANDONED|mark-done|mark_done",
+      "path": ".agent/tools/task/task_status.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "force|ABANDONED|SIDE_STATES",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "deliver now|resumed once|no reply",
+      "path": "."
+    },
+    {
+      "name": "Grep",
+      "pattern": "crew-reviewer|dispatch\\.md",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

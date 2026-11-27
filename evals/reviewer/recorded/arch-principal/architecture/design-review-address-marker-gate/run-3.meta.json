@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-review-address-marker-gate-2u3zdb5w",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "hook_field|hook_allow|hook_deny|review-address|pending"
+    }
+  ],
+  "num_turns": 3
+}

@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def mark_done|def mark_approved|ABANDONED|force",
+      "path": ".agent/tools/task/task_gates.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "def mark_done|ABANDONED"
+    }
+  ],
+  "num_turns": 3
+}

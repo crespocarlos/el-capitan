@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "EL_CAPITAN|stamp|rate"
+    }
+  ],
+  "num_turns": 3
+}

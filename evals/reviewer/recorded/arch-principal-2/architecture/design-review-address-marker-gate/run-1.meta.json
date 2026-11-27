@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-review-address-marker-gate-vbhkn84u",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "hook_allow|hook_deny|hook_field"
+    }
+  ],
+  "num_turns": 3
+}

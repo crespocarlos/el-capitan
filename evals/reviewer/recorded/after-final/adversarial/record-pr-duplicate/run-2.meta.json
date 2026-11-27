@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def (append_pr|head|tasks_in|close|candidates)\\b|\"branch\"|pr_urls|--branch",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

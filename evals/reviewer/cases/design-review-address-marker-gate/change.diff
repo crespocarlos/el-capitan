@@ -1,0 +1,80 @@
+diff --git a/.claude/hooks/review-address-gate.sh b/.claude/hooks/review-address-gate.sh
+new file mode 100644
+--- /dev/null
++++ b/.claude/hooks/review-address-gate.sh
+@@ -0,0 +1,26 @@
++#!/usr/bin/env bash
++# Deny edits under `crew review address` until the user's own prompt approved a fix set.
++#
++# Two markers under ~/.agent/review-address, both scoped to a session and a review directory:
++#   pending  — written by the skill when it presents the verdict table;
++#   approved — written only by review-address-approval.sh, from the user's own message.
++# No pending marker, or one from another session, means an ordinary edit: allow.
++set -euo pipefail
++# shellcheck source=lib/hook.sh
++. "$(dirname "$0")/lib/hook.sh"
++
++session=$(hook_field session_id)
++state="$HOME/.agent/review-address"
++pending="$state/pending"
++approved="$state/approved"
++
++[ -f "$pending" ] || hook_allow
++armed_session=$(jq -r '.session // empty' "$pending" 2>/dev/null || true)
++[ -n "$session" ] && [ "$armed_session" = "$session" ] || hook_allow
++armed_review=$(jq -r '.review_dir // empty' "$pending" 2>/dev/null || true)
++
++if [ -f "$approved" ]; then
++  [ "$(jq -r '.session // empty' "$approved")" = "$session" ] \
++    && [ "$(jq -r '.review_dir // empty' "$approved")" = "$armed_review" ] && hook_allow
++fi
++hook_deny "Review-address gate: the verdict table for ${armed_review:-this review} has no approval yet. Reply with the fixes to apply (all / none / numbers)."
+diff --git a/.claude/hooks/review-address-approval.sh b/.claude/hooks/review-address-approval.sh
+new file mode 100644
+--- /dev/null
++++ b/.claude/hooks/review-address-approval.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++# UserPromptSubmit: record the approval half of the review-address gate. Only a user turn reaches this hook, so the
++# model cannot write `approved` itself. Inert until the skill has written `pending`.
++set +e
++state="$HOME/.agent/review-address"
++pending="$state/pending"
++approved="$state/approved"
++[ -f "$pending" ] || exit 0
++
++input=$(cat)
++prompt=$(printf '%s' "$input" | jq -r '.prompt // empty' 2>/dev/null)
++armed_session=$(jq -r '.session // empty' "$pending" 2>/dev/null)
++armed_review=$(jq -r '.review_dir // empty' "$pending" 2>/dev/null)
++[ "$(printf '%s' "$input" | jq -r '.session_id // empty')" = "$armed_session" ] || exit 0
++
++# `none` authorizes no edit, so it records nothing; any other accepted answer authorizes at least one fix.
++if printf '%s' "$prompt" | grep -Eqi '^[[:space:]]*(all|yes|ok|approve[d]?|apply( all)?|go ahead|proceed)[[:space:].!]*$|^[[:space:]]*[0-9]+([[:space:],]+[0-9]+)*[[:space:]]*$'; then
++  mkdir -p "$state"
++  jq -n --arg s "$armed_session" --arg r "$armed_review" --arg p "$prompt" '{session:$s, review_dir:$r, prompt:$p}' > "$approved"
++fi
++exit 0
+diff --git a/.claude/settings.json b/.claude/settings.json
+--- a/.claude/settings.json
++++ b/.claude/settings.json
+@@ -14,6 +14,19 @@
+         "hooks": [
+           { "type": "command", "command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"" }
+         ]
++      },
++      {
++        "matcher": "Edit|Write|MultiEdit",
++        "hooks": [
++          { "type": "command", "command": "bash \"$HOME/.claude/hooks/review-address-gate.sh\"" }
++        ]
++      }
++    ],
++    "UserPromptSubmit": [
++      {
++        "hooks": [
++          { "type": "command", "command": "bash \"$HOME/.claude/hooks/review-address-approval.sh\"; exit 0" }
++        ]
+       }
+     ]
+   }

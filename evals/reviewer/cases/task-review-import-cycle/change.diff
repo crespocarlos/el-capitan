@@ -1,0 +1,100 @@
+diff --git a/.agent/tools/task/ls_data.py b/.agent/tools/task/ls_data.py
+--- a/.agent/tools/task/ls_data.py
++++ b/.agent/tools/task/ls_data.py
+@@ -4,26 +4,35 @@
+ """
+ from __future__ import annotations
+ 
++import argparse
+ import json
+ import re
+ import subprocess
+-import sys
+-from pathlib import Path
+ from typing import Callable
+ 
+ import task_bootstrap  # noqa: F401
+ 
+-PR_ACTIONS = Path(__file__).resolve().parents[1] / "review" / "crew-pr-actions.py"
++from lib.git import gh
++
+ PR_URL = re.compile(r"PR opened: (https?://[^/\s]+/([^/\s]+/[^/\s]+)/pull/(\d+))")
+ Reader = Callable[[list[str]], "tuple[int, str]"]
+ 
+ 
+ def read_pr_actions(arguments: list[str]) -> tuple[int, str]:
+-    """Run one read of `crew-pr-actions.py`; a missing gh or a timeout is a failed read."""
++    """One `crew-pr-actions.py` read (`view` or `repo` argv), in process; a missing gh or a timeout fails.
++
++    The review package is imported here, not at module load, so a listing that reads no PR never loads it.
++    """
++    from review_pr_reads import add_read_parser, read_argv
++
++    parser = argparse.ArgumentParser(add_help=False)
++    commands = parser.add_subparsers(dest="command", required=True)
++    for command in ("view", "repo"):
++        add_read_parser(commands, command)
+     try:
+-        done = subprocess.run([sys.executable, str(PR_ACTIONS), *arguments], capture_output=True,
+-                              text=True, timeout=45)
+-    except (OSError, subprocess.SubprocessError):
++        args = parser.parse_args(arguments)
++        done = gh(*read_argv(args.command, args), timeout=45)
++    except (OSError, subprocess.SubprocessError, SystemExit):
+         return 1, ""
+     return done.returncode, done.stdout
+ 
+diff --git a/.agent/tools/review/review_records.py b/.agent/tools/review/review_records.py
+--- a/.agent/tools/review/review_records.py
++++ b/.agent/tools/review/review_records.py
+@@ -1,7 +1,6 @@
+ """Review records: deferred and dropped findings beside the report, and the review's cost line (excerpt)."""
+ from __future__ import annotations
+ 
+-import subprocess
+ import sys
+ from pathlib import Path
+ 
+@@ -9,18 +8,14 @@
+ 
+ from review_models import Finding
+ from review_vocabulary import PERSONAS, canonical_personas
+-
+-# The one writer of a METRIC line, resolved through this file's real path: installed modules are
+-# symlinked from `~/.agent/bin` into the repository, so `resolve()` reaches the sibling package.
+-METRIC = Path(__file__).resolve().parent.parent / "task" / "crew-metric.py"
++from task_progress import append_metric, has_metric
+ 
+ 
+ def record_cost(owner: Path | None, review_dir: Path, mapped: bool) -> str:
+-    """Append the cost line through `crew-metric.py`; "" when the run has no task directory.
++    """Append the cost line through `task_progress.append_metric`; "" when the run has no task directory.
+ 
+-    `crew-metric.py` stays the only writer of a METRIC line, but a hyphenated command cannot be
+-    imported, so the line reaches it as a subprocess argument. Nothing here may fail a review that
+-    already persisted, so both a non-zero exit and a failed spawn are reported and swallowed.
++    `append_metric` is the one METRIC writer (`crew-metric.py` calls it too). Nothing here may fail a
++    review that already persisted, so a rejected payload or a failed write is reported and swallowed.
+     """
+     if owner is None or not owner.is_dir():
+         return ""
+@@ -28,16 +23,10 @@
+     if not personas:
+         return ""
+     payload = cost_line(review_dir, personas, mapped)
+-    progress = owner / "PROGRESS.md"
+-    if progress.is_file() and f"METRIC: review run={review_dir.name} " in progress.read_text(
+-            encoding="utf-8", errors="replace"):
++    if has_metric(owner, f"review run={review_dir.name} "):
+         return payload
+     try:
+-        result = subprocess.run([sys.executable, str(METRIC), str(owner), payload],
+-                                capture_output=True, text=True, check=False)
+-    except (OSError, subprocess.SubprocessError) as error:
++        append_metric(owner, payload)
++    except (OSError, ValueError) as error:
+         print(f"warning: cost metric not recorded: {error}", file=sys.stderr)
+-        return payload
+-    if result.returncode != 0:
+-        print(f"warning: cost metric not recorded: {result.stderr.strip()}", file=sys.stderr)
+     return payload

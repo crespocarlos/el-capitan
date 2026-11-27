@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "test_hook_cases|hook_cases"
+    }
+  ],
+  "num_turns": 3
+}

@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "NONE_IN_DIR|def claude_capability|def claude_files",
+      "path": "."
+    }
+  ],
+  "num_turns": 2
+}

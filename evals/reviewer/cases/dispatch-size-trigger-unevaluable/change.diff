@@ -1,0 +1,36 @@
+diff --git a/.cursor/agents/references/dispatch.md b/.cursor/agents/references/dispatch.md
+--- a/.cursor/agents/references/dispatch.md
++++ b/.cursor/agents/references/dispatch.md
+@@ -5,10 +5,28 @@
+ is unavailable.
+ 
+ Reviewer personas may run read-only: Cursor Ask mode, or a Claude Code read-only subagent, where
+-repository reads and artifact writes are unavailable, and the `claude -p` fallback likewise returns
+-only stdout. Dispatch prompts must embed the immutable evidence (a path to a diff file is not
+-evidence) needed for the assigned lens: diff, contract, relevant file excerpts, and explorer
+-findings. Never rely on a persona writing its own artifact.
++artifact writes are unavailable, and the `claude -p` fallback likewise returns only stdout. Dispatch
++prompts must carry the immutable evidence needed for the assigned lens: diff, contract, relevant file
++excerpts, and explorer findings; deliver it inline, or by path under **Package delivery** below.
++Never rely on a persona writing its own artifact.
++
++**Package delivery: inline by default, by path when a package is too large to embed.** Inline means
++the package is the dispatch prompt; a path to a diff file on its own is not evidence, because the
++persona may have no file access at all. Reading the written `<persona>.in.md` back is a sanctioned
++alternative when all three hold:
++
++1. The package was written to `$REVIEW_ROOT` and passed the `check-packages` gate of
++   `crew-reviewer`'s dispatch step, so the file read is byte-for-byte the package the protocol checked.
++2. The persona can read files — Cursor, or Claude Code with `Read` (a `readonly` subagent still
++   reads). A run with no file access, such as the `claude -p` fallback, must embed.
++3. The dispatch prompt names the absolute package path, states that this file is the persona's whole
++   package and must be read in full before judging, and repeats only the delivery-independent
++   instructions: reply text only, no artifact writes, the finding shape, and the mode.
++
++Use it when embedding would push the orchestrator's own output past what the harness accepts —
++one measured five-persona review was 640 KB, roughly 160k tokens of duplicate output. A package
++delivered by path is still the audit artifact: `<persona>.in.md` and `<persona>.out.md` stay the pair
++`persist --strict` requires, and the recorded package remains the one the persona read.
+ 
+ **PR mode:** the package is the only repository evidence a persona may use. Every code excerpt must
+ identify `path:line@headSHA7` and come from `gh api` at that head. A persona must not use the local

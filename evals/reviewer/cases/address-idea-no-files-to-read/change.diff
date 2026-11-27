@@ -1,0 +1,53 @@
+diff --git a/.cursor/skills/crew-address-review/SKILL.md b/.cursor/skills/crew-address-review/SKILL.md
+--- a/.cursor/skills/crew-address-review/SKILL.md
++++ b/.cursor/skills/crew-address-review/SKILL.md
+@@ -12,9 +12,10 @@
+ 
+ - **Code mode** (self-review, changes review, PR review): silent file-check → verdict table → apply
+   edits. 3 turns.
+-- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): no files to edit — findings are
+-  conceptual. Evaluate inline → present acceptance table → synthesize revised idea if approved. 3
+-  turns.
++- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): the artifact is a plan, not code.
++  Findings are conceptual: evaluate inline → present acceptance table → synthesize the revision if
++  approved. The revision is an edit to the spec file when the artifact is one, and emitted text when
++  it is pasted. 3 turns.
+ 
+ Never mix modes. If the review heading contains "Idea" or "Spec" (case-insensitive), use idea mode
+ throughout.
+@@ -67,15 +68,26 @@
+ **Code mode:** read each file immediately before editing it, apply the approved fixes, and log each
+ outcome.
+ 
+-**Idea mode:** Do not edit any files. Instead:
++**Idea mode with a file target:** the same edit rules apply — read the file immediately before
++editing, and apply the revision as real edits to it. Idea mode's "synthesis, not implementation" rule
++means it does not touch code the spec describes; it does write the spec.
++
++**Idea mode:** synthesis, not implementation. The artifact is usually pasted text, but a spec review
++targets a `SPEC.md` file; in that case the "revised idea" is an edit to that file, not a chat reply.
+ 
+ 1. If the user chose `none`, skip synthesis entirely — go straight to the summary.
+ 2. Collect all accepted/nit items plus any user answers to Needs Input items.
+-3. Locate the original idea text — it is in the session conversation (the pasted text or the output
+-   of the prior `crew review idea` turn). If the original idea is not recoverable from context
+-   (scrolled out or session reset), ask: `"I can't locate the original idea text in context — please
+-   paste it and I'll produce the revised version."` Then wait.
+-4. Produce a **revised idea** that incorporates all accepted changes. Match the original structure
+-   and heading levels. Do not add new sections; do not remove content unless a finding specifically
+-   called it out.
+-5. Present the revised idea inline under a heading like `## Revised Idea`.
++3. Locate the original artifact:
++   - **Spec review, or any review whose target is a file** (the `## Review:` heading names it, or the
++     findings cite `SPEC.md`): read that file. Do not ask the user to paste what is already on disk.
++   - **Idea review of pasted text**: it is in the session conversation (the pasted text or the output
++     of the prior `crew review idea` turn). If it is not recoverable from context (scrolled out or
++     session reset), ask: `"I can't locate the original idea text in context — please paste it and
++     I'll produce the revised version."` Then wait.
++4. Produce the **revision** that incorporates all accepted changes: for a file target, edit that file
++   in place; for pasted text, emit the revised text. Match the original structure and heading levels.
++   Do not add new sections; do not remove content unless a finding specifically called it out.
++5. Present the result:
++   - **File target:** the edit landed in the file; show the changed sections as a diff and name the
++     path. Do not also paste the whole file.
++   - **Pasted text:** present the revised text inline under a heading like `## Revised Idea`.

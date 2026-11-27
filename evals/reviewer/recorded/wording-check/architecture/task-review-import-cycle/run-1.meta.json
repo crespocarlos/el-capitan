@@ -1,0 +1,25 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-task-review-import-cycle-6yo2a50a",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_bootstrap.py"
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/{task_progress,review_pr_reads,crew-metric,review_records,crew-pr-actions}*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "task_bootstrap|review_pr_reads|task_progress|ls_data"
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/TOOLS.md"
+    }
+  ],
+  "num_turns": 5
+}

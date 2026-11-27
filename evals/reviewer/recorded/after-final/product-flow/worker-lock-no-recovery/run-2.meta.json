@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_lock.py"
+    },
+    {
+      "name": "Grep",
+      "pattern": "crew-worker.lock",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

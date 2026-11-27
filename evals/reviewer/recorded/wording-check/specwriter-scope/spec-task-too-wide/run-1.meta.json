@@ -1,0 +1,17 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-spec-task-too-wide-xz8zylzs",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/*{hook,settings,test.sh,hooks.md,README.md}*"
+    },
+    {
+      "name": "Grep",
+      "pattern": "EL_CAPITAN|stamp|notify"
+    }
+  ],
+  "num_turns": 3
+}

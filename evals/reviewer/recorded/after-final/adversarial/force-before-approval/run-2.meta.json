@@ -1,0 +1,21 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Grep",
+      "pattern": "def done_problems|def mark_approved|def set_status|GITHUB_PR_URL|def record_pr|def head",
+      "path": "."
+    },
+    {
+      "name": "Glob",
+      "pattern": "**/*.py",
+      "path": "."
+    },
+    {
+      "name": "Read",
+      "path": ".agent/tools/task/task_gates.py"
+    }
+  ],
+  "num_turns": 4
+}

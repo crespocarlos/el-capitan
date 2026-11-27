@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".task-id"
+    },
+    {
+      "name": "Grep",
+      "pattern": "repo_remote_url|upstream",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

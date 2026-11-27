@@ -1,0 +1,11 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".task-id"
+    }
+  ],
+  "num_turns": 2
+}

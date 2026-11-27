@@ -1,0 +1,97 @@
+{
+  "id": "design-ship-manual-chain",
+  "lens": "architecture",
+  "kind": "diff",
+  "hand_seeded": true,
+  "source": "hand-seeded from task 1D001C12 SPEC.md, Phase 2 (one command ships a task): the skills' manual commit and PR chain replaced by `crew-task.py ship`",
+  "summary": "Shipping a task took three separate skills (`crew implement`, `crew commit`, `crew open pr`). `crew-implement` now ends with a Ship step: after the owner's go, the orchestrator runs the listed commands in the task's recorded worktree to stage, commit, merge the base, re-run the spec's tests, push, open the draft PR and mark the task done. `crew-task.py` is the task CLI that owns the task state (`.task-id`, PROGRESS.md and the gates such as `mark-done`).",
+  "defect": "Shipping as a prose chain the model runs step by step is the wrong layer. Nothing records which steps finished, so after a stop (a conflict, a failing test, a lost session) the model reconstructs where it was and a re-run commits again or opens a second PR; `git add -A` stages secrets and large files unchecked; the tests run with no time limit and under the session's environment; and every skill that ships carries its own copy of the chain. History replaced the chain with one resumable command, `crew-task.py ship <TASK_DIR> --title --body-file`: it stages with secret and size checks, commits, merges the base, re-runs the spec's tests with limits, pushes, opens the draft PR and marks done, appending a `SHIP <step>` entry to PROGRESS.md per finished step so a re-run continues from the first unfinished one. The skills only call it.",
+  "locations": [
+    {
+      "file": ".cursor/skills/crew-implement/SKILL.md",
+      "line": 15
+    },
+    {
+      "file": ".cursor/skills/crew-implement/SKILL.md",
+      "line": 24
+    }
+  ],
+  "refs": [],
+  "keywords": [
+    [
+      "instead",
+      "rather than",
+      "unnecessary",
+      "not needed",
+      "needless*",
+      "no need",
+      "redundant",
+      "replace*",
+      "over-engineer*",
+      "overengineer*",
+      "overbuilt",
+      "over-built",
+      "reinvent*",
+      "re-implement*",
+      "reimplement*",
+      "hand-roll*",
+      "duplicat*",
+      "parallel",
+      "wrong approach",
+      "wrong layer",
+      "wrong place",
+      "redirect*",
+      "rethink",
+      "reconsider",
+      "heavyweight",
+      "too heavy",
+      "machinery",
+      "not the right",
+      "better approach",
+      "better fit",
+      "belongs in",
+      "should live",
+      "should be a",
+      "should be one",
+      "move this",
+      "move it",
+      "prefer*",
+      "don't build",
+      "do not build"
+    ],
+    [
+      "one command",
+      "single command",
+      "subcommand*",
+      "sub-command*",
+      "one tool",
+      "single tool",
+      "codif*",
+      "in code",
+      "in Python",
+      "one script",
+      "single script",
+      "a script",
+      "one CLI",
+      "the CLI"
+    ],
+    [
+      "resum*",
+      "idempot*",
+      "checkpoint*",
+      "re-run*",
+      "rerun*",
+      "pick up",
+      "picks up",
+      "continue*",
+      "where it stopped",
+      "progress",
+      "partial*"
+    ]
+  ],
+  "context": {},
+  "match_code": true,
+  "after": {
+    ".cursor/skills/crew-implement/SKILL.md": "### Step 6: Launch worker\n\nDispatch `crew-builder` with the task directory and the approved SPEC.md. Each task's `Verify:` command runs after\nthe worker reports.\n\n### Step 7: Ship\n\nAfter every task passes and the owner says go, commit and open the draft PR from the task's recorded worktree, so\nthe owner no longer runs `crew commit` and `crew open pr` by hand. Run these in order and stop at the first\nfailure:\n\n```bash\ncd \"$(jq -r .worktree \"$TASK_DIR/.task-id\")\"\nBASE=$(jq -r .base \"$TASK_DIR/.task-id\")\ngit add -A\ngit commit -m \"$TITLE\" -m \"Co-Authored-By: $ATTRIBUTION\"\ngit fetch origin \"$BASE\" && git merge --no-edit \"origin/$BASE\"\nbash evals/test.sh -n auto        # the spec's `## Tests` commands\ngit push -u origin HEAD\nPR_URL=$(GH_PAGER=cat gh pr create --draft --title \"$TITLE\" --body-file \"$BODY_FILE\" --base \"$BASE\") && echo \"$PR_URL\"\n~/.agent/bin/crew-task.py mark-done \"$TASK_DIR\" --pr-url \"$PR_URL\"\n```\n\nIf a step fails, fix the cause, commit the fix, and run the remaining steps again.\n\n> Next: run `crew review` first if the change has not been reviewed.\n"
+  }
+}

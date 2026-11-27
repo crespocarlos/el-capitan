@@ -1,0 +1,59 @@
+diff --git a/.claude/install_blocks.py b/.claude/install_blocks.py
+--- a/.claude/install_blocks.py
++++ b/.claude/install_blocks.py
+@@ -21,10 +21,46 @@
+     MANIFEST.write_text(json.dumps(data, indent=2) + "\n")
+ 
+ 
++def configured_servers(home: Path) -> list[str]:
++    """The server names `~/.agent/config.json` `mcp` lists, docs and code search alike."""
++    mcp = json.loads((home / ".agent" / "config.json").read_text()).get("mcp") or {}
++    return [*mcp.get("docs", []), *mcp.get("code_search", [])]
++
++
++def mirror_mcp(home: Path) -> list[str]:
++    """Copy each configured server's definition from `~/.claude.json` into every other config dir's `.claude.json`,
++    at the same scope (user level, or the same `projects.<path>`), so a session on a second config dir reaches the
++    same servers. A server the user already defined there is kept; each copy is recorded for uninstall."""
++    source = json.loads((home / ".claude.json").read_text())
++    scopes = [((), source.get("mcpServers", {}))]
++    scopes += [(("projects", project), entry.get("mcpServers", {})) for project, entry in source.get("projects", {}).items()]
++    names, copied = configured_servers(home), []
++    for directory in config_dirs(home)[1:]:
++        path = directory / ".claude.json"
++        target = json.loads(path.read_text()) if path.is_file() else {}
++        for keys, servers in scopes:
++            for name in (n for n in names if n in servers):
++                into = target
++                for key in keys:
++                    into = into.setdefault(key, {})
++                into = into.setdefault("mcpServers", {})
++                if name in into:
++                    continue
++                into[name] = servers[name]
++                record("mcp_mirror", {"dir": str(directory), "scope": "/".join(keys) or "user", "name": name})
++                copied.append(f"{directory}: {name}")
++        path.write_text(json.dumps(target, indent=2) + "\n")
++    return copied
++
++
+ def main(argv: list[str]) -> int:
+     command = argv[0] if argv else ""
+     if command == "config-dirs":
+         print("\n".join(str(p) for p in config_dirs(Path.home())))
++        return 0
++    if command == "mirror-mcp":
++        for line in mirror_mcp(Path.home()):
++            print(f"  mirrored MCP server {line}")
+         return 0
+     print(f"install_blocks: unknown command {command!r}", file=sys.stderr)
+     return 2
+diff --git a/install.sh b/install.sh
+--- a/install.sh
++++ b/install.sh
+@@ -3,3 +3,5 @@
+   link_config_dir "$dir"
+ done < <(python3 "$SCRIPT_DIR/.claude/install_blocks.py" config-dirs)
+ render_readonly_agents
++# Sessions on a second config dir (such as ~/.claude-work) get the same MCP servers as ~/.claude.
++run python3 "$SCRIPT_DIR/.claude/install_blocks.py" mirror-mcp

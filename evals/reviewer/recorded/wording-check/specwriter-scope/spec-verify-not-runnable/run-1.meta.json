@@ -1,0 +1,13 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-spec-verify-not-runnable-4kqiuoag",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Glob",
+      "pattern": "**/{crew-task.py,test.sh,task_*.py,test_*.py}"
+    }
+  ],
+  "num_turns": 2
+}

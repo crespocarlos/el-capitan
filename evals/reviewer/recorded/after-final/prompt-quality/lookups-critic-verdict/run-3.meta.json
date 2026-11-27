@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".cursor/agents/references/critic-contract.md"
+    },
+    {
+      "name": "Grep",
+      "pattern": "code_search|search_internal_docs|unverified|docs server|lookups",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

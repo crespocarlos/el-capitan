@@ -6,8 +6,15 @@ no package, or never dispatched at all.
 1. **Persona file** — `.cursor/agents/reviewer-<name>.md` with YAML frontmatter (`name`,
    `description`, `tools: Read, Grep, Glob  # {{mcp_servers}}`, `readonly: true`, `maxTurns: 12`,
    `tool_budget: 10`) and a persona prompt: identity, the line "Stop calling tools at 10 and write the
-   review", scope boundaries, focus areas, the lens's label table, and its `Assessment:` question (the
-   appended `reviewer-contract.md` owns the output shape). `persona-turn-budget` fails a
+   review", scope boundaries, an `## Attacks` list (the inputs and sequences to try against the
+   artifact, each with the reason it finds defects; `reviewer-contract.md` says how they are run), the
+   lens's label table, and its `Assessment:` question (the appended `reviewer-contract.md` owns the
+   output shape). The file stays at most 6 KB, so the attacks are not buried; an attack states the
+   general behaviour it hunts, never one past defect's shape or wording.
+   `test_reviewer_eval.py` holds every `reviewer-*` and `specwriter-*` file to the size, and each to
+   the section except these exemptions: `reviewer-adversarial`, deliberately kept in its focus-area
+   shape as the reference the others were rewritten from, and the workers that are not review lenses
+   (`reviewer-explorer`, `reviewer-layers`, `reviewer-probe`, `specwriter-explorer`). `persona-turn-budget` fails a
    `reviewer-*` file without `tool_budget`, and holds `maxTurns` at `tool_budget + 2` or more. Copy the
    frontmatter from an existing persona rather than inventing tool ids; install fills the placeholder
    with the configured docs and code-search servers, and `agents-inherit-tools` fails any other line.

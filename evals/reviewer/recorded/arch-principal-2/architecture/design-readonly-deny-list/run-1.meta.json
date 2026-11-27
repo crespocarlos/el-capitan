@@ -1,0 +1,18 @@
+{
+  "exit": 0,
+  "scratch": "reviewer-eval-design-readonly-deny-list-i954nl7x",
+  "tainted": [],
+  "outside_failed": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".agent/config.json"
+    },
+    {
+      "name": "Grep",
+      "pattern": "^(tools|disallowedTools):",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}

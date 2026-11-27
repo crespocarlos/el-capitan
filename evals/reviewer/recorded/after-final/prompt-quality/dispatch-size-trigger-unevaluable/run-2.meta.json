@@ -1,0 +1,16 @@
+{
+  "exit": 0,
+  "tainted": [],
+  "calls": [
+    {
+      "name": "Read",
+      "path": ".cursor/agents/references/dispatch.md"
+    },
+    {
+      "name": "Grep",
+      "pattern": "check-packages|embed|REVIEW_ROOT",
+      "path": "."
+    }
+  ],
+  "num_turns": 3
+}
