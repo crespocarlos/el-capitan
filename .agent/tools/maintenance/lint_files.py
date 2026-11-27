@@ -93,7 +93,7 @@ RULES: dict[str, tuple[str, str]] = {
     # lint_prompts (--budget)
     "prompt-budget": ("prompts", "the always-on set and each prompt file fit their ceilings"),
     # lint_python: repository rules for .agent/tools (Ruff, configured in ruff.toml, owns the generic ones)
-    "module-size": ("python", "no module over 400 lines, entry points included"),
+    "module-size": ("python", "no module over 400 lines, entry points included, in .agent/tools and tui/"),
     "package-direction": ("python", "an import crosses packages only along an edge TOOLS.md declares"),
     "direct-git": ("python", "no git argv outside lib/git.py"),
     "single-owner": ("python", "one definition per shared helper; PROGRESS.md and owner/repo parsing in their owners"),

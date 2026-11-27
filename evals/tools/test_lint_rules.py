@@ -31,6 +31,8 @@ from lint_writing import lint_local_state_tracked  # noqa: E402
 SEEDED = (
     ("git-argv", "direct-git", "task/task_seeded_git.py", "ARGV = [\"git\", \"status\"]\n"),
     ("long-module", "module-size", "task/task_seeded_long.py", "X = 1\n" * 401),
+    ("long-tui-module", "module-size", "../../tui/tui_seeded_long.py", "X = 1\n" * 401),
+    ("long-tui-docstring", "docstring-length", "../../tui/tui_seeded_doc.py", '"""One.\n\n2\n3\n4\n5\n6\n7\n"""\n'),
     ("second-atomic-write", "single-owner", "task/task_seeded_atomic.py", "def atomic_write() -> None:\n    pass\n"),
     ("systemexit-message", "no-systemexit-str", "task/task_seeded_exit.py", "raise SystemExit(f'bad: {1}')\n"),
     ("task-imports-review", "package-direction", "task/task_seeded_import.py", "import review_pr_reads\n"),

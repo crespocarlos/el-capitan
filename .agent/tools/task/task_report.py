@@ -26,25 +26,40 @@ def state_label(r: TaskState) -> str:
     return head(r) or "?"
 
 
-def table_rows(rows: list[TaskState], show_done: bool, markdown: bool) -> list[tuple[str, ...]]:
-    """The table header plus one row per displayed spec, longest-lived first within each state."""
+def ordered_rows(rows: list[TaskState], show_done: bool) -> list[TaskState]:
+    """The listing order (`crew ls` and the TUI): open rows by state then idle days, then DONE rows when shown."""
     def rank(r: TaskState) -> int:
         return OPEN_ORDER.index(head(r)) if head(r) in OPEN_ORDER else len(OPEN_ORDER)
 
+    open_rows = sorted([r for r in rows if head(r) != "DONE"], key=lambda r: (rank(r), r.activity))
+    done_rows = sorted([r for r in rows if head(r) == "DONE"], key=lambda r: r.activity)
+    return open_rows + (done_rows if show_done else [])
+
+
+def age_cell(r: TaskState) -> str:
+    """The AGE cell: `today`, or the days since the task last moved."""
+    return "today" if r.activity == 0 else f"{r.activity}d"
+
+
+def aligned(table: list[tuple[str, ...]]) -> list[str]:
+    """Rows of cells as space-aligned text lines, each column as wide as its widest cell."""
+    widths = [max(len(row[i]) for row in table) for i in range(len(table[0]))]
+    return ["  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip() for row in table]
+
+
+def table_rows(rows: list[TaskState], show_done: bool, markdown: bool) -> list[tuple[str, ...]]:
+    """The table header plus one row per displayed spec, longest-lived first within each state."""
     def cut(text: str, width: int) -> str:
         return text if len(text) <= width else text[:width - 1] + "…"
 
-    open_rows = sorted([r for r in rows if head(r) != "DONE"], key=lambda r: (rank(r), r.activity))
-    done_rows = sorted([r for r in rows if head(r) == "DONE"], key=lambda r: r.activity)
-    shown = open_rows + (done_rows if show_done else [])
     return [("STATE", "TASK", "REPO", "BRANCH", "REVIEW", "AGE")] + [
         (state_label(r),
          name(r) if markdown else cut(name(r), 50),
          r.repo or "-" if markdown else cut(r.repo or "-", 28),
          r.branch if markdown else cut(r.branch, 32),
          r.verdict.upper() if r.verdict != "?" else "-",
-         "today" if r.activity == 0 else f"{r.activity}d")
-        for r in shown]
+         age_cell(r))
+        for r in ordered_rows(rows, show_done)]
 
 
 def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
@@ -64,9 +79,7 @@ def table_lines(rows: list[TaskState], show_done: bool, markdown: bool,
             if index == 0:
                 rendered.append("|" + "|".join(["---"] * len(header)) + "|")
     else:
-        widths = [max(len(row[i]) for row in [header, *shown]) for i in range(len(header))]
-        for row in [header, *shown]:
-            rendered.append("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
+        rendered.extend(aligned([header, *shown]))
     if folded:
         if markdown:
             rendered.append("")  # a Markdown table ends only at a blank line

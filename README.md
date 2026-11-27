@@ -73,6 +73,15 @@ Not a pipeline stage; run it when you need it.
 4 crew agents (orchestrators and workers), 11 personas, 13 skills, 20 `crew` commands and 24 installed commands.
 <!-- /generated:counts -->
 
+### Dashboard (optional)
+
+A read-only terminal dashboard of tasks, running workers and locks, and the report; `t`, `w` and
+`p` switch views, `r` refreshes, `g` reads `landed` from GitHub. It needs Textual, pinned in
+`tui/requirements.txt` and never installed: from the repository root, run
+`uv run --no-project --with-requirements tui/requirements.txt python3 tui/crew_tui.py`.
+`python3 tui/crew_tui.py --once` prints the same views without Textual, and `crew ls --watch` is
+the view with no dependency at all.
+
 ## What install changes
 
 `install.sh` writes outside this repository. Knowing this before running it matters more than any

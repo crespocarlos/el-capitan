@@ -159,8 +159,8 @@ optional and the absence of each has one default.
 
 Rules that crew-lint enforces (crew-lint rule names in parentheses; the rest is Ruff):
 
-- No module over 400 lines, entry points included, in every package under `.agent/tools/`
-  (`module-size`). The capped set is derived from the tree, so a new package is capped without
+- No module over 400 lines, entry points included, in every package under `.agent/tools/` and in
+  `tui/` (`module-size`; `docstring-length` covers `tui/` too). The capped set is derived from the tree, so a new package is capped without
   anyone remembering to add it. An entry point holds argument handling and exit codes; logic lives
   in modules.
 - No function over 50 statements (Ruff `PLR0915`). If it does not fit, the branch boundary inside it

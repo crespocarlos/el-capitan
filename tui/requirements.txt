@@ -1,0 +1,2 @@
+# The TUI's one dependency, pinned; a dev tool, never installed by install.sh. `--once` needs none of it.
+textual==8.2.8

@@ -1,10 +1,10 @@
-# Ruff is the Python linter for every package (.agent/tools, evals, .claude). The version is pinned
+# Ruff is the Python linter for every package (.agent/tools, evals, .claude, tui). The version is pinned
 # here once (`required-version`); `evals/ruff.sh` reads it, locally (uvx) and in CI (pipx).
 # Repository-specific rules (module cap, bootstrap imports, single owner) are crew-lint's.
 required-version = "==0.17.4"
 target-version = "py39"
 line-length = 120
-src = [".agent/tools", "evals"]
+src = [".agent/tools", "evals", "tui"]
 
 [lint]
 # ANN20x: return annotations (today's rule); PLR0915 approximates the 50-line function limit by statements.
@@ -34,7 +34,7 @@ max-complexity = 15
 section-order = ["future", "standard-library", "bootstrap", "third-party", "first-party", "local-folder"]
 
 [lint.isort.sections]
-bootstrap = ["task_bootstrap", "review_bootstrap", "memory_bootstrap", "evals_bootstrap", "maintenance_bootstrap"]
+bootstrap = ["task_bootstrap", "review_bootstrap", "memory_bootstrap", "evals_bootstrap", "maintenance_bootstrap", "tui_bootstrap"]
 
 # Baseline: existing violations per file, regenerated as packages are cleaned. Remove an entry when
 # its file is fixed; never add one for new code. TID251 is not a violation: it marks the files that may
@@ -56,6 +56,7 @@ bootstrap = ["task_bootstrap", "review_bootstrap", "memory_bootstrap", "evals_bo
 ".agent/tools/task/task_verify.py" = ["E501"]
 ".agent/tools/task/task_verify_sources.py" = ["E741"]
 ".claude/merge_claude_settings.py" = ["ANN201"]
+"tui/tui_bootstrap.py" = ["TID251"]
 "evals/compare_run.py" = ["ANN201", "TID251"]
 "evals/memory/run.py" = ["ANN201", "E501", "E702", "PLR0915", "TID251"]
 "evals/reviewer/test_review_findings.py" = ["ANN201", "E501", "TID251"]

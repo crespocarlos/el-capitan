@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Repository-specific rules for the Python under `.agent/tools/`; Ruff owns the generic ones.
 
-`module-size`, `package-direction` (the edges in TOOLS.md `package-edges`), `direct-git` (git argv only
+`module-size` (`tui/` too), `package-direction` (the edges in TOOLS.md `package-edges`), `direct-git` (git argv only
 in `lib/git.py`), `single-owner`, `bootstrap-identical`, `no-sibling-subprocess` and `no-systemexit-str`
 (exit messages through `lib.cli.fail`); `sys.path` is Ruff's (TID251). Names and summaries: `lint_files.RULES`.
 """
@@ -243,6 +243,8 @@ def lint_python(root: Path) -> list[Finding]:
         found.extend(check_sibling_subprocess(name, relative, tree))
         found.extend(check_owned_text(name, relative, tree))
         found.extend(check_cli(name, tree))
+    for path in sorted((root / "tui").glob("*.py")):
+        found.extend(check_module_size(rel(root, path), path.read_text(encoding="utf-8", errors="replace")))
     found.extend(check_single_owner(root, parsed))
     found.extend(check_package_direction(root, parsed))
     found.extend(check_bootstraps_identical(root, parsed))
