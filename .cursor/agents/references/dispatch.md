@@ -70,9 +70,8 @@ turn limit still holds what it read, and a relaunch starts cold and spends the b
 it once with `deliver now: write your findings (a critic: your critique) from what you have read,
 and name what you did not check`, and save that reply as a resume. If it again returns nothing,
 persist the failure artifact and name the gap (`crew-specwriter`: name the lens and what it could not
-check). When the harness cannot resume a finished subagent (Cursor's Task call has no resume),
-re-dispatch it once instead, with the same prompt behind that `deliver now` line as a preface, and
-treat that run as the one allowed retry.
+check). Cursor's Task call resumes too (`resume`). Only a harness that cannot resume re-dispatches
+once, with that `deliver now` line before the same prompt, as its one retry.
 
 **Under Claude Code the hook saves the reply.** Each dispatch carries the marker line from
 `crew-review-findings.py expect` ([packaging](~/.cursor/agents/crew-reviewer/references/packaging.md),

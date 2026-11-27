@@ -1,10 +1,7 @@
 {
   "version": 1,
   "hooks": {
-    "sessionStart": [
-      {"command": "bash \"$HOME/.claude/hooks/cursor-memory-context.sh\""},
-      {"command": "bash \"$HOME/.claude/hooks/probe.sh\" cursor sessionStart"}
-    ],
+    "sessionStart": [{"command": "bash \"$HOME/.claude/hooks/cursor-memory-context.sh\""}],
     "beforeShellExecution": [
       {"command": "bash \"$HOME/.claude/hooks/guard/destructive-git.sh\"", "failClosed": true},
       {"command": "bash \"$HOME/.claude/hooks/guard/local-pr-ref.sh\"", "failClosed": true},
@@ -13,23 +10,15 @@
       {"command": "bash \"$HOME/.claude/hooks/guard/owner-only.sh\"", "failClosed": true},
       {"command": "bash \"$HOME/.claude/hooks/guard/zsh-equals.sh\"", "failClosed": false},
       {"command": "bash \"$HOME/.claude/hooks/guard/worker-tree.sh\"", "failClosed": true},
-      {"command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"", "failClosed": true},
-      {"command": "bash \"$HOME/.claude/hooks/probe.sh\" cursor beforeShellExecution"}
+      {"command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"", "failClosed": true}
     ],
     "preToolUse": [
       {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\"", "failClosed": true},
-      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\"", "failClosed": true},
-      {"command": "bash \"$HOME/.claude/hooks/probe.sh\" cursor preToolUse"}
+      {"matcher": "Write|Edit", "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\"", "failClosed": true}
     ],
-    "afterFileEdit": [{"command": "bash \"$HOME/.claude/hooks/probe.sh\" cursor afterFileEdit"}],
-    "subagentStart": [{"command": "bash \"$HOME/.claude/hooks/probe.sh\" cursor subagentStart"}],
-    "subagentStop": [{"command": "bash \"$HOME/.claude/hooks/probe.sh\" cursor subagentStop"}],
     "afterShellExecution": [{"command": "bash \"$HOME/.claude/hooks/record-pr.sh\" 2>/dev/null; exit 0"}],
     "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "postToolUseFailure": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
-    "stop": [
-      {"command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\"", "loop_limit": 1},
-      {"command": "bash \"$HOME/.claude/hooks/probe.sh\" cursor stop"}
-    ]
+    "stop": [{"command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\"", "loop_limit": 1}]
   }
 }

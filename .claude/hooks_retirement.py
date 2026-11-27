@@ -16,6 +16,9 @@ does not: it was never committed (git log --all has no entry for it), so it is d
 hook-contract change replaced them: four shell rules now live one per file under `hooks/guard/`, and
 the review-address gate is a `permissions.ask` rule rather than a marker protocol. Any install that
 still registers them would run a script that no longer exists.
+
+`probe.sh` was a temporary harness probe, registered on several events in both harnesses until its
+findings were recorded in `docs/hooks.md` ("Harness facts").
 """
 
 import re
@@ -31,6 +34,7 @@ RETIRED_SCRIPTS = (
     "review-address-gate.sh",
     "review-address-approval.sh",
     "session-event.sh",
+    "probe.sh",
 )
 
 # `<hooks dir>/<name>` where the hooks directory is this installer's managed destination, quoted or

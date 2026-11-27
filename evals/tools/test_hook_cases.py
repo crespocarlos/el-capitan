@@ -39,8 +39,6 @@ from hook_cases import (
     NOTIFY,
     PARSERS_DIFFER,
     PAYLOADS,
-    PROBE,
-    PROBE_VALUES,
     SECRET,
     SILENT,
     STATUS_SPEC,
@@ -473,48 +471,6 @@ def test_idle_notification_is_quiet(label: str, extra: dict, ago: int | None, ca
     assert (done.returncode, done.stdout, done.stderr) == (0, "", ""), done
     assert len(lines) == calls and not any("activate" in line for line in lines), lines
     assert not calls or stamp.read_text(encoding="utf-8").strip().isdigit()
-
-
-def run_probe(home: Path, harness: str, event: str, stdin: str, on: bool, bash: str = "bash") -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE_", "CURSOR_", "EL_CAPITAN_"))}
-    env.update(HOME=str(home), CLAUDE_JOB_DIR="/private/secret-dir/job", CURSOR_SECRET_TOKEN=SECRET)
-    if on:
-        env["EL_CAPITAN_PROBE"] = "1"
-    return subprocess.run([bash, str(HOOKS / "probe.sh"), harness, event], input=stdin, capture_output=True, text=True,
-                          env=env, timeout=60)
-
-
-@pytest.mark.parametrize("harness, event, payload, stdout", PROBE, ids=[f"{row[0]}-{row[1]}" for row in PROBE])
-def test_the_probe_logs_names_only(harness: str, event: str, payload: dict, stdout: str, tmp_path: Path) -> None:
-    """With EL_CAPITAN_PROBE=1 one JSON line of names per event; no value from the payload or the environment."""
-    done = run_probe(tmp_path, harness, event, json.dumps(payload), on=True)
-    assert (done.returncode, done.stdout.strip(), done.stderr) == (0, stdout, ""), done
-    text = (tmp_path / ".agent" / "state" / "probe.log").read_text(encoding="utf-8")
-    leaked = [value for value in (*PROBE_VALUES, "/private/secret-dir/job", "AKIA") if value in text]
-    assert not leaked, leaked
-    record = json.loads(text)
-    assert (record["harness"], record["event"]) == (harness, event)
-    assert record["fields"] == sorted(payload) and "CLAUDE_JOB_DIR" in record["env"] and "CURSOR_SECRET_TOKEN" in record["env"]
-    if "tool_input" in payload:
-        assert record["tool_input_fields"] == sorted(payload["tool_input"]) and record["tool_name"] == payload["tool_name"]
-    if event == "afterFileEdit":
-        assert record["edits_fields"] == ["new_string", "old_string"]
-    if event == "subagentStop":
-        assert (record["has_jsonl"], record["jsonl_fields"], record["has_long"], record["long_fields"]) == (
-            True, ["transcript_path"], True, ["summary"])
-
-
-@pytest.mark.parametrize("stdin", ["{not json", "", json.dumps(PROBE[0][2])], ids=["malformed", "empty", "payload"])
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
-def test_the_probe_never_blocks_and_is_inert_when_off(stdin: str, on: bool, tmp_path: Path) -> None:
-    """Exit 0 always, under every bash, `{}` only where Cursor expects a decision; without the variable no file at all."""
-    for bash in bashes():
-        for harness, event, answer in (("claude", "PreToolUse", ""), ("cursor", "beforeShellExecution", "{}"),
-                                       ("cursor", "stop", ""), ("", "", "")):
-            done = run_probe(tmp_path, harness, event, stdin, on=on, bash=bash)
-            assert (done.returncode, done.stdout.strip(), done.stderr) == (0, answer, ""), (bash, harness, done)
-    log = tmp_path / ".agent" / "state" / "probe.log"
-    assert log.exists() == on and not (on and SECRET in log.read_text(encoding="utf-8"))
 
 
 def test_a_status_denial_names_crew_task(world: tuple) -> None:
