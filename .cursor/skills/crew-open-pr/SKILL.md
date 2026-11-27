@@ -1,7 +1,7 @@
 ---
 disable-model-invocation: true
 name: crew-open-pr
-description: "Push the current branch, open a PR with a generated description, and mark the task DONE. Trigger: 'crew open pr'."
+description: "Write the PR description, then after approval ship the task (commit, push, draft PR, DONE) with crew-task.py ship. Trigger: 'crew open pr'."
 ---
 
 **Workflow**: build | **Stage**: open-pr
@@ -103,12 +103,11 @@ Enforce summary quality:
   large, cross-cutting work warrants a second paragraph.
 - Do not group the summary by layer with per-file rename lists.
 
-### Step 3: Approve, push, and create the PR
+### Step 3: Approve, then ship
 
 `BASE` and `TARGET_REPO` come from Step 1. Show the title, description, `BASE`, and `TARGET_REPO`,
-and wait for approval before running the push. Do not push before approval. A `BASE` that is
-neither the default branch nor a landing base passes the Step 1 stack gate first; never open the PR
-against it without that answer. When
+and wait for approval (Gate 2); nothing is committed or pushed before it. A `BASE` that is neither
+the default branch nor a landing base passes the Step 1 stack gate first. When
 `$TASK_DIR/REPORT.md` exists, show the builder's unverified claims in the confirmation (the full list
 stays in REPORT.md):
 
@@ -116,33 +115,40 @@ stays in REPORT.md):
 ~/.agent/bin/crew-verify.py report-check "$TASK_DIR/REPORT.md" --unverified 5
 ```
 
-```bash
-git push -u origin HEAD
-```
-
-This push is a hard ordering boundary: do not publish review comments, inline findings, or review
-summaries before it succeeds. After pushing, re-fetch the remote head SHA and use that SHA as the
-only commit identity for any subsequent PR comment publication.
-
-Present the title and description to the user. Title format: same as the primary commit message, or
-a summary if there are multiple commits.
-
-After approval:
+Title format: a conventional commit line (`type(scope): description`, 72 characters at most); it is
+both the commit message and the PR title. If the repo uses a PR template, fill in its sections
+rather than the default format. After approval, write the approved description to a file `BODY`
+(`$TASK_DIR/artifacts/pr-body.md`; with no task, a temporary file) and run, with `ATTRIBUTION` set to
+the commit attribution line your harness gives (empty when it gives none; ship then uses its
+default). `TARGET` is `"$TASK_DIR"`, or `--no-task` when `TASK_DIR` is empty (run it from the
+checkout to ship; there is no `mark-done`). With `CREW_TASK_STATE=error`, stop and report instead.
 
 ```bash
-PR_URL=$(GH_PAGER=cat gh pr create --draft --title "TITLE" --body "BODY" --base BASE --repo "$TARGET_REPO") && echo "$PR_URL"
+~/.agent/bin/crew-task.py ship $TARGET --title "TITLE" --body-file "$BODY" --base "$BASE" \
+  --repo "$TARGET_REPO" --attribution "$ATTRIBUTION"
 ```
 
-`gh pr create` prints the PR URL; keep it as `PR_URL` for Step 4 and Session Capture. The `echo` in
-the same command is what lets the `record-pr.sh` hook see the URL.
+`ship` is the one way a task is committed and its PR opened. It runs in the task's recorded worktree
+and never asks: it stages tracked changes and untracked files git does not ignore, commits (after
+the same credential scan the commit hook runs), merges the base, re-runs the spec's `## Tests`
+commands, pushes (never forced), opens or reuses the draft PR, and runs `mark-done`. Each finished
+step is a `SHIP` entry in PROGRESS.md for that branch. A program (one PR per phase) ships every
+phase but the last with `--phase` after `TARGET`: the PR is recorded, the task stays `IMPLEMENTING`,
+and later phases' boxes may stay open. The last phase uses plain `ship`.
 
-**Important:** Always pass `--body` explicitly. If `--body` is omitted or empty, `gh` opens
-`$EDITOR` which freezes the VS Code terminal. Never rely on interactive input for the body.
+- **Exit 0** prints `shipped: <task> <PR URL>`; keep the URL for Step 4.
+- **Exit 1** prints `error: ship stopped at <step>: <reason>`: a risky file or a credential, a merge
+  conflict, a failing or hanging test, files the tests wrote, a push or `gh` failure, or a
+  `mark-done` refusal. Show it in full. Once the cause is fixed (a fix is a new commit, never an
+  amend), run the same command again: it re-checks the finished steps and resumes.
+- **Exit 2** means nothing ran: the task is not `IMPLEMENTING`, its worktree is missing, on another
+  branch or of another repository, `mark-done` would refuse it, or `BASE` or `TARGET_REPO` differ
+  from ship's own resolution (the spec's `## Base:`, else the default branch of the remote whose
+  repository is `TARGET_REPO`). Report the `error:` line; do not retry with other values unless
+  the user approves them.
 
-PRs are always opened as drafts. Mark ready for review manually when appropriate.
-
-If the repo uses a PR template, read it first and fill in the sections rather than using the default
-format above.
+PRs are always opened as drafts; the user marks them ready. Do not publish review comments, inline
+findings, or review summaries before `ship` has pushed.
 
 ### Step 4: Report back
 
@@ -150,43 +156,17 @@ Show the PR URL and a one-line summary.
 
 ## Session Capture
 
-After creating the PR, resolve `TASK_DIR`:
+For a PR that already existed (Step 1), record it and mark the task `DONE`: a task is done once a PR
+for it is open. `mark-done` adds the URL to the task's PR list and refuses unless the spec is
+`IMPLEMENTING`, every criterion is checked, and a review's `Reviewed at:` commit is an ancestor of
+HEAD:
 
 ```bash
 source ~/.agent/bin/task-env.sh
+[ -n "$TASK_DIR" ] && ~/.agent/bin/crew-task.py mark-done "$TASK_DIR" --pr-url "$PR_URL"
 ```
 
-If `TASK_DIR` is non-empty, record the PR and mark the task `DONE`: a task is done once a PR for it is
-open, and the review cycle and the merge happen after. `mark-done` adds the PR URL to the task's PR
-list (a task can hold several; on a task already `DONE` it only adds the URL), writes the status and
-appends to `PROGRESS.md`. It refuses unless the spec is `IMPLEMENTING`, every criterion is checked,
-and, when a review exists, its `Reviewed at:` commit is an ancestor of HEAD. Because `crew commit`
-runs after `crew review`, HEAD is normally ahead of the reviewed tree; a review older than a rebase
-must be re-run.
-
-The `record-pr.sh` hook has usually done this already: it runs `mark-done` as soon as `gh pr create`
-prints the URL, so the command below then answers `already done`. It stays here for its refusal
-message, which this stage must show.
-
-```bash
-if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
-  echo "error: task state unreadable; PR opened ($PR_URL) but the task is not marked done" >&2
-  exit 1
-elif [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/crew-task.py mark-done "$TASK_DIR" --pr-url "$PR_URL" \
-    || { echo "error: PR opened ($PR_URL) but the task is not marked done" >&2; exit 1; }
-else
-  LIKELY=$(~/.agent/bin/crew-ls.py --json --repo here --status implementing --max-chars 1000000 \
-    | jq -r '.items | sort_by(.activity_days) | .[0].directory // "<TASK_DIR>"')
-  echo "note: no task matches this branch; to attach $PR_URL to one: ~/.agent/bin/crew-task.py mark-done $LIKELY --pr-url $PR_URL (newest IMPLEMENTING task of this repo; check it is the right one)"
-fi
-```
-
-A refusal ends the stage with a non-zero exit: show the `error:` line with its reason and the PR URL,
-and say the task is not marked done. The PR stays recorded in the task. Do not re-run `gh pr create`.
-Once the cause is fixed, re-run the same `mark-done` command; `--force` skips the evidence checks only
-when the user asks for it. With no matching task, as when one task ships through PRs on several
-branches, show the `note:` line as printed and run that command only when the user confirms the task.
+Show a refusal's `error:` line with its reason and the PR URL, and say the task is not marked done.
 
 **Closing confirmation.** Last, ask the one journal and memory question of the workflow per
 [closing confirmation](references/closing-confirmation.md); it is the build workflow's only place
@@ -206,10 +186,8 @@ either is asked (the respond workflow's is `crew-pr-resolver`'s `+ journal`).
 
 Use plain language, without compressed summaries, before:
 
-- Running `git push` — state the branch name, remote, and whether this is a force push; force pushes
-  rewrite remote history
-- Running `gh pr create` — show the full PR title, description, base branch, and target repo; PRs
-  are public and trigger CI immediately
+- Running `ship` — show the full PR title, description, branch, base branch, and target repo; it
+  pushes and opens a PR, which is public and triggers CI immediately
 - Any fork workflow where the target repo differs from origin — call out the fork explicitly to
   avoid misfiling the PR
 

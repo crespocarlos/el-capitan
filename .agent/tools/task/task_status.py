@@ -113,6 +113,21 @@ def typed_tests_block_problem(text: str) -> str:
     return ""
 
 
+def typed_test_commands(text: str) -> list[str]:
+    """Every runnable Command of the `## Tests` block, in file order, backticks stripped; none-only ones left out."""
+    match = re.search(r"^## Tests", text, re.MULTILINE)
+    if not match:
+        return []
+    rest = text[match.end():]
+    next_section = re.search(r"^## [^#\s]", rest, re.MULTILINE)
+    commands = []
+    for found in TYPED_COMMAND.finditer(rest[:next_section.start()] if next_section else rest):
+        value = next((group for group in found.groups() if group), "").strip().strip("`").strip()
+        if value and value.lower() != "none" and not value.startswith("<"):
+            commands.append(value)
+    return commands
+
+
 def typed_tests_problem(spec_path: Path) -> str:
     """Return the check's message when a typed ## Tests block has no runnable Command.
 

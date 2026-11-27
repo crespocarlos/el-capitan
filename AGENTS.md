@@ -53,7 +53,7 @@ anchor into a silent no-op; shell heredocs are for scratch artifacts and task-di
 ## Self-application
 
 The pipeline improves itself: `crew spec "add X to the pipeline"`, then `crew implement`, `crew
-review`, `crew commit`.
+review`, `crew open pr`.
 
 ## Persistent memory
 

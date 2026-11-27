@@ -665,6 +665,24 @@
       "smoke": "imported by crew-task.py"
     },
     {
+      "name": "task_ship.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-task.py: `ship`: stage, commit, merge the base, re-run ## Tests, push, open a draft PR, mark done (`--phase`: record the PR, keep IMPLEMENTING); resumable from its per-branch SHIP entries",
+      "smoke": "imported by crew-task.py"
+    },
+    {
+      "name": "task_ship_checks.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by task_ship.py: files named like a secret or over 1 MB, and added lines matching the credential hook's pattern",
+      "smoke": "imported by crew-task.py"
+    },
+    {
       "name": "task_verify.py",
       "dir": "task",
       "kind": "module",

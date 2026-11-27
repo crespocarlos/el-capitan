@@ -206,17 +206,17 @@ def review_location(task: Path) -> str:
     return f"review read from {review} (recorded in {task / 'run.json'})"
 
 
-def ancestry_problem(reviewed_at: str) -> str | None:
-    """Why the reviewed commit does not cover HEAD, or None when it is an ancestor.
+def ancestry_problem(reviewed_at: str, root: Path | None = None) -> str | None:
+    """Why the reviewed commit does not cover the HEAD of `root` (default: the cwd), or None when it is an ancestor.
 
-    `crew commit` runs after `crew review`, so HEAD is normally one or more commits ahead of the
-    reviewed tree. An unrelated or unresolvable SHA must fail rather than silently satisfy the gate:
-    a git error here is reported as unverifiable, never as approval.
+    The commit after `crew review` puts HEAD one or more commits ahead of the reviewed tree. An unrelated or
+    unresolvable SHA must fail rather than silently satisfy the gate: a git error here is reported as
+    unverifiable, never as approval.
     """
     try:
-        if is_ancestor(None, reviewed_at, "HEAD"):
+        if is_ancestor(root, reviewed_at, "HEAD"):
             return None
-        current = head_sha(None)
+        current = head_sha(root)
         return (f"review was of {reviewed_at[:12]}, which is not an ancestor of HEAD "
                 f"{current[:12]}; re-run crew review")
     except GitError:
@@ -224,8 +224,9 @@ def ancestry_problem(reviewed_at: str) -> str | None:
                 "run from the implementation checkout")
 
 
-def done_problems(r: TaskState) -> list[str]:
-    """Every reason this spec may not close out yet: unchecked criteria, then a review that does not cover HEAD."""
+def done_problems(r: TaskState, root: Path | None = None) -> list[str]:
+    """Every reason this spec may not close out yet: unchecked criteria, then a review that does not cover the
+    HEAD of `root` (default: the cwd)."""
     problems = []
     if not (PREDICATES["all_checked"](r, None) and PREDICATES["has_checkboxes"](r, None)):
         problems.append(f"{r.open} unchecked criteria/tasks" if r.open
@@ -233,7 +234,7 @@ def done_problems(r: TaskState) -> list[str]:
     review = review_file(r.task)
     commit = reviewed_at(review)
     if commit:
-        problem = ancestry_problem(commit)
+        problem = ancestry_problem(commit, root)
         if problem:
             problems.append(problem)
     elif review is not None:
@@ -255,9 +256,10 @@ def record_pr(r: TaskState, pr_url: str) -> None:
     print(f"recorded PR: {pr_url}")
 
 
-def mark_done(task_dir: str | Path, pr_url: str, force: bool) -> int:
+def mark_done(task_dir: str | Path, pr_url: str, force: bool, root: Path | None = None) -> int:
     """IMPLEMENTING to DONE with the PR that was opened; with `--force`, DRAFTING, APPROVED, IMPLEMENTING or ON-HOLD
-    to DONE, a free-text note logged as `closed: <note>`. A DONE task only gains the PR in its list."""
+    to DONE, a free-text note logged as `closed: <note>`. A DONE task only gains the PR in its list. The review
+    must cover the HEAD of `root` (default: the cwd)."""
     r = load_task(task_dir)
     if r is None:
         return 1
@@ -284,7 +286,7 @@ def mark_done(task_dir: str | Path, pr_url: str, force: bool) -> int:
         print(f"error: {name(r)} is {state}: a PR needs an approved spec; nothing written (approve the spec first "
               "with mark-approved, or close it with a note)", file=sys.stderr)
         return 1
-    problems = done_problems(r)
+    problems = done_problems(r, root)
     if problems and not force:
         print(f"error: {name(r)}: {'; '.join(problems)}; status not changed (--force overrides)",
               file=sys.stderr)

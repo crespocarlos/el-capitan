@@ -20,8 +20,8 @@ Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for c
 |---|---|
 | `crew spec` issue/URL/description | crew-specwriter |
 | `crew implement` | crew-implement → @crew-builder |
-| `crew commit` | crew-commit |
-| `crew open pr` | crew-open-pr — an open PR marks the task DONE |
+| `crew commit` | crew-commit (respond workflow) |
+| `crew open pr` | crew-open-pr → `crew-task.py ship` |
 | `crew review address` | crew-address-review skill — not crew-reviewer |
 | `crew review` [PR #X \| spec \| idea \| changes \| (self)] | crew-reviewer — `changes`: staged; `idea`: proposal |
 | `crew pr` view\|diff\|repo\|issue | `~/.agent/bin/crew-pr-actions.py`; writes stay `gh` |
