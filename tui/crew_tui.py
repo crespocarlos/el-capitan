@@ -11,6 +11,11 @@ import argparse
 import sys
 from pathlib import Path
 
+import tui_bootstrap  # noqa: F401
+
+from ls_data import configured_scope
+from task_gc import ConfigError
+
 from tui_model import VIEWS, Filters, collect, landed_for, parse_filter, render
 
 RUN = "uv run --no-project --with-requirements tui/requirements.txt python3 tui/crew_tui.py"
@@ -19,8 +24,9 @@ RUN = "uv run --no-project --with-requirements tui/requirements.txt python3 tui/
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Read-only crew dashboard: tasks, workers and locks, report.")
     parser.add_argument("--tasks-dir", type=Path, default=Path.home() / ".agent/tasks")
-    parser.add_argument("--repo", metavar="OWNER/NAME|all",
-                        help="one repository's tasks (default: the current repo inside one; all: every repo)")
+    parser.add_argument("--repo", metavar="OWNER/NAME|here|all",
+                        help="one repository's tasks (default: ls.repo of ~/.agent/config.json, else here: "
+                             "the current repo inside one; all: every repo)")
     parser.add_argument("--status", action="append", default=[], metavar="STATE",
                         help="only tasks in STATE (repeatable)")
     parser.add_argument("--all", action="store_true", help="list DONE tasks too")
@@ -42,7 +48,12 @@ def main(argv: list[str] | None = None) -> int:
         states = parse_filter(" ".join(f"status:{state}" for state in args.status)).states
     except ValueError as error:
         parser.error(f"--status: {error}")
-    filters = Filters(repo=args.repo, states=states, done=args.all, days=args.since)
+    try:
+        repo = args.repo or configured_scope()  # read once, so a refresh never meets a broken config.json
+    except ConfigError as error:
+        print(f"crew_tui: {error}", file=sys.stderr)
+        return 2
+    filters = Filters(repo=repo, states=states, done=args.all, days=args.since)
     if args.once:
         landed = landed_for(args.tasks_dir, filters) if args.landed else None
         views = collect(args.tasks_dir, filters, landed)

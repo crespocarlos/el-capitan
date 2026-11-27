@@ -104,10 +104,10 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_gates.py`: the transition gates: approve, implement, close out
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`
 - `task_report.py`: rendering task state for `crew-ls.py`, the ISSUE, PR, PROGRESS and ACTIVITY cells, and `reconcile`
-- `ls_data.py`: what `crew ls` and `--report` read: rows, the repo and state filters, stale, the `landed` lines, landing bases, `--watch`
-- `task_prs.py`: the branch PRs reconcile asks GitHub for: due tasks, the 24-hour cache, the thread pool and its budget
+- `ls_data.py`: what `crew ls`, `--report` and the TUI read: rows, the repo filter (`--repo`, else `ls.repo` of `~/.agent/config.json`: `here`, `all` or an `owner/name`) and the state filter, stale, the `landed` lines, landing bases, `--watch`
+- `task_prs.py`: the branch PRs reconcile asks GitHub for: due tasks, a fork's parent, the 24-hour cache, the thread pool and its budget
 - `ls_report.py`: `crew-ls.py --report`: opened and closed, verdicts, findings and fixed rate, stage costs and durations, tool failures
-- `task_gc.py`: the retention policy (`~/.agent/config.json`), `crew-task.py gc`, the state sizes `crew-doctor.py` checks
+- `task_gc.py`: `~/.agent/config.json` (`gc`, `doctor`, `ls`: defaults, validation, exit 2 on a bad value), the retention policy, `crew-task.py gc`, the state sizes `crew-doctor.py` checks
 - `task_lock.py`: the worker lock (written, read across the worktrees, removed) and the `crew-task.py lock|blocked` commands
 - `task_artifacts.py`: bounded task artifacts: read one, render the resolved task
 - `task_repo_facts.py`: the repository record a prompt reads: root, branch, head, remotes, files
@@ -211,7 +211,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 |---|---|---|
 | `crew-agent-context.py` | JSON always | — |
 | `crew-lint.py` | findings, or JSON with `--json`; `--commands` a Markdown table; `--dead-code` a table of caller counts, or JSON with `--json` | — |
-| `crew-ls.py` | table, `--md`, or JSON with `--json`; `--report` text or JSON | `--limit`, `--max-chars` |
+| `crew-ls.py` | table, `--md`, or with `--json` one object whose `items` are the tasks; `--report` text or JSON | `--limit`, `--max-chars` |
 | `crew-doctor.py` | one screen of `ok`, `note` and `FAIL` lines; exit 1 on a `FAIL` | — |
 | `crew-mem.py` | text; JSON for `search`, `context`, `list` with `--json` | `--limit`, `--max-chars` |
 | `crew-review-findings.py` | text; JSON for `select`, `coverage`, `normalize` | `--max-chars` |
@@ -265,7 +265,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   non-zero with the reason and still records the PR; `crew open pr` stops on it. On a DONE task it
   only appends the PR. `crew-task.py reconcile` (`task_prs.py`) asks `gh pr list --head <branch>`,
   read-only, for each IMPLEMENTING task with no PR recorded and a branch off its repository's default
-  branch, on 8 threads. Each answer, and each repository's default branch, is cached for 24 hours in
+  branch, on 8 threads. When the task's repository is a fork and lists no PR, it asks the parent too
+  and keeps the PRs whose head repository belongs to the fork's owner (`gh pr list --head` takes no
+  `owner:branch`). Each answer, and each repository's default branch and parent (one `gh repo view`), is cached for 24 hours in
   `~/.agent/.pr-lookup.json`, so a task is asked at most once a day. `--pr-budget SECONDS` bounds
   the whole search: the session-start hook passes 3, a task with no answer by then (or a failed read,
   offline) stays unchecked and is counted in one `N task(s) not checked for a PR yet` line, and a
@@ -273,7 +275,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   stays unchecked. With `--apply` it records the PRs and the cache. It lists the tasks ready to mark
   done (the reviewed commit checked against the task's branch tip, not the cwd's HEAD), and a task
   whose PR is open but which fails that rule under `PR open, not closable` with the reason; `ready to
-  open PR` excludes a task with a PR. It never writes DONE. `crew ls --json` adds `issue`, `prs`,
+  open PR` excludes a task with a PR. It never writes DONE. `crew ls --json` prints one object,
+  `{"items": [...], "returned", "total", "truncated", "what"}` plus a `hint` when bounded, whatever the
+  flags; each item adds `issue`, `prs`,
   `progress` and `activity` (`running <stage>`, `stuck <stage>` past 6 hours, or `idle 3d` from the
   last PROGRESS entry; not the 14-day `stale`) from `task_report.task_cells`, the same cells the TUI shows.
 - **The status token is canonical and normalized on read.** `DRAFTING`, `APPROVED`, `IMPLEMENTING`,

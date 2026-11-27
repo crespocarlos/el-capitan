@@ -171,8 +171,8 @@ elif [ -n "$TASK_DIR" ]; then
   ~/.agent/bin/crew-task.py mark-done "$TASK_DIR" --pr-url "$PR_URL" \
     || { echo "error: PR opened ($PR_URL) but the task is not marked done" >&2; exit 1; }
 else
-  LIKELY=$(~/.agent/bin/crew-ls.py --json --status implementing --max-chars 1000000 \
-    | jq -r 'sort_by(.activity_days) | .[0].directory // "<TASK_DIR>"')
+  LIKELY=$(~/.agent/bin/crew-ls.py --json --repo here --status implementing --max-chars 1000000 \
+    | jq -r '.items | sort_by(.activity_days) | .[0].directory // "<TASK_DIR>"')
   echo "note: no task matches this branch; to attach $PR_URL to one: ~/.agent/bin/crew-task.py mark-done $LIKELY --pr-url $PR_URL (newest IMPLEMENTING task of this repo; check it is the right one)"
 fi
 ```

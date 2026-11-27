@@ -61,26 +61,31 @@ def print_lines(lines: Iterable[str], max_chars: int, *, what: str = "output",
     print(truncate("\n".join(lines), max_chars, what=what, tail=tail, flag=flag))
 
 
-def json_payload(items: list[Any], limit: int | None, max_chars: int, *,
-                 what: str = "items") -> str:
-    """JSON for a collection: a plain array when complete, an envelope with counts when clipped.
-
-    An array cannot carry a "there is more" flag, so a clipped result becomes
-    `{"items": [...], "returned": n, "total": N, "truncated": true, "hint": "..."}` — still valid
-    JSON with no prose on stdout, and impossible to mistake for a complete list. The hint names
-    `--limit` when a row limit cut the list and `--max-chars` when the size ceiling did.
-    """
+def json_envelope(items: list[Any], limit: int | None, max_chars: int, *,
+                  what: str = "items") -> dict[str, Any]:
+    """A collection as one object, clipped or not: `{"items": [...], "returned": n, "total": N,
+    "truncated": bool, "what": ...}`, plus a `hint` naming `--limit` (a row limit cut the list) or
+    `--max-chars` (the size ceiling did) when `truncated`. A reader parses one shape every time."""
     total = len(items)
     kept, _ = rows_limit(items, limit)
-    encoded = json.dumps(kept, indent=2)
-    if len(kept) == total and len(encoded) <= max_chars:
-        return encoded
     while kept and len(json.dumps(kept, indent=2)) > max_chars:
         kept = kept[:-1]
-    flag = "--limit" if limit is not None and limit < total else "--max-chars"
-    envelope = {"items": kept, "returned": len(kept), "total": total, "truncated": True,
-                "what": what, "hint": hint(flag)}
-    return json.dumps(envelope, indent=2)
+    envelope: dict[str, Any] = {"items": kept, "returned": len(kept), "total": total,
+                                "truncated": len(kept) < total, "what": what}
+    if envelope["truncated"]:
+        envelope["hint"] = hint("--limit" if limit is not None and limit < total else "--max-chars")
+    return envelope
+
+
+def json_payload(items: list[Any], limit: int | None, max_chars: int, *,
+                 what: str = "items") -> str:
+    """JSON for a collection: a plain array when complete, the `json_envelope` object when clipped.
+
+    An array cannot carry a "there is more" flag, so a clipped result is the envelope — still valid
+    JSON with no prose on stdout, and impossible to mistake for a complete list.
+    """
+    envelope = json_envelope(items, limit, max_chars, what=what)
+    return json.dumps(envelope if envelope["truncated"] else envelope["items"], indent=2)
 
 
 def bounded_json(payload: Any, max_chars: int, *, what: str = "result") -> str:

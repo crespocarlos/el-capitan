@@ -2,10 +2,11 @@
 
 Rendering never writes, so a listing failure is a display problem; `reconcile` applies holds and
 statuses through `task_state` and records branch PRs through `task_progress`. The ISSUE, PR, PROGRESS
-and ACTIVITY cells are shared by `crew ls --json` and the TUI.
+and ACTIVITY cells are shared by `crew ls --json` (always one `lib.output.json_envelope` object) and the TUI.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 import time
@@ -22,7 +23,7 @@ from task_progress import Entry, append_pr, blocked_reason, read_entries
 from task_state import TaskState, decide, done_blockers, head, load_rules, name, set_status
 from task_status import STATUS, StatusError, token
 
-from lib.output import json_payload, print_lines, rows_limit
+from lib.output import json_envelope, print_lines, rows_limit
 
 OPEN_ORDER = ["IMPLEMENTING", "APPROVED", "DRAFTING", "ON-HOLD"]
 
@@ -176,7 +177,7 @@ def print_listing(rows: list[TaskState], args, landed=None, scope: str = "") -> 
             kept = [(record, r) for record, r in list(zip(records, rows))[:args.limit] if head(r) == "DONE"]
             for (record, _), found in zip(kept, landed_rows([r.task for _, r in kept])):
                 record.update(found)
-        print(json_payload(records, args.limit, args.max_chars, what="tasks"))
+        print(json.dumps(json_envelope(records, args.limit, args.max_chars, what="tasks"), indent=2))
         return
     states = [state.upper() for state in getattr(args, "status", None) or []]
     show_done = args.all or "DONE" in states

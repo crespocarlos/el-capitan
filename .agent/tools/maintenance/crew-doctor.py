@@ -24,7 +24,9 @@ def main(argv: list[str] | None = None) -> int:
     home, places = Path.home(), Places.here()
     lines = []
     try:
-        limits = load_config(places.agent)["doctor"]
+        config = load_config(places.agent)
+        limits = config["doctor"]
+        lines.append(Line("ok", "config", f"crew ls scope (ls.repo): {config['ls']['repo']}"))
     except ConfigError as error:
         limits = dict(DEFAULTS["doctor"])
         lines.append(Line("FAIL", "config", f"{error}; fix the file (the default limits apply meanwhile)"))

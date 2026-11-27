@@ -1,9 +1,9 @@
 """The PRs reconcile finds for IMPLEMENTING tasks: `gh pr list --head <branch>`, read-only, cached and bounded.
 
-A task is asked at most once per `TTL` seconds, and never once its PR list holds a PR; a repository's
-default branch (`gh repo view`, a branch tasks commit to directly, so never asked) is kept as long.
-The cache is `.pr-lookup.json` beside the tasks directory. Lookups run on `WORKERS` threads; with a
-`budget` every call's timeout ends at one deadline, and a task not answered by then is left unchecked.
+A task is asked at most once per `TTL` seconds, never once it has a PR; a repository's default branch (never
+asked) and parent, from one `gh repo view`, are kept as long. A fork's task with no PR in the fork is asked in
+the parent, keeping the fork owner's heads. The cache is `.pr-lookup.json` beside the tasks directory. Lookups
+run on `WORKERS` threads; with a `budget` every call ends at one deadline, and a task not answered stays unchecked.
 """
 from __future__ import annotations
 
@@ -58,8 +58,32 @@ def parsed(read: Reader, arguments: list[str], timeout: float) -> object:
         return None
 
 
+def repo_facts(read: Reader, repo: str, timeout: float) -> tuple[str, str] | None:
+    """`(default branch, parent owner/name or "")` from one `gh repo view`; None when the read failed."""
+    info = parsed(read, ["repo", "view", repo, "--json", "defaultBranchRef,parent"], timeout)
+    if not isinstance(info, dict):
+        return None
+    parent = info.get("parent") if isinstance(info.get("parent"), dict) else {}
+    owner, name = (parent.get("owner") or {}).get("login") or "", parent.get("name") or ""
+    return (info.get("defaultBranchRef") or {}).get("name") or "", f"{owner}/{name}" if owner and name else ""
+
+
+def branch_urls(read: Reader, repo: str, branch: str, owner: str | None, timeout: float) -> list[str] | None:
+    """The PR URLs of `branch` in `repo`, only those whose head is `owner`'s when given; None when the read failed."""
+    fields = "url,headRepositoryOwner" if owner else "url"
+    listed = parsed(read, ["pr", "list", "--head", branch, "--repo", repo, "--state", "all", "--json", fields], timeout)
+    if not isinstance(listed, list):
+        return None
+    def head_owner(item: dict) -> str:
+        return str((item.get("headRepositoryOwner") or {}).get("login", "")).lower()
+
+    items = [item for item in listed if isinstance(item, dict) and (not owner or head_owner(item) == owner.lower())]
+    return [url for url in (str(item.get("url")) for item in items) if GITHUB_PR_URL.fullmatch(url)]
+
+
 def load_cache(path: Path) -> dict:
-    """`{"tasks": {uuid: checked_at}, "repos": {owner/repo: [checked_at, default branch]}}`; empty when unreadable."""
+    """`{"tasks": {uuid: checked_at}, "repos": {owner/repo: [checked_at, default branch, parent or ""]}}`; empty
+    when unreadable. A repository entry of another shape is asked again."""
     try:
         cache = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -95,32 +119,26 @@ def branch_prs(rows: list[TaskState], cache_path: Path | None, budget: float | N
     def timeout() -> float:
         return CALL_TIMEOUT if deadline is None else max(0.05, min(CALL_TIMEOUT, deadline - clock()))
 
-    def default_branch(repo: str) -> str | None:
-        info = parsed(read, ["repo", "view", repo, "--json", "defaultBranchRef"], timeout())
-        return ((info.get("defaultBranchRef") or {}).get("name") or "") if isinstance(info, dict) else None
-
     pool = ThreadPoolExecutor(max_workers=WORKERS)
-    defaults: dict[str, Future] = {}
+    facts: dict[str, Future] = {}
     asked: list[str] = []
     for repo in sorted({r.repo for r in wanted}):  # queued first, so a task job never waits behind its own repo
         hit = cache["repos"].get(repo)
-        if isinstance(hit, list) and len(hit) == 2 and isinstance(hit[0], (int, float)) and moment - hit[0] < TTL:
-            defaults[repo] = Future()
-            defaults[repo].set_result(str(hit[1]))
+        if isinstance(hit, list) and len(hit) == 3 and isinstance(hit[0], (int, float)) and moment - hit[0] < TTL:
+            facts[repo] = Future()
+            facts[repo].set_result((str(hit[1]), str(hit[2])))
         else:
-            defaults[repo] = pool.submit(default_branch, repo)
+            facts[repo] = pool.submit(lambda name: repo_facts(read, name, timeout()), repo)  # timeout() at run time
             asked.append(repo)
 
     def lookup(r: TaskState) -> list[str] | None:
-        default, branch = defaults[r.repo].result(), r.meta["branch"]
-        if default is None or branch == default:
-            return None if default is None else []
-        argv = ["pr", "list", "--head", branch, "--repo", r.repo, "--state", "all", "--json", "url"]
-        listed = parsed(read, argv, timeout())
-        if not isinstance(listed, list):
-            return None
-        urls = [str(item.get("url")) for item in listed if isinstance(item, dict)]
-        return [url for url in urls if GITHUB_PR_URL.fullmatch(url)]
+        known, branch = facts[r.repo].result(), r.meta["branch"]
+        if known is None or branch == known[0]:
+            return None if known is None else []
+        urls = branch_urls(read, r.repo, branch, None, timeout())
+        if urls or urls is None or not known[1]:
+            return urls
+        return branch_urls(read, known[1], branch, r.repo.split("/")[0], timeout())  # a fork: its PR is upstream
 
     jobs = {pool.submit(lookup, r): r for r in wanted}
     pending = set(jobs)
@@ -130,9 +148,9 @@ def branch_prs(rows: list[TaskState], cache_path: Path | None, budget: float | N
     result = collect({job: r for job, r in jobs.items() if job not in pending}, cache, moment)
     result.unchecked += len(pending)
     for repo in asked:
-        job = defaults[repo]
+        job = facts[repo]
         if job.done() and not job.cancelled() and job.exception() is None and job.result() is not None:
-            cache["repos"][repo] = [moment, job.result()]
+            cache["repos"][repo] = [moment, *job.result()]
     if write and cache_path:
         save_cache(cache_path, cache, {r.uuid for r in rows})
     return result
