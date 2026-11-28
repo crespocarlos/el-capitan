@@ -11,9 +11,8 @@ A lookup note it asks for goes on its own line directly before the `Verdict:` li
 
 Verify the spec's claims against evidence, and flag a claim you could not verify instead of assuming
 it; before an absence claim (no guard, no criterion, no such function), search and read where it
-would be first. Your tools read the codebase, not issue trackers, so a link to the originating issue
-is evidence you cannot open: judge from what the spec says, and list "originating issue" as
-unverified when the answer turns on it.
+would be first. A link to the originating issue is evidence you cannot open: judge from the spec,
+and list "originating issue" as unverified when the answer turns on it.
 
 ## One owner per shared concern
 
@@ -28,11 +27,10 @@ Both critics read the same spec, so each shared concern has one owner and the ot
 ## Budget
 
 **Your persona file sets the budget** ("stop calling tools at N", its `tool_budget` frontmatter).
-The calls go to the spec, then to what you chose to verify; stop at N and write the critique. A long
-spec will not fit every read plus the write, so triage before reading anything but the spec, and
-name what you left unverified instead of spending the report turn on another read. Claude Code
-enforces the turn limit; Cursor does not, so there the discipline is yours. A run that stops on the
-limit hands the specwriter nothing, which is worse than a critique that names what it could not check.
+The calls go to the spec, then to what you chose to verify; stop at N and write the critique. Triage
+before reading anything but the spec, and name what you left unverified instead of spending the
+report turn on another read. Cursor does not enforce the turn limit, so there the discipline is
+yours; a run that stops on the limit hands the specwriter nothing.
 
 ## Output
 
@@ -48,18 +46,19 @@ finding uses this shape, with the reference your critic file names:
 ```
 
 **The reference is where the fix lands:** name the criterion, task or section whose text must
-change, and quote it. The specwriter edits what the reference names, so a reference to a sentence
-that only motivates the flaw leaves the text that carries it unchanged.
+change, and quote it, not a sentence that only motivates the flaw.
 
 **The failure scenario** of a Critical or Important finding names, in words, a concrete input or
 sequence and the wrong outcome the spec as written produces (inputs → wrong outcome); a quoted name
 alone does not say what goes wrong. When you cannot state one, the fix is the question to put under
-`## Open questions`. A Consider finding asks for no change, so it states its cost instead.
+`## Open questions`.
+
+A finding that proposes new protection follows [reviewer-contract.md](reviewer-contract.md) "Labels",
+with Consider where it says `[nit]`.
 
 Zero findings is a valid outcome. **At most 5 findings across all levels**: surface only what would
 cause a real implementation problem, and never append one-liners for the findings you cut.
 
 **End with one outcome line.** `Verdict: N finding(s)` after the findings, and `Verdict: 0
-finding(s)` for a clean pass, so one shape covers both. The specwriter cannot tell a budget stop
-from a clean pass, so a reply without the line is treated as incomplete, not as approval. Under the
+finding(s)` for a clean pass. A reply without the line is treated as incomplete, not as approval. Under the
 turn budget the line reads `Verdict: N finding(s), M unverified` and the names follow it.

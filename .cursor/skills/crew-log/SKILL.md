@@ -42,9 +42,9 @@ for global entries. The command prints the observation ID.
 
 ## After writing
 
-Keep the resulting observation IDs as evidence. Draft zero to three durable typed candidates into
-`~/.agent/memory/.inbox/`, citing those IDs; a no-op is valid. Show candidates with the entry and,
-only after approval, run `~/.agent/bin/crew-mem.py import-inbox --all`. On exit 2 print `warning: memory
+Keep the observation IDs as evidence. Draft zero to three durable typed candidates into
+`~/.agent/memory/.inbox/`, citing those IDs; a no-op is valid. Show candidates with the entry, then
+import the approved ones: `~/.agent/bin/crew-mem.py import-inbox <file> ...`. On exit 2 print `warning: memory
 unavailable`.
 
 Then:

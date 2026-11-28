@@ -30,6 +30,7 @@ from review_render import (
 from review_render import check as check_provenance
 from review_vocabulary import ANCHOR, CODE_MODES, SEVERITY, verdict, without_fences
 from review_workspace import record_task_review
+from task_status import verdict_word
 
 from lib.files import atomic_write
 from lib.git import GitError, rev_parse
@@ -42,11 +43,6 @@ ENTRY = re.compile(
     r"^[ \t]*\d+[.)]?[ \t]*(?:\*\*)?\[(?P<label>" + SEVERITY + r")\]", re.MULTILINE | re.IGNORECASE
 )
 SCORE = re.compile(r"·\s*([1-5])\s*$")
-# The last `Verdict:` line wins, because a report's decision is the one it closes on; `##`, bold, and
-# a bare line are all spellings a real report used.
-VERDICT_LINE = re.compile(
-    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?Verdict:(?:\*\*)?[ \t]*([A-Za-z]+)", re.MULTILINE | re.IGNORECASE
-)
 CODE_VERDICTS = {"pass": "PASS", "warn": "WARN", "block": "BLOCK"}
 # A spec or idea review scores the plan, so its verdict word differs. `revisit` is the reviewer's word
 # for "not ready", which a plan with concerns is: it maps to `BLOCK` or `WARN`, whichever the findings
@@ -145,11 +141,9 @@ def check_list(report: str, emitted: list) -> str | None:
 
 
 def stated_verdict(report: str) -> tuple[str, str] | None:
-    """The last `Verdict:` line as `(as written, lowercased)`, or None when the report has none."""
-    matches = VERDICT_LINE.findall(without_fences(report))
-    if not matches:
-        return None
-    return matches[-1], matches[-1].lower()
+    """The last `Verdict:` line outside a fence (`verdict_word`) as `(as written, lowercased)`, or None."""
+    word = verdict_word(without_fences(report))
+    return (word, word.lower()) if word else None
 
 
 def plan_outcome(word: str, derived: str) -> str | None:
@@ -371,6 +365,8 @@ def check_outcomes(args: argparse.Namespace) -> int:
     made went unrecorded is exactly the drift this exists to make visible.
     """
     review_dir = args.review_dir.resolve()
+    if not review_dir.is_dir():
+        raise ValueError(f"{review_dir} is not a review directory")
     recorded = records.summary(review_dir)
     missing = records.missing(review_dir, args.acted)
     payload = {**recorded, "acted": len(args.acted), "missing": missing}

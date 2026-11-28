@@ -29,15 +29,12 @@ HOOK_NAME=check-task-spec-owner
 hook_stand_down check-task-spec-owner.sh fail-closed
 hook_input
 hook_event
-path=$(hook_field file_path)
-[ -n "$path" ] || hook_allow
-
 verdict=$(printf '%s' "$HOOK_INPUT" | python3 -I "$HOOK_LIB/spec_guard.py" "$HOME/.agent/tasks" 2>/dev/null) || verdict=""
 case "$verdict" in
   skip) hook_allow ;;
   "ok "*) path=${verdict#ok } ;;
   "deny "*) hook_deny "${verdict#deny }" ;;
-  *) hook_deny "Task spec guard: cannot check this write to $path (lib/spec_guard.py gave no verdict), so it is refused." ;;
+  *) hook_deny "Task spec guard: cannot check this write (lib/spec_guard.py gave no verdict), so it is refused." ;;
 esac
 task_dir=$(dirname "$path")
 

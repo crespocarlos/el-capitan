@@ -128,6 +128,7 @@ GATE = [
      ("Verdict: PASS", "derive WARN")),
     ("the last verdict line is the one compared",
      changes(ENTRY + "The earlier draft said Verdict: PASS and was wrong.\n\n", "WARN"), ONE, (), 0, ()),
+    ("pass-with-nits is one word", changes(ENTRY, "pass-with-nits"), ONE, (), 2, ("Verdict: pass-with-nits",)),
     ("blocking findings derive BLOCK", changes(ENTRY.replace("attention", "blocking"), "BLOCK"), [BLOCKING], (), 0, ()),
     ("revisit with concerns passes", spec(CONCERN, "revisit"),
      [attention(label="concern", file="SPEC.md", line=12)], SPEC, 0, ()),

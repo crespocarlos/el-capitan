@@ -325,7 +325,7 @@ def install_blocks(root: Path = ROOT) -> ModuleType:
 
 
 def check_blocks(home: Path, root: Path = ROOT) -> list[Line]:
-    """Each managed block in CLAUDE.md and AGENTS.md equals what install.sh would write today."""
+    """Each managed block equals what install.sh would write today; each managed `@` import loads."""
     blocks = install_blocks(root)
     stale = []
     try:
@@ -336,7 +336,9 @@ def check_blocks(home: Path, root: Path = ROOT) -> list[Line]:
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
         stale += [f"{tilde(path, home)} {name} block {'missing' if blocks.current(text, name) is None else 'stale'}"
                   for name, body in wanted.items() if blocks.current(text, name) != body]
-    return [Line("FAIL", "blocks", capped(stale) + RERUN) if stale else Line("ok", "blocks", "managed blocks current")]
+    skipped = [f"~/.claude/CLAUDE.md {problem}" for problem in blocks.import_problems(home, root)]
+    lines = [Line("FAIL", "blocks", capped(stale) + RERUN) if stale else Line("ok", "blocks", "managed blocks current")]
+    return lines + ([Line("FAIL", "imports", capped(skipped) + RERUN)] if skipped else [])
 
 
 def version(argv: list[str]) -> str | None:

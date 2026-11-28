@@ -63,34 +63,42 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/destructive-git.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/local-pr-ref.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/source-edit.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/task-files.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/owner-only.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/zsh-equals.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/worker-tree.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"",
             "onFailure": "block"
           }
@@ -101,10 +109,12 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\""
           },
           {
             "type": "command",
+            "timeout": 10,
             "command": "bash \"$HOME/.claude/hooks/check-task-spec-owner.sh\""
           }
         ]
@@ -116,6 +126,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\" 2>/dev/null; exit 0"
           }
         ]
@@ -125,6 +136,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/record-pr.sh\" 2>/dev/null; exit 0"
           }
         ]
@@ -136,6 +148,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\" 2>/dev/null; exit 0"
           }
         ]
@@ -147,6 +160,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/notify-idle.sh\" 2>/dev/null; exit 0"
           }
         ]
@@ -157,6 +171,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/memory-context.sh\""
           }
         ]
@@ -165,6 +180,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/agents-refresh.sh\"; exit 0"
           }
         ]
@@ -173,6 +189,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/spec-status-reconcile.sh\"; exit 0"
           }
         ]
@@ -183,6 +200,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\" 2>/dev/null; exit 0"
           }
         ]
@@ -193,6 +211,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/capture-reply.sh\" 2>/dev/null; exit 0"
           }
         ]
@@ -203,6 +222,7 @@
         "hooks": [
           {
             "type": "command",
+            "timeout": 30,
             "command": "bash \"$HOME/.claude/hooks/mode-anchor.sh\""
           }
         ]

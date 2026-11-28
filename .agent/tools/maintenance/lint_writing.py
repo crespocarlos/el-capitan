@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import io
+import json
 import re
 import tokenize
 from pathlib import Path
@@ -206,8 +207,15 @@ def lint_local_state_tracked(root: Path) -> Findings:
     return findings
 
 
+def registrations(node: object) -> list[dict]:
+    """Every object with a `command` in a hooks section, in either harness's nesting."""
+    if isinstance(node, dict):
+        return [node] if "command" in node else [found for child in node.values() for found in registrations(child)]
+    return [found for child in node for found in registrations(child)] if isinstance(node, list) else []
+
+
 def lint_hook_registration(root: Path) -> Findings:
-    """Every hook script is named in a settings file, or it never runs.
+    """Every hook script is named in a settings file, or it never runs; every registration sets a `timeout`.
 
     `guard/` and `lib/` are both walked: a rule that moved into `guard/` is still a hook that must be
     registered, while `lib/` holds sourced files, which a registration never names.
@@ -216,7 +224,11 @@ def lint_hook_registration(root: Path) -> Findings:
     referenced = ""
     for config in SETTINGS_FILES:
         if (root / config).exists():
-            referenced += (root / config).read_text(errors="replace")
+            text = (root / config).read_text(errors="replace")
+            referenced += text
+            findings += [(config, line_no(text, text.find(json.dumps(entry["command"]))), "hook-timeout",
+                          "hook registration has no timeout (the harness default is 600 s)")
+                         for entry in registrations(json.loads(text).get("hooks", {})) if "timeout" not in entry]
     hooks = sorted((root / ".claude/hooks").glob("*.sh"))
     hooks += sorted((root / ".claude/hooks/guard").glob("*.sh"))
     for hook in hooks:

@@ -13,6 +13,15 @@ from pathlib import Path
 
 REVIEWED_AT = re.compile(r"^Reviewed at:\s*([0-9a-f]{7,40})\s*$", re.M)
 LOCAL = "REVIEW.md"
+# The one reader of a review's `Verdict:` word: `##` and bold allowed, any case. The word is the whole token after
+# it, so `pass-with-nits` is no code verdict.
+VERDICT_LINE = re.compile(r"^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?Verdict:(?:\*\*)?[ \t]*([\w-]*)", re.M | re.I)
+
+
+def verdict_word(text: str) -> str | None:
+    """The word of the last `Verdict:` line that has one, as written, or None."""
+    words = [word for word in VERDICT_LINE.findall(text) if word]
+    return words[-1] if words else None
 
 
 def recorded_review_dir(task: Path) -> Path | None:

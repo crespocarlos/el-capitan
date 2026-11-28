@@ -90,6 +90,7 @@ RULES: dict[str, tuple[str, str]] = {
     "progress-not-a-transition": ("writing", "a PROGRESS write is a declared transition"),
     "shell-file-edit": ("writing", "prompts edit files with the edit tool, not shell"),
     "unregistered-hook": ("writing", "every hook script is registered in both harnesses"),
+    "hook-timeout": ("writing", "every hook registration sets a timeout"),
     "tracked-local-state": ("writing", "local state under .agent is not tracked"),
     # lint_prompts (--budget)
     "budget": ("prompts", "the always-on set fits its token ceiling and an agent or skill file its line cap"),

@@ -34,7 +34,7 @@ concern").
 It reads SPEC.md, then for each task in order: read, implement, run that task's verify line, mark it
 done. It marks a task failed after three verify runs. It should not need to explore the codebase to
 know what to do, nobody answers its prompts, and it runs `## Tests` only at the end. (Source:
-`crew-builder.md` task loop and Run discipline; update both together.)
+`crew-builder.md` task loop and Rules; update both together.)
 
 ## Attacks
 

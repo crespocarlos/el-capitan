@@ -60,7 +60,8 @@ def fields_of(payload: dict) -> dict:
 
 
 def target(fields: dict, payload: dict) -> str:
-    path = fields.get("file_path")
+    """The resolved file path: `file_path`, else `path` or `target_file` (Cursor's Delete key is undocumented)."""
+    path = next((fields[key] for key in ("file_path", "path", "target_file") if fields.get(key)), "")
     if not isinstance(path, str) or not path:
         return ""
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) and payload.get("cwd") else os.getcwd()
@@ -145,6 +146,8 @@ def verdict(payload: dict, tasks_root: str) -> str:
         return "skip"
     parts = os.path.relpath(path, root).split(os.sep)
     names = [part.lower() for part in parts]
+    if payload.get("tool_name") == "Delete" and (names[1:] == ["spec.md"] or evidence(names)):
+        return f"deny Task spec guard: {path} is a task record; only crew tools remove it."
     if evidence(names):
         return f"deny Task spec guard: {path} is task or review evidence that only crew tools write."
     if names[1:] != ["spec.md"]:

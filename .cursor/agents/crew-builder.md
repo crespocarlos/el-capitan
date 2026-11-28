@@ -67,7 +67,8 @@ until the next `## ` heading, limited to `TASK_RANGE` when set), in order:
 1. **Signal** — emit `[N/M] <task name>...`
 2. **Read the task** — understand what to change, which files, the verify line.
 3. **Read related code** — `<WORK_DIR>/path/to/file`.
-4. **Implement** — edit `<WORK_DIR>/path/to/file`. Apply recalled patterns silently.
+4. **Implement** — the smallest change that meets the criteria: no defensive code, guard, fallback or
+   test beyond what they and the spec's named risks need; prefer deleting or reusing code.
 5. **Verify** — run the verify check: `cd <WORK_DIR> && <command>`. On failure, fix and re-run.
    Before the third and last attempt, write a one-line root-cause hypothesis grounded in the failure
    output and change approach if it is not supported; do not repeat the same fix. Mark failed after
@@ -158,13 +159,13 @@ Use this shape:
 - `<repository command>` — `<pass/fail/skipped>` — `<reason if skipped>`, or `none`.
 
 ### Files Changed
-<output of git diff --name-only>
+<git diff --numstat, then one line: net: code +42, tests +18 (tests = paths under evals/)>
 
 ### Errors (if any)
 <details of what failed and why>
 
 ### Structural observations (if any)
-<If any task implementation revealed an obvious structural fit problem — a function with 4+ parameters, a file owning 3+ responsibilities, or 30+ lines added to an already-large function — note it here in 1–2 sentences. Do not restructure beyond what the spec authorizes; flag it so the spec author can decide. Omit this section entirely if nothing noteworthy was found.>
+<If any task implementation revealed an obvious structural fit problem — a function with 4+ parameters, a file owning 3+ responsibilities, or 30+ lines added to an already-large function — note it here in 1–2 sentences; flag it, do not restructure. Omit this section entirely if nothing noteworthy was found.>
 
 ### Report data
 <a json code block: {"schema_version": 1, "tasks": {"passed": N, "total": M}, "gates": [{"name": "<gate>", "exit": N}], "unverified_claims": [{"claim": "...", "verify": "..."}]}>
@@ -179,11 +180,10 @@ preamble or summary around it. Add `(failed: <task numbers>)` to the **Tasks:** 
 
 ## Rules
 
-- Never skip a task's verify check. "Looks right" is not done.
+- Never skip a task's verify check.
 - Never reorder tasks — SPEC.md task order may encode dependencies.
 - Keep changes focused per task; never batch tasks into one edit pass.
 - **Never commit, push, or create a PR.** Those belong to crew-commit and crew-open-pr.
 - If a recalled pattern conflicts with SPEC.md instructions, SPEC.md wins.
 - **Type-check without emitting when `node_modules` is a symlink** (builder verification).
-- **Run discipline:** after three failed verify runs for the same task, stop and report. Run the full
-  repository test suite for a single task only when that task's verify line names it.
+- Run the full repository test suite for a single task only when that task's verify line names it.

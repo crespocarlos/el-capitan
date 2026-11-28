@@ -465,6 +465,10 @@ FILES = [
      "clean", "check-task-spec-owner"),
     ({"tool_name": "Edit", "file_path": SPEC, **TICK, "content": STATUS_SPEC}, "clean", "check-task-spec-owner"),
     ({"tool_name": "NotebookEdit", "file_path": SPEC, "content": STATUS_SPEC}, "clean", "check-task-spec-owner"),
+    # Cursor's Delete reaches the same guard (its `preToolUse` matcher names it); its path key is undocumented.
+    ({"tool_name": "Delete", "file_path": SPEC}, "clean", "check-task-spec-owner"),
+    ({"tool_name": "Delete", "path": "{tasks}/DDD-status/PROGRESS.md"}, "clean", "check-task-spec-owner"),
+    ({"tool_name": "Delete", "target_file": "{tasks}/DDD-status/.task-id"}, "clean", "check-task-spec-owner"),
     # The guards' evidence is written only by crew tools.
     ({"file_path": "{tasks}/DDD-status/.task-id", "content": "{}"}, "clean", "check-task-spec-owner"),
     ({"file_path": "{tasks}/DDD-status/review/1/adversarial.expect", "content": "n"}, "clean", "check-task-spec-owner"),
