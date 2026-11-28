@@ -3,10 +3,11 @@
 # (lib/hook.sh), then runs each rule below in its own subshell, cheapest first; the first objection denies, naming
 # that rule's off switch (`EL_CAPITAN_GUARD_<RULE>=off`). A rule that crashes is skipped with one stderr line;
 # credentials handles its own failures and denies the commands it scans when it cannot scan them.
-# Everywhere: owner-only, worker-tree, destructive-git, task-files, credentials, and too-complex (a command nesting
-# more payloads than the normaliser reads); a deny rule matches the command's prefix and misses `git -C <tree>` and
-# the cwd, which these parse. Demoted (`DEMOTED`): they run only where the harness's manifest declares no deny rule
-# that holds in this mode (`deny_rules` false in the event); elsewhere its own deny and ask rules hold them.
+# Everywhere: owner-only, worker-tree, destructive-git, task-files, source-edit, credentials, and too-complex (a
+# command nesting more payloads than the normaliser reads); a deny rule matches the command's prefix and misses
+# `git -C <tree>`, the cwd and a write's target, which these parse. Demoted (`DEMOTED`): they run only where the
+# harness's manifest declares no deny rule that holds in this mode (`deny_rules` false in the event); elsewhere its
+# own deny and ask rules hold them.
 set -uo pipefail
 HOOK_NAME=shell
 # shellcheck source=lib/hook.sh
@@ -15,7 +16,7 @@ hook_input
 cmd=$(hook_field command)
 [ -n "$cmd" ] || hook_allow
 HOOK_SUBJECT=$cmd
-DEMOTED="local-pr-ref:LOCAL_PR_REF pr-repo:PR_REPO source-edit:SOURCE_EDIT"
+DEMOTED="local-pr-ref:LOCAL_PR_REF pr-repo:PR_REPO"
 TASKS_ROOT=$HOME/.agent/tasks
 STALE_SECONDS=21600
 
@@ -142,17 +143,49 @@ rule_pr_repo() {
   done
 }
 
-# Demoted: `python -c`, `node -e`, `perl -e` snippets and heredocs that rewrite a tracked file. A Python snippet is
-# parsed, never run (`lib/py_write_targets.py`), so only a write's target counts; Node, Perl and a Python snippet
-# the parser cannot resolve count any quoted literal that names a tracked file.
+# Deny when $1, resolved against $2, is an existing tracked file of its checkout or a task's SPEC.md, PROGRESS.md or
+# `.task-id`; a scratch or new file is neither.
+guarded() {
+  local dir tasks
+  hook_path "$1" "$2"
+  [ -f "$HOOK_PATH" ] || return 0
+  dir=$(cd "${HOOK_PATH%/*}/" && pwd -P) || return 0
+  tasks=$(cd "$TASKS_ROOT" 2>/dev/null && pwd -P) || tasks=$TASKS_ROOT
+  case "${dir#"$tasks"/}/${HOOK_PATH##*/}" in
+    /* | */*/*) ;;
+    */SPEC.md | */PROGRESS.md | */.task-id) deny "Shell rewrite blocked: '$1' is a task record. Use the Edit tool." ;;
+  esac
+  if git --literal-pathspecs -C "$dir" ls-files --error-unmatch -- "${HOOK_PATH##*/}" >/dev/null 2>&1; then
+    deny "Shell rewrite blocked: '$1' is a tracked file. Use the Edit or Write tool; shell writes are for scratch and new files."
+  fi
+}
+
+# Every harness: a `>`/`>>` redirect, `tee`, `sed -i` or `perl -i` onto a tracked file or task record, or a
+# `python -c`, `node -e`, `perl -e` snippet or heredoc that writes one. A Python snippet is parsed, never run
+# (`lib/py_write_targets.py`), so only a write's target counts; Node, Perl and a Python snippet that does not parse
+# count any quoted literal.
 rule_source_edit() {
-  local i=0 j snippet pattern candidates candidate parsed q="[\"']" write py_write
+  local i=0 j word snippet pattern candidates candidate parsed q="[\"']" write py_write
   write="write_(text|bytes)[[:space:]]*\(|open[[:space:]]*\(.*$q([wax+]+b?|r\+b?)$q|os\.(replace|rename)[[:space:]]*\(|shutil\.(copy|move)"
   write+="|(writeFile|appendFile|copyFile|rename)(Sync)?[[:space:]]*\(|createWriteStream|open[^;]*$q[[:space:]]*\+?>"
   py_write="subprocess|os\.(open|write|system|popen)[[:space:]]*\(|fileinput|(exec|eval|getattr|__import__)[[:space:]]*\("
+  while [ "$i" -lt "${#HOOK_REDIRS[@]}" ]; do
+    hook_redir "$i"
+    i=$((i + 1))
+    guarded "$REDIR_PATH" "$REDIR_DIR"
+  done
+  i=0
   while [ "$i" -lt "${#HOOK_SEGS[@]}" ]; do
     hook_seg "$i"
     i=$((i + 1))
+    OPS=()
+    case "${SEG_WORDS[0]##*/}" in
+      tee) operands ;;
+      sed | perl) for word in "${SEG_WORDS[@]:1}"; do
+          if [[ $word =~ ^(-[nEprsuzlaw]*i|--in-place) ]]; then operands '-e|-f|--expression|--file'; break; fi
+        done ;;
+    esac
+    for word in ${OPS[@]+"${OPS[@]}"}; do guarded "$word" "$SEG_DIR"; done
     case "${SEG_WORDS[0]##*/}" in python | python[0-9]* | node | nodejs | perl) ;; *) continue ;; esac
     snippet=$SEG_BODY
     j=1
@@ -174,12 +207,7 @@ rule_source_edit() {
     fi
     while IFS= read -r candidate; do
       candidate=${candidate#"${candidate%%[!+<> ]*}"}
-      [ -n "$candidate" ] || continue
-      hook_path "$candidate" "$SEG_DIR"
-      [ -f "$HOOK_PATH" ] || continue
-      if git --literal-pathspecs -C "$SEG_DIR" ls-files --error-unmatch -- "$candidate" >/dev/null 2>&1; then
-        deny "Shell rewrite blocked: an inline snippet must not rewrite tracked file '$candidate'. Use the Edit or Write tool."
-      fi
+      [ -z "$candidate" ] || guarded "$candidate" "$SEG_DIR"
     done <<<"$candidates"
   done
 }
@@ -280,6 +308,7 @@ rule owner-only OWNER_ONLY
 rule worker-tree WORKER_TREE
 rule destructive-git DESTRUCTIVE_GIT
 rule task-files TASK_FILES
+rule source-edit SOURCE_EDIT
 if [ "$HOOK_DENY_RULES" = 0 ]; then
   for pair in $DEMOTED; do rule "${pair%:*}" "${pair#*:}"; done
 fi

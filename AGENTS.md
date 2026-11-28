@@ -33,7 +33,7 @@ Tool-tree layout, module naming, exit codes, output contracts, and the glossary:
 
 Use the edit or write tool for every text change. A `python3 - <<'PY'`, `sed -i`, `tee`, or a
 redirect that rewrites a tracked file bypasses the edit log and the review diff, and turns a wrong
-anchor into a silent no-op; shell heredocs are for scratch artifacts and task-directory writes only.
+anchor into a silent no-op; shell heredocs are for scratch files (temp, `artifacts/`, `review/`) only.
 
 - **Prompt files** — load the `prompt-authoring` skill first.
   Frontmatter, the tool-id registry, the size ceiling, and the `references/` rule:

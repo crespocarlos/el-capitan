@@ -119,6 +119,23 @@ DENY = [
     ("python3 - <<'PY'\np = '/tmp/hook-case-o'\np = 'tracked.txt'\nopen(p, 'w')\nPY", "source", "source-edit"),
     ("python3 -c \"import subprocess; subprocess.run(['cp', '/tmp/hook-case.txt', 'tracked.txt'])\"", "source",
      "source-edit"),
+    # Every write form, in every harness, onto a tracked file and onto a task record (also through a symlink).
+    ("python3 -c \"open('{tasks}/DDD-status/SPEC.md','w')\"", "clean", "source-edit"),
+    ("python3 - <<'PY'\nfrom pathlib import Path\np = Path('{tasks}/DDD-status/SPEC.md')\n"
+     "p.write_text(p.read_text().replace('- [ ] T1', '- [x] T1'))\nPY", "clean", "source-edit"),
+    ("node -e \"require('fs').appendFileSync('{tasks}/DDD-status/.task-id', 'x')\"", "clean", "source-edit"),
+    ("perl -e \"open(F, '>>{home}/linked-task/SPEC.md'); print F 1\"", "clean", "source-edit"),
+    ("sed -i '' 's/one/two/' tracked.txt", "source", "source-edit"),
+    ("sed -i.bak -e 's/T1/T9/' {tasks}/DDD-status/SPEC.md", "clean", "source-edit"),
+    ("sed --in-place 's/one/two/' src/pull/handler.ts", "source", "source-edit"),
+    ("perl -pi -e 's/one/two/' tracked.txt", "source", "source-edit"),
+    ("perl -i -pe 's/T1/T9/' {tasks}/DDD-status/SPEC.md", "clean", "source-edit"),
+    ("echo x > tracked.txt", "source", "source-edit"),
+    ("printf x >> {tasks}/DDD-status/SPEC.md", "clean", "source-edit"),
+    ("cat > {tasks}/DDD-status/.task-id <<'EOF'\n{}\nEOF", "clean", "source-edit"),
+    ("bash -c 'echo x >> src/pull/handler.ts'", "source", "source-edit"),
+    ("echo x | tee tracked.txt", "source", "source-edit"),
+    ("echo x | tee -a {tasks}/DDD-status/SPEC.md >/dev/null", "clean", "source-edit"),
     # A secret staged or added in the same command, and a large diff with the secret first;
     # the kept rules through `bash -c`, an interpreter path, a wrapper and `$(...)`; a secret in a commit a push or a PR
     # would publish.
@@ -266,6 +283,18 @@ ALLOW = [
     ("rm -rf {tasks}/DDD-status/artifacts/old", "clean"),
     ("python3 -c \"import json; print(json.load(open('{tasks}/DDD-status/.task-id')))\"", "clean"),
     ("python3 -c \"import task_state; print(task_state.BORN)\"", "clean"),
+    # Shell writes to scratch (temp dirs, a task's artifacts and review dirs), to a new or untracked file, and reads.
+    ("echo x > {tmp}/hook-case.txt && sed -i '' 's/x/y/' {tmp}/hook-case.txt", "source"),
+    ("echo x | tee /tmp/hook-case-tee.txt", "source"),
+    ("printf x > {tasks}/DDD-status/artifacts/e1.txt", "clean"),
+    ("cat > {tasks}/DDD-status/review/1/findings.json <<'EOF'\n{\"path\": \"tracked.txt\"}\nEOF", "source"),
+    ("echo x > new-file.txt && echo y | tee -a new-file.txt", "source"),
+    ("echo more >> notes.txt", "addable"),
+    ("sed -n 1p tracked.txt > /dev/null 2>&1", "source"),
+    # Review JSON naming a tracked file, and a scratch script reading one, each writing a path the parser cannot name.
+    ("python3 - <<'PY'\nimport json, os\njson.dump([{\"path\": \"tracked.txt\"}], open(os.path.join(os.environ[\"TMPDIR\"], "
+     "\"f.json\"), \"w\"))\nPY", "source"),
+    ("python3 - <<'PY'\nimport os\nout = os.environ['TMPDIR'] + '/x.txt'\nopen(out, 'w').write(open('tracked.txt').read())\nPY", "source"),
 ]
 
 # Every row above runs through both parsers of `hook_segments` (shfmt on PATH, and PATH without it)
