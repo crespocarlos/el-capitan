@@ -4,9 +4,11 @@ How an agent finds code whose file it does not already know, and checks a produc
 own file still sets your budget, your tools and where a note goes in your output; this file sets
 which lookup to make and what to do when it cannot be made.
 
-The servers are the ones named in `~/.agent/config.json` `mcp`: `code_search` for the code index,
-`docs` for the docs server. Install adds them to each read-only agent's allowlist; an agent with full
-tool access reaches every server the session has. Tool names below are the ids of the servers this
+The servers are those in `~/.agent/config.json` `mcp`: `code_search` for the code index,
+`docs` for the docs server. Install adds them to each read-only agent's `tools:` line. A read-only agent
+calls only these servers; in Cursor, which offers every session server, this line is the only limit; for
+anything else use Grep, Glob or Read. An agent with full tool access may call any server the session
+has. Tool names below are the ids of the servers this
 file was written against (Sourcerer for code search), given as examples and reached as
 `mcp__<server>__<id>`. With other servers, match by function, not name, and keep the same order.
 
@@ -18,9 +20,8 @@ of your output, before any line your file requires to come last.
 
 ## Code whose file you do not know
 
-Search the code index before a text search: it ranks by relevance across whole repositories, so it
-finds implementations you could not have guessed the words for. Take the first row that fits and stop
-there. When you already know the file and line, read it directly; the index is for discovery.
+Search the code index before a text search: it ranks by relevance across whole repositories. Take the
+first row that fits and stop there. When you already know the file and line, read it directly; the index is for discovery.
 
 | Task | Use |
 | --- | --- |
@@ -46,8 +47,7 @@ note `code search unreachable: used text search`, so the reader knows the result
 ## Product and API facts
 
 A claim about how a product, library, API, query language or configuration behaves, when your work
-depends on it (writing it, reviewing it, or answering a comment about it), is checked and cited, never
-settled from memory: a guessed option reads the same as a verified one. How this repository's own code
+depends on it, is checked and cited, never settled from memory. How this repository's own code
 behaves is a code question instead: read the code.
 
 - **A product the docs server covers** (its tool descriptions name what it holds): search it

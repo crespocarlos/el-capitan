@@ -76,6 +76,38 @@ def test_managed_blocks() -> None:
           and generated.rstrip().endswith("<!-- /el-capitan:imports -->"), generated)
 
 
+def broken_claude_md(blocks: ModuleType) -> str:
+    """The file an older install left: a marker mentioned in prose became the block start, opening a code span."""
+    imports = blocks.global_rule_imports(PROJECT)
+    return f"# Shared rules\n\nRule imports are managed: `install.sh` writes the `{imports}\n{blocks.MEMORY}\n"
+
+
+def test_block_marker_in_prose(tmp: Path) -> None:
+    """A marker counts only at the start of a line; install repairs the older mid-line block once, with a backup."""
+    blocks, home = load_blocks(), tmp / "home"
+    prose = "Install writes the `<!-- el-capitan:memory -->` block.\n"
+    check("a marker in prose is not a block, so the block is appended after it",
+          blocks.upsert(prose, "memory", MEMORY) == prose + "\n" + MEMORY + "\n")
+    for target in re.findall(r"^@~/(\S+)$", blocks.global_rule_imports(PROJECT), re.M):
+        (home / target).parent.mkdir(parents=True, exist_ok=True)
+        (home / target).write_text("rule\n", encoding="utf-8")
+    claude = home / ".claude/CLAUDE.md"
+    claude.parent.mkdir()
+    claude.write_text(broken_claude_md(blocks), encoding="utf-8")
+    blocks.install(home, PROJECT)
+    repaired = claude.read_text(encoding="utf-8")
+    backups = list(claude.parent.glob("CLAUDE.md.bak.*"))
+    check("install repairs it with one backup of the original, and its imports load",
+          len(backups) == 1 and backups[0].read_text() == broken_claude_md(blocks)
+          and "Rule imports are managed" in repaired and blocks.import_problems(home, PROJECT) == [], repaired)
+    blocks.install(home, PROJECT)
+    check("a second install changes nothing and writes no backup",
+          claude.read_text() == repaired and len(list(claude.parent.glob("CLAUDE.md.bak.*"))) == 1)
+    (home / ".cursor/rules/personal.mdc").unlink()
+    check("an import naming a missing file is reported",
+          blocks.import_problems(home, PROJECT) == ["@~/.cursor/rules/personal.mdc names a missing file"])
+
+
 def command_of(rule: str) -> str | None:
     """The command a `Bash(<command> *)` rule names (it may contain spaces), or None for a non-Bash rule."""
     if not rule.startswith("Bash(") or not rule.endswith(")"):
@@ -288,6 +320,8 @@ BAD_CONFIG = '{"gc": {"artifact_days": 1}}'
      "links", "gone.mdc"),
     ("edited block", lambda home: (home / ".claude/CLAUDE.md").write_text(STALE_BLOCK),
      "blocks", "CLAUDE.md memory block stale"),
+    ("imports in a code span", lambda home: (home / ".claude/CLAUDE.md").write_text(broken_claude_md(load_blocks())),
+     "imports", "inside a code span or fence"),
     ("missing script", lambda home: (home / ".claude/hooks/guard").unlink(),
      "hooks", "scripts are missing: ~/.claude/hooks/guard/"),
     ("missing script, ~/ form", tilde_hook,

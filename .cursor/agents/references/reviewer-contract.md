@@ -21,7 +21,14 @@ Exactly one label per finding, from this closed set; any other label fails norma
 | `[concern]` | Only in a spec or idea review, in place of `[attention]`: the plan or reasoning is weakened, but nothing is implemented yet. `[blocking]` keeps its plan meaning there — a broken assumption or a missing requirement. |
 
 A question without stated stakes is a nit in disguise: upgrade it or drop it. Prefer fewer findings
-that name a concrete harm; the reader acts on a short report and skims a long one.
+that name a concrete harm.
+
+**A finding that proposes new protection** (a guard, check, validation, fallback, lock or test) names
+the failure it prevents, an observed incident or a reproducible scenario with inputs an agent or
+user would plausibly produce, and weighs its cost in code and friction; "remove it" is a valid fix.
+Without one, or against a hypothetical bypass of a check partial by design (its code, comment or the
+spec says it covers only some paths), it is at most a `[nit]`. A change's own guard that covers one
+path and misses a sibling of the same kind is a defect, and keeps its label.
 
 ## Confidence
 
@@ -57,16 +64,15 @@ Assessment: approve | request-changes | comment — <one clause of evidence for 
   remaining work, not a reason to redo it.
 - **`request-changes`** — it does not, or not yet: the approach is wrong for the problem, it fixes a
   symptom rather than the cause, it lands at the wrong layer or scope, or the problem statement
-  itself is wrong. Use it even when every line is correct — a clean implementation of the wrong
-  change is the case this exists for.
+  itself is wrong, even when every line is correct.
 - **`comment`** — you cannot tell from what you can see, or there is nothing in this lens's lane to
-  judge: the problem statement is not in your package, the evidence is genuinely inconclusive, or the
+  judge: the problem statement is not in your package, the evidence is inconclusive, or the
   change has no surface your lens covers. Name which.
 
-The clause is the substance; the word alone is not. Say what you saw that decided it — what would
+Say what you saw that decided it — what would
 have made this the wrong change, or the specific thing you could not judge — in at least a short
 sentence (the gate refuses anything under 20 characters, so `Assessment: approve — correct.` is
-rejected). A lens that saw the change work says so and names what settled it.
+rejected).
 
 This is not the review's verdict. `persist` derives that from your findings (`PASS`/`WARN`/`BLOCK`),
 so the two can disagree, and that disagreement is the useful signal: `request-changes` with no
@@ -77,18 +83,16 @@ so the two can disagree, and that disagreement is the useful signal: `request-ch
 Each finding is a comment body the reader can paste without editing:
 `N. [label · 4] **\`path/to/file.ts:42\`** — one-line title`, then a 2-5 line fenced block
 anchoring the finding, then 2-3 sentences (the failure scenario, or a nit's cost), then `Fix:`
-(that exact spelling; the consolidator records it as the `patch` disposition and loses any other). `N` is the list
-index and `L` the line; the score is a literal band, so neither is copied into the wrong slot. After
-the `Assessment:` line the findings are one numbered list; a `[needs more info]` finding ends with
-its question and stakes instead of `Fix:`.
+(that exact spelling: the consolidator parses it). After the `Assessment:` line the findings are one
+numbered list; a `[needs more info]` finding ends with its question and stakes instead of `Fix:`.
 
 **The failure scenario** makes a `[blocking]` or `[attention]` finding actionable, since both ask for
 a change: the concrete input, state or sequence of steps, and the wrong outcome it produces (inputs →
-wrong outcome), said in words, since a quoted line shows where the defect is but not what goes wrong.
+wrong outcome), said in words: a quoted line shows where, not what goes wrong.
 "A second submit while the first save is pending writes the row twice" and "an export with one row
 takes the empty branch, so the report says nothing was exported" are scenarios; "this may be
 fragile" is not. Such a finding whose scenario you cannot state is `[needs more info]`, with the
-question that would settle it. A `[nit]` asks for no change, so it states its cost instead.
+question that would settle it.
 
 - Anchor to `path:line`. In a spec or idea review, anchor to the section and quote the sentence.
 - With a hunk index in the package, a `[blocking]` or `[attention]` finding also cites the hunk ids
@@ -137,8 +141,7 @@ A `status:` line at the very start declares how your own run ended; only `failed
   `[needs more info]`, naming the read.
 - Never re-read a file the package contains, and never read a whole file to answer a `path:line`
   question.
-- Stay inside your lens. A problem that belongs to another lens costs a consolidation slot and hides
-  the finding that would have covered it properly.
+- Stay inside your lens; another lens's problem costs a consolidation slot.
 
 ## One owner per shared concern
 

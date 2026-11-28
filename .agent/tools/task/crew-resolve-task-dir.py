@@ -2,7 +2,7 @@
 """crew-resolve-task-dir.py — resolve TASK_DIR for a repo+branch via .task-id reverse lookup.
 
 Remote and branch come from the current checkout unless `--remote`/`--branch` say otherwise; `--all`
-prints every match. Prints the absolute TASK_DIR, or nothing when no task matches; exits 1 when git
+prints every match. Prints the absolute TASK_DIR, or nothing when no task matches; exits 2 when git
 state is unresolvable. Usage: `TASK_DIR=$(~/.agent/bin/crew-resolve-task-dir.py) || exit 1`. The
 lookup is `task_resolve`, shared with `crew-task-context.py`.
 """
@@ -59,7 +59,7 @@ def main() -> int:
         current_remote, current_branch = resolve_context(args.remote, args.branch)
     except ResolverUnavailable as error:
         print(str(error), file=sys.stderr)
-        return 1
+        return 2
     matches = matching_tasks(current_remote, current_branch)
     if not matches:
         if args.json:

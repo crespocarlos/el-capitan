@@ -120,10 +120,16 @@ def expected(source: Path, home: Path) -> dict[Path, dict[str, str]]:
 
 
 def span(text: str, name: str) -> tuple[int, int] | None:
-    """The start and end offsets of the fenced block `name`, or None when the file has none."""
-    start_marker, end_marker = f"<!-- el-capitan:{name} -->", f"<!-- /el-capitan:{name} -->"
-    start, end = text.find(start_marker), text.find(end_marker)
-    return (start, end + len(end_marker)) if start >= 0 and end >= start else None
+    """The offsets of the block `name`, its markers each on a line of their own (one in prose is not), or None."""
+    start = re.search(rf"^<!-- el-capitan:{name} -->[ \t]*$", text, re.M)
+    end = re.compile(rf"^<!-- /el-capitan:{name} -->[ \t]*$", re.M).search(text, start.end()) if start else None
+    return (start.start(), end.end()) if start and end else None
+
+
+def repaired(text: str) -> str:
+    """`text` with a start marker that ends a line of prose moved onto its own line: an older install matched it
+    mid-sentence, leaving a code span open over every `@` import, which Claude Code then skips."""
+    return re.sub(r"(?<=\S)[ \t]*(<!-- el-capitan:\w+ -->)[ \t]*$", r"\n\n\1", text, flags=re.M)
 
 
 def current(text: str, name: str) -> str | None:
@@ -154,6 +160,40 @@ def remove(text: str, name: str) -> str:
     return before + "\n\n" + after if before and after else before or after
 
 
+def code_lines(text: str) -> set[int]:
+    """Indexes of the lines that start inside a code fence, or inside an inline code span: a backtick run closed by
+    one of the same length within its paragraph (CommonMark). Claude Code's import parsing skips both."""
+    starts, inside, fence = [0] + [m.end() for m in re.finditer("\n", text)], set(), ""
+    for index, line in enumerate(text.split("\n")):
+        mark = re.match(r" {0,3}(`{3,}|~{3,})", line)
+        if fence or mark:
+            inside.add(index)
+            fence = "" if fence and mark and mark.group(1).startswith(fence) else fence or mark.group(1)
+    for paragraph in re.finditer(r"(?:^[ \t]*\S.*\n?)+", text, re.M):
+        for code in re.finditer(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", paragraph.group(), re.S):
+            first, last = paragraph.start() + code.start(), paragraph.start() + code.end()
+            inside.update(index for index, start in enumerate(starts) if first < start < last)
+    return inside
+
+
+def import_problems(home: Path, source: Path) -> list[str]:
+    """Why a managed `@` import in ~/.claude/CLAUDE.md would not load: inside code (every copy), or a missing file."""
+    path = home / ".claude" / "CLAUDE.md"
+    targets = re.findall(r"^@(\S+)$", global_rule_imports(source), re.M)
+    if not targets or not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines, code, problems = text.split("\n"), code_lines(text), []
+    for target in targets:
+        found = [index for index, line in enumerate(lines) if line.strip() == f"@{target}"]
+        resolved = home / target[2:] if target.startswith("~/") else path.parent / os.path.expanduser(target)
+        if found and all(index in code for index in found):
+            problems.append(f"@{target} sits inside a code span or fence, so Claude Code skips it")
+        elif found and not resolved.exists():
+            problems.append(f"@{target} names a missing file")
+    return problems
+
+
 def write_atomically(target: Path, text: str) -> None:
     """Keep the file's mode and follow a symlink, so a dotfiles-managed CLAUDE.md keeps its link."""
     target = target.resolve() if target.is_symlink() else target
@@ -176,8 +216,12 @@ def write_json(data: object, path: Path) -> None:
 
 
 def install(home: Path, source: Path) -> None:
+    """Write each block; a file an older install broke (`repaired`) is backed up first, with one line."""
     for path, blocks in expected(source, home).items():
-        text = path.read_text() if path.exists() else ""
+        original = path.read_text() if path.exists() else ""
+        text = repaired(original)
+        if text != original:
+            print(f"  repaired a managed block that started mid-line in {path}; was: {backup(path, original)}")
         for name, body in blocks.items():
             text = upsert(text, name, body)
         write_atomically(path, text.rstrip() + "\n")

@@ -17,7 +17,7 @@ import task_bootstrap  # noqa: F401
 
 from task_progress import PROGRESS_FILE, Entry, append_transition, latest, pr_urls, read_entries
 from task_record import GATE_STAMP, recorded_status
-from task_status import STATUS, StatusError, canonical, read_status, review_file, reviewed_at
+from task_status import STATUS, StatusError, canonical, read_status, review_file, reviewed_at, verdict_word
 from task_status import head as state_head
 
 from lib.files import atomic_write
@@ -151,10 +151,6 @@ KINDS = ("done", "pr-open", "ready", "stalled", "hold")
 SAMPLE_FIELDS = dict(idle_days=0, prior="X", from_state="X")
 OPEN_ITEM = re.compile(r"^\s*[-*]\s\[ \]", re.M)
 DONE_ITEM = re.compile(r"^\s*[-*]\s\[[xX]\]", re.M)
-# A verdict is a bare word ending its clause; pass-with-nits or "pass | warn" do not count.
-VERDICT = re.compile(
-    r"^\s*(?:#+\s*)?(?:\*\*)?Verdict:?(?:\*\*)?\s*([A-Za-z]+)(?=[ \t]*(?:[.:;,]|$))", re.M
-)
 # An unresolved clarification blocks implementation; one shown inside a fenced example does not.
 UNRESOLVED = re.compile(r"\[NEEDS CLARIFICATION", re.M)
 FENCED = re.compile(r"^```.*?^```", re.M | re.S)
@@ -258,11 +254,11 @@ def load(task: Path) -> TaskState:
         meta = {}
     status = STATUS.search(text)
     review = review_file(task)
-    verdicts = VERDICT.findall(review.read_text(encoding="utf-8")) if review else []
+    verdict = verdict_word(review.read_text(encoding="utf-8")) if review else None
     entries = read_entries(task)
     record = TaskState(
         task=task, text=text, meta=meta, status=status.group(2).strip() if status else None,
-        verdict=verdicts[-1] if verdicts else "?", age=days_since(newest_mtime(task)),
+        verdict=verdict or "?", age=days_since(newest_mtime(task)),
         open=len(OPEN_ITEM.findall(text)), done=len(DONE_ITEM.findall(text)),
         activity=days_since(last_activity(task, entries)), prs=pr_urls(task, entries),
     )
