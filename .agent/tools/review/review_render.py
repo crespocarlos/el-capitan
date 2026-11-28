@@ -192,6 +192,36 @@ class Trail:
 
     section: str = ""
     degraded: str = ""
+    reviewers: tuple = ()
+
+
+REVIEWERS_HEADING = "### Reviewers"
+
+
+def hand_saved(name: str, record: dict | None) -> str:
+    """The `### Reviewers` line for a reply not captured from its transcript (`source: manual`, or the payload's
+    `summary`), or ""."""
+    if not record:
+        return ""
+    if record.get("source") == "manual":
+        return f"- {name}: reply saved by hand (`save-out` from stdin), not read from the agent's transcript"
+    if record.get("reply_from") == "summary":
+        return f"- {name}: reply is the harness's summary of the agent's output, not its transcript"
+    return ""
+
+
+def with_reviewers(body: str, lines: tuple) -> str:
+    """`body` with `lines` at the end of its `### Reviewers` section, which is added last when absent."""
+    if not lines:
+        return body
+    text = body.rstrip("\n").split("\n")
+    if REVIEWERS_HEADING not in heading_lines(body):
+        return "\n".join([*text, "", REVIEWERS_HEADING, "", *lines]) + "\n"
+    start = text.index(REVIEWERS_HEADING)
+    end = next((index for index in range(start + 1, len(text)) if text[index].startswith("#")), len(text))
+    while end > start + 1 and not text[end - 1].strip():
+        end -= 1
+    return "\n".join([*text[:end], *lines, *text[end:]]) + "\n"
 
 
 def read_record(review_dir: Path, persona: str) -> dict | None:
@@ -238,7 +268,8 @@ def check(review_dir: Path, personas: list[str]) -> Trail:
             line += f"; absent (legacy) for {', '.join(legacy)}"
     agents = len({agent_key(name, record) for name, record in records.items()})
     degraded = banner(agents, len(names)) if agents < len(names) else ""
-    return Trail(section=f"{PROVENANCE_HEADING}\n- {line}\n", degraded=degraded)
+    reviewers = tuple(filter(None, (hand_saved(name, record) for name, record in records.items())))
+    return Trail(section=f"{PROVENANCE_HEADING}\n- {line}\n", degraded=degraded, reviewers=reviewers)
 
 
 SCHEMA_VERSION = 1
@@ -259,6 +290,9 @@ def add_save_out_parser(commands) -> None:
     parser.add_argument("--resume", action="store_true", help="this reply is a resume of the persona")
     parser.add_argument("--degraded", action="store_true",
                         help="the orchestrator played this lens itself (no separate agent)")
+    parser.add_argument("--from-transcript", type=Path, default=None, metavar="JSONL",
+                        help="read the reply from the agent's transcript (checked against its marker and .expect) "
+                             "instead of stdin")
 
 
 def saved_persona(name: str) -> str:
@@ -278,9 +312,11 @@ def save_out(args: argparse.Namespace) -> int:
     return 0
 
 
-def store_reply(args: argparse.Namespace, raw: bytes, nonce: str | None = None) -> dict:
+def store_reply(args: argparse.Namespace, raw: bytes, nonce: str | None = None, source: str = "manual",
+                reply_from: str | None = None) -> dict:
     """`save-out`'s write, shared with the reply-capture hook: the reply, its record, and what was saved. The hook
-    passes the marker's `nonce`, recorded as consumed; a hand save records none."""
+    passes the marker's `nonce`, recorded as consumed; a hand save records none. `source` is `hook`, `transcript`
+    (`save-out --from-transcript`) or `manual` (stdin); `reply_from` names a payload field the reply came from."""
     persona = saved_persona(args.persona)
     if not args.review_dir.is_dir():
         raise ValueError(f"no such review directory: {args.review_dir}")
@@ -293,7 +329,8 @@ def store_reply(args: argparse.Namespace, raw: bytes, nonce: str | None = None) 
         "agent_id": args.agent_id or None, "model": args.model or None,
         "time": utc_stamp(),
         "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
-        "resumed": bool(args.resume), "degraded": bool(args.degraded), "nonce": nonce,
+        "resumed": bool(args.resume), "degraded": bool(args.degraded), "nonce": nonce, "source": source,
+        **({"reply_from": reply_from} if reply_from else {}),
     }
     atomic_write(provenance_path(args.review_dir, persona), json.dumps(record, indent=2) + "\n")
     outcome = persona_outcome(target)

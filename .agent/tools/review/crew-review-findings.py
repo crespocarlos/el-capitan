@@ -14,7 +14,7 @@ import sys
 
 import review_bootstrap  # noqa: F401
 
-from review_capture import add_capture_parsers, capture, expect
+from review_capture import add_capture_parsers, capture, expect, save_out_command
 
 # Re-exported deliberately: `assemble-packages.py` imports PERSONAS from this file as the single
 # persona registry, and the contract tests import the classifier and the label pattern to exercise
@@ -49,7 +49,7 @@ from review_layers import (
 from review_models import fingerprint
 from review_pr_plan import check_map, comments
 from review_prepare import add_prepare_parser, prepare
-from review_render import add_save_out_parser, save_out
+from review_render import add_save_out_parser
 from review_report import check_outcomes, outcome, persist
 from review_vocabulary import (
     CODE_MODES,
@@ -125,7 +125,7 @@ def main() -> int:
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
                 "spec-context": spec_context,
                 "check-packages": check_packages, "review-dir": review_dir_command,
-                "prior-review": prior_review, "save-out": save_out, "expect": expect, "capture": capture,
+                "prior-review": prior_review, "save-out": save_out_command,"expect": expect, "capture": capture,
                 "consolidate": consolidate, "prepare": prepare,
                 "dispatch-bytes": dispatch_bytes, "cache-report": cache_report,
                 "comments": comments, "check-map": check_map}

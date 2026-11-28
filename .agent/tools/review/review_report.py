@@ -17,7 +17,16 @@ import review_records as records
 from review_coverage import check_assessments, check_personas_present, check_probe, strict_gates
 from review_findings import check_findings, check_strict, read_findings, strict_mode
 from review_models import Finding
-from review_render import GENERATED_SECTIONS, Trail, assessment_section, capped, footer, heading_lines, with_banner
+from review_render import (
+    GENERATED_SECTIONS,
+    Trail,
+    assessment_section,
+    capped,
+    footer,
+    heading_lines,
+    with_banner,
+    with_reviewers,
+)
 from review_render import check as check_provenance
 from review_vocabulary import ANCHOR, CODE_MODES, SEVERITY, verdict, without_fences
 from review_workspace import record_task_review
@@ -90,8 +99,10 @@ def finding_anchor(finding) -> tuple[str, int] | None:
 
 
 def entry_blocks(report: str) -> list[dict]:
-    """Each numbered finding in the report, with the label, score, and anchor it states."""
-    body = without_fences(report)
+    """Each numbered finding in the report, with the label, score, and anchor it states. A quoted (`>`) line is a
+    finding's prose (`consolidate --render` quotes each body), never its label or anchor."""
+    body = "".join("\n" if line.lstrip().startswith(">") else line
+                   for line in without_fences(report).splitlines(keepends=True))
     matches = list(ENTRY.finditer(body))
     blocks = []
     for index, match in enumerate(matches):
@@ -298,7 +309,7 @@ def persona_gates(args: argparse.Namespace) -> tuple[str, str, Trail]:
     trail = check_provenance(args.review_dir, args.personas)
     sections = "\n".join(part for part in (
         assessment_section(check_assessments(args.review_dir, args.personas)), trail.section) if part)
-    body = args.report.read_text(encoding="utf-8")
+    body = with_reviewers(args.report.read_text(encoding="utf-8"), trail.reviewers)
     return (with_banner(body, trail.degraded) if trail.degraded else body), sections, trail
 
 

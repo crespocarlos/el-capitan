@@ -4,18 +4,19 @@ render `report.md` from `consolidation.json` (`--render`).
 
 Grouping never rewrites a finding, its title or its label: two emitted findings (`patch`, `decide`)
 group when they name the same file and `kind` and their line ranges overlap. The representative keeps
-`group_severity`; the others become `merged` with `merged_into`. The report numbers emitted findings only.
+`group_severity`, the others become `merged`. The report numbers emitted findings with their bodies.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 from review_findings import is_path_prefix, read_findings
 from review_models import Finding
-from review_render import label_with_score
+from review_render import CLAUSE_DISPLAY_MAX, label_with_score
 
 from lib.files import atomic_write
 
@@ -148,10 +149,33 @@ def originals(findings: list[Finding], representative: Finding) -> list[Finding]
     return [f for f in findings if group and f.disposition == "merged" and f.extra.get("merged_into") == group]
 
 
+def body_text(finding: Finding) -> str:
+    """The finding's prose under its anchor, rendered as one quoted line: the first paragraph of its `comment`, else
+    of its `validation`, capped at `CLAUSE_DISPLAY_MAX`; a paragraph that opens a fence is skipped."""
+    for name in ("comment", "validation"):
+        for paragraph in re.split(r"\n\s*\n", finding.text(name).strip()):
+            if paragraph.strip() and not paragraph.lstrip().startswith(("```", "~~~")):
+                text = " ".join(paragraph.split())
+                return text if len(text) <= CLAUSE_DISPLAY_MAX else text[:CLAUSE_DISPLAY_MAX - 1].rstrip() + "…"
+    return ""
+
+
+def excerpt_block(finding: Finding) -> list[str]:
+    """A `[blocking]` finding's `excerpt` as an indented fence (finding formats: its anchored snippet), else []."""
+    excerpt = finding.text("excerpt").strip("\n")
+    if finding.label != "blocking" or not excerpt.strip():
+        return []
+    fence = "````" if "```" in excerpt else "```"
+    return [f"   {fence}", *(f"   {line}" for line in excerpt.splitlines()), f"   {fence}"]
+
+
 def entry(number: int, finding: Finding, absorbed: list[Finding]) -> list[str]:
     lines = [f"{number}. {label_with_score(finding)} — {finding.title}"]
     if anchor_text(finding):
         lines.append(f"   Anchor: {anchor_text(finding)}")
+    if body_text(finding):  # quoted: persist never reads a label, anchor or verdict from a quoted line
+        lines.append(f"   > {body_text(finding)}")
+    lines.extend(excerpt_block(finding))
     if finding.extra.get("anchor") == "non-hunk":
         lines.append("   Outside the diff: read at the reviewed head, not a changed hunk.")
     if finding.extra.get("group_severity"):
