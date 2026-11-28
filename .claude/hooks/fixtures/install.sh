@@ -67,7 +67,7 @@ after=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(json.
 test "$before" = "$after"
 test -f "$home/.claude/agents/my-custom-agent.md"
 
-# The narrowed allowlist with deny and ask rules for the demoted forms; the sandbox only with --sandbox; the Cursor
+# The narrowed allowlist with deny rules for the demoted forms and no ask rule; the sandbox only with --sandbox; the Cursor
 # CLI's deny tokens added to its config when it has one.
 printf '{"permissions": {"deny": ["Shell(curl)"]}}\n' > "$home/.cursor/cli-config.json"
 HOME="$home" bash "$root/install.sh" --sandbox >/dev/null
@@ -77,7 +77,7 @@ home = sys.argv[1]
 settings = json.load(open(f"{home}/.claude/settings.json"))
 permissions = settings["permissions"]
 assert not {"Bash(git *)", "Bash(gh *)", "Bash(sed *)", "Bash(cp *)", "Bash(mv *)", "Bash(curl *)", "Bash(source *)"} & set(permissions["allow"])
-assert permissions["deny"] == ["Bash(gh pr checkout*)", "Bash(gh pr co *)"] and "Edit(~/.agent/tasks/*/SPEC.md)" in permissions["ask"]
+assert permissions["deny"] == ["Bash(gh pr checkout*)", "Bash(gh pr co *)"] and "ask" not in permissions
 assert settings["sandbox"] == {"enabled": True}
 deny = json.load(open(f"{home}/.cursor/cli-config.json"))["permissions"]["deny"]
 assert "Shell(curl)" in deny and "Shell(git:reset --hard*)" in deny, deny
@@ -266,14 +266,14 @@ HOME="$linked" bash "$root/install.sh" --uninstall > "$linked/out"
 grep -q 'no longer has: Bash(retired-tool \*)' "$linked/out"
 test -L "$linked/.claude/settings.json" && test "$(cat "$linked/dotfiles/settings.json")" = '{}'
 
-# A rule an earlier install added and the template dropped (the old Write ask rule) goes on the next install,
+# A rule an earlier install added and the template dropped (the old SPEC.md ask rules) goes on the next install,
 # and the manifest forgets it; the user's own ask rule, never recorded, stays through install and uninstall.
 retire=$(fresh_dir retire)
 HOME="$retire" bash "$root/install.sh" >/dev/null
 python3 - "$retire" <<'PY'
 import json, sys
 home = sys.argv[1]
-old = ["Write(~/.agent/tasks/*/SPEC.md)"]
+old = ["Write(~/.agent/tasks/*/SPEC.md)", "Edit(~/.agent/tasks/*/SPEC.md)"]
 for path, change in ((f"{home}/.agent/install-manifest.json", lambda d: d["claude_settings"].setdefault("rules", {}).__setitem__("ask", list(old))),
                      (f"{home}/.claude/settings.json", lambda d: d["permissions"].__setitem__("ask", old + ["Edit(~/my/**)"]))):
     data = json.load(open(path))
@@ -285,9 +285,9 @@ python3 - "$retire" <<'PY'
 import json, sys
 home = sys.argv[1]
 ask = json.load(open(f"{home}/.claude/settings.json"))["permissions"].get("ask")
-assert ask == ["Edit(~/my/**)", "Edit(~/.agent/tasks/*/SPEC.md)"], ask
+assert ask == ["Edit(~/my/**)"], ask
 recorded = json.load(open(f"{home}/.agent/install-manifest.json"))["claude_settings"].get("rules", {})
-assert recorded.get("ask") == ["Edit(~/.agent/tasks/*/SPEC.md)"], recorded
+assert not recorded.get("ask"), recorded
 PY
 HOME="$retire" bash "$root/install.sh" --uninstall >/dev/null
 python3 -c 'import json, sys; p = json.load(open(sys.argv[1]))["permissions"]; assert p == {"ask": ["Edit(~/my/**)"]}, p' "$retire/.claude/settings.json"

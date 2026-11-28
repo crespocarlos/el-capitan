@@ -95,7 +95,6 @@
       "WebSearch",
       "Edit(~/.agent/tasks/**)"
     ],
-    "ask": ["Edit(~/.agent/tasks/*/SPEC.md)"],
     "deny": ["Bash(gh pr checkout*)", "Bash(gh pr co *)"],
     "additionalDirectories": ["~/.agent/tasks"]
   }

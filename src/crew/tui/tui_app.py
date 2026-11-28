@@ -330,7 +330,8 @@ class CrewApp(App):
         self.moving.discard(key)
         lines = output.strip().splitlines()
         self.command_log += [f"$ {shown(argv)}", *lines, f"exit {code}", ""]
-        self.notify(" ".join([f"{title}: exit {code}", *(lines[-1:] if code else [])]), severity="information" if code == 0 else "error")
+        why = next((line for line in lines if line.startswith("error:")), lines[-1] if lines else "")  # the refusal, not a trailing note
+        self.notify(" ".join([f"{title}: exit {code}", *([why] if code else [])]), severity="information" if code == 0 else "error")
         self.action_reload()
 
     def action_command_log(self) -> None:

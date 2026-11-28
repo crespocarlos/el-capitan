@@ -164,9 +164,9 @@ def test_project_settings_register_no_hooks(tmp: Path) -> None:
 
 
 def test_settings_merge(tmp: Path) -> None:
-    """The installer retires the Write ask rule an earlier install recorded and the template dropped, adds the
-    template's Edit ask rule on task specs in place of the broader ask rule it narrows, and keeps the user's other rules."""
-    spec_rules = ["Write(~/.agent/tasks/*/SPEC.md)"]
+    """The installer retires the ask rules on task specs an earlier install recorded and the template dropped (the file
+    guard's status rule holds a Status move), and keeps the user's own rules."""
+    spec_rules = ["Write(~/.agent/tasks/*/SPEC.md)", "Edit(~/.agent/tasks/*/SPEC.md)"]
     user = {"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"],
                             "ask": [*spec_rules, "Edit(~/.agent/tasks/**)", "Edit(~/.claude/**)"]},
             "hooks": {}}
@@ -181,9 +181,9 @@ def test_settings_merge(tmp: Path) -> None:
                             capture_output=True, text=True)
     merged = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
     recorded = json.loads((home / ".agent/install-manifest.json").read_text(encoding="utf-8"))[section]
-    check("the merge retires the recorded Write ask rule, forgets it, and keeps the user's own rules",
-          result.returncode == 0 and merged["ask"] == ["Edit(~/.claude/**)", "Edit(~/.agent/tasks/*/SPEC.md)"]
-          and "Bash(my-own *)" in merged["allow"] and recorded["rules"]["ask"] == ["Edit(~/.agent/tasks/*/SPEC.md)"],
+    check("the merge retires the recorded ask rules, forgets them, and keeps the user's own rules",
+          result.returncode == 0 and merged["ask"] == ["Edit(~/.agent/tasks/**)", "Edit(~/.claude/**)"]
+          and "Bash(my-own *)" in merged["allow"] and not recorded.get("rules", {}).get("ask"),
           (result.stderr[-200:], merged, recorded))
 
 

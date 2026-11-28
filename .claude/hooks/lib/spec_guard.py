@@ -11,7 +11,6 @@ never loads the Status reader:
               spec whose Status is past DRAFTING: a reused directory that would overwrite a finished task's spec. While
               a spec is DRAFTING its title is the author's to change; `mark-approved` records the approved title's slug;
   task-files  a Delete of a task SPEC.md, PROGRESS.md, `.task-id` or review evidence.
-Where the harness holds no ask rule for it (`deny_rules` false in the event, docs/hooks.md), also:
   status      an Edit, MultiEdit or Write that changes the `## Status` value of an existing task SPEC.md as
               `task_status` reads it, leaves a second `## Status` heading, or cannot be applied exactly; a new SPEC.md
               whose Status is anything but empty or DRAFTING.
@@ -166,7 +165,7 @@ def verdict(payload: dict, tasks_root: str) -> str:
     if exists:
         with open(path, encoding="utf-8", newline="") as handle:
             disk = handle.read()
-    found = status_verdict(path, tool, fields, status, disk, exists) if payload.get("deny_rules") is not True else "skip"
+    found = status_verdict(path, tool, fields, status, disk, exists)
     return found if found != "skip" else owner_verdict(path, fields, status, status.status_of(disk) if exists else None)
 
 
