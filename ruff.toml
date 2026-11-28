@@ -123,8 +123,6 @@ split-on-trailing-comma = false
 "src/crew/task/task_verify_env.py" = ["PERF401"]
 "src/crew/task/task_verify_report.py" = ["PERF401"]
 "src/crew/task/task_verify_sources.py" = ["E501", "E741"]
-"src/crew/tui/tui_app.py" = ["B905"]
-"src/crew/tui/tui_model.py" = ["B905", "E501"]
 
 [format]
 skip-magic-trailing-comma = true

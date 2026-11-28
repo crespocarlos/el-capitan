@@ -15,6 +15,7 @@ from pathlib import Path
 from crew.lib.files import atomic_write, read_json_object
 from crew.lib.git import gh
 from crew.lib.output import bounded_json
+from crew.lib.runs import append_run, open_run
 from crew.review.review_layers import parse_map_block
 from crew.review.review_models import Finding, to_finding
 from crew.review.review_render import label_with_score
@@ -81,6 +82,7 @@ def mutation(args: argparse.Namespace) -> int:
     if result.returncode:
         print(result.stderr.strip(), file=sys.stderr)
         return result.returncode
+    append_run(open_run(f"resolve {args.repo}#{args.pr}"), "end", outcome="done")  # each reply or resolve moves its end
     print(result.stdout)
     return 0
 

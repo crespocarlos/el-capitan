@@ -467,6 +467,15 @@
       "smoke": "imported by task_progress.py"
     },
     {
+      "name": "runs.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by review_prepare.py, review_report.py, crew-pr-actions.py and tui_model.py: the runs ledger `~/.agent/state/runs.jsonl`, one line at each review's and resolve's start and end",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
       "name": "doctor_env.py",
       "dir": "maintenance",
       "kind": "module",
@@ -1174,7 +1183,43 @@
       "kind": "module",
       "category": "task",
       "owner": "repository",
-      "help": "imported by crew_tui.py and tui_app.py: the view model over `crew ls` data",
+      "help": "imported by crew_tui.py and tui_app.py: the reads and the plain-text render",
+      "smoke": "evals/tools/test_tui_model.py"
+    },
+    {
+      "name": "tui_github.py",
+      "dir": "tui",
+      "kind": "module",
+      "category": "task",
+      "owner": "repository",
+      "help": "imported by tui_app.py and tui_views.py: every PR and issue in one `gh api graphql` call, LANDED per merged PR, cached on disk",
+      "smoke": "evals/tools/test_tui_model.py"
+    },
+    {
+      "name": "tui_moves.py",
+      "dir": "tui",
+      "kind": "module",
+      "category": "task",
+      "owner": "repository",
+      "help": "imported by tui_views.py and tui_widgets.py: the `crew-task.py` moves a task's state allows",
+      "smoke": "evals/tools/test_tui_model.py"
+    },
+    {
+      "name": "tui_views.py",
+      "dir": "tui",
+      "kind": "module",
+      "category": "task",
+      "owner": "repository",
+      "help": "imported by tui_model.py and tui_app.py: the tabs as plain rows",
+      "smoke": "evals/tools/test_tui_model.py"
+    },
+    {
+      "name": "tui_widgets.py",
+      "dir": "tui",
+      "kind": "module",
+      "category": "task",
+      "owner": "repository",
+      "help": "imported by tui_app.py: row markup, the dialogs and the move runner",
       "smoke": "evals/tools/test_tui_model.py"
     }
   ],

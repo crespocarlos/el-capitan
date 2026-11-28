@@ -29,7 +29,7 @@ SINGLE_OWNER_TEXT = (
 GIT_LIBRARY = Path("lib") / "git.py"
 SIBLING_COMMAND = re.compile(r"^(crew-[a-z0-9-]+\.py|crew\.\w+\.crew_\w+)$")
 # A process is the point here, not a way to reach logic: the run must outlive its caller, or show as typed.
-SIBLING_PROCESS_ALLOWED = {"task/task_verify.py": "detaches `verify --background`", "tui/tui_model.py": "runs the confirmed crew-task.py move the dialog shows"}
+SIBLING_PROCESS_ALLOWED = {"task/task_verify.py": "detaches `verify --background`"}
 Finding = tuple[str, int, str, str]
 Parsed = dict[Path, tuple[str, ast.Module]]
 

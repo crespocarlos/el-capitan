@@ -98,14 +98,14 @@ def record_of(arguments: list[str], read: Reader) -> dict | None:
     return record if isinstance(record, dict) else None
 
 
-def reachable_from(sha: str, ref: str) -> bool | None:
+def reachable_from(sha: str, ref: str, root: Path | None = None) -> bool | None:
     """True when the merge commit is already in the local `ref` (`<remote>/<default>`); None otherwise.
 
     The listing never fetches (a fetch per task made `--all` slow and a watch loop unbearable), so a
     local branch that is behind the server can only prove `yes`, never `no`: not reachable is unknown.
     """
     try:
-        return True if is_ancestor(None, sha, ref) else None
+        return True if is_ancestor(root, sha, ref) else None
     except (GitError, OSError, subprocess.SubprocessError):
         return None
 
@@ -116,12 +116,13 @@ def repo_slug(url: str | None) -> str | None:
     return slug.lower() if slug else None
 
 
-def local_remotes() -> dict[str, str]:
-    """`{owner/repo: remote}` for the current directory's `upstream` and `origin` (origin wins a tie)."""
+def local_remotes(root: Path | None = None) -> dict[str, str]:
+    """`{owner/repo: remote}` for the `upstream` and `origin` of the repository at `root` (cwd by default; origin wins a
+    tie)."""
     found: dict[str, str] = {}
     for remote in ("upstream", "origin"):
         try:
-            slug = repo_slug(remote_url(None, remote))
+            slug = repo_slug(remote_url(root, remote))
         except (GitError, OSError, subprocess.SubprocessError):
             continue
         found.update({slug: remote} if slug else {})

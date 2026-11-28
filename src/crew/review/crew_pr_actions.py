@@ -14,7 +14,9 @@ import json
 import sys
 from pathlib import Path
 
+from crew.lib.clock import utc_stamp
 from crew.lib.gh_reads import add_read_parser
+from crew.lib.runs import append_run
 from crew.review.review_head import changed_paths, fetch_head, pr_head, summary
 from crew.review.review_pr_plan import default_query, guard, mutation, query_command, repository
 from crew.review.review_pr_reads import read, threads
@@ -34,6 +36,8 @@ def fetch(args: argparse.Namespace) -> int:
         planned = query_command(query, owner, name, args.pr, args.cursor)
         print(json.dumps({"planned": {"command": planned}}, indent=2))
         return 0
+    if not args.cursor:  # the resolver's first read: its run starts
+        append_run(f"resolve {args.repo}#{args.pr}@{utc_stamp()}", "start", kind="resolve", target=f"{args.repo}#{args.pr}")
     return threads(command[1:], args.cursor)
 
 
