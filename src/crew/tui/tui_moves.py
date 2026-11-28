@@ -41,7 +41,8 @@ class Move:
 def moves(state: str, task: Path, prs: list[str], branch: str = "") -> list[Move]:
     """The calls `crew-task.py` accepts from `state`: its gate (start on the spec's `## Branch:`, mark done with the newest
     PR), then `blocked` with a reason for any task not DONE, and close as done (`mark-done --force` with a note) for a
-    state the CLI closes (`CLOSABLE`), except an IMPLEMENTING task with a PR. A gate the task cannot pass yet, and close
+    state the CLI closes (`CLOSABLE`); an IMPLEMENTING task's note is its newest PR, so a task whose gate refuses (open
+    owner checks) still closes with it recorded. A gate the task cannot pass yet, and close
     for a state the CLI does not close, come back unavailable with the reason. The CLI still checks every gate."""
     t = str(task)
     found = []
@@ -65,10 +66,9 @@ def moves(state: str, task: Path, prs: list[str], branch: str = "") -> list[Move
     if state == "DONE":
         return found
     found.append(Move("b", "Block, with a reason", state, "BLOCKED", ("blocked", t), ask="reason"))
-    if not (state == "IMPLEMENTING" and prs):
-        note = SHIPPED_NOTE if state == "IMPLEMENTING" else STALE_NOTE
-        why = "" if state in CLOSABLE else f"crew-task.py does not close {state or 'an unset status'}"
-        found.append(Move("c", "Close as done (--force), with a note", state, "DONE", ("mark-done", t, "--force", "--pr-url"), "note", note, why))
+    note = (prs[-1] if prs else SHIPPED_NOTE) if state == "IMPLEMENTING" else STALE_NOTE
+    why = "" if state in CLOSABLE else f"crew-task.py does not close {state or 'an unset status'}"
+    found.append(Move("c", "Close as done (--force), with a note", state, "DONE", ("mark-done", t, "--force", "--pr-url"), "note", note, why))
     return found
 
 

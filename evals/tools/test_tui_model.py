@@ -470,7 +470,7 @@ NOT_CLOSABLE = "ABANDONED → DONE [c] Close as done (--force), with a note (una
 @pytest.mark.parametrize("state,prs,expected,unavailable", [
     ("DRAFTING", [], [("mark-approved", "{t}"), BLOCK, CLOSE], []),
     ("APPROVED", [], [("mark-implementing", "{t}", "--branch", "feat/x"), BLOCK, CLOSE], []),
-    ("IMPLEMENTING", [PR.format(7), PR.format(8)], [("mark-done", "{t}", "--pr-url", PR.format(8)), BLOCK], []),
+    ("IMPLEMENTING", [PR.format(7), PR.format(8)], [("mark-done", "{t}", "--pr-url", PR.format(8)), BLOCK, (*CLOSE[:-1], PR.format(8))], []),
     ("IMPLEMENTING", [], [BLOCK, (*CLOSE[:-1], SHIPPED_NOTE)], [NO_PR]),
     ("ON-HOLD", [], [BLOCK, CLOSE], []),
     ("ABANDONED", [], [BLOCK], [NOT_CLOSABLE]),
@@ -478,8 +478,8 @@ NOT_CLOSABLE = "ABANDONED → DONE [c] Close as done (--force), with a note (una
 ])
 def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[tuple], unavailable: list[str]) -> None:
     """The gate the state allows (mark done with the newest PR), then `blocked` for every task not DONE and close as
-    done (`--force`, the note `none (committed to main)` for IMPLEMENTING, else `closed: stale`) for a closable state
-    with no PR; a gate not passable yet, and close for ABANDONED, say why. Every move is a subcommand crew-task.py has."""
+    done (`--force`, the note: an IMPLEMENTING task's newest PR or `none (committed to main)`, else `closed: stale`) for a
+    closable state; a gate not passable yet, and close for ABANDONED, say why. Every move is a subcommand crew-task.py has."""
     found = moves(state, tmp, prs, "feat/x")
     wanted = [[arg.format(t=tmp) for arg in args] for args in expected]
     assert [move.argv(move.default or "why")[3:] for move in found if not move.why] == wanted
@@ -678,10 +678,14 @@ def test_a_move_runs_in_a_worker_while_input_still_works(home: Path) -> None:
     def runner(argv: list[str]) -> tuple[int, str, str]:
         ran.append(argv)
         gate.wait(10)
-        return 1, "", "error: blocked is APPROVED, not DRAFTING; nothing written"
+        return 1, "", "error: blocked is APPROVED, not DRAFTING; nothing written\nnote: review read from REVIEW.md"
+
+    notified: list[str] = []
 
     async def drive() -> list:
         app = CrewApp(tasks, Filters(repo="all"), interval=60, gh=github(SEEDED, []), runner=runner)
+        shown = app.notify
+        app.notify = lambda message, **kw: (notified.append(message), shown(message, **kw))[1]  # type: ignore[method-assign]
         async with app.run_test() as pilot:
             await settle(app, pilot)
             await pilot.press("s")
@@ -712,6 +716,7 @@ def test_a_move_runs_in_a_worker_while_input_still_works(home: Path) -> None:
     start = [*CREW_TASK, "mark-implementing", str(tasks / "T2"), "--branch", "feat/gadgets"]
     assert ran == [start, [*CREW_TASK, "blocked", str(tasks / "T2"), "no keys"]]
     assert "error: blocked is APPROVED, not DRAFTING; nothing written" in lines and lines.count("exit 1") == 2, lines
+    assert [m for m in notified if "exit 1" in m][0].endswith("exit 1 error: blocked is APPROVED, not DRAFTING; nothing written"), notified
 
 
 @pytest.mark.parametrize("size", [(80, 24), (160, 48)])
