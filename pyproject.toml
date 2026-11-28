@@ -28,6 +28,7 @@ dependencies = ["pyyaml==6.0.3"]
 "crew-task-context.py" = "crew.task.crew_task_context:main"
 "crew-worktree.py" = "crew.task.crew_worktree:main"
 "crew-repo-info.py" = "crew.task.crew_repo_info:main"
+"crew-hook.py" = "crew.harness.crew_hook:main"
 
 [dependency-groups]
 tui = ["textual==8.2.8", "pytest-textual-snapshot==1.1.0"]

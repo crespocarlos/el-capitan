@@ -3,8 +3,8 @@
 
 Usage: merge_claude_settings.py <src_template.json> <dest_settings.json> [--manifest <home>] [--auto-memory-off] [--sandbox]
 
-The source is `.claude/settings.template.json`; the checkout's own `.claude/settings.json` is its project
-settings and carries no hooks.
+The source is the claude-code adapter's rendered fragment (`python -m crew.harness.harness_install show claude-code
+.claude/settings.json ...`); the checkout's own `.claude/settings.json` is its project settings and carries no hooks.
 
 `autoMemoryEnabled: false` (`AUTO_MEMORY_OFF`, not in the template) is merged only with `--auto-memory-off`,
 which install passes once the dir's Claude memory entries are in crew memory; a value the destination holds
@@ -21,8 +21,7 @@ hooks is a dict keyed by event type, with each value an array of
 {matcher, hooks} entries. Merge per event type at the inner hook level:
 
 - A hook whose command appears in the template takes the template's entry
-  verbatim, so flag changes (failClosed, loop_limit, timeouts) reach an
-  existing install.
+  verbatim, so flag changes (timeouts, matchers) reach an existing install.
 - Every hook whose command is not in the template is preserved untouched.
 
 Matcher is not a unique key (the template registers several matcher-less
@@ -33,7 +32,7 @@ A retired hook — one this repository used to ship and has since merged or
 removed — is dropped from the destination. Leaving it registered is worse
 than a missing file: the guard fails closed, so a deleted script would deny
 every command it used to inspect. The list and the match live in
-`hooks_retirement.py`, shared with the Cursor merger.
+`hooks_retirement.py`.
 """
 
 from __future__ import annotations
@@ -253,7 +252,7 @@ def held_rules(data):
 
 
 def added(before, src, created):
-    """What a merge of `src` into `before` adds that `before` lacked, and the template entries it already held.
+    """What a merge of `src` into `before` adds that `before` lacked.
 
     A rule the destination held in any list, or a hook it registered under the same event, is the
     user's even when the template has it too, so it is never recorded and an uninstall keeps it; a key
@@ -266,7 +265,7 @@ def added(before, src, created):
     keys = [
         [event, command, key] for (event, command), hook in ours.items() if (event, command) in theirs for key in hook if key not in theirs[(event, command)]
     ]
-    record = {
+    return {
         "created": created,
         "keys": [key for key in src if key not in before],
         "lists": [name for name in template_rules if name not in permissions],
@@ -277,11 +276,6 @@ def added(before, src, created):
         "hooks": sorted([list(pair) for pair in set(ours) - set(theirs)]),
         "hook_keys": sorted(keys),
     }
-    present = {
-        "rules": {name: [r for r in rules if same_rule(r) in held] for name, rules in template_rules.items() if any(same_rule(r) in held for r in rules)},
-        "hooks": sorted([list(pair) for pair in set(ours) & set(theirs)]),
-    }
-    return record, present
 
 
 def unmerge(dest, recorded, src, warn):
@@ -409,7 +403,7 @@ def merge_hooks(dest: dict, src: dict) -> None:
             del dest_hooks[event_type]
 
 
-def write_merged(dest: dict, src: dict, dest_path: str, original: str, manifest_home: str | None, recorded: tuple[dict, dict]) -> None:
+def write_merged(dest: dict, src: dict, dest_path: str, original: str, manifest_home: str | None, recorded: dict) -> None:
     """Back up and write the merged file, then record in the install manifest what the merge added."""
     try:
         # Before anything is written: an unreadable manifest stops the merge with the file unchanged.
@@ -419,7 +413,7 @@ def write_merged(dest: dict, src: dict, dest_path: str, original: str, manifest_
         write_json(dest, Path(dest_path))
         if section:
             forget(Path(manifest_home), section, dropped)
-            install_blocks.record(Path(manifest_home), section, *recorded)
+            install_blocks.record(Path(manifest_home), section, recorded)
     except (OSError, install_blocks.ManifestError) as error:
         raise MergeError(f"merge_claude_settings: cannot write {dest_path} or its install record: {error}") from error
 

@@ -1,0 +1,8 @@
+{
+  "session_id": "{session}",
+  "transcript_path": "<string>",
+  "cwd": "{cwd}",
+  "hook_event_name": "Notification",
+  "message": "<string>",
+  "notification_type": "idle_prompt"
+}

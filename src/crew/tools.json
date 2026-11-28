@@ -251,6 +251,16 @@
       "smoke": "--help",
       "output": "json",
       "json_smoke": ["--json"]
+    },
+    {
+      "name": "crew-hook.py",
+      "dir": "harness",
+      "kind": "command",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "--help",
+      "smoke": "--help",
+      "output": "human"
     }
   ],
   "scripts": [
@@ -1156,8 +1166,62 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by review_capture.py: which file holds a stopped subagent's transcript (the payload's path, then `<conversation>/subagents/<id>.jsonl`, then a nonce scan), polled up to 3 s, and a content-free diagnostic line",
+      "help": "imported by review_capture.py: which file holds a stopped subagent's transcript (the event's candidates in order, then a nonce scan of its folders), polled up to 3 s, and a content-free diagnostic line",
       "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "adapters.py",
+      "dir": "harness",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-hook.py and the adapters: manifests, the hook contract, registrations, and the harness-free sources (rules, agents, access classes, skills) they render",
+      "smoke": "evals/tools/test_harness_parity.py"
+    },
+    {
+      "name": "claude_code.py",
+      "dir": "harness",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-hook.py: the claude-code adapter (render, normalize, encode)",
+      "smoke": "evals/tools/test_harness_parity.py"
+    },
+    {
+      "name": "cursor.py",
+      "dir": "harness",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-hook.py: the cursor adapter and its local plugin (render, normalize, encode)",
+      "smoke": "evals/tools/test_harness_parity.py"
+    },
+    {
+      "name": "cursor_cli.py",
+      "dir": "harness",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-hook.py: the cursor-cli adapter, unverified live (render, normalize, encode)",
+      "smoke": "evals/tools/test_harness_parity.py"
+    },
+    {
+      "name": "codex.py",
+      "dir": "harness",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "imported by crew-hook.py: the codex adapter, unverified live (render, normalize, encode)",
+      "smoke": "evals/tools/test_harness_parity.py"
+    },
+    {
+      "name": "harness_install.py",
+      "dir": "harness",
+      "kind": "module",
+      "category": "maintenance",
+      "owner": "repository",
+      "help": "run by install.sh, uninstall and crew doctor (`python -m crew.harness.harness_install`): writes, refreshes and compares what every adapter renders",
+      "smoke": "evals/tools/test_harness_parity.py"
     },
     {
       "name": "crew_tui.py",
@@ -1224,6 +1288,10 @@
     }
   ],
   "assets": [
+    {"name": "claude-code.json", "dir": "harness", "kind": "asset", "category": "maintenance", "owner": "repository"},
+    {"name": "cursor.json", "dir": "harness", "kind": "asset", "category": "maintenance", "owner": "repository"},
+    {"name": "cursor-cli.json", "dir": "harness", "kind": "asset", "category": "maintenance", "owner": "repository"},
+    {"name": "codex.json", "dir": "harness", "kind": "asset", "category": "maintenance", "owner": "repository"},
     {
       "name": "pr-review-threads.graphql",
       "dir": "review",

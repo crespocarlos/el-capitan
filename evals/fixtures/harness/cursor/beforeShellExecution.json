@@ -1,0 +1,15 @@
+{
+  "conversation_id": "{session}",
+  "generation_id": "<string>",
+  "session_id": "<string>",
+  "model": "<string>",
+  "hook_event_name": "beforeShellExecution",
+  "cursor_version": "<string>",
+  "workspace_roots": ["<string>"],
+  "user_email": "<string>",
+  "transcript_path": "<string>",
+  "tool_use_id": "<string>",
+  "command": "{command}",
+  "cwd": "{cwd}",
+  "sandbox": false
+}

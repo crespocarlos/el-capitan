@@ -63,7 +63,8 @@ READONLY = f"readonly: true\ntools: Read, Grep, Glob{MCP_PLACEHOLDER}\n"
 
 
 def agent(name: str, frontmatter: str, body: str = "Body.\n") -> tuple[str, str]:
-    return f".cursor/agents/{name}.md", f"---\nname: {name}\ndescription: \"Fixture agent.\"\n{frontmatter}---\n{body}"
+    access = "" if "access:" in frontmatter else "access: readonly\n"
+    return f".cursor/agents/{name}.md", f"---\nname: {name}\ndescription: \"Fixture agent.\"\n{access}{frontmatter}---\n{body}"
 
 
 def classed(name: str, tools: str | None, readonly: bool) -> tuple[str, str]:
@@ -95,6 +96,7 @@ POINTER = ("Lookups: follow `~/.cursor/agents/references/lookups.md` before you 
 FIXTURES = (
     ("a wrong native id", dict([agent("lens-a", f"readonly: true\ntools: Read, Grap, Glob{MCP_PLACEHOLDER}\n")]),
      {"agents-inherit-tools": 1, "tool-id-unknown": 1}),
+    ("an access class no adapter maps", dict([agent("lens-a", f"access: everything\n{READONLY}")]), {"agent-access": 1}),
     ("a deny list beside the allowlist", dict([agent("lens-a", READONLY + "disallowedTools: Write\n")]), {"agents-inherit-tools": 1}),
     ("a named MCP id in a tools: line", dict([agent("lens-a", "readonly: true\ntools: Read, mcp__elastic-docs__search_docs\n")]),
      {"mcp-tool-unknown": 1, "agents-inherit-tools": 1}),
@@ -129,11 +131,14 @@ FIXTURES = (
     ("an unprefixed command", {"src/crew/task/task-progress.py": "#!/usr/bin/env python3\n", "src/crew/tools.json": json.dumps({**CATALOG, "tools": [
         {"name": "task-progress.py", "dir": "task", "kind": "command", "category": "task", "owner": "crew-orchestrator", "help": "argparse", "smoke": "--help"}]})},
      {"command-name": 1}),
-    ("removed forms in both hook registries and three removed paths",
+    ("removed forms in the settings, the hook contract and three removed paths",
      {".claude/settings.json": '{"hooks": {"SessionEnd": [{"command": "bash ~/.claude/hooks/session-event.sh end"}]}}\n',
-      ".cursor/hooks.template.json": '{"hooks": {"stop": [{"command": "crew-prune.py --tasks-dir x"}]}}\n',
+      ".claude/hooks/contract.json": '{"rules": [{"name": "x", "run": "crew-prune.py --tasks-dir x", "timeout": 10}]}\n',
       "src/crew/TOOLS.md": "Run `bash .claude/hooks/fixtures/run.sh` and `python3 evals/tools/test_hooks_contract.py`.\n"},
      {"removed-command-form": 4}),
+    ("a harness's payload key outside src/crew/harness; inside it is the adapter's",
+     {"src/crew/task/task_x.py": 'CURSOR = "cursor_version"\n', "src/crew/harness/cursor.py": 'CURSOR = "cursor_version"\n'},
+     {"harness-knowledge": 1}),
     ("a removed flag after another command is not the command's", {"src/crew/TOOLS.md": "Run crew-verify.py and git log --since 1d.\n"}, {}),
     ("narration in a prompt; a participle 'used to' is not", {RULE: RULE_HEAD + "This used to crash. The token used to sign requests lives in the vault.\n"},
      {"no-incident-narration": 1}),

@@ -1,0 +1,34 @@
+{
+  "id": "cursor",
+  "name": "Cursor app",
+  "live": "verified",
+  "plugin": ".cursor/plugins/local/el-capitan",
+  "paths": [".cursor/plugins/local/el-capitan/"],
+  "events": {
+    "session_start": {"native": "sessionStart"},
+    "prompt_submit": {"fallback": "none: beforeSubmitPrompt cannot add context, so the per-turn anchor is not shown"},
+    "pre_shell": {"native": "beforeShellExecution"},
+    "pre_write": {"native": "preToolUse", "matcher": "Write|Edit|Delete"},
+    "post_tool": {"native": ["postToolUse", "postToolUseFailure"]},
+    "post_shell": {"native": "afterShellExecution"},
+    "subagent_stop": {"native": "subagentStop"},
+    "stop": {"native": "stop"},
+    "idle": {"fallback": "none: Cursor has no idle event"}
+  },
+  "deny": {
+    "modes": {"*": false},
+    "why": "the app documents an allowlist, not a deny list, and auto-run is treated as having none: the demoted rules stay dispatcher rules"
+  },
+  "always_on": {"value": "the plugin's rules with alwaysApply: true"},
+  "rules": {"value": "~/.cursor/plugins/local/el-capitan/rules/<rule>.mdc"},
+  "agents": {"value": "~/.cursor/plugins/local/el-capitan/agents/<agent>.md"},
+  "skills": {"value": "~/.cursor/skills/<skill>, which Cursor loads natively and every prompt reads by path"},
+  "access": {
+    "readonly": "frontmatter readonly: true",
+    "probe": "frontmatter tools: with Write and Bash",
+    "worker": "every tool",
+    "inline": "read and run in the main session"
+  },
+  "max_turns": {"fallback": "none: Cursor enforces no turn cap; maxTurns is advisory"},
+  "mcp": {"fallback": "subagents inherit every MCP tool; a read-only agent's prompt names the servers it may call (references/lookups.md)"}
+}

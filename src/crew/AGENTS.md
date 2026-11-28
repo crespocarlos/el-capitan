@@ -25,17 +25,16 @@ clean, never add one for new code. Behavioral changes also need the suite for th
 touched — `uv run python evals/memory/run.py` for memory, `bash evals/test.sh evals/tools/test_<name>.py` for a
 single suite (a test takes `tmp`, its own temporary directory, from `evals/conftest.py`). Suites that
 create temporary git repositories fail inside the Cursor sandbox with `Operation not permitted`
-(`test_hook_cases.py`, `evals/memory/run.py`). Run those with full permissions, and check exit codes
+(`test_harness_parity.py`, `evals/memory/run.py`). Run those with full permissions, and check exit codes
 directly rather than piping to `tail`, which hides them.
 
 ## Hooks
 
 Hook scripts under `.claude/hooks/` are shell, and the module ceiling does not apply to them — but
-each one obeys the same contract, and the test that pins it is `evals/tools/test_hook_cases.py`.
-Blocking is exit `2` with one line on stderr (Cursor gets its own JSON deny instead); no objection is
-exit `0` with no output; an input a hook cannot read is one stderr line and exit `0`. A hook never
-mixes the two blocking mechanisms. Cursor reads *silence* from a fail-closed hook as a failure, so
-both guards print an empty decision when they have no objection.
+each one obeys the same contract, and the test that pins it is `evals/tools/test_harness_parity.py`.
+A rule reads the normalised event `crew-hook.py` gives it and answers in no harness's format: a deny is
+`{"deny": MESSAGE}`, no objection is exit `0` with no output, an input it cannot read is one stderr line and
+exit `0`; the harness's adapter (`src/crew/harness/`) encodes the answer.
 
 - **One guard per event, a function per rule.** A new shell rule is a `rule_<name>` function in
   `guard/shell.sh`, called through `rule` (its own subshell, off switch and failure handling); a file

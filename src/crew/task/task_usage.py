@@ -1,9 +1,8 @@
-"""A subagent run's `agent_end` METRIC on its task (the subagent-stop hook), and a Cursor `stop`'s raw `cursor_stop`.
-
-The task is the prompt's `crew-task: <TASK_DIR>` line, else the task above an accepted review directory, under
-`~/.agent/tasks` with `SPEC.md`. Claude Code: `tokens` is the last call's context, the counts summed per message id.
-Cursor `subagentStop`: `tokens=unknown` with its counts. A `stop` keeps its raw counts and ids on the task its workspace
-resolves to offline (`task_cost.cursor_session_usage` reads them); with no task, nothing is recorded.
+"""A subagent run's `agent_end` METRIC on its task (the subagent-stop hook), and a stop's raw `cursor_stop` counts.
+The task is the prompt's `crew-task: <TASK_DIR>` line, else the task above an accepted review directory. From a
+transcript, `tokens` is the last call's context, the counts summed per message id; an event with `stats` records
+`tokens=unknown` with them. A stop event with `usage` keeps its raw counts and ids on the task its workspace resolves
+to offline (`task_cost.cursor_session_usage` reads them). Both read the hook's normalised event.
 """
 
 from __future__ import annotations
@@ -21,11 +20,11 @@ from crew.task.task_progress import AGENT_END, CURSOR_STOP, append_metric
 
 TASK_LINE = re.compile(r"^crew-task: (\S.*?)[ \t]*$", re.M)
 USAGE = {"input": "input_tokens", "output": "output_tokens", "cache_read": "cache_read_input_tokens", "cache_write": "cache_creation_input_tokens"}
-# Cursor `subagentStop` counts, recorded as `<name>=<n>` on the `agent_end` line.
-CURSOR_STATS = {"duration_ms": "duration_ms", "tool_calls": "tool_call_count", "messages": "message_count"}
-# Cursor `stop` counts, recorded as `<name>=<n>` on the `cursor_stop` line.
-STOP_FIELDS = {"input": "input_tokens", "output": "output_tokens", "cache_read": "cache_read_tokens", "cache_write": "cache_write_tokens"}
-NO_TASK = "no task for this workspace; nothing recorded"  # the common case: cursor-usage.sh does not log it
+# A stopped subagent's `stats`, recorded as `<name>=<n>` on the `agent_end` line.
+STATS = ("duration_ms", "tool_calls", "messages")
+# A stop's `usage`, recorded as `<name>=<n>` on the `cursor_stop` line.
+STOP_FIELDS = ("input", "output", "cache_read", "cache_write")
+NO_TASK = "no task for this workspace; nothing recorded"  # the common case: usage.sh does not log it
 
 
 def task_of(prompt: str, review_dir: Path | None) -> Path | None:
@@ -105,7 +104,8 @@ def record_usage(
     stats: dict | None = None,
 ) -> str:
     """Append the run's `agent_end` to its task; the one line saying what was recorded, or "" when no task is named.
-    `stats` (Cursor's `subagentStop` payload) records its counts with `tokens=unknown` instead of the transcript's."""
+    `stats` (the stop event's counts, when its harness sends them) records them with `tokens=unknown` instead of the
+    transcript's."""
     task = task_of(prompt, review_dir)
     if task is None:
         return ""
@@ -113,7 +113,7 @@ def record_usage(
         return f"{task} is not a task directory under ~/.agent/tasks; usage not recorded"
     head = [AGENT_END, f"agent={word(agent)}", f"persona={word(persona or agent)}", *([f"agent_id={word(agent_id)}"] if agent_id else [])]
     if stats is not None:
-        counts = {key: count(stats.get(field)) for key, field in CURSOR_STATS.items()}
+        counts = {key: count(stats.get(key)) for key in STATS}
         started = utc_stamp(utc_now() - timedelta(milliseconds=counts["duration_ms"]))
         append_metric(
             task, " ".join([*head, "tokens=unknown", *(f"{key}={value}" for key, value in counts.items()), f"started={started}", f"harness={word(harness)}"])
@@ -144,7 +144,7 @@ def resolve_task(root: str) -> Path | None:
 
 
 def conversations_file() -> Path:
-    """`<stamp> <conversation_id> <task dir>` lines: the task each Cursor conversation's stops are recorded on."""
+    """`<stamp> <session> <task dir>` lines: the task each session's stops are recorded on."""
     return Path.home() / ".agent" / "state" / "cursor-conversations.txt"
 
 
@@ -165,46 +165,44 @@ def bind_task(conversation: str, task: Path) -> None:
         handle.write(f"{utc_stamp()} {conversation} {task}\n")
 
 
-def record_stop(payload: dict, resolve=resolve_task) -> str:
-    """Append one Cursor `stop` payload's raw counts to its conversation's task: the one the conversation's first
-    recorded stop resolved to (kept in `~/.agent/state`), so a branch switch never splits a conversation across
-    tasks; else the task its workspace resolves to now. The line saying what happened; nothing without both ids, a
-    workspace, the four counts, or a task."""
-    ids = {name: word(str(payload.get(name) or "")) for name in ("conversation_id", "generation_id")}
-    if not all(payload.get(name) for name in ids):
-        return "no conversation_id or generation_id in the payload; skipped"
-    roots = payload.get("workspace_roots")
-    first = roots[0] if isinstance(roots, list) and roots else None
-    root = first if isinstance(first, str) else str(payload.get("cwd") or "")
-    counts = {key: payload.get(field) for key, field in STOP_FIELDS.items()}
+def record_stop(event: dict, resolve=resolve_task) -> str:
+    """Append one stop event's raw `usage` counts to its session's task: the one the session's first recorded stop
+    resolved to (kept in `~/.agent/state`), so a branch switch never splits a session across tasks; else the task its
+    workspace resolves to now. The line saying what happened; nothing without the four counts, both ids, a
+    workspace, or a task."""
+    given = raw if isinstance(raw := event.get("usage"), dict) else {}
+    counts = {key: given.get(key) for key in STOP_FIELDS}
     if not all(isinstance(value, int) and value >= 0 for value in counts.values()):
-        return "no token counts in the payload; nothing recorded"
+        return "no token counts in the event; nothing recorded"
+    if not (event.get("session") and event.get("generation")):
+        return "no session or generation id in the event; skipped"
+    ids = {"conversation_id": word(str(event["session"])), "generation_id": word(str(event["generation"]))}
+    root = str(event.get("workspace") or event.get("cwd") or "")
     task = bound_task(ids["conversation_id"])
     if task is None:
         if not root or not Path(root).is_dir():
-            return "no workspace in the payload; nothing recorded"
+            return "no workspace in the event; nothing recorded"
         task = resolve(root)
         if task is None or not is_task(task):
             return NO_TASK
         bind_task(ids["conversation_id"], task)
     if not is_task(task):
         return f"{task}, this conversation's task, is gone; nothing recorded"
-    model = word(str(payload.get("model_id") or payload.get("model") or ""))
     fields = [
         *(f"{name}={value}" for name, value in ids.items()),
-        f"model={model}",
-        f"loop_count={count(payload.get('loop_count'))}",
+        f"model={word(str(event.get('model') or ''))}",
+        f"loop_count={count(event.get('loop'))}",
         *(f"{key}={value}" for key, value in counts.items()),
     ]
-    append_metric(task, " ".join([CURSOR_STOP, *fields, "harness=cursor"]))
+    append_metric(task, " ".join([CURSOR_STOP, *fields, f"harness={word(str(event.get('harness') or 'unknown'))}"]))
     return f"recorded {CURSOR_STOP} input={counts['input']} output={counts['output']} on {task}"
 
 
 def main(argv: list[str]) -> int:
-    """`crew-task.py usage stop`: one Cursor `stop` payload on stdin, recorded on its task. Always exit 0."""
-    parser = argparse.ArgumentParser(prog="crew-task.py usage", description="Record a Cursor session's token usage.")
+    """`crew-task.py usage stop`: one normalised stop event on stdin, recorded on its task. Always exit 0."""
+    parser = argparse.ArgumentParser(prog="crew-task.py usage", description="Record a session's token usage.")
     commands = parser.add_subparsers(dest="action", required=True)
-    commands.add_parser("stop", help="the Cursor `stop` hook: the payload on stdin, raw counts on its task")
+    commands.add_parser("stop", help="the stop hook rule: the event on stdin, raw counts on its task")
     parser.parse_args(argv)
     try:
         payload = json.loads(sys.stdin.read() or "{}")

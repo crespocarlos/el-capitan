@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from cli_runner import launcher
 from cli_runner import run as cli
+from harness_hook import run as hook
 
 TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_review_findings.py"
 
@@ -1171,12 +1172,11 @@ def test_distinct_agent_ids_are_not_degraded(tmp: Path) -> None:
     assert "Verdict: PASS" in (review_dir / "REVIEW.md").read_text()
 
 
-HOOK = TOOL.parents[3] / ".claude" / "hooks" / "capture-reply.sh"
 RESUMED = "### Findings: none\n\nAssessment: approve — re-emitted in full.\n"
 
 
 def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool = True) -> subprocess.CompletedProcess:
-    """Run capture-reply.sh on a fixture transcript: the dispatch prompt, then one assistant turn that hands back
+    """Run Claude Code's SubagentStop through crew-hook.py on a fixture transcript: the dispatch prompt, then one assistant turn that hands back
     `reply` after the text `Handed back.` (the payload's `last_assistant_message`), or, without `handback`, says
     `reply` as its final text, which `last_assistant_message` then carries, as Claude Code documents."""
     home = tmp / "home"
@@ -1193,8 +1193,7 @@ def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool 
     path.write_text("".join(json.dumps(line) + "\n" for line in lines))
     payload = {"hook_event_name": "SubagentStop", "agent_id": agent, "agent_type": "general-purpose",
                "agent_transcript_path": str(path), "last_assistant_message": "Handed back." if handback else reply}
-    return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
-                          env={**os.environ, "HOME": str(home)})
+    return hook(home, payload)
 
 
 def marker(review_dir: Path, persona: str) -> str:

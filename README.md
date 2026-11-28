@@ -71,7 +71,7 @@ Not a pipeline stage; run it when you need it.
 <!-- /generated:standalone -->
 
 <!-- generated:counts (crew-lint.py --write-readme) -->
-4 crew agents (orchestrators and workers), 11 personas, 13 skills, 20 `crew` commands and 24 installed commands.
+4 crew agents (orchestrators and workers), 11 personas, 13 skills, 20 `crew` commands and 25 installed commands.
 <!-- /generated:counts -->
 
 ### Dashboard (optional)

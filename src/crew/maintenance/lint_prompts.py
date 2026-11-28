@@ -11,6 +11,7 @@ import json
 import re
 from pathlib import Path
 
+from crew.harness.adapters import ACCESS
 from crew.lib.markdown import frontmatter, frontmatter_text
 from crew.maintenance.lint_files import line_no, rel
 
@@ -43,8 +44,8 @@ def claude_imports(root: Path) -> set[str]:
     for candidate in (root / "CLAUDE.md", root / ".claude/CLAUDE.md"):
         if not candidate.is_file():
             continue
-        for target in re.findall(r"@(\S+\.mdc)", candidate.read_text(errors="replace")):
-            names.add(Path(target).name)
+        for target in re.findall(r"@(\S+\.mdc?)\b", candidate.read_text(errors="replace")):
+            names.add(Path(target).stem + ".mdc")  # the claude-code adapter installs `rules/x.mdc` as `x.md`
     return names
 
 
@@ -57,7 +58,7 @@ def always_on_unreachable(root: Path, rule: str) -> str:
     """
     if rule in claude_imports(root):
         return ""
-    return f"alwaysApply is true but CLAUDE.md never imports it, so Claude Code does not load it; add `@~/.cursor/rules/{rule}` to {rel(root, root / '.claude/CLAUDE.md')}"
+    return f"alwaysApply is true but CLAUDE.md never imports it, so Claude Code does not load it; add `@~/.claude/el-capitan/{Path(rule).stem}.md` to {rel(root, root / '.claude/CLAUDE.md')}"
 
 
 def always_on_files(root: Path) -> list[tuple[str, int]]:
@@ -278,6 +279,8 @@ def lint_agent_readonly(root: Path) -> Findings:
             findings.append((rel(root, path), 1, f"{kind(text)}-agent-frontmatter", error))
             continue
         name, block = rel(root, path), frontmatter_text(text)[0] or ""
+        if fields.get("access") not in ACCESS:
+            findings.append((name, 1, "agent-access", f"set access: to one of {', '.join(ACCESS)} (the class every harness adapter maps)"))
         readonly, native = AGENT_CLASSES.get(path.stem, (True, READONLY_AGENT_TOOLS))
         if readonly is False and fields.get("readonly") is True:
             findings.append((name, 1, "unexpected-readonly", f"{path.stem} writes, so readonly: true would block every edit"))

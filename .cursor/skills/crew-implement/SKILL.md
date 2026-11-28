@@ -91,7 +91,7 @@ UUID task directory (`$TASK_DIR`) is stable and does not move.
 
 Write the worker lock right before the first dispatch, never before Step 4's bootstrap:
 `~/.agent/bin/crew-task.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"`. Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code:
-read `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` and follow its protocol
+read `~/.claude/agents/crew-builder.md` and follow its protocol
 directly), per [dispatch reliability](references/worker-dispatch.md#dispatch-reliability). The prompt
 is a `$TASK_DIR/dispatch/builder*.md` file, unchanged: `crew-task:` and `TASK_RANGE` lines,
 `TASK_DIR`, the literal `WORK_DIR`, `RECALLED_PATTERNS`, guidance and the open tasks; paste none of

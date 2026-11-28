@@ -1,4 +1,4 @@
-"""A builder's reply saved as its task's report: by the `SubagentStop` hook, or by `crew-task.py report save`.
+"""A builder's reply saved as its task's report: by the subagent-stop hook, or by `crew-task.py report save`.
 
 From the `## Implementation Report` heading on, the reply goes atomically to `REPORT.md`, or for a batch to
 `REPORT.part-<a>-<b>.md` (the final batch: both), each beside `<name>.provenance.json`. A report that fails

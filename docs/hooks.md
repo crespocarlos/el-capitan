@@ -1,23 +1,23 @@
 # Hooks
 
-`install.sh` registers hooks in both harnesses: `.claude/settings.template.json` is merged into
-`~/.claude/settings.json`, and `.cursor/hooks.template.json` into `~/.cursor/hooks.json`. Each hook is
-one small file under `.claude/hooks/`; read any of them before you install. Two of them are guards,
-one process each per tool call: the shell guard and the file guard. The guards among them
-are a security boundary: [SECURITY.md](../SECURITY.md) says what they protect and how to report a
-bypass.
+Every harness registration runs one command, `crew-hook.py <harness> <event>`: the harness's adapter
+(`src/crew/harness/`) normalises the payload, the rules `.claude/hooks/contract.json` names for each canonical event
+run from `~/.agent/hooks` (install's copy), and the adapter encodes the answer ([Harness adapters](#harness-adapters)). Each rule is
+one small file under `.claude/hooks/`; read any of them before you install. Two of them are guards, one process each
+per tool call: the shell guard and the file guard. The guards are a security boundary:
+[SECURITY.md](../SECURITY.md) says what they protect and how to report a bypass.
 
-| Hook | Trigger | What it does |
+| Canonical event (Claude Code / Cursor) | Trigger | What it does |
 |---|---|---|
-| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `guard/shell.sh`, the shell guard: one process that reads the payload once, normalises the command once and runs its rules (below, [Rules](#rules)). |
-| `PreToolUse` / Cursor `preToolUse` | Write, Edit, MultiEdit; Cursor Write, Delete | `check-task-spec-owner.sh`, the file guard, with its rules in `lib/spec_guard.py` (below). |
-| `UserPromptSubmit` | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |
-| `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
-| `PostToolUse` / Cursor `afterShellExecution` | Bash | `record-pr.sh` records the PR a successful `gh pr create` printed on its task (`crew-task.py record-pr`). Only a command with a real `gh … pr create` segment counts (the `lib/hook.sh` normaliser; text in an `echo` or a string does not), and only when its output holds exactly one distinct PR URL; with several it records nothing and lists them. It asks `gh pr view` for the head branch and matches the task's repo (the base, or the fork the head owner names) and `branch`. The single open match wins over DONE and ABANDONED ones; an IMPLEMENTING match gains the PR and goes through `mark-done`, any other single match only gains the PR; several record nothing and print each `mark-done` command. A head branch that is only some task's `spec_branch` records nothing and names that task; no match at all, in a repo that already has tasks, becomes a minimal DONE task with no spec. Any other command ends in shell; the outcome is Claude's additional context. Session-start reconcile still catches PRs opened any other way. |
-| `SubagentStop` / Cursor `subagentStop` | Subagent ends | `capture-reply.sh` saves a crew agent's reply (`crew-review-findings.py capture`) when a line of the dispatch prompt is the `crew-review-out: <dir> <name> <nonce>` marker that `crew-review-findings.py expect` printed: a reviewer persona or the probe (`<review dir>/<persona>.out.md`; a claim-check explorer in its own `<review dir>/claims/<n>/explorer.out.md`), or a crew-specwriter subagent (`specwriter-explorer`, `specwriter-scope`, `specwriter-adversarial`: `<TASK_DIR>/spec-agents/<run>/<name>.out.md`). The position is not the check, and neither is the agent id: the nonce is, so the reply is saved only when `<name>.expect` holds the same nonce; a non-crew subagent that quotes a marker saves nothing. `.expect` stays after a save and the record keeps the nonce as consumed. In Cursor the dispatch prompt is the payload's `task` field when it holds a marker or task line, else the transcript's first user line; the transcript is the first of the payload's `agent_transcript_path`, `<conversation>/subagents/<subagent_id or child_conversation_id>.jsonl` derived from `transcript_path`, `$CURSOR_TRANSCRIPT_PATH` or that path, and a scan of those `subagents/` folders for the `task` nonce, whose first user line carries the marker; one that exists with no user line yet is polled for up to 3 s (`review_transcript.py`). A Cursor stop that saves nothing logs one line with the payload's key names, `subagent_id`, whether `child_conversation_id` is present and each candidate path with `exists`, `bytes` and `lines`, never content. A Cursor `status` of `error` or `aborted` saves nothing and leaves the dispatch pending. The reply is the `SubagentHandback` message, else Claude Code's `last_assistant_message` (documented as the final response; the transcript may lag), else the transcript's last assistant text (Cursor's transcript: `role` lines, read alike), else a `completed` Cursor run's `summary`, recorded as `reply_from: summary` with `<name>.unanswered` always written, so the continue below or `save-out --from-transcript` recovers the real reply (`persist` lists it under `### Reviewers`). A transcript whose first user line fails the marker check (the parent's, say) is never read for the reply; it is opened only to report a `malformed transcript`. Each record's `source` is `hook`, `transcript` (`save-out --from-transcript`) or `manual` (`save-out` from stdin, listed under `### Reviewers`). The latest reply to a marker is the reply: a later, different stop with the same marker (a resume, whatever its agent id) becomes `<name>.out.md` and the earlier reply moves to `<name>.prev.md` with its record. The same stop again (Cursor fires `subagentStop` twice) changes nothing and logs `already saved`: no `.prev.md`, no second `agent_end` (`~/.agent/state/capture-seen.txt`, behind `capture-reply.lock`, waited on for at most 10 s, then `lock busy` and unlocked). A stop is recorded as seen only when it wrote something, so a repeat of a failed save retries. When the reply leaves `<name>.unanswered`, the hook asks the agent once per nonce to deliver, with the `deliver now` line of the dispatch rule: Cursor's `followup_message` on a `completed` first loop (the entry has `loop_limit: 1`), Claude Code's `{"decision": "block", "reason": ...}` unless `stop_hook_active` is set; `<name>.continued` records the nonce. An `.out.md` recorded for another nonce is a name collision and is kept. A reply that answers nothing (empty, `status: failed`, a pointer to an earlier turn with no finding, a critic with no `Verdict:` line, a final line still half-written so an earlier turn is read) leaves `<name>.unanswered` beside it, so the dispatch stays pending until a later reply answers. Each record names the harness (`claude-code` or `cursor`), the agent id (Cursor: `subagent_id`) and the model (Cursor: `subagent_model`, null when the payload has none). A transcript with no message line is skipped with a `malformed transcript` line. Every outcome line also goes to `~/.agent/state/capture-reply.log`; on Cursor's event stdout is `{}`, and Cursor's Claude-format copy never processes: it stands down, or with a stale `~/.cursor/hooks.json` logs `re-run install.sh` and exits silently. The same hook appends an `agent_end` METRIC (with `agent_id`, so a resumed agent counts once, and `harness`) to the task a `crew-task: <TASK_DIR>` prompt line names, only when that is a directory under `~/.agent/tasks` holding `SPEC.md` (else the task above a review directory whose marker was accepted): in Claude Code the transcript's token usage (`tokens`: the last call's context, as the harness reports it; input, output and cache counts summed beside it), in Cursor `tokens=unknown` with `duration_ms`, `tool_calls` and `messages` from the payload; `crew ls --cost` and `crew report` show it per task, per agent kind and harness. For a `crew-builder` run, the hook also saves the same reply, from its `## Implementation Report` heading to the end, into the task its `crew-task: <TASK_DIR>` line names: `REPORT.md`, or `REPORT.part-<a>-<b>.md` when the prompt's header (the lines around `crew-task:`) has one `TASK_RANGE: <a>-<b>` line, and both when that line ends in `final`. Each is written atomically beside `<report name>.provenance.json`; a report that fails `report-check` against `gates.json` is saved with a `WARN` line in PROGRESS.md. A builder run it cannot save (no heading, no task line, two ranges in the header) prints `no report saved: <reason>`. `save-out --from-transcript <transcript>` (the reply extracted as the hook does, its marker checked against `.expect`) or `crew-task.py report save <TASK_DIR>` (the reply on stdin) is the fallback when an `.out.md` or the report is still missing after the agent stops. |
-| Cursor `stop` | Agent loop ends | `cursor-usage.sh` (`crew-task.py usage stop`) appends the session's raw counts as one `cursor_stop` METRIC (`conversation_id`, `generation_id`, `model`, `loop_count`, `input`, `output`, `cache_read`, `cache_write`) to the conversation's task: the one its first recorded stop resolved to (from the first workspace root's git state alone, as `crew-task-context` resolves it), kept in `~/.agent/state/cursor-conversations.txt`, so a branch switch never splits a conversation across tasks. With no task it records nothing and logs nothing; a payload missing `conversation_id` or `generation_id` is skipped and logged. The readers take, per conversation, each count's rise over the previous `stop` (all of it after a fall), and skip a `generation_id` already seen, so a running total and per-loop counts are both read without counting anything twice (see [Harness facts](#harness-facts-2026-11-27)); per-loop counts would read low, so `crew ls --cost`, `crew report` and the TUI show `cursor sessions` as approximate (`~`). Other outcomes go to `~/.agent/state/cursor-usage.log`; stdout is `{}`. `crew-task.py gc --only telemetry` prunes both hook logs and the conversation file by age (`sessions_days`). Cursor-only: no Claude-format registration. |
-| `Notification` (Claude Code only) | `idle_prompt` | `notify-idle.sh` shows a macOS banner ("<repo> (<branch>) needs your input") and never activates or focuses an application. It stays quiet in a background job (`CLAUDE_JOB_DIR` set), shows at most one banner per session every 10 minutes (the last one's time is in `~/.agent/memory/.sessions/<session>.notified`), and `EL_CAPITAN_NOTIFY=off` turns it off. It always exits 0. |
-| `SessionStart` | Session begins | Loads bounded memory context, applies the spec status policy, and refreshes the anchor (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
+| `pre_shell` (`PreToolUse` / `beforeShellExecution`) | Bash | `guard/shell.sh`, the shell guard: one process that reads the payload once, normalises the command once and runs its rules (below, [Rules](#rules)). |
+| `pre_write` (`PreToolUse` / `preToolUse`) | Write, Edit, MultiEdit; Cursor Write, Edit, Delete | `check-task-spec-owner.sh`, the file guard, with its rules in `lib/spec_guard.py` (below). |
+| `prompt_submit` (`UserPromptSubmit`; none in Cursor) | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |
+| `post_tool` (`PostToolUse`, `PostToolUseFailure` / `postToolUse`, `postToolUseFailure`) | Bash, Write, Edit; Cursor every tool | Emits local JSON telemetry |
+| `post_shell` (`PostToolUse` / `afterShellExecution`) | Bash | `record-pr.sh` records the PR a successful `gh pr create` printed on its task (`crew-task.py record-pr`). Only a command with a real `gh … pr create` segment counts (the `lib/hook.sh` normaliser; text in an `echo` or a string does not), and only when its output holds exactly one distinct PR URL; with several it records nothing and lists them. It asks `gh pr view` for the head branch and matches the task's repo (the base, or the fork the head owner names) and `branch`. The single open match wins over DONE and ABANDONED ones; an IMPLEMENTING match gains the PR and goes through `mark-done`, any other single match only gains the PR; several record nothing and print each `mark-done` command. A head branch that is only some task's `spec_branch` records nothing and names that task; no match at all, in a repo that already has tasks, becomes a minimal DONE task with no spec. Any other command ends in shell; the outcome is Claude's additional context. Session-start reconcile still catches PRs opened any other way. |
+| `subagent_stop` (`SubagentStop` / `subagentStop`) | Subagent ends | `capture-reply.sh` saves a crew agent's reply (`crew-review-findings.py capture`) when a line of the dispatch prompt is the `crew-review-out: <dir> <name> <nonce>` marker that `crew-review-findings.py expect` printed: a reviewer persona or the probe (`<review dir>/<persona>.out.md`; a claim-check explorer in its own `<review dir>/claims/<n>/explorer.out.md`), or a crew-specwriter subagent (`specwriter-explorer`, `specwriter-scope`, `specwriter-adversarial`: `<TASK_DIR>/spec-agents/<run>/<name>.out.md`). The position is not the check, and neither is the agent id: the nonce is, so the reply is saved only when `<name>.expect` holds the same nonce; a non-crew subagent that quotes a marker saves nothing. `.expect` stays after a save and the record keeps the nonce as consumed. In Cursor the dispatch prompt is the payload's `task` field when it holds a marker or task line, else the transcript's first user line; the transcript is the first of the payload's `agent_transcript_path`, `<conversation>/subagents/<subagent_id or child_conversation_id>.jsonl` derived from `transcript_path`, `$CURSOR_TRANSCRIPT_PATH` or that path, and a scan of those `subagents/` folders for the `task` nonce, whose first user line carries the marker; one that exists with no user line yet is polled for up to 3 s (`review_transcript.py`). A Cursor stop that saves nothing logs one line with the payload's key names, `subagent_id`, whether `child_conversation_id` is present and each candidate path with `exists`, `bytes` and `lines`, never content. A Cursor `status` of `error` or `aborted` saves nothing and leaves the dispatch pending. The reply is the `SubagentHandback` message, else Claude Code's `last_assistant_message` (documented as the final response; the transcript may lag), else the transcript's last assistant text (Cursor's transcript: `role` lines, read alike), else a `completed` Cursor run's `summary`, recorded as `reply_from: summary` with `<name>.unanswered` always written, so the continue below or `save-out --from-transcript` recovers the real reply (`persist` lists it under `### Reviewers`). A transcript whose first user line fails the marker check (the parent's, say) is never read for the reply; it is opened only to report a `malformed transcript`. Each record's `source` is `hook`, `transcript` (`save-out --from-transcript`) or `manual` (`save-out` from stdin, listed under `### Reviewers`). The latest reply to a marker is the reply: a later, different stop with the same marker (a resume, whatever its agent id) becomes `<name>.out.md` and the earlier reply moves to `<name>.prev.md` with its record. The same stop again (Cursor fires `subagentStop` twice) changes nothing and logs `already saved`: no `.prev.md`, no second `agent_end` (`~/.agent/state/capture-seen.txt`, behind `capture-reply.lock`, waited on for at most 10 s, then `lock busy` and unlocked). A stop is recorded as seen only when it wrote something, so a repeat of a failed save retries. When the reply leaves `<name>.unanswered`, the hook asks the agent once per nonce to deliver, with the `deliver now` line of the dispatch rule: Cursor's `followup_message` on a `completed` first loop (the entry has `loop_limit: 1`), Claude Code's `{"decision": "block", "reason": ...}` unless `stop_hook_active` is set; `<name>.continued` records the nonce. An `.out.md` recorded for another nonce is a name collision and is kept. A reply that answers nothing (empty, `status: failed`, a pointer to an earlier turn with no finding, a critic with no `Verdict:` line, a final line still half-written so an earlier turn is read) leaves `<name>.unanswered` beside it, so the dispatch stays pending until a later reply answers. Each record names the harness (`claude-code` or `cursor`), the agent id (Cursor: `subagent_id`) and the model (Cursor: `subagent_model`, null when the payload has none). A transcript with no message line is skipped with a `malformed transcript` line. Every outcome line also goes to `~/.agent/state/capture-reply.log`; on Cursor's event stdout is `{}`, and Cursor's Claude-format copy never processes (the claude-code adapter drops it). The same hook appends an `agent_end` METRIC (with `agent_id`, so a resumed agent counts once, and `harness`) to the task a `crew-task: <TASK_DIR>` prompt line names, only when that is a directory under `~/.agent/tasks` holding `SPEC.md` (else the task above a review directory whose marker was accepted): in Claude Code the transcript's token usage (`tokens`: the last call's context, as the harness reports it; input, output and cache counts summed beside it), in Cursor `tokens=unknown` with `duration_ms`, `tool_calls` and `messages` from the payload; `crew ls --cost` and `crew report` show it per task, per agent kind and harness. For a `crew-builder` run, the hook also saves the same reply, from its `## Implementation Report` heading to the end, into the task its `crew-task: <TASK_DIR>` line names: `REPORT.md`, or `REPORT.part-<a>-<b>.md` when the prompt's header (the lines around `crew-task:`) has one `TASK_RANGE: <a>-<b>` line, and both when that line ends in `final`. Each is written atomically beside `<report name>.provenance.json`; a report that fails `report-check` against `gates.json` is saved with a `WARN` line in PROGRESS.md. A builder run it cannot save (no heading, no task line, two ranges in the header) prints `no report saved: <reason>`. `save-out --from-transcript <transcript>` (the reply extracted as the hook does, its marker checked against `.expect`) or `crew-task.py report save <TASK_DIR>` (the reply on stdin) is the fallback when an `.out.md` or the report is still missing after the agent stops. |
+| `stop` (`Stop` / `stop`) | Agent loop ends | `memory-capture-prompt.sh` queues one memory review. `usage.sh` (`crew-task.py usage stop`), when the event carries token counts (Cursor's `stop`), appends the session's raw counts as one `cursor_stop` METRIC (`conversation_id`, `generation_id`, `model`, `loop_count`, `input`, `output`, `cache_read`, `cache_write`) to the conversation's task: the one its first recorded stop resolved to (from the first workspace root's git state alone, as `crew-task-context` resolves it), kept in `~/.agent/state/cursor-conversations.txt`, so a branch switch never splits a conversation across tasks. With no task it records nothing and logs nothing; a payload missing `conversation_id` or `generation_id` is skipped and logged. The readers take, per conversation, each count's rise over the previous `stop` (all of it after a fall), and skip a `generation_id` already seen, so a running total and per-loop counts are both read without counting anything twice (see [Harness facts](#harness-facts-2026-11-27)); per-loop counts would read low, so `crew ls --cost`, `crew report` and the TUI show `cursor sessions` as approximate (`~`). Other outcomes go to `~/.agent/state/usage.log`. `crew-task.py gc --only telemetry` prunes both hook logs and the conversation file by age (`sessions_days`). |
+| `idle` (`Notification` `idle_prompt`; none in Cursor) | `idle_prompt` | `notify-idle.sh` shows a macOS banner ("<repo> (<branch>) needs your input") and never activates or focuses an application. It stays quiet in a background job (`CLAUDE_JOB_DIR` set), shows at most one banner per session every 10 minutes (the last one's time is in `~/.agent/memory/.sessions/<session>.notified`), and `EL_CAPITAN_NOTIFY=off` turns it off. It always exits 0. |
+| `session_start` (`SessionStart` / `sessionStart`) | Session begins | Loads bounded memory context, re-renders a stale rendered file, applies the spec status policy, and refreshes the anchor |
 
 ## Rules
 
@@ -43,9 +43,10 @@ skipped with one stderr line; credentials instead denies the commands it scans. 
 prefix, so it misses `git -C <tree> reset --hard` (the form crew agents use) and a removal named by a variable or
 resolved against the cwd, which only these rules parse.
 
-**Demoted rules** run only in Cursor's payloads (and Cursor's Claude-format copy when it does not stand down): the
-Cursor app documents no deny list. In Claude Code the permission rules of `.claude/settings.template.json` hold them,
-and the probe below shows they hold unattended:
+**Demoted rules** run only where the harness's manifest declares no deny rule that holds in the session's mode
+(`deny` in `src/crew/harness/<id>.json`, the event's `deny_rules`): the Cursor app, the Cursor CLI and Codex until a
+probe shows theirs hold. In Claude Code the permission rules of its manifest hold them, and the probe below shows they
+hold unattended:
 
 - `deny`: `gh pr checkout`;
 - `ask`: `Edit(~/.agent/tasks/*/SPEC.md)` (a Status edit is the owner's approval);
@@ -56,8 +57,8 @@ and the probe below shows they hold unattended:
 The allowlist is narrow: git reads plus `add`, `commit`, `fetch`, `switch -c` and `push` (its force forms are the shell guard's),
 `gh pr view|diff`, `gh pr create --repo`, `gh api -X GET`; no blanket `git`, `gh`, `sed`, `cp`, `mv`, `curl` or
 `source`. `install.sh --sandbox` also turns on Claude Code's sandbox for Bash and its child processes. The Cursor CLI
-gets its own deny tokens (`.cursor/cli-config.template.json`) in `~/.cursor/cli-config.json` when that file exists
-(unverified live: the CLI is not installed here).
+gets its own deny tokens (`deny_tokens` in `cursor-cli.json`) in `~/.cursor/cli-config.json` when that file exists,
+and Codex its `prefix_rule(decision = "forbidden")` rules in `~/.codex/rules/el-capitan.rules` (both unverified live).
 
 **Deleted** (no rule replaces them): the write boundary, a failed scan blocking every command, local PR ref reads,
 `cp`/`mv` into task dirs, inline imports of the task modules, a shell fed by an unreadable pipe, edits of evidence files,
@@ -108,7 +109,7 @@ values, while the owner ran one shell command, one file edit and two Task subage
 - **Cursor usage.** `stop` carries `input_tokens`, `output_tokens`, `cache_read_tokens`,
   `cache_write_tokens`, `model_id`, `loop_count`, `status`, `conversation_id` and `generation_id`, once
   per agent loop. The probe logged field names, not values, so whether the counts are that loop's or
-  the conversation's running total is not established; `cursor-usage.sh` stores them raw and the
+  the conversation's running total is not established; `usage.sh` stores them raw and the
   readers count only rises. **`stop` does not fire for subagents:** in the probe's log, three `stop`s
   match the parent's three turns, and none falls between a `subagentStart` and its `subagentStop`, the
   two parallel subagents included. A subagent's tokens are therefore unknown in Cursor; its
@@ -119,8 +120,8 @@ values, while the owner ran one shell command, one file edit and two Task subage
   second as the Cursor entry. Cursor loads Claude Code hook settings (most likely
   `~/.claude/settings.json` and the repository's `.claude/settings.json`) and does not merge an
   identical command, so el-capitan's Claude hooks ran in Cursor beside the template's. Those payloads
-  carry `cursor_version` (and the environment `CURSOR_VERSION`). [Each hook in
-  Cursor](#each-hook-in-cursor) says what runs now.
+  carry `cursor_version` (and the environment `CURSOR_VERSION`). [Harness
+  adapters](#harness-adapters) says what runs now.
 - **Claude Code runs an identical command once.** Its hooks reference: "If you define the same
   handler in more than one settings file, it runs once"
   ([code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks), read 2026-11-28). A hook
@@ -157,48 +158,37 @@ values, while the owner ran one shell command, one file edit and two Task subage
   Idle banners from background jobs would show it does not, and the hook would then need another
   signal.
 
-## Each hook in Cursor
+## Harness adapters
 
-Cursor runs the Claude-format registrations of `~/.claude/settings.json` beside its own
-`~/.cursor/hooks.json`. The template is `.claude/settings.template.json`, not the checkout's
-`.claude/settings.json`, so the checkout's project settings (permissions only) add no third copy.
-Every hook the template registers has one row:
+A harness is a manifest, `src/crew/harness/<id>.json` (each capability with a value or a declared `fallback`: the
+canonical events it maps, whether deny rules hold per mode, where rules, agents and skills go, the access classes),
+and an adapter, `<id>.py`, with `render()`, `normalize()` and `encode()`. `install.sh` writes what every `render()`
+returns (`harness_install apply`), and `crew doctor` compares the installed files with it.
 
-- **stands down**: in Cursor's Claude-format copy (a PascalCase `hook_event_name` and a
-  `cursor_version` in the payload) the script exits 0 with no output before anything else
-  (`hook_stand_down` in `lib/hook.sh`), because its Cursor-template counterpart does the work. It
-  stands down only while `~/.cursor/hooks.json` registers that counterpart under the event
-  `.claude/hooks/lib/cursor-counterparts.json` names for it, as the command
-  `bash "$HOME/.claude/hooks/<counterpart>"` followed by nothing but `2>/dev/null` and `; exit 0`,
-  and for a fail-closed guard only with `failClosed: true`. A comment that names the script, a
-  prefixed or extended command, or an entry under another event is no counterpart, so the hook keeps
-  running and a guard never runs nowhere. `CURSOR_VERSION` alone does not count: Claude Code started
-  from Cursor's terminal may inherit it.
-- **Tool names.** The probe saw Cursor report an edit as `Write` to both its own `preToolUse` and
-  the Claude-format `PreToolUse`, so the template's `Write|Edit` matcher covers every edit the
-  Claude-format `Write|Edit|MultiEdit` matcher did; Cursor's shell is `beforeShellExecution`, which
-  fires for every command whatever the tool is called.
-- **keeps running**: no Cursor-template counterpart; the Claude-format copy is the one that runs.
-- **dropped**: exits 0 with no output in Cursor's copy (`hook_dropped_in_cursor`), for the reason
-  given.
-
-`crew doctor` warns about a script registered both in `~/.cursor/hooks.json` and in a Claude-format
-file Cursor loads for the current repository (however each spells the command) that does not stand
-down by the same match, and lists the commands behind it.
-
-| Hook | Claude event | In Cursor | Counterpart or reason |
+| Harness | Live | Registers | Rules, agents, skills |
 |---|---|---|---|
-| `guard/shell.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/shell.sh`, fail-closed |
-| `check-task-spec-owner.sh` | `PreToolUse` Write, Edit | stands down | `preToolUse` `check-task-spec-owner.sh`, fail-closed |
-| `log-tool-use.sh` | `PostToolUse`, `PostToolUseFailure` | stands down | `postToolUse`, `postToolUseFailure` `log-tool-use.sh` |
-| `record-pr.sh` | `PostToolUse` Bash | stands down | `afterShellExecution` `record-pr.sh` |
-| `memory-context.sh` | `SessionStart` | stands down | `sessionStart` `cursor-memory-context.sh` |
-| `memory-capture-prompt.sh` | `Stop` | stands down | `stop` `memory-capture-prompt.sh` |
-| `agents-refresh.sh` | `SessionStart` | keeps running | from the Claude-format load |
-| `spec-status-reconcile.sh` | `SessionStart` | keeps running | from the Claude-format load |
-| `mode-anchor.sh` | `UserPromptSubmit` | keeps running | from the Claude-format load |
-| `notify-idle.sh` | `Notification` | keeps running | from the Claude-format load, when Cursor sends `idle_prompt` |
-| `capture-reply.sh` | `SubagentStop` | stands down | `subagentStop` `capture-reply.sh`; with no counterpart registered it does not keep running but drops and logs `re-run install.sh` |
+| `claude-code` | verified | `~/.claude/settings.json` (merged per config dir) | imports of `~/.claude/el-capitan`, `~/.claude/agents`, `~/.claude/skills` |
+| `cursor` | verified | the local plugin's `hooks/hooks.json` | `~/.cursor/plugins/local/el-capitan/{rules,agents}`; skills in `~/.cursor/skills` |
+| `cursor-cli` | unverified | the same plugin (local plugins load in the CLI) | the plugin; deny tokens in `~/.cursor/cli-config.json` |
+| `codex` | unverified | `~/.codex/hooks.json` (Claude-shaped) | `~/.codex/agents/*.toml`, `~/.agents/skills`, `~/.codex/rules/el-capitan.rules` |
+
+Cursor also runs the Claude-format registrations of `~/.claude/settings.json`: those payloads carry `cursor_version`,
+and while the plugin's `hooks/hooks.json` is installed the claude-code adapter answers them with nothing (the plugin
+registers every event itself); without it the copy is judged, as Cursor, with no deny rules.
+
+Install copies the rules and `contract.json` into `~/.agent/hooks`, so the rules, the contract and the registrations
+change together and only at install; a `git pull` changes none of them. A guard (`fail: closed`) that is missing,
+crashes or times out denies the call, and so does a contract of another version than `crew-hook.py`: re-run
+install.sh. Each registration's timeout is its rules' plus 5 s, so `crew-hook.py` answers before the harness stops it.
+One case stays open by design: when the launcher itself is gone (`~/.agent/venv` deleted), the harness reports a
+failed command and, except Cursor's `failClosed` guards, lets the call through; a registration that blocked on a
+missing launcher would block every command, the fix included. `crew doctor` names a missing launcher. Install retires
+the layout before the adapters, registrations before scripts: el-capitan's entries in `~/.cursor/hooks.json` (by the
+settings merger's own match, `hooks_retirement.retired`), then the links in `~/.cursor/rules`, `~/.cursor/agents` and
+`~/.claude/hooks`.
+
+To probe a harness, `~/.agent/bin/crew-hook.py --record <dir>` saves each payload's structure (values replaced) until
+`crew-hook.py --record off`; the parity suite's fixtures (`evals/fixtures/harness/`) come from those files.
 
 ## Status integrity
 
@@ -221,7 +211,7 @@ and show a mismatch as `TAMPERED (spec says X, crew-task recorded Y)`; `mark-app
 `mark-implementing`, `mark-done`, `ship` and the reconcile holds refuse it with the same words and
 write nothing.
 
-**The tripwire.** In Cursor the `status` and `task-files` rules refuse an Edit or Write that moves the
+**The tripwire.** Where deny rules do not hold (Cursor) the `status` and `task-files` rules refuse an Edit or Write that moves the
 Status and a Delete or `rm` of a task record; in Claude Code the `ask` rule on task specs and the `deny`
 rules on `rm` under `~/.agent/tasks` do. The `owner-only` rule refuses `restore-status --acc*` from an
 agent, and `crew-task.py` accepts no abbreviated option. Every other write to a task record is caught
@@ -241,17 +231,12 @@ records the spec's status with the note; only the owner runs it, in their own te
 
 ## The contract
 
-Every hook follows one contract: blocking is exit `2` with one line on stderr (Cursor's shell and file
-events get their own JSON deny), no objection is exit `0` and no output, and a hook that cannot read
-its input reports one line and exits `0`. Within a guard, a rule that fails is skipped with one stderr
-line; the credentials rule denies the commands it scans instead. In Cursor, a hook crash, timeout or
-invalid JSON fails open unless the entry sets `failClosed: true`, so both guards have it (observers
-never). Because Cursor reads silence from such a hook as a failure, each prints `{}`, an empty
-decision with no permission, when it has no objection; a failure before it reads the event (no `jq`)
-prints nothing and so blocks. Install's merge keeps the flag and `crew doctor` fails an installed
-guard without it. Without `jq` on PATH the merge registers them `failClosed: false` with one warning,
-and `crew doctor` fails a fail-closed install on a machine without `jq` (every Cursor call would be
-blocked). Each guard registration has a 10 s timeout. The shared preamble is `.claude/hooks/lib/hook.sh`.
+A rule reads the normalised event on stdin and answers in no harness's format: a deny is `{"deny": MESSAGE}`, no
+objection is exit `0` and no output, context is plain text, a stop's request to go on is `{"followup": TEXT}`, and a
+rule that cannot read its input reports one line and exits `0`. Within a guard, a rule that fails is skipped with one
+stderr line; the credentials rule denies the commands it scans instead. Each contract rule names its fail mode and
+timeout (`.claude/hooks/contract.json`); the adapter turns them into the harness's registration. The shared preamble
+is `.claude/hooks/lib/hook.sh`.
 
 ## How a guard reads a command
 

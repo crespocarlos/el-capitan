@@ -1,0 +1,19 @@
+{
+  "conversation_id": "{session}",
+  "generation_id": "<string>",
+  "session_id": "<string>",
+  "model": "<string>",
+  "model_id": "<string>",
+  "model_params": {},
+  "hook_event_name": "stop",
+  "cursor_version": "<string>",
+  "workspace_roots": ["{cwd}"],
+  "user_email": "<string>",
+  "transcript_path": "<string>",
+  "status": "completed",
+  "loop_count": 0,
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 0
+}

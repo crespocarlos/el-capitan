@@ -1,0 +1,12 @@
+{
+  "session_id": "{session}",
+  "transcript_path": "<string>",
+  "cwd": "{cwd}",
+  "permission_mode": "default",
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_id": "{agent_id}",
+  "agent_type": "{agent_type}",
+  "agent_transcript_path": "{transcript}",
+  "last_assistant_message": "{reply}"
+}

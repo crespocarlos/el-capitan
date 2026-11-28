@@ -1,9 +1,8 @@
-"""Reply capture: `expect` writes an agent's nonce at dispatch; `capture` (the subagent-stop hook) saves its reply.
-
-The marker `crew-review-out: <dir> <name> <nonce>` (from Cursor's `task`, else the transcript's first user line)
-counts only when `<name>.expect` holds its nonce. The latest reply is `<name>.out.md` (the earlier `.prev.md`); one
-that answers nothing leaves `.unanswered` and, once per nonce, a `capture-continue:` line. The same stop twice changes
-nothing. Usage goes to the task, a builder's reply to REPORT.md; both harnesses' payloads are read alike. Exit 0.
+"""Reply capture: `expect` writes an agent's nonce at dispatch; `capture` (the subagent-stop hook, on the normalised
+event) saves its reply. The marker `crew-review-out: <dir> <name> <nonce>` (the event's `prompt`, else the
+transcript's first user line) counts only when `<name>.expect` holds its nonce. The latest reply is `<name>.out.md`
+(the earlier `.prev.md`); one that answers nothing leaves `.unanswered` and, once per nonce, a `capture-continue:`
+line. The same stop twice changes nothing. Usage goes to the task, a builder's reply to REPORT.md. Exit 0.
 """
 
 from __future__ import annotations
@@ -35,7 +34,6 @@ TASK_LINE = re.compile(r"^crew-task: \S.*$", re.M)
 # The one resume text, shared with dispatch.md's no-reply rule: the hook's continue sends it once per nonce.
 DELIVER_NOW = "deliver now: write your findings (a critic: your critique) from what you have read, and name what you did not check"
 ALREADY = "already saved"
-STOPPED = ("error", "aborted")
 SEEN_KEEP = 500
 LOCK_WAIT = 10.0  # seconds: a stuck hook never stalls later stops longer than this; past it they run unlocked
 
@@ -67,17 +65,6 @@ def entries(path: Path) -> list[dict]:
     return found
 
 
-def normalized(payload: dict) -> dict:
-    """The payload with `agent_id`, `agent_type` and `harness` in either harness's spelling."""
-    cursor = "cursor_version" in payload or payload.get("hook_event_name") == "subagentStop"
-    return {
-        **payload,
-        "agent_id": str(payload.get("agent_id") or payload.get("subagent_id") or ""),
-        "agent_type": str(payload.get("agent_type") or payload.get("subagent_type") or ""),
-        "harness": "cursor" if cursor else "claude-code",
-    }
-
-
 def first_prompt(found: list[dict]) -> str:
     """The text of the first user message: the dispatch prompt."""
     return next((text_of(item["message"].get("content")) for item in found if item.get("type") == "user"), "")
@@ -103,15 +90,15 @@ def last_text(found: list[dict]) -> str:
 
 def reply_and_origin(found: list[dict], payload: dict) -> tuple[str, str]:
     """The run's reply and where it came from: the `SubagentHandback` message (the explicit reply, ahead of any text
-    after it), else Claude Code's documented `last_assistant_message` (the final response; the transcript may lag),
-    else the transcript's last assistant text, else a `completed` Cursor run's `summary`, recorded as `reply_from`
-    so a summary is never taken for the reply."""
-    message = payload.get("last_assistant_message")
+    after it), else the event's `reply` (the harness's final response; the transcript may lag), else the transcript's
+    last assistant text, else a completed run's `summary`, recorded as `reply_from` so a summary is never taken for
+    the reply."""
+    message = payload.get("reply")
     text = handback(found) or (str(message) if isinstance(message, str) and message.strip() else "") or last_text(found)
     if text:
         return text, "transcript"
     summary = payload.get("summary")
-    if isinstance(summary, str) and summary.strip() and payload.get("status") == "completed":
+    if isinstance(summary, str) and summary.strip():
         return summary, "summary"
     return "", "transcript"
 
@@ -121,9 +108,9 @@ def reply_of(found: list[dict], payload: dict) -> str:
 
 
 def model_of(found: list[dict], payload: dict) -> str | None:
-    """The model of the last assistant message, else the payload's `subagent_model` (Cursor), or None."""
+    """The model of the last assistant message, else the event's `model`, or None."""
     found_model = next((str(item["message"]["model"]) for item in reversed(found) if item.get("type") == "assistant" and item["message"].get("model")), None)
-    return found_model or (str(payload["subagent_model"]) if payload.get("subagent_model") else None)
+    return found_model or (str(payload["model"]) if payload.get("model") else None)
 
 
 def saved_nonce(review_dir: Path, persona: str) -> str | None:
@@ -206,20 +193,18 @@ def save_reply(payload: dict, found: list[dict], match: re.Match | None, source:
 
 
 def recorded_usage(payload: dict, found: list[dict], prompt: str, match: re.Match | None, accepted: bool) -> str:
-    """Record the run's usage on its task (`task_usage`): the transcript's tokens in Claude Code, the payload's counts
-    in Cursor. The marker's review directory names the task only when `save_reply` accepted that marker. "" when no
-    task is named."""
+    """Record the run's usage on its task (`task_usage`): the event's `stats` when its harness sends them, else the
+    transcript's tokens. The marker's review directory names the task only when `save_reply` accepted that marker.
+    "" when no task is named."""
     persona = match.group(2).strip().lower().removeprefix("reviewer-") if match else ""
     review_dir = Path(match.group(1)) if match and accepted else None
-    cursor = payload["harness"] == "cursor"
-    return record_usage(
-        prompt, found, payload["agent_type"] or "agent", persona, payload["agent_id"], review_dir, payload["harness"], payload if cursor else None
-    )
+    stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else None
+    return record_usage(prompt, found, payload["agent_type"] or "agent", persona, payload["agent_id"], review_dir, payload["harness"], stats)
 
 
 def continue_text(payload: dict, found: list[dict], match: re.Match | None) -> str:
-    """`DELIVER_NOW` when the reply just handled left `<name>.unanswered` and this nonce was never continued (Cursor: a
-    `completed` first loop; Claude Code: `stop_hook_active` unset), recorded in `<name>.continued`; else ""."""
+    """`DELIVER_NOW` when the reply just handled left `<name>.unanswered`, this nonce was never continued and the
+    harness can resume the run now (`resumable`), recorded in `<name>.continued`; else ""."""
     if not match:
         return ""
     review_dir, persona, nonce = Path(match.group(1)), saved_persona(match.group(2)), match.group(3)
@@ -228,10 +213,7 @@ def continue_text(payload: dict, found: list[dict], match: re.Match | None) -> s
         return ""
     if marker.is_file() and marker.read_text(encoding="utf-8").strip() == nonce:
         return ""
-    if payload["harness"] == "cursor":
-        if payload.get("status") != "completed" or int(payload.get("loop_count") or 0) > 0:
-            return ""
-    elif payload.get("stop_hook_active"):
+    if payload.get("resumable") is not True:
         return ""
     atomic_write(marker, nonce + "\n")
     return DELIVER_NOW
@@ -239,7 +221,7 @@ def continue_text(payload: dict, found: list[dict], match: re.Match | None) -> s
 
 class Seen:
     """The stops already handled (`~/.agent/state/capture-seen.txt`), behind one lock, so two copies of one stop
-    (Cursor fires `subagentStop` twice) run one after the other and the second changes nothing."""
+    (a harness may fire one stop twice) run one after the other and the second changes nothing."""
 
     def __init__(self) -> None:
         self.path = Path.home() / ".agent" / "state" / "capture-seen.txt"
@@ -258,14 +240,7 @@ class Seen:
     def key(payload: dict, needle: str, reply: str, found: list[dict]) -> str:
         """One stop: the agent, its dispatch, its reply, and how far its transcript and loop had run, so a resume
         that grew the transcript (same reply text or not) is a new stop."""
-        parts = (
-            payload["harness"],
-            payload["agent_id"],
-            needle,
-            hashlib.sha256(reply.encode()).hexdigest(),
-            str(len(found)),
-            str(payload.get("loop_count") or 0),
-        )
+        parts = (payload["harness"], payload["agent_id"], needle, hashlib.sha256(reply.encode()).hexdigest(), str(len(found)), str(payload.get("loop") or 0))
         return hashlib.sha256("\0".join(parts).encode()).hexdigest()
 
     def keys(self) -> list[str]:
@@ -288,9 +263,9 @@ def needle_of(text: str) -> str:
 
 
 def located(payload: dict) -> tuple[Path | None, list[Path], str]:
-    """The transcript, the candidates tried, and the dispatch prompt when Cursor's `task` names a marker or a task
+    """The transcript, the candidates tried, and the dispatch prompt when the event's `prompt` names a marker or a task
     (else ""): the transcript must then carry the same nonce or task line."""
-    task = payload["task"] if isinstance(payload.get("task"), str) else ""
+    task = payload["prompt"] if isinstance(payload.get("prompt"), str) else ""
     needle = needle_of(task)
     if needle:
         path, tried = resolve(payload, lambda line: needle in line, needle)
@@ -300,13 +275,12 @@ def located(payload: dict) -> tuple[Path | None, list[Path], str]:
 
 
 def process(payload: dict) -> tuple[list[str], str]:
-    """The outcome lines and the continue text for one normalized payload."""
-    cursor = payload["harness"] == "cursor"
-    if cursor and payload.get("status") in STOPPED:
+    """The outcome lines and the continue text for one normalised event."""
+    if payload.get("stopped"):
         why = diagnostic(payload, [])
-        return [f"status {payload['status']}; nothing saved, the dispatch stays pending ({why})"], ""
+        return [f"status {payload.get('status')}; nothing saved, the dispatch stays pending ({why})"], ""
     path, tried, task_prompt = located(payload)
-    own = payload.get("agent_transcript_path")
+    own = next(iter(payload.get("transcripts") or []), None)
     if path is None and isinstance(own, str) and own and Path(own).is_file() and Path(own).stat().st_size:
         if not entries(Path(own)):  # only to say so: a transcript that failed the marker check is never read
             return [f"malformed transcript {own}: no message line; skipped"], ""
@@ -316,9 +290,9 @@ def process(payload: dict) -> tuple[list[str], str]:
     prompt = task_prompt or first_prompt(found)
     needle = needle_of(prompt)
     if not needle:
-        readable = path or not cursor or any(candidate.is_file() for candidate in tried)
+        readable = path or any(candidate.is_file() for candidate in tried)
         why = "no marker; nothing saved" if readable else "no transcript and no marker; nothing saved"
-        lines = [why + (f" ({diagnostic(payload, tried)})" if cursor else "")]
+        lines = [why + ("" if path else f" ({diagnostic(payload, tried)})")]
         if payload["agent_type"].rsplit(":", 1)[-1] == "crew-builder":
             lines.append("no report saved: the dispatch prompt has no `crew-task: <TASK_DIR>` line")
         return lines, ""
@@ -366,11 +340,11 @@ def handle(payload: dict, found: list[dict], prompt: str) -> tuple[list[str], st
 
 
 def capture(args: argparse.Namespace) -> int:
-    """The `capture` subcommand: one subagent-stop payload on stdin; `capture-reply:` outcome lines, and one
+    """The `capture` subcommand: one normalised subagent-stop event on stdin; `capture-reply:` outcome lines, and one
     `capture-continue:` line when the hook should ask the agent to deliver. Always exit 0."""
     try:
-        payload = json.loads(sys.stdin.read() or "{}")
-        lines, cont = process(normalized(payload if isinstance(payload, dict) else {}))
+        event = json.loads(sys.stdin.read() or "{}")
+        lines, cont = process({"harness": "unknown", "agent_id": "", "agent_type": "", **(event if isinstance(event, dict) else {})})
     except (OSError, ValueError) as error:
         lines, cont = [f"nothing saved: {error}"], ""
     for line in filter(None, lines):
@@ -392,7 +366,7 @@ def save_out_command(args: argparse.Namespace) -> int:
         raise ValueError(f"{args.from_transcript}: the first user message carries no crew-review-out marker")
     if Path(match.group(1)).resolve() != args.review_dir.resolve() or saved_persona(match.group(2)) != saved_persona(args.persona):
         raise ValueError(f"{args.from_transcript}: its marker names {match.group(1)} {match.group(2)}, not {args.review_dir} {args.persona}")
-    payload = {"harness": args.harness, "agent_id": args.agent_id or "", "subagent_model": args.model}
+    payload = {"harness": args.harness, "agent_id": args.agent_id or "", "model": args.model}
     line = save_reply(payload, found, match, source="transcript")
     print(f"save-out: {line}")
     return 0 if line.startswith("saved ") or ALREADY in line else 1

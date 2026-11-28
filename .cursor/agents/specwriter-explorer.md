@@ -1,6 +1,7 @@
 ---
 name: specwriter-explorer
 description: "Codebase explorer for spec writing. Dispatched by crew-specwriter — do not invoke directly."
+access: readonly
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 13

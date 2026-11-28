@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# The shell guard: one process per shell command (Claude `PreToolUse` Bash, Cursor `beforeShellExecution`). It
-# reads the payload once and normalises the command once (lib/hook.sh), then runs each rule below in its own
-# subshell, cheapest first; the first objection denies, naming that rule's off switch
-# (`EL_CAPITAN_GUARD_<RULE>=off`). A rule that crashes is skipped with one stderr line; credentials handles its own
-# failures and denies the commands it scans when it cannot scan them.
+# The shell guard: the `pre_shell` rule (contract.json). It reads the event once and normalises the command once
+# (lib/hook.sh), then runs each rule below in its own subshell, cheapest first; the first objection denies, naming
+# that rule's off switch (`EL_CAPITAN_GUARD_<RULE>=off`). A rule that crashes is skipped with one stderr line;
+# credentials handles its own failures and denies the commands it scans when it cannot scan them.
 # Everywhere: owner-only, worker-tree, destructive-git, task-files, credentials, and too-complex (a command nesting
 # more payloads than the normaliser reads); a deny rule matches the command's prefix and misses `git -C <tree>` and
-# the cwd, which these parse. Demoted (`DEMOTED`): Claude Code holds these with the deny and ask rules of
-# settings.template.json, which hold in headless and bypassPermissions mode (docs/hooks.md, "Harness facts"), so
-# they run only where no deny rule is shown to hold: Cursor's payloads.
+# the cwd, which these parse. Demoted (`DEMOTED`): they run only where the harness's manifest declares no deny rule
+# that holds in this mode (`deny_rules` false in the event); elsewhere its own deny and ask rules hold them.
 set -uo pipefail
 HOOK_NAME=shell
 # shellcheck source=lib/hook.sh
 . "$(dirname "$0")/../lib/hook.sh"
-hook_stand_down guard/shell.sh fail-closed
 hook_input
-hook_event
 cmd=$(hook_field command)
 [ -n "$cmd" ] || hook_allow
 HOOK_SUBJECT=$cmd
@@ -284,8 +280,7 @@ rule owner-only OWNER_ONLY
 rule worker-tree WORKER_TREE
 rule destructive-git DESTRUCTIVE_GIT
 rule task-files TASK_FILES
-# Cursor's payloads, and Cursor's Claude-format copy when it does not stand down, carry no deny rule of their own.
-if [ "$HOOK_SHAPE" = cursor ] || [[ $HOOK_INPUT == *'"cursor_version"'* ]]; then
+if [ "$HOOK_DENY_RULES" = 0 ]; then
   for pair in $DEMOTED; do rule "${pair%:*}" "${pair#*:}"; done
 fi
 rule credentials CREDENTIALS

@@ -1,6 +1,7 @@
 ---
 name: crew-builder
 description: "Implementation worker. Launched by crew-implement — do not invoke directly."
+access: worker
 ---
 
 # Builder

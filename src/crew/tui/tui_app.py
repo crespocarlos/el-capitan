@@ -133,7 +133,8 @@ class CrewApp(App):
             return
         facts = fetch(self.watched.urls, self.facts, self.gh, clones=self.watched.clones)
         save_facts(facts)
-        self.call_from_thread(self.github_read, facts)
+        if not get_current_worker().is_cancelled:  # the app is closing
+            self.call_from_thread(self.github_read, facts)
 
     def github_read(self, facts: Facts) -> None:
         self.facts = facts
@@ -148,7 +149,8 @@ class CrewApp(App):
             found, total = live_tick(self.watched, self.caches)
         finally:
             self.reading.release()
-        self.call_from_thread(self.show_live, found, total)
+        if not get_current_worker().is_cancelled:  # the app is closing
+            self.call_from_thread(self.show_live, found, total)
 
     def show_live(self, found: dict[str, str], total: str) -> None:
         view = self.views.get("ongoing")

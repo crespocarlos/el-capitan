@@ -1,4 +1,4 @@
-"""The case tables `test_hook_cases.py` runs through the hooks, in both payload shapes.
+"""The case tables `test_harness_parity.py` runs through `crew-hook.py`, in every adapter's payload shape.
 
 A shell case is `(command, cwd, by)`: `cwd` names a fixture tree from `test_hook_cases.fixture()`, and
 `by` is the guard that must deny (deny table) or `None` (allow table). `{name}` in a command is
@@ -163,7 +163,7 @@ DENY = [
     ("bash -c '~/.agent/bin/crew-task.py restore-status /x --accept ok'", "clean", "owner-only"),
 ]
 
-# Ordinary work: both guards stay silent (in Cursor, fail-closed, they answer `{}`).
+# Ordinary work: both guards stay silent (the harness's empty answer).
 ALLOW = [
     ("git status", "clean"),
     ("git log --oneline -5 | head -3", "clean"),
@@ -381,7 +381,7 @@ FILES = [
      "clean", "status"),
     ({"tool_name": "Edit", "file_path": SPEC, **TICK, "content": STATUS_SPEC}, "clean", "status"),
     ({"tool_name": "NotebookEdit", "file_path": SPEC, "content": STATUS_SPEC}, "clean", "status"),
-    # Cursor's Delete of a task record (its `preToolUse` matcher names it; its path key is undocumented).
+    # A Delete of a task record (Cursor's `preToolUse` matcher names it; its path key is undocumented).
     ({"tool_name": "Delete", "file_path": SPEC}, "clean", "task-files"),
     ({"tool_name": "Delete", "path": "{tasks}/DDD-status/PROGRESS.md"}, "clean", "task-files"),
     ({"tool_name": "Delete", "target_file": "{tasks}/DDD-status/.task-id"}, "clean", "task-files"),
@@ -404,54 +404,15 @@ PAYLOADS = [
      {"hook_event_name": "beforeShellExecution", "command": "git status"}),
 ]
 
-# Hooks whose stdout is their product: only their failure handling is checked here.
-SILENT = ("mode-anchor.sh", "memory-context.sh", "cursor-memory-context.sh", "notify-idle.sh", "log-tool-use.sh",
-          "memory-capture-prompt.sh", "spec-status-reconcile.sh", "record-pr.sh",
-          "capture-reply.sh", "agents-refresh.sh", "cursor-usage.sh")
-
-
-def _bash(command: str) -> dict:
-    return {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command}}
-
-
-# Each hook in Cursor (docs/hooks.md): one row per row of that table, `(hook, Claude-format payload, cwd tree)`. The
-# payload is sent as Cursor's copy (`cursor_version` added) and as Claude Code's (without it): a hook that stands
-# down or is dropped says nothing and changes nothing in HOME in Cursor's copy, while Claude Code's copy does
-# something (a deny, a line, a file); a hook that keeps running answers both copies alike. `notify-idle.sh` keeps
-# running too: `NOTIFY` sends its payload in both copies.
-CURSOR_COPY = [
-    ("guard/shell.sh", _bash("crew-task.py restore-status {tasks}/DDD-status --accept 'ok'"), "clean"),
-    ("check-task-spec-owner.sh", {"hook_event_name": "PreToolUse", "tool_name": "Write",
-                                  "tool_input": {"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent"}},
-     "clean"),
-    ("log-tool-use.sh", {"hook_event_name": "PostToolUse", "session_id": "s1", "tool_name": "Bash",
-                         "tool_input": {"command": "git commit -m x"}}, "clean"),
-    ("record-pr.sh", {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "gh pr create"},
-                      "tool_response": {"stdout": "https://github.com/o/r/pull/1"}}, "clean"),
-    ("memory-context.sh", {"hook_event_name": "SessionStart", "session_id": "s1"}, "clean"),
-    ("memory-capture-prompt.sh", {"hook_event_name": "Stop", "session_id": "s1"}, "clean"),
-    ("capture-reply.sh", {"hook_event_name": "SubagentStop", "agent_transcript_path": "{home}/none.jsonl"}, "clean"),
-    ("agents-refresh.sh", {"hook_event_name": "SessionStart", "session_id": "s1"}, "clean"),
-    ("spec-status-reconcile.sh", {"hook_event_name": "SessionStart", "session_id": "s1"}, "clean"),
-    ("mode-anchor.sh", {"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "x"}, "clean"),
-]
-
-# Cursor entries that name a stand-down hook's counterpart but are not it: `(label, event or None for the expected
-# one, command with `{script}` for the counterpart's path under ~/.claude/hooks)`, each registered `failClosed: true`
-# in place of the real counterpart. The hook keeps running: nothing stands down for a decoy.
-COUNTERPART_DECOYS = [
-    ("a comment-only counterpart", None, "true # $HOME/.claude/hooks/{script}"),
-    ("a counterpart under the wrong event", "afterFileEdit", 'bash "$HOME/.claude/hooks/{script}"'),
-    ("a prefixed command", None, 'true; bash "$HOME/.claude/hooks/{script}"'),
-    ("a command with more after it", None, 'bash "$HOME/.claude/hooks/{script}"; true'),
-]
+# Rule scripts whose stdout is their product: only their failure handling is checked here.
+SILENT = ("mode-anchor.sh", "memory-context.sh", "notify-idle.sh", "log-tool-use.sh", "memory-capture-prompt.sh",
+          "spec-status-reconcile.sh", "record-pr.sh", "capture-reply.sh", "agents-refresh.sh", "usage.sh")
 
 # `notify-idle.sh` under a stub `osascript`: `(label, env, seconds since this session's last banner or None, calls)`.
 NOTIFY = [
     ("a background job", {"CLAUDE_JOB_DIR": "/tmp/job"}, None, 0),
     ("the off switch", {"EL_CAPITAN_NOTIFY": "off"}, None, 0),
     ("a first idle in a session", {}, None, 1),
-    ("the Claude-format copy in Cursor, which keeps running", {"CURSOR_VERSION": "2.1.0"}, None, 1),
     ("a second idle within 10 minutes", {}, 60, 0),
     ("an idle 10 minutes after the last banner", {}, 600, 1),
 ]

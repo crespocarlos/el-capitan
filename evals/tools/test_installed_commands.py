@@ -57,6 +57,7 @@ READS = {
                               "--branch", "none"], {0}),
     "crew-worktree.py": (["--list"], {0}),
     "crew-repo-info.py": (["--json"], {0}),
+    "crew-hook.py": (["--help"], {0}),
     "crew-default-branch.sh": ([], {0}),
     "task-env.sh": ([], {0}),
     "crew-diff.sh": (["--name-only"], {0}),

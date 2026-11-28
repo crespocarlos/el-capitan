@@ -1,0 +1,10 @@
+{
+  "session_id": "{session}",
+  "transcript_path": "<string>",
+  "cwd": "{cwd}",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {"command": "{command}", "description": "<string>"},
+  "tool_use_id": "<string>"
+}

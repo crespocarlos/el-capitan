@@ -23,13 +23,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from harness_hook import run as run_hook
 
 ROOT = Path(__file__).resolve().parents[2]
-HOOKS = ROOT / ".claude" / "hooks"
 INBOX = ROOT / "src" / "crew" / "memory" / "crew_inbox.py"
 # Both harness shapes, with quotes and non-ASCII in the command and the session id.
 TELEMETRY = (
-    {"session_id": "claude-✓", "hook_event_name": "PostToolUse", "tool_input": {"command": 'echo "quotes" é→✓'}},
+    {"session_id": "claude-✓", "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": 'echo "quotes" é→✓'}},
     {"conversation_id": "cursor-✓", "hook_event_name": "postToolUse", "command": 'echo "quotes" é→✓'},
 )
 # (case, origin URL or None, the key repo_key must return for a checkout named "checkout")
@@ -58,8 +58,8 @@ def store(root: Path) -> Path:
 
 
 def hook(name: str, root: Path, payload: dict) -> tuple[int, dict]:
-    result = subprocess.run(["bash", str(HOOKS / name)], input=json.dumps(payload), capture_output=True, text=True,
-                            env={**os.environ, "CREW_MEMORY_DIR": str(root)})
+    """The payload through crew-hook.py in a throwaway HOME (`name` is the rule the event reaches)."""
+    result = run_hook(root.parent / f"home-{name}", payload, env={"CREW_MEMORY_DIR": str(root)})
     try:
         return result.returncode, json.loads(result.stdout or "{}")
     except json.JSONDecodeError:
@@ -90,9 +90,9 @@ def test_telemetry_and_capture_prompt(tmp: Path) -> None:
     records = [json.loads(line) for path in (root / ".sessions").glob("*.jsonl") for line in path.read_text().splitlines()]
     check("each record carries event, action and target", len(records) == 2 and all(r["event"] and r["action"] and r["target"] for r in records), records)
     for _ in range(2):
-        hook("log-tool-use.sh", root, {"session_id": "s-edit", "hook_event_name": "PostToolUse", "tool_input": {"file_path": "/x/a.py"}})
+        hook("log-tool-use.sh", root, {"session_id": "s-edit", "hook_event_name": "PostToolUse", "tool_name": "Write", "tool_input": {"file_path": "/x/a.py"}})
     code, body = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "s-edit"})
-    check("a session with edits returns a followup", "followup_message" in body, body)
+    check("a session with edits returns a followup", body.get("decision") == "block" and body.get("reason"), body)
     check("the review is queued before the guard is written",
           len(queue(root)) == 1 and (root / ".sessions" / f"{hashed('s-edit')}.memory-prompted").is_file(), queue(root))
     code, again = hook("memory-capture-prompt.sh", root, {"hook_event_name": "Stop", "session_id": "s-edit"})

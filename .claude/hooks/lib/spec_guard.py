@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""The task-directory rules of `check-task-spec-owner.sh`: one Write, Edit, MultiEdit or Delete payload on stdin.
+"""The task-directory rules of `check-task-spec-owner.sh`: one normalised Write, Edit, MultiEdit or Delete event on stdin.
 
-Usage: python3 -I spec_guard.py <tasks root> [--demoted]. Prints one line:
+Usage: python3 -I spec_guard.py <tasks root>. Prints one line:
   skip                   no objection;
   deny <rule> <message>  refused by `rule` (its off switch is `EL_CAPITAN_GUARD_<RULE>`).
 
@@ -10,8 +10,8 @@ never loads the Status reader:
   spec-owner  a task SPEC.md whose title neither equals nor extends the slug its `.task-id` records, over an existing
               spec whose Status is past DRAFTING: a reused directory that would overwrite a finished task's spec. While
               a spec is DRAFTING its title is the author's to change; `mark-approved` records the approved title's slug;
-  task-files  Cursor's Delete of a task SPEC.md, PROGRESS.md, `.task-id` or review evidence.
-With `--demoted` (a harness with no ask rule for it, docs/hooks.md), also:
+  task-files  a Delete of a task SPEC.md, PROGRESS.md, `.task-id` or review evidence.
+Where the harness holds no ask rule for it (`deny_rules` false in the event, docs/hooks.md), also:
   status      an Edit, MultiEdit or Write that changes the `## Status` value of an existing task SPEC.md as
               `task_status` reads it, leaves a second `## Status` heading, or cannot be applied exactly; a new SPEC.md
               whose Status is anything but empty or DRAFTING.
@@ -34,15 +34,16 @@ from types import ModuleType
 HEADING = re.compile(r"^## Status[ \t]*$", re.M)
 MOVES = "crew-task.py mark-approved | mark-implementing | mark-done"
 EVIDENCE = (".expect", ".provenance.json", ".out.md", ".prev.md", ".unanswered")
-# The fields each tool reads (Claude Code and Cursor name the tools alike); another tool's fields are refused.
+# The fields each tool reads; another tool's fields are refused.
 OWN = {"Write": {"content"}, "Edit": {"old_string", "new_string", "replace_all"}, "MultiEdit": {"edits"}}
 FIELDS = set().union(*OWN.values())
 BORN = ("", "DRAFTING")
 
 
 def reader() -> ModuleType:
-    """`task_status`, loaded by path from the checkout this hook links into (it imports only the stdlib)."""
-    source = Path(__file__).resolve().parents[3] / "src" / "crew" / "task" / "task_status.py"
+    """`task_status` (stdlib only), loaded by path: the copy install wrote beside this file, else the checkout's."""
+    here = Path(__file__).resolve()
+    source = next(path for path in (here.parent / "task_status.py", here.parents[3] / "src" / "crew" / "task" / "task_status.py") if path.is_file())
     spec = importlib.util.spec_from_file_location("task_status", source)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {source}")
@@ -52,13 +53,13 @@ def reader() -> ModuleType:
 
 
 def fields_of(payload: dict) -> dict:
-    """The tool's fields in either harness shape: Claude's `tool_input`, or Cursor's top-level keys."""
-    inner = payload.get("tool_input")
-    return {**payload, **inner} if isinstance(inner, dict) else payload
+    """The tool's fields: the event's `input`."""
+    inner = payload.get("input")
+    return inner if isinstance(inner, dict) else {}
 
 
 def target(fields: dict, payload: dict) -> str:
-    """The resolved file path: `file_path`, else `path` or `target_file` (Cursor's Delete key is undocumented)."""
+    """The resolved file path: `file_path`, else `path` or `target_file` (a Delete's key is undocumented)."""
     path = next((fields[key] for key in ("file_path", "path", "target_file") if fields.get(key)), "")
     if not isinstance(path, str) or not path:
         return ""
@@ -145,7 +146,7 @@ def status_verdict(path: str, tool: str, fields: dict, status: ModuleType, disk:
     return "skip"
 
 
-def verdict(payload: dict, tasks_root: str, demoted: bool) -> str:
+def verdict(payload: dict, tasks_root: str) -> str:
     """Decide on the path first; only a task SPEC.md loads the Status reader."""
     fields = fields_of(payload)
     path = target(fields, payload)
@@ -153,7 +154,7 @@ def verdict(payload: dict, tasks_root: str, demoted: bool) -> str:
     if not path or not path.startswith(root + os.sep):
         return "skip"
     names = [part.lower() for part in os.path.relpath(path, root).split(os.sep)]
-    tool = payload.get("tool_name") if isinstance(payload.get("tool_name"), str) else ""
+    tool = payload.get("tool") if isinstance(payload.get("tool"), str) else ""
     if tool == "Delete":
         record = names[1:] == ["spec.md"] or evidence(names)
         return f"deny task-files Task spec guard: {path} is a task record; only crew tools remove it." if record else "skip"
@@ -165,7 +166,7 @@ def verdict(payload: dict, tasks_root: str, demoted: bool) -> str:
     if exists:
         with open(path, encoding="utf-8", newline="") as handle:
             disk = handle.read()
-    found = status_verdict(path, tool, fields, status, disk, exists) if demoted else "skip"
+    found = status_verdict(path, tool, fields, status, disk, exists) if payload.get("deny_rules") is not True else "skip"
     return found if found != "skip" else owner_verdict(path, fields, status, status.status_of(disk) if exists else None)
 
 
@@ -198,7 +199,7 @@ def main() -> int:
             print(found)
         return 0
     payload = json.loads(sys.stdin.read() or "{}")
-    print(verdict(payload if isinstance(payload, dict) else {}, sys.argv[1], "--demoted" in sys.argv[2:]))
+    print(verdict(payload if isinstance(payload, dict) else {}, sys.argv[1]))
     return 0
 
 

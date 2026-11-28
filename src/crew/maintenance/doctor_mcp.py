@@ -1,7 +1,7 @@
-"""`crew-doctor.py`'s MCP checks: the rendered read-only agents, and the docs and code-search servers per harness.
+"""`crew-doctor.py`'s MCP checks: the docs and code-search servers per harness.
 
-Server names come only from `mcp` in `~/.agent/config.json`. A rendered agent that differs from what install would
-write now is a FAIL; a missing capability is a WARN naming the server and the place, never a setup step. A Claude
+Server names come only from `mcp` in `~/.agent/config.json` (the rendered read-only agents are
+`check_harness_files`'s). A missing capability is a WARN naming the server and the place, never a setup step. A Claude
 Code config dir is checked at user level, from its plugins (`lib/claude_plugins.py`), and for projects with crew
 work (a task's `repo_remote_url` is the origin `lib/git_config.py` reads). claude.ai connectors are not checked.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 from crew.lib.claude_plugins import enabled_plugins, plugin_installs, provided, read_object
 from crew.lib.git import slug_from_url
 from crew.lib.git_config import origin_url, repo_root
-from crew.maintenance.doctor_checks import RERUN, ROOT, Line, capped, config_dirs, install_blocks
+from crew.maintenance.doctor_checks import Line, capped, config_dirs
 from crew.task.task_gc import shown as tilde
 
 CAPABILITIES = (("docs", "docs server"), ("code_search", "code search"))
@@ -24,26 +24,6 @@ MCP_HOWTO = (
 MCP_INVALID = "the mcp section of ~/.agent/config.json is not valid (see the config line), so no MCP server is checked"
 UNCHECKED = "servers from claude.ai connectors are not checked"
 NONE_IN_DIR = "no configured MCP servers in {}: crew agents in sessions on it use text search"
-
-
-def check_rendered_agents(home: Path, root: Path = ROOT) -> list[Line]:
-    """Each templated agent in ~/.cursor/agents is a regular file equal to its source (the checkout it was rendered
-    from) rendered with the config now; the SessionStart hook repairs a stale one, a missing one needs install."""
-    blocks = install_blocks(root)
-    servers, _ = blocks.mcp_server_names(home)
-    stale = []
-    templates = blocks.templated_agents(blocks.rendered_source(home, root))
-    for path in templates:
-        target = home / ".cursor" / "agents" / path.name
-        if target.is_symlink() or not target.is_file():
-            stale.append(f"{path.name} not rendered")
-        elif target.read_text(encoding="utf-8") != blocks.render_agent(path.read_text(encoding="utf-8"), servers):
-            stale.append(f"{path.name} stale")
-    listed = ", ".join(servers) or "none"
-    if stale:
-        text = f"read-only agents differ from the checkout and mcp config (servers: {listed}): {capped(stale)}{RERUN}"
-        return [Line("FAIL", "agents", text)]
-    return [Line("ok", "agents", f"{len(templates)} read-only agents rendered with MCP servers: {listed}")]
 
 
 def names_in(entry: dict, key: str) -> set[str]:

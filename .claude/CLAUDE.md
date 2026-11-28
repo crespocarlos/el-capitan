@@ -1,17 +1,17 @@
 # Shared rules
 
-Canonical rules live in `rules/` and are shared with Cursor. Claude Code reads no `alwaysApply` and
-no globs, so an always-on rule is imported here; a scoped rule or skill gets a one-line pointer
-(here, or in `personal.mdc` "Scoped rules and skills").
+Canonical rules live in `rules/`. Claude Code reads no `alwaysApply` or globs, so an always-on rule
+is imported here; a scoped rule or skill gets a one-line pointer (here, or in `personal.mdc` "Scoped
+rules and skills").
 
-Read ~/.cursor/rules/typescript.mdc before writing a .ts or .tsx file.
+Read ~/.claude/el-capitan/typescript.md before writing a .ts or .tsx file.
 Read ~/.cursor/skills/prompt-authoring/SKILL.md before the work its description names.
 
-@~/.cursor/rules/personal.mdc
-@~/.cursor/rules/agent-output.mdc
-@~/.cursor/rules/crew-router.mdc
-@~/.cursor/rules/crew-orchestrator.mdc
-@~/.cursor/rules/memory-capture.mdc
+@~/.claude/el-capitan/personal.md
+@~/.claude/el-capitan/agent-output.md
+@~/.claude/el-capitan/crew-router.md
+@~/.claude/el-capitan/crew-orchestrator.md
+@~/.claude/el-capitan/memory-capture.md
 
 ---
 

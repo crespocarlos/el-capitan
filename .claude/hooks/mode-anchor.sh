@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mode-anchor.sh — UserPromptSubmit hook
+# mode-anchor.sh — the `prompt_submit` rule
 # Emits a compact pipeline anchor each turn to prevent context drift on long conversations.
 # Output is injected as system context before the model responds.
 #

@@ -1,0 +1,49 @@
+{
+  "id": "cursor-cli",
+  "name": "Cursor CLI",
+  "live": "unverified: built from the documented field lists and the 2026-11-27 probe log; the CLI is not installed on the owner's machine",
+  "plugin": ".cursor/plugins/local/el-capitan",
+  "paths": [".cursor/cli-config.json"],
+  "events": {
+    "session_start": {"native": "sessionStart"},
+    "prompt_submit": {"fallback": "none: beforeSubmitPrompt cannot add context, so the per-turn anchor is not shown"},
+    "pre_shell": {"native": "beforeShellExecution"},
+    "pre_write": {"native": "preToolUse", "matcher": "Write|Edit|Delete"},
+    "post_tool": {"native": ["postToolUse", "postToolUseFailure"]},
+    "post_shell": {"native": "afterShellExecution"},
+    "subagent_stop": {"native": "subagentStop"},
+    "stop": {"native": "stop"},
+    "idle": {"fallback": "none: Cursor has no idle event"}
+  },
+  "deny": {
+    "modes": {"*": false},
+    "why": "~/.cursor/cli-config.json carries the deny tokens below, but no run has shown they hold: the demoted rules stay dispatcher rules until the owner's probe"
+  },
+  "deny_tokens": [
+    "Shell(git:reset --hard*)",
+    "Shell(git:clean -*f*)",
+    "Shell(git:clean --force*)",
+    "Shell(git:push -f*)",
+    "Shell(git:push * -f*)",
+    "Shell(git:push *--force)",
+    "Shell(git:push *--force *)",
+    "Shell(git:push * +*)",
+    "Shell(gh:pr checkout*)",
+    "Shell(gh:pr co *)",
+    "Shell(rm:*.agent/tasks*)",
+    "Shell(unlink:*.agent/tasks*)",
+    "Shell(find:*.agent/tasks* -delete*)"
+  ],
+  "always_on": {"value": "the local plugin's rules (local plugins load in the editor, the CLI and self-hosted workers)"},
+  "rules": {"value": "the cursor adapter's plugin"},
+  "agents": {"fallback": "the plugin's agents; the CLI reads no home-folder subagents, so ~/.cursor/agents never was one"},
+  "skills": {"value": "~/.cursor/skills/<skill>"},
+  "access": {
+    "readonly": "frontmatter readonly: true",
+    "probe": "frontmatter tools: with Write and Bash",
+    "worker": "every tool",
+    "inline": "read and run in the main session"
+  },
+  "max_turns": {"fallback": "none: no turn cap"},
+  "mcp": {"fallback": "subagents inherit every MCP tool"}
+}

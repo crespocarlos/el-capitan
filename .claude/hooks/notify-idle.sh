@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shows a macOS banner when Claude Code waits for input (Notification hook, matcher idle_prompt).
+# The `idle` rule: shows a macOS banner when the harness waits for input.
 # Quiet by design: it never activates or focuses an application, does nothing in a background job
 # (CLAUDE_JOB_DIR set) or with EL_CAPITAN_NOTIFY=off, and shows at most one banner per session every
 # 10 minutes; the time of the last one is kept in ~/.agent/memory/.sessions/<session>.notified.
@@ -15,7 +15,7 @@ HOOK_NAME=notify-idle
 . "$(dirname "$0")/lib/hook.sh"
 hook_input
 
-SESSION=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // .conversation_id // "unknown"')
+SESSION=$(printf '%s' "$HOOK_INPUT" | jq -r '.session // "unknown"')
 KEY=$(printf '%s' "${SESSION:-unknown}" | { shasum -a 256 || sha256sum; } | cut -c1-24)
 [ -n "$KEY" ] || KEY=$(printf '%s' "${SESSION:-unknown}" | tr -c 'A-Za-z0-9_-' _ | cut -c1-64)
 DIR=${CREW_MEMORY_DIR:-$HOME/.agent/memory}/.sessions

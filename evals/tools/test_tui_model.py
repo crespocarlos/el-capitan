@@ -597,12 +597,12 @@ def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
 
 
 async def settle(app: App, pilot: Pilot) -> None:
-    """Wait for the reads and moves in flight, those they start included (a GitHub read starts a local one), then for
-    the screen to catch up."""
-    for _ in range(20):
-        await app.workers.wait_for_complete()
-        await pilot.pause()
-        if all(worker.is_finished for worker in app.workers):
+    """Wait until the views are loaded and no read or move is in flight, those they start included (a GitHub read
+    starts a local one). It polls the condition rather than awaiting a worker: a newer read cancels an older one."""
+    for _ in range(400):
+        await pilot.pause(0.05)
+        if getattr(app, "views", None) and all(worker.is_finished for worker in app.workers):
+            await pilot.pause()
             return
 
 
@@ -629,17 +629,19 @@ def test_app_rows_keep_their_place_tabs_and_children(home: Path) -> None:
             await pilot.press("down", "down")  # T3, the third row
             view = app.views["ongoing"]
             flipped = replace(view, rows=view.rows[::-1], links=view.links[::-1], moves=view.moves[::-1], keys=view.keys[::-1])
-            flipped.rows[0] = (*flipped.rows[0][:7], "5k", *flipped.rows[0][8:])
+            flipped.rows[0] = (*flipped.rows[0][:9], "moved")  # NOTE: a cell the LIVE tick never rewrites
             app.loaded({**app.views, "ongoing": flipped}, app.watched)
             await pilot.pause()
-            seen = [([row.key.value for row in table.ordered_rows], table.cursor_row, str(table.get_cell(view.keys[2], "LIVE")))]
+            seen = [([row.key.value for row in table.ordered_rows], table.cursor_row, str(table.get_cell(view.keys[2], "NOTE")))]
             await pilot.press("down", "o", "O")
             labels = [str(tab.label) for tab in app.query("Tab")]
             for keys in (["2"], ["3"], ["c"], ["escape", "1", "slash", *"status:approved", "enter"]):
                 await pilot.press(*keys)
                 await settle(app, pilot)
                 seen.append((app.view_name, table.row_count, isinstance(app.screen, Lines)))
-            await pilot.press("escape", "2", "down", "down", "enter")
+            await pilot.press("escape")  # clears the filter: a reload, awaited before the keys that read its rows
+            await settle(app, pilot)
+            await pilot.press("2", "down", "down", "enter")
             await settle(app, pilot)
             rows = table.row_count
             await pilot.press("down", "o", "s")
@@ -651,7 +653,7 @@ def test_app_rows_keep_their_place_tabs_and_children(home: Path) -> None:
         return [*seen, labels, rows, child, *folded]
 
     seen = asyncio.run(drive())
-    assert seen[0] == ([str(tasks / name) for name in ("T3", "T1", "T2")], 0, "5k"), "the cursor stays on T3, now first"
+    assert seen[0] == ([str(tasks / name) for name in ("T3", "T1", "T2")], 0, "moved"), "the cursor stays on T3, now first"
     assert opened == [PR.format(9), ISSUE, PR.format(8)], "o opens the PR, O the issue; o on a child its own PR"
     assert seen[1:5] == [("summary", 4, False), ("runs", 2, False), ("runs", 2, True), ("ongoing", 1, False)]
     assert seen[5] == ["1 Ongoing (3)", "2 Tasks · PRs · Issues (4)", "3 Runs (2)"]
@@ -721,7 +723,7 @@ def test_snapshot_per_tab(home: Path, snap_compare: Callable[..., bool], tab: st
     async def ready(pilot: Pilot) -> None:
         await settle(pilot.app, pilot)
         await pilot.press(tab)
-        await pilot.pause()
+        await settle(pilot.app, pilot)
 
     append_run("resolve acme/widgets#6", "start", kind="resolve", target="acme/widgets#6")
     app = CrewApp(home / ".agent" / "tasks", Filters(repo="all"), interval=600, gh=github(SEEDED, []), clock=lambda: NOW)
