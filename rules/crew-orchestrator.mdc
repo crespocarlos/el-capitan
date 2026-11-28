@@ -38,16 +38,16 @@ records: `~/.cursor/agents/references/task-transitions.md`.
 At conversation start, resolve the active task:
 
 ```bash
-source ~/.agent/bin/task-env.sh   # sets TASK_DIR and CREW_TASK_STATE (ok|none|error)
+~/.agent/bin/crew-tool.py task-context   # state: ok|none; an error exits nonzero
 ```
 
 - `ok`: read the SPEC.md slug and state, then surface `Active task: **<slug>** (<STATE>). Next:
   \`<next crew command>\`.`, adding `Handoff saved — run \`crew handoff resume\`.` when
   `$TASK_DIR/HANDOFF.md` exists.
 - `none`: say nothing.
-- `error`: surface the resolver's stderr, then say nothing further.
+- `error`: surface its stderr, then say nothing further.
 
-`CREW_TASK_DIR` is session-scoped: after switching branches mid-session, `unset CREW_TASK_DIR`.
+A set `CREW_TASK_DIR` pins the task: after switching branches mid-session, `unset CREW_TASK_DIR`.
 
 ## Invariants
 

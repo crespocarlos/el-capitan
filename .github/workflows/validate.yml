@@ -75,12 +75,7 @@ jobs:
         with:
           enable-cache: false
 
-      # The hook tests run every case through both normaliser paths: shfmt (this pinned binary) and awk.
-      - name: shfmt (pinned release binary, checksum checked)
-        run: |
-          bash scripts/install-bin.sh shfmt "$RUNNER_TEMP/shfmt-bin"
-          echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
-
+      # shfmt, the hooks' parser, is the shfmt-py wheel in the venv test.sh syncs.
       - name: Tests (the dev group of pyproject.toml, pinned in uv.lock)
         run: bash evals/test.sh -n auto
 

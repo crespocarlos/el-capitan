@@ -67,12 +67,12 @@ Stages: spec, implement, review, commit, open-pr. Terminal: a draft PR, and `cre
 spec to `DONE`.
 
 Gate 1 is recorded on approval: `crew-specwriter` stops until you approve, then runs
-`crew-task.py mark-approved "$TASK_DIR"` to move the spec to `APPROVED`. Gate 2 is the push and PR
+`crew-tool.py task-transition approve "$TASK_DIR"` to move the spec to `APPROVED`. Gate 2 is the push and PR
 creation in `crew-open-pr`, which shows the title, description, base, and target repository first.
 Autopilot chains between gates, never through them.
 
 A task is done once a PR for it is open; the review cycle and the merge come after and do not change
-its state. `crew-task.py mark-done` adds the PR to the task's PR list (a task can hold several) and
+its state. The done move (`crew-tool.py task-transition done`) adds the PR to the task's PR list (a task can hold several) and
 refuses an unchecked criterion and a review of a commit that does not cover `HEAD`; the review
 verdict and the branch the PR came from do not decide it. It reads the review from the task
 directory when `REVIEW.md` is there, and otherwise from the review directory the run recorded in the
@@ -185,7 +185,7 @@ the managed block of `~/.claude/CLAUDE.md`, so neither is charged to every reque
 agents and skill files load per command, and memory is retrieved on demand.
 
 Dispatched agents get repository guidance ranked for their kind and capped
-(`src/crew/task/task_guidance_kinds.py`). The prompt names every section the cap dropped, with its file.
+(`src/crew/core/task/task_guidance_kinds.py`). The prompt names every section the cap dropped, with its file.
 `crew-review-findings.py dispatch-bytes <dir>` prints the bytes each prepared dispatch carries, and
 `crew-review-findings.py cache-report --task-dir <task>` prints one review run's cache counts per persona.
 

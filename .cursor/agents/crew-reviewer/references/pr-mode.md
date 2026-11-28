@@ -30,7 +30,7 @@ Build the same Tier 1–3 and prompt-tier packages ([context tiers](context-tier
 `head/files/`, labeling every excerpt `path:line@headSHA7`.
 
 **Repository guidance** is the orchestrator's one local read, and it belongs to the orchestrator
-rather than the persona: `crew-reviewer` may run `crew-agent-context.py` to collect repository
+rather than the persona: `crew-reviewer` may run `crew-tool.py guidance` to collect repository
 guidance (`AGENTS.md`, `CLAUDE.md`) and place the result in the package. Guidance describes the
 reviewer's own conventions rather than the change, so it is legitimate context. It also comes from
 the local checkout, not the PR head, and therefore is **not PR-head evidence**: when the PR itself
@@ -69,7 +69,7 @@ git index, which PR mode forbids. But something has to replace them, or a PR per
 with three context lines and no way to ground a claim about a function's scope, a consumer, or an
 absence.
 
-After `crew-assemble-packages.py "$REVIEW_ROOT"` succeeds, **append the PR-head excerpts to each
+After `crew-tool.py review-dispatch "$REVIEW_ROOT"` succeeds, **append the PR-head excerpts to each
 `<persona>.in.md` before `check-packages`**, under a heading that says where they came from. Excerpt
 them from `$REVIEW_ROOT/head/files/`, never the local checkout, labeled `path:line@headSHA7`. What to
 excerpt is the material the refused extras would have supplied, scoped to the files the diff touches:

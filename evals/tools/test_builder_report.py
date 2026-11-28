@@ -19,11 +19,11 @@ from harness_hook import run as hook
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
-TASK = TOOLS / "task" / "crew_task.py"
+TASK = TOOLS / "scripts" / "crew_task.py"
 GATES = {"schema_version": 1, "gates": [{"name": "test", "exit": 0}]}
 REPORT = ("## Implementation Report\n\n**Tasks:** 1/1 passed\n**Harness:** claude-code\n\n### Quality gates\n"
           "test exit=0\n- `test` — pass\n\n### Unverified claims\nnone\n\n### Report data\n```json\n"
-          '{"schema_version": 1, "tasks": {"passed": 1, "total": 1}, "gates": [{"name": "test", "exit": 0}]}\n```\n')
+          '{"schema_version": 1, "tasks": {"passed": 1, "total": 1}, "gates": [{"name": "test", "exit": 0}], "unverified_claims": []}\n```\n')
 
 
 def world(tmp: Path) -> tuple[Path, Path]:
@@ -51,7 +51,7 @@ def stop(tmp: Path, home: Path, prompt: str, reply: str, agent: str) -> subproce
 
 
 HEAD = "crew-task: {task}\n"
-FAILING = REPORT.replace("exit=0", "exit=1")
+FAILING = REPORT.replace('"exit": 0', '"exit": 1')
 # (case, agent, the dispatch prompt, the reply, the files that must be saved, a WARN expected, what stdout must say)
 CASES = [
     ("a builder reply", "crew-builder", HEAD + "Implement T1.", "Done.\n\n" + REPORT, ["REPORT.md"], False, "saved"),

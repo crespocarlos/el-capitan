@@ -7,11 +7,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from crew.task.task_gates import CLOSABLE
-from crew.task.task_report import number_cell
-from crew.task.task_state import TaskState, head, recorded_state
+from crew.core.task.task_gates import CLOSABLE
+from crew.core.task.task_report import number_cell
+from crew.core.task.task_state import TaskState, head, recorded_state
 
-CREW_TASK = (sys.executable, "-m", "crew.task.crew_task")  # what ~/.agent/bin/crew-task.py runs
+CREW_TASK = (sys.executable, "-m", "crew.scripts.crew_task")  # what ~/.agent/bin/crew-task.py runs
 
 # The default `--pr-url` note of the close move (`mark-done --force`): shipped work for IMPLEMENTING, else stale.
 SHIPPED_NOTE, STALE_NOTE = "none (committed to main)", "closed: stale"

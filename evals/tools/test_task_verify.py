@@ -21,8 +21,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-TASK_TOOLS = ROOT / "src" / "crew" / "task"
-CLI = TASK_TOOLS / "crew_verify.py"
+TASK_TOOLS = ROOT / "src" / "crew" / "core" / "task"
+CLI = ROOT / "src" / "crew" / "tools" / "crew_verify.py"
 from cli_runner import run as run_cli  # noqa: E402
 
 WORKFLOW = """name: CI
@@ -146,7 +146,7 @@ def test_caching(tmp: Path) -> None:
     git(root, "commit", "-q", "-am", "change env")
     _, _, data = verify(root, home)
     check("a changed env misses the cache", data["gates"][1]["env"]["LEVEL"] == "2" and data["gates"][1]["cached"] is False, data["gates"])
-    from crew.task import task_verify_env as keys
+    from crew.core.task import task_verify_env as keys
     base = keys.cache_key("t", "cmd", {"A": "1"}, "v22.0.0")
     check("the key covers tree, command, env and node version",
           len({base, keys.cache_key("u", "cmd", {"A": "1"}, "v22.0.0"), keys.cache_key("t", "cmd2", {"A": "1"}, "v22.0.0"),
@@ -444,8 +444,8 @@ PUBLISH_COMMANDS = ("npm publish", "pnpm publish", "yarn publish", "yarn npm pub
 
 def test_workflow_reading(tmp: Path) -> None:
     """Which workflows and steps become gates: CI triggers only, never a publish, never a gated job; setup lines dropped."""
-    from crew.task.task_verify_env import is_partial
-    from crew.task.task_verify_sources import block_gates, prose_commands, workflow_gates
+    from crew.core.task.task_verify_env import is_partial
+    from crew.core.task.task_verify_sources import block_gates, prose_commands, workflow_gates
 
     for trigger, mirrored in TRIGGERS.items():
         gates, skipped = workflow_gates({"a.yml": wf(trigger)})
@@ -538,7 +538,7 @@ def test_non_ci_workflows_are_not_partial(tmp: Path) -> None:
 
 def test_workflow_scalars_stay_as_written() -> None:
     """`on` stays a key and every scalar a string as written (`3.10` stays `3.10`); unreadable YAML is no workflow."""
-    from crew.task.task_verify_sources import workflow
+    from crew.core.task.task_verify_sources import workflow
 
     doc = workflow("on:\n  push:\nenv:\n  PYTHON: 3.10\njobs:\n  j:\n    timeout-minutes: 5\n    continue-on-error: true\n")
     assert doc == {"on": {"push": ""}, "env": {"PYTHON": "3.10"}, "jobs": {"j": {"timeout-minutes": "5", "continue-on-error": "true"}}}
@@ -550,58 +550,35 @@ REPORT = """## Implementation Report
 **Tasks:** 2/2 passed
 
 ### Quality gates
-```
-knip exit=1
-biome exit=0
-```
-- `knip` — {knip} — exit 1
-- `biome` — {biome}
-
-### Unverified claims
-{claims}
+knip exit=1 (prose for people: only the JSON block below is read)
 
 ### Report data
 ```json
 {data}
 ```
-
-### Files Changed
-a.py
 """
 REPORT_GATES = {"schema_version": 1, "state": "done", "gates": [
     {"name": "knip", "exit": 1, "command": "npm run knip"}, {"name": "biome", "exit": 0, "command": "npx biome ci ."}]}
-REPORT_DATA = json.dumps({"schema_version": 1, "gates": [{"name": "knip", "exit": 1}, {"name": "biome", "exit": 0}]})
-OLD_REPORT = "## Implementation Report\n\n**Tasks:** 1/1 passed\n\n### Quality gates\n- `npm test` — pass\n\n### Files Changed\na.py\n"
+GATES = [{"name": "knip", "exit": 1}, {"name": "biome", "exit": 0}]
+CLAIM = {"claim": "the hook runs", "verify": "bash hook-test.sh"}
+OLD_REPORT = "## Implementation Report\n\n**Tasks:** 1/1 passed\n\n### Quality gates\n- `npm test` — pass\n"
 
 
-def report_text(knip: str = "fail", biome: str = "pass", claims: str = "- the hook runs — verify: `bash hook-test.sh`", data: str = REPORT_DATA) -> str:
-    return REPORT.format(knip=knip, biome=biome, claims=claims, data=data)
+def report_text(**data: object) -> str:
+    return REPORT.format(data=json.dumps({"schema_version": 1, "gates": GATES, "unverified_claims": [CLAIM], **data}))
 
 
 # (case, report text, extra arguments, gates JSON or None, exit code, text the output must carry)
 REPORT_CASES = (
-    ("a verbatim copy with honest claims passes", report_text(), (), REPORT_GATES, 0, "report-check: ok"),
-    ("a `pass` claim against exit=1 fails", report_text(knip="pass"), (), REPORT_GATES, 1, "contradicts exit=1"),
-    ("a `fail` claim against exit=0 fails", report_text(biome="fail"), (), REPORT_GATES, 1, "biome: fail"),
-    ("a `skipped` claim for a gate verify ran fails", report_text(biome="skipped"), (), REPORT_GATES, 1, "biome: skipped"),
-    ("a copied line that differs from the JSON fails", report_text().replace("knip exit=1", "knip exit=0"), (), REPORT_GATES, 1,
-     "report says exit=0, verify says exit=1"),
-    ("a gate missing from the verbatim copy fails", report_text().replace("knip exit=1\n", ""), (), REPORT_GATES, 1, "gate knip (exit=1) is not copied"),
-    ("Report data that disagrees with the JSON fails", report_text(data=REPORT_DATA.replace('"exit": 1', '"exit": 0')), (), REPORT_GATES, 1,
-     "Report data gates differ"),
-    *((f"a `{word}` claim is not one of pass, fail, skipped", report_text(knip=word), (), REPORT_GATES, 1, f"`{word}`")
-      for word in ("passed", "clean", "ok", "green", "failed")),
-    ("a gate with no claim line fails", report_text().replace("- `knip` — fail — exit 1\n", ""), (), REPORT_GATES, 1, "no claim line for gate knip"),
-    ("two claim lines for one gate fail", report_text(biome="pass\n- `biome` — pass"), (), REPORT_GATES, 1, "2 claim lines for gate biome"),
-    ("`none` is a valid Unverified claims section", report_text(claims="none"), (), REPORT_GATES, 0, ""),
-    ("an unverified claim with no verify command fails", report_text(claims="- the hook runs under Cursor"), (), REPORT_GATES, 1, "without"),
-    ("a strict check rejects a report with no new sections", OLD_REPORT, (), None, 1, "missing section: ### Unverified claims"),
-    ("a Report data block that is not JSON fails", report_text(data="not json"), (), REPORT_GATES, 1, "schema_version"),
-    ("a Report data block without schema_version 1 fails", report_text(data=json.dumps({"tasks": 1})), (), REPORT_GATES, 1, ""),
+    ("Report data that matches the verify result passes", report_text(), (), REPORT_GATES, 0, "report-check: ok"),
+    ("Report data gates that differ from the verify result fail", report_text(gates=GATES[:1]), (), REPORT_GATES, 1, "differ from the verify result"),
+    ("an empty claim list is valid", report_text(unverified_claims=[]), (), REPORT_GATES, 0, ""),
+    ("an unverified claim with no verify command fails", report_text(unverified_claims=[{"claim": "x"}]), (), REPORT_GATES, 1, "verify command"),
+    ("a report with no Report data block fails strictly", OLD_REPORT, (), None, 1, "schema_version"),
+    ("a Report data block that is not JSON fails", REPORT.format(data="not json"), (), REPORT_GATES, 1, "schema_version"),
     ("an old report parses in lenient mode", OLD_REPORT, ("--lenient",), None, 0, ""),
-    ("a gates JSON that exists is compared even in a lenient run", OLD_REPORT, ("--lenient",), REPORT_GATES, 1, "not copied"),
-    ("claims about commands that are not gates are not compared", OLD_REPORT, ("--lenient",), {"gates": []}, 0, ""),
-    ("--unverified prints the list capped at five", report_text(claims="\n".join(f"- claim {i} — verify: `cmd {i}`" for i in range(8))),
+    ("a gates JSON that exists is compared even in a lenient run", OLD_REPORT, ("--lenient",), REPORT_GATES, 1, "differ"),
+    ("--unverified prints the list capped at five", report_text(unverified_claims=[{"claim": f"claim {i}", "verify": f"cmd {i}"} for i in range(8)]),
      ("--unverified", "5"), REPORT_GATES, 0, "+3 more"),
 )
 
@@ -619,8 +596,7 @@ def test_report_check(case: str, text: str, extra: tuple[str, ...], gates: dict 
 
 
 def test_report_parsers_on_an_old_report(tmp: Path) -> None:
-    from crew.task import task_verify_report as rc
-    check("every parser returns empty for an old report or plain prose", rc.sections(OLD_REPORT).get("Unverified claims") is None
-          and rc.unverified_claims(OLD_REPORT) == [] and rc.report_data(OLD_REPORT) is None and rc.gate_exits(OLD_REPORT) == {}
+    from crew.core.task import task_verify_report as rc
+    check("every parser returns empty for an old report or plain prose", rc.unverified_claims(OLD_REPORT) == [] and rc.report_data(OLD_REPORT) is None
           and rc.unverified_claims("just prose\n") == [] and rc.problems("x", None, True) == [] and rc.capped(OLD_REPORT, 5) == [])
     check("an unreadable gates file is not a crash", rc.load_gates(tmp / "missing.json") is None)

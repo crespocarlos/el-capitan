@@ -17,8 +17,11 @@ from pathlib import Path
 
 from cli_runner import run as cli
 
+from crew.core.task.task_progress import metric as read_metric
+from crew.core.task.task_progress import read_entries
+
 ROOT =Path(__file__).resolve().parents[2]
-TOOL = ROOT / "src" / "crew" / "review" / "crew_review_findings.py"
+TOOL = ROOT / "src" / "crew" / "tools" / "crew_review_findings.py"
 PERSONAS = ("adversarial", "architecture")
 
 
@@ -50,9 +53,8 @@ def task(tmp: Path, packages: dict[str, str] | None = None) -> Path:
     return directory
 
 
-def metric_lines(owner: Path) -> list[str]:
-    return [line for line in (owner / "PROGRESS.md").read_text(encoding="utf-8").splitlines()
-            if "METRIC: review " in line]
+def metric_lines(owner: Path) -> list[dict]:
+    return [given for event, given in map(read_metric, read_entries(owner)) if event == "review"]
 
 
 def test_a_persisted_review_records_one_metric_line(tmp: Path) -> None:
@@ -61,7 +63,7 @@ def test_a_persisted_review_records_one_metric_line(tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
     lines = metric_lines(tmp / "task")
     assert len(lines) == 1, lines
-    assert "review run=" in lines[0] and "in_bytes=" in lines[0] and "mapped=" in lines[0], lines[0]
+    assert {"run", "in_bytes", "mapped"} <= lines[0].keys(), lines[0]
 
 
 def test_the_recorded_numbers_are_the_files_they_come_from(tmp: Path) -> None:
@@ -72,11 +74,9 @@ def test_the_recorded_numbers_are_the_files_they_come_from(tmp: Path) -> None:
     line = metric_lines(tmp / "task")[0]
     in_bytes = sum((directory / f"{p}.in.md").stat().st_size for p in PERSONAS)
     out_bytes = sum((directory / f"{p}.out.md").stat().st_size for p in PERSONAS)
-    assert f"in_bytes={in_bytes} " in line, line
-    assert f"out_bytes={out_bytes} " in line, line
-    assert "personas=2 " in line, line
-    assert "shared_prefix=0 " in line, "the first byte already differs, so nothing is shared"
-    assert "mapped=0" in line, line
+    assert line["in_bytes"] == str(in_bytes) and line["out_bytes"] == str(out_bytes) and line["personas"] == "2", line
+    assert line["shared_prefix"] == "0", "the first byte already differs, so nothing is shared"
+    assert line["mapped"] == "0", line
 
 
 def test_a_run_with_a_layer_map_records_mapped_one(tmp: Path) -> None:
@@ -86,15 +86,15 @@ def test_a_run_with_a_layer_map_records_mapped_one(tmp: Path) -> None:
     result = persist(directory, tmp, ["--lenient"])
     assert result.returncode == 0, result.stderr
     line = metric_lines(tmp / "task")[0]
-    assert "mapped=1" in line, line
+    assert line["mapped"] == "1", line
     # A package set that really does share a head records its length, not more and not less.
-    assert "shared_prefix=12 " in line, line
+    assert line["shared_prefix"] == "12", line
 
 
 def test_an_unmapped_run_records_mapped_zero(tmp: Path) -> None:
     directory = task(tmp)
     assert persist(directory, tmp).returncode == 0
-    assert "mapped=0" in metric_lines(tmp / "task")[0]
+    assert metric_lines(tmp / "task")[0]["mapped"] == "0"
 
 
 def test_a_run_with_no_task_directory_writes_no_line_and_still_exits_zero(tmp: Path) -> None:
@@ -117,7 +117,7 @@ def test_a_task_directory_is_recognised_by_its_id_alone(tmp: Path) -> None:
 
 def test_a_failing_metric_writer_does_not_fail_the_persistence(tmp: Path) -> None:
     """The review is written before telemetry; a metric failure is reported, never raised."""
-    from crew.review import review_records
+    from crew.core.review import review_records
     def failing_writer(owner: Path, payload: str) -> None:
         raise OSError("PROGRESS.md is not writable")
 
@@ -134,12 +134,12 @@ def test_a_failing_metric_writer_does_not_fail_the_persistence(tmp: Path) -> Non
     assert "warning: cost metric not recorded" in stderr.getvalue(), stderr.getvalue()
 
 
-METRIC_CLI = ROOT / "src" / "crew" / "task" / "crew_metric.py"
-LS_CLI = ROOT / "src" / "crew" / "task" / "crew_ls.py"
+AGENT_TOOL = ROOT / "src" / "crew" / "tools" / "crew_tool.py"
+LS_CLI = ROOT / "src" / "crew" / "scripts" / "crew_ls.py"
 
 
 def metric(owner: Path, *words: str) -> subprocess.CompletedProcess:
-    return cli(METRIC_CLI, str(owner), *words)
+    return cli(AGENT_TOOL, "task-log", str(owner), "--metric", *words, *(["--field", "cost"] if words[0] == "stage_end" else []))
 
 
 def test_stage_keys_parse_and_stage_end_prints_the_cost_line(tmp: Path) -> None:
@@ -149,8 +149,8 @@ def test_stage_keys_parse_and_stage_end_prints_the_cost_line(tmp: Path) -> None:
     assert done.returncode == 0 and done.stdout.strip() == "implement: 3 workers, 410k tokens", done
     review = metric(tmp, "stage_end", "stage=review", "personas=4", "tokens_reported=unknown")
     assert review.stdout.strip() == "review: 4 personas, tokens unknown", review.stdout
-    lines = (tmp / "PROGRESS.md").read_text(encoding="utf-8")
-    assert "METRIC: stage_start stage=implement" in lines and "tokens_reported=unknown" in lines, lines
+    lines = [read_metric(entry) for entry in read_entries(tmp)]
+    assert ("stage_start", {"stage": "implement"}) in lines and lines[-1][1]["tokens_reported"] == "unknown", lines
 
 
 def test_stage_keys_refuse_a_guessed_or_missing_value(tmp: Path) -> None:
@@ -158,7 +158,7 @@ def test_stage_keys_refuse_a_guessed_or_missing_value(tmp: Path) -> None:
     for words in (("stage_end", "stage=implement", "tokens_reported=lots"), ("stage_end", "stage=implement"),
                   ("stage_start", "stage=deploy"), ("stage_end", "stage=review", "personas=x", "tokens_reported=1")):
         refused = metric(tmp, *words)
-        assert refused.returncode == 1 and "log-metric:" in refused.stderr, (words, refused.stderr)
+        assert refused.returncode == 1 and "error usage [metric]" in refused.stderr, (words, refused.stderr)
     assert "stage_" not in (tmp / "PROGRESS.md").read_text(encoding="utf-8"), "a refused line is not written"
     assert metric(tmp, "implement_start", "mode=inline").returncode == 0, "the free-form keys still work"
 

@@ -20,7 +20,6 @@ import pytest
 
 ROOT =Path(__file__).resolve().parents[2]
 GIT_MODULE = ROOT / "src" / "crew" / "lib" / "git.py"
-DEFAULT_BRANCH_SH = ROOT / "src" / "crew" / "task" / "crew-default-branch.sh"
 
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.invalid",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e.invalid"}
@@ -168,9 +167,9 @@ def local_cases(module, repo: Path, outside: Path, base: Path) -> None:
     expect_error("is_ancestor with an unknown sha raises",
                  lambda: module.is_ancestor(repo, "0" * 40, "HEAD"))
     check("commit_time is a timestamp", module.commit_time(repo) > 0)
-    check("is_clean on a fresh commit", module.is_clean(repo) is True)
+    check("status on a fresh commit is clean", module.status(repo)["dirty"] == [])
     (repo / "untracked.txt").write_text("x\n")
-    check("is_clean sees an untracked file", module.is_clean(repo) is False)
+    check("status sees an untracked file", module.status(repo)["untracked"] == ["untracked.txt"])
     check("dirty_files names it", any("untracked.txt" in entry for entry in module.dirty_files(repo)))
     check("staged_paths is empty before staging", module.staged_paths(repo) == [])
     git(repo, "add", "untracked.txt")
@@ -341,17 +340,6 @@ def behind_cases(module, stub: GhStub, repo: Path, base: Path) -> None:
                  lambda: module.behind_count(broken_copy(repo, base), "origin", "main"), "gh:")
 
 
-def script_agreement(module, repo: Path) -> None:
-    """The shell command and the helper answer the same branch, which is the one-definition rule."""
-    for remote in ("origin", "upstream"):
-        result = subprocess.run(["bash", str(DEFAULT_BRANCH_SH), remote], cwd=str(repo), text=True,
-                                capture_output=True)
-        check(f"crew-default-branch.sh answers for {remote}", result.returncode == 0, result.stderr)
-        check(f"script and helper agree for {remote}",
-              result.stdout.strip() == module.default_branch(repo, remote),
-              f"{result.stdout.strip()!r} vs {module.default_branch(repo, remote)!r}")
-
-
 def test_local_reads(tmp: Path) -> None:
     repo, _origin, _upstream = make_repo(tmp)
     outside = tmp / "outside"
@@ -377,9 +365,3 @@ def network(tmp_path_factory: pytest.TempPathFactory) -> tuple:
                          ids=["default_branch", "remote_tip", "fetch_remote", "behind_count"])
 def test_network_helpers_fall_back_from_gh_to_git(group, network: tuple) -> None:
     group(*network)
-
-
-def test_the_script_and_the_helper_agree(network: tuple) -> None:
-    module, stub, repo, _ = network
-    stub.reset()
-    script_agreement(module, repo)

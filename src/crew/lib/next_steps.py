@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 # Beside `transitions.json`, which is the other asset the pipeline reads as data rather than prose.
-STEP_TABLE = Path(__file__).resolve().parent.parent / "task" / "next-steps.json"
+STEP_TABLE = Path(__file__).resolve().parent.parent / "core" / "task" / "next-steps.json"
 # The workflows `crew-orchestrator.mdc` declares. A key may omit the workflow when exactly one holds
 # the stage, which is how a `crew review` caller names `review.block` without repeating `build`.
 WORKFLOWS = ("build", "respond")

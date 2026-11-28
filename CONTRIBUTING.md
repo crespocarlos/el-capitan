@@ -10,8 +10,6 @@ guide for anyone editing it, person or agent; this page is the short version.
 2. Install [`uv`](https://docs.astral.sh/uv/): the test runner, Ruff, codespell, Vale, zizmor and
    actionlint all run through `uvx` at the versions pinned in the repository, so nothing else is
    installed globally.
-3. Optional: [`shfmt`](https://github.com/mvdan/sh), so the hook tests exercise both guard parsers
-   locally as CI does (`bash scripts/install-bin.sh shfmt <dir>` fetches the pinned binary).
 
 ## The checks
 

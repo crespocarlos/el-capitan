@@ -61,7 +61,7 @@ git add <approved files> && git commit -m "<type(scope): description>" && git pu
 Chain all three: `&&` between add and commit alone leaves the push to run after a rejected commit, and
 the sha recorded next would be the previous tip. When any stage fails, stop — do not record a sha, do
 not reply, and report which stage failed. Record the short sha only from a successful commit
-(`~/.agent/bin/crew-repo-info.py --field head_short`) and check it equals the commit you just made,
+(`~/.agent/bin/crew-tool.py repo-facts --field head_short`) and check it equals the commit you just made,
 because every reply quotes it.
 
 `-u origin HEAD` on a branch with no upstream yet; plain `git push` once it tracks one. A rejected push

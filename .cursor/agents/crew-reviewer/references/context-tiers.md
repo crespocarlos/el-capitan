@@ -155,7 +155,7 @@ summary).
 
 ## Package section order
 
-`crew-assemble-packages.py` emits one order: shared head (contract, lookups, mode, `## Hunk reference`,
+`crew-tool.py review-dispatch` emits one order: shared head (contract, lookups, mode, `## Hunk reference`,
 `# Repo memory`), then `# Diff` with `package.diff` in full, then the per-persona tail (`# Size gate`,
 `## Spec`, `## Reading map`, `# Repository guidance`, prior-round block, consumers, `# Prompt tier`,
 `## Questions for this lens`). Absent sections are omitted; the rest keep this order. Head and diff are
@@ -167,5 +167,5 @@ identical in a run's packages, so a prefix cache pays once (`test_assemble_packa
 the changed files) and `agent-context.json` (guidance from repository root to nearest folder, each
 file once). Every package carries the memory under `# Repo memory`, in the shared head; with no store
 it is `warning: memory unavailable`, and the summary names the gap. A missing or empty
-`agent-context.json` stops `crew-assemble-packages.py` with exit 2: rerun `prepare` from the reviewed
+`agent-context.json` stops `review-dispatch` with exit 2: rerun `prepare` from the reviewed
 repo's checkout, or pass `--root`.

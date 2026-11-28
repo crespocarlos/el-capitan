@@ -21,7 +21,7 @@ issue. Otherwise, **create** a new one. If ambiguous, confirm in one line: `"Fil
 or open a new issue?"`
 
 ```bash
-~/.agent/bin/crew-repo-info.py --field origin_repo
+~/.agent/bin/crew-tool.py repo-facts --field origin_repo
 ```
 
 If that returns `OWNER/REPO`, use it. If a repo is mentioned in the conversation (via URL or
@@ -114,7 +114,7 @@ Omit `--label` flags when no label applies.
 **Update** (fetch existing body first, then merge with session content):
 
 ```bash
-~/.agent/bin/crew-pr-actions.py issue --number N --repo OWNER/REPO --field title,body
+~/.agent/bin/crew-tool.py pr-read issue --number N --repo OWNER/REPO --fields title,body
 GH_PAGER=cat gh issue edit N --repo OWNER/REPO --body "$(cat <<'EOF'
 NEW_BODY
 EOF

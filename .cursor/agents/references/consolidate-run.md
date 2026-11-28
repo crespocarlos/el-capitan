@@ -6,7 +6,7 @@ numbered list is typed by hand. `REVIEW_ROOT` is the review directory.
 
 1. Save the kept candidates (the contract's finding shape, one object each, with `file`, `line` and
    `kind`) as `$REVIEW_ROOT/raw-candidates.json`.
-2. `~/.agent/bin/crew-review-findings.py consolidate --review-dir "$REVIEW_ROOT"` groups candidates
+2. `~/.agent/bin/crew-tool.py review-finish "$REVIEW_ROOT"` groups candidates
    with the same file, the same `kind` and overlapping lines, fills hunk ids from `hunks.json` and
    writes the draft `candidates.json`. It never rewrites a title or a label; edit the draft if you
    disagree with a group.
@@ -16,7 +16,6 @@ numbered list is typed by hand. `REVIEW_ROOT` is the review directory.
    file outside the diff stand as a non-hunk anchor (a `[blocking]` one needs `line_read: true`); an
    untracked path is refused. A hand-set `anchor` in the input is ignored. In PR mode the head commit
    is not in the local checkout: leave out `--repo` and `--head`, so every finding anchors in the diff.
-4. `~/.agent/bin/crew-review-findings.py consolidate --review-dir "$REVIEW_ROOT" --render --mode
-   <mode>` writes `report.md` from `consolidation.json`: the numbered list `persist` compares to the
+4. `~/.agent/bin/crew-tool.py review-finish "$REVIEW_ROOT" --render --mode <mode>` writes `report.md` from `consolidation.json`: the numbered list `persist` compares to the
    findings. Reply with that file, then persist per [pipeline
    persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md).

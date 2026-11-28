@@ -31,7 +31,7 @@ from pathlib import Path
 from types import ModuleType
 
 HEADING = re.compile(r"^## Status[ \t]*$", re.M)
-MOVES = "crew-task.py mark-approved | mark-implementing | mark-done"
+MOVES = "crew-tool.py task-transition approve | implement | done"
 EVIDENCE = (".expect", ".provenance.json", ".out.md", ".prev.md", ".unanswered")
 # The fields each tool reads; another tool's fields are refused.
 OWN = {"Write": {"content"}, "Edit": {"old_string", "new_string", "replace_all"}, "MultiEdit": {"edits"}}
@@ -42,7 +42,7 @@ BORN = ("", "DRAFTING")
 def reader() -> ModuleType:
     """`task_status` (stdlib only), loaded by path: the copy install wrote beside this file, else the checkout's."""
     here = Path(__file__).resolve()
-    source = next(path for path in (here.parent / "task_status.py", here.parents[3] / "src" / "crew" / "task" / "task_status.py") if path.is_file())
+    source = next(path for path in (here.parent / "task_status.py", here.parents[3] / "src" / "crew" / "core" / "task" / "task_status.py") if path.is_file())
     spec = importlib.util.spec_from_file_location("task_status", source)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {source}")

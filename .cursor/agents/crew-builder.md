@@ -46,7 +46,7 @@ read and write `<WORK_DIR>/src/foo.ts`.
 
 **Project context is the prompt's `## Project guidance`,** capped; a note after its opening tag names
 each dropped section and its file. Read that file for a dropped section you need. For a file it does
-not cover, run `~/.agent/bin/crew-agent-context.py <file>`. Apply it silently. Record each
+not cover, run `~/.agent/bin/crew-tool.py guidance <file>`. Apply it silently. Record each
 guidance file you applied in the report's `### Guidance applied` section. If an applicable file defines a test
 command, use it as the default verify command in step 5 when the task's own verify line does not
 specify one; treat forbidden patterns as task failures.
@@ -102,14 +102,13 @@ that file's text. Otherwise run steps 1-4 and return a new report.
    retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or
    explicit file inspection stated in the criterion).
 4. Leave `## Status` as `IMPLEMENTING`. `DONE` is written only by `crew open pr` when it creates the
-   PR (`crew-task.py mark-done`); the status is not the builder's to change, because writing it by
-   hand bypasses that gate.
+   PR (`crew-tool.py task-transition done`); writing it by hand bypasses that gate.
 
 Then return the report (below).
 
 **Exit step, every run (also a batch part, also after a failure):** the orchestrator wrote
 `<WORK_DIR>/.crew-worker.lock` at dispatch; right before your final reply run
-`~/.agent/bin/crew-task.py lock remove <WORK_DIR>` so the tree is free for the next stage.
+`~/.agent/bin/crew-tool.py task-lock remove <WORK_DIR> "$CREW_WORKER_TASK"` so the tree is free for the next stage.
 
 ## Report
 

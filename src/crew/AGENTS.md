@@ -86,13 +86,13 @@ command (a command costs always-on router budget). What the hardening work added
 - `crew-ls.py` shows the REPO column, AGE from the last PROGRESS entry, `landed: yes|no|unknown|closed`, the
   `BLOCKED:` line and one `stale:` line; `--repo`, `--status`, `--cost`, `--watch [--interval N]`
   and `--report [--since 30d]` (`ls_report.py`), all over `ls_data.py`, the gathering a future TUI
-  imports too; `crew-metric.py` validates `stage_start`, `stage_end` and `tokens_reported`
+  imports too; `crew-tool.py task-log --metric` validates `stage_start`, `stage_end` and `tokens_reported`
   (`task_progress.py`).
 - `crew-doctor.py` (`doctor_checks.py`) is a command of its own because install health fits no
   existing command.
-- `crew-review-findings.py save-out|consolidate` and `normalize --repo` (`review_render.py`,
+- `crew-review-findings.py save-out`, `crew-tool.py review-finish` and `normalize --repo` (`review_render.py`,
   `review_consolidate.py`,
-  `review_findings.py`); `crew-assemble-packages.py` records skips and optional slices
+  `review_findings.py`); `crew-tool.py review-dispatch` records skips and optional slices
   (`assemble_inputs.py` decides, `assemble_build.py` slices and writes).
 - New prose for these stages lives in `references/` files linked in one line (`stage-rules.md`,
   `worker-dispatch.md`), so the main prompt files stay under `MAX_PROMPT_FILE_BYTES`.
@@ -129,11 +129,10 @@ optional and the absence of each has one default.
 ## Naming
 
 - **Commands**: `crew-<kebab-case>.py`, for example `crew-review-findings.py`, is the name in
-  `~/.agent/bin`. Its module is `crew_<snake_case>.py` in its package, and its launcher is the
-  `[project.scripts]` entry of that name in `pyproject.toml` (crew-lint checks both).
+  `~/.agent/bin`. Its module is `crew_<snake_case>.py` in its audience's package (`tools/` for an
+  agent, `scripts/` for the owner, `harness/` for hooks; `audience` in `tools.json`), and its launcher is
+  the `[project.scripts]` entry of that name in `pyproject.toml` (crew-lint checks all three).
 - **Modules**: snake_case inside their package, imported as `crew.<package>.<module>`.
-- **Sourced files** keep a plain name and are exempt from the prefix rule: `task-env.sh` must stay
-  `task-env.sh` because `source` needs a real file at that exact path.
 - A rename is a breaking change applied in one change. Do not add a compatibility wrapper for an old
   basename; update every caller instead. `.claude/hooks/`, `rules/`, and `.cursor/` are the caller
   surface, and `rg -n --hidden "agent/bin/" .cursor .claude rules install.sh` lists it.
@@ -143,12 +142,16 @@ optional and the absence of each has one default.
 ```
 src/crew/
   tools.json  TOOLS.md   catalog and its documentation
+  tools/          the agent tools: crew-tool.py (envelope, read and mutating verbs) and the agent commands
+  scripts/        the owner's commands: doctor, lint, ls, inbox, evals, nightshift e2e
   lib/            claude_plugins.py cli.py clock.py files.py git.py git_config.py gh_reads.py markdown.py next_steps.py output.py  shared helpers (map: TOOLS.md)
-  task/           Task state, worktrees, progress and metric logging
-  review/         Review pipeline: findings, layers, personas, report, hunk parsing
-  memory/         Typed memory store and retrieval
-  evals/          Eval inspection and comparison
-  maintenance/    crew-lint and its lint_* families
+  core/           the domain logic, no entry points:
+    task/         Task state, worktrees, progress and metric logging
+    review/       Review pipeline: findings, layers, personas, report, hunk parsing (nightshift/ inside)
+    memory/       Typed memory store and retrieval
+    evals/        Eval inspection and comparison
+    maintenance/  crew-lint and its lint_* families, the doctor checks
+  harness/        hook runtime and the per-harness adapters
   tui/            the dashboard (`uv run --group tui python -m crew.tui.crew_tui`)
 ```
 
@@ -167,13 +170,13 @@ Rules that crew-lint enforces (crew-lint rule names in parentheses; the rest is 
 - An import crosses packages only along an edge the `package-edges` block in TOOLS.md declares
   (`package-direction`).
 - `atomic_write`, `gh`, `read_json_object`, `slug_from_url` and the UTC stamp are each defined once in the tree, and
-  PROGRESS.md is touched only by `task/task_progress.py` (`single-owner`).
+  PROGRESS.md is touched only by `core/task/task_progress.py` (`single-owner`).
 - **Git lives in `lib/git.py`** (`direct-git`). No other Python module builds a `git` or `gh` argv, because a
   hand-rolled call reads empty output when git fails and then acts on it. Import the helper for the
   question — root, branch, remote, default branch, ancestry, blob, diff base — and let `GitError`
   reach the caller. The network half (gh first, git second) lives in the same module. Prompts
-  follow the same rule in their own terms: a prompt asks a command (`crew-repo-info.py`,
-  `crew-worktree.py`, `crew-diff.sh`), never git, and raw git stays only where the user approved a
+  follow the same rule in their own terms: a prompt asks a command (`crew-tool.py repo-facts`,
+  `crew-worktree.py`), never git, and raw git stays only where the user approved a
   mutation. GitHub reads work the same way: a prompt asks `crew-pr-actions.py` for a PR, its diff, a
   repository, or an issue, and keeps raw `gh` only for a mutation or a search, because the hooks
   decide on the command text the caller wrote. Local reads use git alone; the network reads
@@ -184,7 +187,7 @@ Rules that crew-lint enforces (crew-lint rule names in parentheses; the rest is 
 ## Imports
 
 `crew` is one package under `src/`, and only `crew` is importable: every import is
-`crew.<package>.<module>` (`from crew.task.task_status import STATUS`), in the tools and the tests
+`crew.<package>.<module>` (`from crew.core.task.task_status import STATUS`), in the tools and the tests
 alike, and nothing touches `sys.path`. Which package may import which is the `package-edges` block
 in TOOLS.md (crew-lint `package-direction`), and a module never runs a sibling command as a process
 to reach its logic (`no-sibling-subprocess`): it imports the module that holds it.
@@ -199,7 +202,7 @@ to reach its logic (`no-sibling-subprocess`): it imports the module that holds i
 - Reads normalize: `head` uppercases and strips trailing punctuation, so a legacy `done` and a
   `DONE` are one state. `token` rejects anything outside the set and names the allowed values, which
   is where a typo should fail rather than at a transition that silently matches no rule.
-- Writers emit the canonical spelling. `DONE` is written only by `crew-task.py mark-done`, once a PR
+- Writers emit the canonical spelling. `DONE` is written only by the done move (`crew-tool.py task-transition done`), once a PR
   for the task is open, and the builder never writes a status at all; a hand-written value skips the
   gate that records the PR and checks the criteria and the reviewed commit.
 - A task's PR list is the PR URLs in its PROGRESS.md (`task_progress.pr_urls`): the `PR opened:` of
@@ -232,13 +235,13 @@ Every other code is a named `EXIT_*` constant in its source module and has one r
 
 | Command | Code | Meaning | Source |
 |---|---|---|---|
-| `crew-verify.py` | `3` | NOT VERIFIED: every gate passed, but the run was partial (mirror steps skipped) or only prose checks exist (each `2` with `--strict`) | `task/task_verify_env.py` |
-| `crew-verify.py --wait` | `4` | still running when `--wait-timeout` ran out; do not hand off | `task/task_verify.py` |
-| `crew-task.py worktree check` | `4` | on a feature branch: use it as is | `task/task_worktrees.py` |
-| `crew-task.py worktree check` | `5` | the tree is dirty | `task/task_worktrees.py` |
-| `crew-mem.py add` | `3` | duplicate candidates found; nothing written (`--force` writes) | `memory/memory_add.py` |
-| `crew-mem.py import-inbox` | `3` | every draft was a duplicate; nothing imported | `memory/memory_inbox.py` |
-| `crew-nightshift-e2e.py` | `3` | the server did not answer on its port | `review/crew_nightshift_e2e.py` |
+| `crew-verify.py` | `3` | NOT VERIFIED: every gate passed, but the run was partial (mirror steps skipped) or only prose checks exist (each `2` with `--strict`) | `core/task/task_verify_env.py` |
+| `crew-verify.py --wait` | `4` | still running when `--wait-timeout` ran out; do not hand off | `core/task/task_verify.py` |
+| `crew-task.py worktree check` | `4` | on a feature branch: use it as is | `core/task/task_worktrees.py` |
+| `crew-task.py worktree check` | `5` | the tree is dirty | `core/task/task_worktrees.py` |
+| `crew-tool.py mem-write` | `3` | duplicate candidates found; nothing written | `core/memory/memory_add.py` |
+| `crew-mem.py import-inbox` | `3` | every draft was a duplicate; nothing imported | `core/memory/memory_inbox.py` |
+| `crew-nightshift-e2e.py` | `3` | the server did not answer on its port | `scripts/crew_nightshift_e2e.py` |
 
 A command that cannot proceed says why on stderr and exits `2`: `lib.cli.fail(message)`, never
 `raise SystemExit("message")`, which exits `1` (crew-lint `no-systemexit-str`). Parsers are plain

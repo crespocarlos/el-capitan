@@ -17,7 +17,7 @@ report. There is nothing to reimplement, only to call.
 A run takes roughly 30 minutes and lives in nightshift's own process, so this skill **starts and
 returns**. Never block waiting for a report; `crew e2e status` is a separate invocation. Nothing polls
 unless the user opts in (Step 3) — say that in the start message instead of waiting to be asked.
-`TASK_DIR` is the active task (`source ~/.agent/bin/task-env.sh`), empty without one.
+`TASK_DIR` is the active task (`crew-tool.py task-context --field task_dir`), empty without one.
 
 ## Step 0: preflight (always first)
 
@@ -61,9 +61,8 @@ Never paste an unmasked value, even partially, even from a local file.
 Take `PR #123` (passed as `--pr 123`), a URL, or nothing (current branch):
 
 ```bash
-~/.agent/bin/crew-pr-actions.py view --json --field \
-  number,headRefName,headRefOid,url,title,state,isDraft
-~/.agent/bin/crew-pr-actions.py repo --field nameWithOwner
+~/.agent/bin/crew-tool.py pr-read view --fields number,headRefName,headRefOid,url,title,state,isDraft
+~/.agent/bin/crew-tool.py pr-read repo --fields nameWithOwner
 ```
 
 Build nightshift's key as `<owner>__<repo>__<number>`, with `/` replaced by `__` in the repo part:
@@ -107,7 +106,7 @@ reset, not an incremental update.
 **Record the starting state** before any `--deploy` (skip for a worktree you are not deploying into):
 
 ```bash
-~/.agent/bin/crew-repo-info.py --root <worktree path> --json
+~/.agent/bin/crew-tool.py repo-facts --root <worktree path>
 ```
 
 Write the branch, HEAD SHA, every dirty path, and the yaml hash to `$TASK_DIR/e2e-state.json` (or
@@ -118,7 +117,7 @@ baseline Step 4's teardown prints a diff against — record it even when you exp
 **Auto-generate `--instructions`** rather than leaving it blank. Build one or two sentences of focus
 from what is available, and let the user edit it rather than write from scratch:
 - the SPEC's acceptance criteria (`$TASK_DIR/SPEC.md`), when a task is active;
-- the PR description (`~/.agent/bin/crew-pr-actions.py view --pr N --field body`);
+- the PR description (`~/.agent/bin/crew-tool.py pr-read view --pr N --fields body`);
 - a changed-file classification from Step 1's diff — server route/service, UI component, or
   prompt/agent file — each implying a different check worth asking the tester to run.
 

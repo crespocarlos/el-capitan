@@ -51,7 +51,7 @@ then this file. Hard constraints always apply.
 - **Be direct** — answer or act first, with no preamble, narration, recap, praise, or closing offer.
   Reports list what changed, what was verified, and what is unresolved. Format: `agent-output.mdc`.
 - **Project guidance applies by file** — before editing, testing, reviewing, or researching files,
-  run `~/.agent/bin/crew-agent-context.py` for the targets and apply every returned guidance file.
+  run `~/.agent/bin/crew-tool.py guidance` for the targets and apply every returned guidance file.
   The nearer file wins on conflict; report the conflict.
 
 ## Research

@@ -8,8 +8,8 @@ hands off. `TASK_DIR` is the review's task directory, empty for none.
 When the review finishes, record the stage and print one cost line from what the harness reported:
 
 ```bash
-~/.agent/bin/crew-metric.py "$TASK_DIR" stage_start stage=review          # before the first persona
-~/.agent/bin/crew-metric.py "$TASK_DIR" stage_end stage=review personas=<n> tokens_reported=<n|unknown>
+~/.agent/bin/crew-tool.py task-log "$TASK_DIR" --metric stage_start stage=review   # before the first persona
+~/.agent/bin/crew-tool.py task-log "$TASK_DIR" --metric stage_end stage=review personas=<n> tokens_reported=<n|unknown>
 ```
 
 `stage_end` prints the line (`review: 4 personas, 380k tokens`) and appends it to PROGRESS.md; show it
@@ -31,8 +31,8 @@ line (spec template) is what makes the script exist.
 
 ## Skipped personas in the report
 
-`crew-assemble-packages.py` skips a persona that cannot apply and records it in the review
-directory's `manifest.json` under `personas.skipped` (with the reason), and prints a per-persona size
+`crew-tool.py review-dispatch` skips a persona that cannot apply and records it in the review
+directory's `manifest.json` under `personas.skipped` (with the reason), and answers a per-persona size
 report. Name every skipped persona and its reason under `### Reviewers` in the report: a review that
 ran three lenses says why it did not run four. With `"slice": true` in `assemble.json` only
 product-flow and code-quality are sliced (callers and callees travel with a changed symbol); the

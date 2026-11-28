@@ -26,8 +26,8 @@ case "$LAST" in '' | *[!0-9]*) LAST=0 ;; esac
 [ $((NOW - LAST)) -lt "$INTERVAL" ] && exit 0
 mkdir -p -m 700 "$DIR" && printf '%s\n' "$NOW" > "$STAMP"
 
-REPO=$(basename "$(~/.agent/bin/crew-repo-info.py --field root 2>/dev/null || echo '')" 2>/dev/null || echo 'unknown')  # crew-lint: allow-swallow
-BRANCH=$(~/.agent/bin/crew-repo-info.py --field branch 2>/dev/null || echo '')  # crew-lint: allow-swallow
+REPO=$(basename "$(~/.agent/bin/crew-tool.py repo-facts --field root 2>/dev/null || echo '')" 2>/dev/null || echo 'unknown')  # crew-lint: allow-swallow
+BRANCH=$(~/.agent/bin/crew-tool.py repo-facts --field branch 2>/dev/null || echo '')  # crew-lint: allow-swallow
 MESSAGE="${REPO:-unknown}${BRANCH:+ ($BRANCH)} needs your input"
 MESSAGE=${MESSAGE//[\"\\]/}
 osascript -e "display notification \"$MESSAGE\" with title \"el-capitan\"" || true

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Hermetic checks for `crew-pr-actions.py`: the reads (fields, absence, failure, threads) and the mutation guard.
+"""Hermetic checks for `crew-tool.py pr-read` (fields, absence, failure) and `crew-pr-actions.py` (threads, the
+mutation guard).
 
 Every case runs the real CLI (in this process) with a stub `gh` first on PATH, so the tool's own
 behavior towards the outside world is what is measured. A mutation only plans without `--execute`
-and never calls gh; with it, gh is called once with the argv the plan printed. The four properties are the contract a
-prompt depends on: a field list prints bare lines in the order asked, a field gh did not return
-prints empty with exit 0, a failed call exits nonzero carrying gh's message, and `diff` passes the
-patch through byte for byte.
+and never calls gh; with it, gh is called once with the argv the plan printed. The read contract: the fields come
+back in the order asked, a field gh did not return is null, a failed call is the `gh` error carrying gh's message,
+and `diff` passes the patch through byte for byte.
 
 The fetch cases cover the flat thread shape, because the raw GraphQL envelope made every caller
 know `data.repository.pullRequest.reviewThreads` and a caller that guessed wrong got
@@ -22,7 +22,7 @@ import pytest
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / "src" / "crew" / "review" / "crew_pr_actions.py"
+TOOL = ROOT / "src" / "crew" / "tools" / "crew_pr_actions.py"
 
 PATCH = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-one\n+two\n"
 VIEW = {"number": 42, "title": "Wrap the reads", "headRefName": "refactor/gh-reads",
@@ -97,7 +97,7 @@ class Sandbox:
         self.bindir.mkdir()
         asset = self.path / ".agent" / "bin" / "pr-review-threads.graphql"
         asset.parent.mkdir(parents=True)
-        asset.write_text((ROOT / "src" / "crew" / "review" /
+        asset.write_text((ROOT / "src" / "crew" / "core" / "review" /
                           "pr-review-threads.graphql").read_text())
 
     def stub(self, body, code=0, stderr=""):
@@ -117,6 +117,11 @@ class Sandbox:
     def run(self, *arguments):
         return run(arguments, self.bindir, self.path)
 
+    def read(self, *arguments):
+        """`crew-tool.py pr-read ... --json` against the stub gh."""
+        return cli(TOOL.with_name("crew_tool.py"), "pr-read", *arguments, "--json",
+                   env={"PATH": f"{self.bindir}{os.pathsep}{os.environ.get('PATH', '')}", "HOME": str(self.path)})
+
     def calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
 
@@ -127,60 +132,49 @@ def box(tmp_path: Path) -> Sandbox:
 
 
 def test_fields(box):
-    """Three fields, in the order asked, one bare line each — the resolver's one-call saving."""
+    """Three fields, in the order asked, in one call — the resolver's one-call saving."""
     box.stub(json.dumps(VIEW))
-    result = box.run("view", "--pr", "42", "--repo", "owner/repo",
-                     "--field", "branch,title,files")
-    check("view --field exits 0", result.returncode == 0, result.stderr)
-    check("view --field prints one line per field in the order asked",
-          result.stdout.splitlines()[:3] == ["refactor/gh-reads", "Wrap the reads", "b.py a.py"],
-          result.stdout)
+    result = box.read("view", "--pr", "42", "--repo", "owner/repo", "--fields", "branch,title,files")
+    record = json.loads(result.stdout)["data"]["record"]
+    check("view --fields answers the fields in the order asked", list(record)[:2] == ["branch", "title"] and record["branch"] == "refactor/gh-reads", record)
     called = box.calls()[0]
     check("branch is asked for as headRefName", "headRefName" in called, called)
     check("the repo and PR reach gh", "--repo owner/repo" in called and " 42" in called, called)
 
 
 def test_absent_field(box):
-    """A field gh did not return prints empty and still exits 0, so a caller can test it."""
+    """A field gh did not return is null and the read still succeeds, so a caller can test it."""
     box.stub(json.dumps({"title": "only a title"}))
-    result = box.run("view", "--pr", "42", "--field", "branch,title")
-    check("a missing field exits 0", result.returncode == 0, result.stderr)
-    check("a missing field prints an empty line",
-          result.stdout.splitlines() == ["", "only a title"], result.stdout)
+    result = box.read("view", "--pr", "42", "--fields", "branch,title")
+    check("a missing field is null", json.loads(result.stdout)["data"]["record"] == {"branch": None, "title": "only a title"}, result.stdout)
 
 
 def test_failing_gh(box):
-    """A failed call is loud: nonzero exit and gh's own message, never an empty answer."""
+    """A failed call is loud: the gh error code, nonzero exit and gh's own message, never an empty answer."""
     box.stub("{}", code=1, stderr="HTTP 404: Not Found (https://api.github.com)")
-    result = box.run("view", "--pr", "999", "--field", "title")
-    check("a failing gh exits nonzero", result.returncode != 0, result.stdout)
-    check("a failing gh carries its own message", "HTTP 404" in result.stderr, result.stderr)
-    check("a failing gh prints no field line", result.stdout.strip() == "", result.stdout)
+    result = box.read("view", "--pr", "999", "--fields", "title")
+    error = json.loads(result.stdout)["error"]
+    check("a failing gh exits nonzero with its own message", result.returncode != 0 and error["code"] == "gh" and "HTTP 404" in error["message"], error)
 
 
 def test_diff(box):
-    """`diff` writes the patch to stdout unchanged, so a caller redirects it to a file."""
+    """`diff` carries the patch unchanged."""
     box.stub(PATCH)
-    result = box.run("diff", "--pr", "42", "--repo", "owner/repo")
-    check("diff exits 0", result.returncode == 0, result.stderr)
-    check("diff is byte-for-byte", result.stdout == PATCH, repr(result.stdout))
+    result = box.read("diff", "--pr", "42", "--repo", "owner/repo")
+    check("diff is byte-for-byte", json.loads(result.stdout)["data"]["diff"] == PATCH, result.stdout)
     check("diff names the PR", "pr diff 42" in box.calls()[0], box.calls())
 
 
 def test_other_reads(box):
     """`repo` and `issue` answer the two fields the prompts asked gh for directly."""
     box.stub(json.dumps({"nameWithOwner": "elastic/el-capitan"}))
-    result = box.run("repo", "--field", "nameWithOwner")
-    check("repo --field nameWithOwner", result.stdout.strip() == "elastic/el-capitan", result.stdout)
+    result = box.read("repo", "--fields", "nameWithOwner")
+    check("repo nameWithOwner", json.loads(result.stdout)["data"]["record"] == {"nameWithOwner": "elastic/el-capitan"}, result.stdout)
     check("repo view asks for the field", "repo view" in box.calls()[0], box.calls())
-
     box.stub(json.dumps({"title": "A defect", "body": "Steps:\n1. run it"}))
-    result = box.run("issue", "--number", "7", "--repo", "owner/repo", "--field", "title,body")
-    check("issue --field exits 0", result.returncode == 0, result.stderr)
-    lines = result.stdout.splitlines()
-    check("issue prints the title then the body", lines[0] == "A defect" and "Steps:" in lines[1],
-          lines)
-    check("a multiline body stays one line", len(lines) == 2, lines)
+    result = box.read("issue", "--number", "7", "--repo", "owner/repo", "--fields", "title,body")
+    record = json.loads(result.stdout)["data"]["record"]
+    check("issue answers the title and the body", record == {"title": "A defect", "body": "Steps:\n1. run it"}, result.stdout)
 
 
 def test_fetch_shape(box):

@@ -2,7 +2,7 @@
 
 A model that receives a silently cut list assumes the list was complete, so every truncation prints
 one marker naming what was dropped and how to get the rest. The edge rule is the one
-`crew-task-context.py` already uses: append-only logs and reports whose identity fields come last keep
+`task-context` already uses: append-only logs and reports whose identity fields come last keep
 their tail, everything else keeps its head.
 """
 

@@ -15,7 +15,7 @@ PERSONAS = ("reviewer-adversarial", "reviewer-architecture", "reviewer-code-qual
             "reviewer-prompt-quality")
 # Agent -> (carrier holding the pointer, the dispatch or packaging file that delivers it, the text naming it there).
 CARRIERS = {
-    **{name: (REFS + "reviewer-reads.md", "src/crew/review/assemble_inputs.py", "reviewer-reads.md")
+    **{name: (REFS + "reviewer-reads.md", "src/crew/core/review/assemble_inputs.py", "reviewer-reads.md")
        for name in PERSONAS},
     **{name: (REFS + "critic-contract.md", ".cursor/agents/crew-specwriter.md", "references/critic-contract.md")
        for name in ("specwriter-adversarial", "specwriter-scope")},

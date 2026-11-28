@@ -14,8 +14,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from crew.task.ls_data import configured_scope
-from crew.task.task_gc import ConfigError
+from crew.core.task.ls_data import configured_scope
+from crew.core.task.task_gc import ConfigError
 from crew.tui.tui_github import fetch, load_facts, save_facts
 from crew.tui.tui_model import Filters, collect, parse_filter, render
 from crew.tui.tui_views import VIEWS

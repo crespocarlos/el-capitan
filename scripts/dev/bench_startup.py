@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 # The commands the prompts call most often (count of `~/.agent/bin/<name>` references).
-COMMANDS = tuple(f"crew-{name}.py" for name in ("task", "mem", "repo-info", "review-findings", "pr-actions", "task-context", "metric", "verify"))
+COMMANDS = tuple(f"crew-{name}.py" for name in ("task", "mem", "tool", "review-findings", "pr-actions", "worktree", "ls", "verify"))
 
 
 def median_ms(launcher: Path, runs: int) -> float:

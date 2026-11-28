@@ -40,16 +40,19 @@ DENY = [
     ("sudo -u me git reset --hard", "clean", "destructive-git"),
     ("echo . | xargs git clean -fdx", "clean", "destructive-git"),
     ("find . -exec git reset --hard \\;", "clean", "destructive-git"),
-    # Compound commands: the shfmt path walks the tree, the awk path splits on their keywords.
+    # Compound commands: the shfmt tree walks into each one.
     ("case x in a) git reset --hard;; esac", "clean", "destructive-git"),
     ("f() { git clean -fdx; }; f", "clean", "destructive-git"),
     ("export A=$(git reset --hard)", "clean", "destructive-git"),
     ("for i in $(git reset --hard); do :; done", "clean", "destructive-git"),
     ("[[ -n $(git push -f) ]] && echo é", "clean", "destructive-git"),
     ("echo 'git reset --hard' | cat | bash", "clean", "destructive-git"),
-    # What shfmt cannot parse, at the top or in a payload, is read by awk, never allowed for it.
-    ("git reset --hard; fi", "clean", "destructive-git"),
-    ("bash -c 'git reset --hard; fi'", "clean", "destructive-git"),
+    # What shfmt cannot parse, at the top or in a payload, is too complex to judge, never allowed.
+    ("git reset --hard; fi", "clean", "too-complex"),
+    ("bash -c 'git reset --hard; fi'", "clean", "too-complex"),
+    # Quoted parentheses and a heredoc body's command substitution, as bash reads them.
+    ('echo $(echo ")"; git reset --hard)', "clean", "destructive-git"),
+    ("cat <<EOF\n$(git reset --hard)\nEOF", "clean", "destructive-git"),
     # Past the payload cap the command is too complex to judge, so it is denied.
     ("echo " + "$(:) " * 70, "clean", "too-complex"),
     # A `cd` into a name with a control character leaves the directory where it was, and a control
@@ -297,29 +300,16 @@ ALLOW = [
     ("python3 - <<'PY'\nimport os\nout = os.environ['TMPDIR'] + '/x.txt'\nopen(out, 'w').write(open('tracked.txt').read())\nPY", "source"),
 ]
 
-# Every row above runs through both parsers of `hook_segments` (shfmt on PATH, and PATH without it)
-# and must get the same verdict from each. These rows are the listed exceptions, `(command, cwd, by
-# with shfmt, by with awk, reason)`: the commands the awk normaliser misreads and the shfmt tree gets
-# right, so shfmt's verdict is the correct one.
-PARSERS_DIFFER = [
-    ('echo $(echo ")"; git reset --hard)', "clean", "destructive-git", None,
-     "awk's `$(...)` matcher skips single quotes only: the quoted `)` ends the payload, the rest reads as quoted text"),
-    ("cat <<EOF\n$(git reset --hard)\nEOF", "clean", "destructive-git", None,
-     "bash expands `$(...)` in an unquoted heredoc body; awk keeps every heredoc body as data"),
-    ('echo "$(echo "a)") git reset --hard"', "clean", None, "destructive-git",
-     "the same quoted `)`: awk ends the payload early and reads the quoted tail as an unquoted `git` word"),
-]
-
 # `(command, cwd, tool, env, by)` with `tool` missing from PATH. Without gitleaks the credentials rule denies only the
-# commands it scans (a commit, a push, `gh pr create`); a failure before any rule runs (no `awk` for the normaliser, no
-# `jq` for the input) lets the command through with exactly one line on stderr.
+# commands it scans (a commit, a push, `gh pr create`). Without shfmt the shell guard cannot parse anything, so it denies
+# (fail closed, with the install hint); no `jq` for the input lets the command through with one line on stderr.
 MISSING = [
     ("git commit -m x", "clean", "gitleaks", {}, "credentials"),
     ("git push origin main", "clean", "gitleaks", {}, "credentials"),
     ("gh pr create --draft --repo example/upstream", "clean", "gitleaks", {}, "credentials"),
     ("ls -la", "clean", "gitleaks", {}, None),
     ("git status && gh pr view 1", "clean", "gitleaks", {}, None),
-    ("ls -la", "clean", "awk", {}, None),
+    ("git reset --hard", "clean", "shfmt", {}, "too-complex"),
 ]
 
 # `(command, cwd, env, by)` with the hook's environment changed: the documented off switches

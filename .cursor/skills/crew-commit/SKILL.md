@@ -16,10 +16,10 @@ Run these simultaneously:
 
 ```bash
 git diff --staged --stat          # size check + file list
-~/.agent/bin/crew-repo-info.py --field staged     # file list for scope check
+~/.agent/bin/crew-tool.py repo-facts --field staged     # file list for scope check
 
-source ~/.agent/bin/task-env.sh
-~/.agent/bin/crew-task-context.py --artifacts spec,review --max-chars 4000
+TASK_DIR=$(~/.agent/bin/crew-tool.py task-context --field task_dir)
+~/.agent/bin/crew-tool.py task-context --artifacts spec,review --max-chars 4000
 ```
 
 If nothing staged, run `git status --short` and show the user what's unstaged. Ask which files to
@@ -34,9 +34,9 @@ review:**
 The review records the identity it approved. Verify all three:
 
 ```bash
-~/.agent/bin/crew-repo-info.py --field head          # compare to "Reviewed at:" in REVIEW.md
-~/.agent/bin/crew-repo-info.py --field staged | sort # compare to "### Files reviewed"
-~/.agent/bin/crew-repo-info.py --field staged_dirty  # must be empty: no unstaged edits
+~/.agent/bin/crew-tool.py repo-facts --field head          # compare to "Reviewed at:" in REVIEW.md
+~/.agent/bin/crew-tool.py repo-facts --field staged | sort # compare to "### Files reviewed"
+~/.agent/bin/crew-tool.py repo-facts --field staged_dirty  # must be empty: no unstaged edits
 ```
 
 Compare `HEAD` against the `Reviewed at:` line, the staged list against `### Files reviewed`, and
@@ -148,11 +148,8 @@ After a successful commit, log the event using the already-resolved `$TASK_DIR`.
 change pipeline state, so this is a `METRIC` audit line, not a `TRANSITION`:
 
 ```bash
-if [ "${CREW_TASK_STATE:-ok}" = "error" ]; then
-  echo "warning: task state unreadable — commit not logged to PROGRESS.md" >&2
-elif [ -n "$TASK_DIR" ]; then
-  ~/.agent/bin/crew-metric.py "$TASK_DIR" commit sha="$(~/.agent/bin/crew-repo-info.py --field head_short)"
-fi
+[ -z "$TASK_DIR" ] || ~/.agent/bin/crew-tool.py task-log "$TASK_DIR" --metric commit \
+  sha="$(~/.agent/bin/crew-tool.py repo-facts --field head_short)"
 ```
 
 ## Plain-language gates

@@ -14,7 +14,7 @@ ANCHOR_CACHE="$HOME/.agent/.anchor"
 # never block a turn, so every failure here is a silent no-op by design (crew-lint: allow-swallow).
 anchor_line() {
   local task title status branch
-  task=$(~/.agent/bin/crew-resolve-task-dir.py 2>/dev/null) || return 0   # crew-lint: allow-swallow
+  task=$(~/.agent/bin/crew-tool.py task-context --field task_dir 2>/dev/null) || return 0   # crew-lint: allow-swallow
   [ -n "$task" ] || return 0
   [ -f "$task/SPEC.md" ] || return 0
   title=$(head -1 "$task/SPEC.md" | sed 's/^#* *//' | tr -d '"\]\n[:cntrl:]')
@@ -22,7 +22,7 @@ anchor_line() {
   # status set — the anchor says so rather than silently emitting nothing.
   status=$(~/.agent/bin/crew-ls.py --status-file "$task/SPEC.md" 2>/dev/null | tr -d '[:space:]"\][:cntrl:]')   # crew-lint: allow-swallow
   [ -n "$status" ] || status=unset
-  branch=$(~/.agent/bin/crew-repo-info.py --field branch 2>/dev/null) || branch=""   # crew-lint: allow-swallow
+  branch=$(~/.agent/bin/crew-tool.py repo-facts --field branch 2>/dev/null) || branch=""   # crew-lint: allow-swallow
   printf '[CREW: task="%s" status=%s branch="%s" task_dir="%s"]\n' \
     "$title" "$status" "${branch//\"/}" "${task//\"/}"
 }

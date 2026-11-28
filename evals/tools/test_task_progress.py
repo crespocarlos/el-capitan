@@ -7,6 +7,7 @@ owner/repo parser is the one in `lib.git`; its accepted and refused URL shapes a
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Iterator
@@ -15,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
+from crew.core.task import task_progress
 from crew.lib.clock import parse_stamp, utc_stamp
 from crew.lib.git import slug_from_url
-from crew.task import task_progress
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
@@ -124,8 +125,11 @@ def test_blocked(tmp: Path) -> None:
 def test_metric(tmp: Path) -> None:
     directory = task(tmp, "m")
     task_progress.append_metric(directory, "review run=r1 personas=2 tokens_reported=10")
-    check("has_metric finds an appended METRIC by prefix", task_progress.has_metric(directory, "review run=r1 "))
-    check("has_metric is False for another run", not task_progress.has_metric(directory, "review run=r2 "))
+    check("has_metric finds an appended METRIC by event and field", task_progress.has_metric(directory, "review", run="r1"))
+    check("has_metric is False for another run", not task_progress.has_metric(directory, "review", run="r2"))
+    entry = task_progress.read_entries(directory)[-1]
+    expected = {"schema_version": 1, "event": "review", "run": "r1", "personas": 2, "tokens_reported": 10}
+    check("the entry is one JSON object, counts as numbers", json.loads(entry.body) == expected, entry.body)
     with pytest.raises(ValueError):
         task_progress.append_metric(directory, "  ")
     with pytest.raises(FileNotFoundError):

@@ -29,9 +29,8 @@ enforces it, so a raise above it passes every check.
 For each finding the user did not approve (a Needs Input row left unanswered counts as `deferred`):
 
 ```bash
-~/.agent/bin/crew-review-findings.py outcome --review-dir <review-dir> --fingerprint <id> \
-  --persona <persona> --label <label> --outcome <rejected|deferred|skipped> \
-  --reason <reason> [--memory-id <id>]
+~/.agent/bin/crew-tool.py review-record-outcome <review-dir> <id> <persona> <label> \
+  <rejected|deferred|skipped> <reason> [--memory-id <id> ...]
 ```
 
 It appends immutable JSONL records to `<review-dir>/../outcomes.jsonl`. Log `fixed` only in Step 4,

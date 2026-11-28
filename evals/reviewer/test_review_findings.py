@@ -17,11 +17,16 @@ from cli_runner import launcher
 from cli_runner import run as cli
 from harness_hook import run as hook
 
-TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_review_findings.py"
+TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "tools" / "crew_review_findings.py"
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
     return cli(TOOL, *args)
+
+
+def verb(*args: str) -> subprocess.CompletedProcess:
+    """One `crew-tool.py` verb: `review-finish`, `review-record-outcome`."""
+    return cli(TOOL.with_name("crew_tool.py"), *args)
 
 
 def no_findings(tmp: Path) -> str:
@@ -1090,7 +1095,7 @@ Handoff to adversarial: src/reader.py:40 — a partial write leaves the cache fi
 def test_persist_accepts_the_read_beyond_and_handoff_lines(tmp: Path) -> None:
     """The reviewer contract puts `Read beyond the package:` after the Assessment line and a `Handoff to <lens>:`
     line after the findings; neither is a finding, and a reply holding both still saves and persists."""
-    from crew.review.review_vocabulary import LABEL_LINE, LABELED_FINDING
+    from crew.core.review.review_vocabulary import LABEL_LINE, LABELED_FINDING
 
     review_dir, report = provenance_review(tmp, ("architecture",))
     assert save_out(review_dir, "architecture", CONTRACT_REPLY).returncode == 0
@@ -1250,7 +1255,8 @@ def test_capture_hook_records_usage_through_an_accepted_marker_only(tmp: Path, a
     line = marker(review_dir, "adversarial") if accepted else f"crew-review-out: {review_dir} adversarial {'0' * 32}"
     done = capture_hook(tmp, f"{line}\nReview this package.", "a1", RAW_REPLY)
     progress = (task / "PROGRESS.md").read_text() if (task / "PROGRESS.md").exists() else ""
-    assert done.returncode == 0 and ("agent_end agent=general-purpose persona=adversarial agent_id=a1 tokens=150" in progress) is accepted, (
+    recorded = '"event":"agent_end","agent":"general-purpose","persona":"adversarial","agent_id":"a1","tokens":150'
+    assert done.returncode == 0 and (recorded in progress) is accepted, (
         done.stdout, progress)
 
 
@@ -1326,7 +1332,7 @@ def consolidate_raw(directory: Path, rows: list) -> tuple[Path, subprocess.Compl
     (directory / "hunks.json").write_text(json.dumps({"files": [], "hunks": [
         {"id": "h1", "file": "a.ts", "lines": [{"t": "+", "s": "x", "n": n} for n in range(1, 8)]},
         {"id": "h2", "file": "a.ts", "lines": [{"t": "+", "s": "x", "n": n} for n in range(20, 30)]}]}))
-    return directory, run("consolidate", "--review-dir", str(directory))
+    return directory, verb("review-finish", str(directory))
 
 
 def test_consolidate_groups_overlap_only_and_never_rewrites_a_label(tmp: Path) -> None:
@@ -1362,7 +1368,7 @@ def test_consolidation_renders_a_report_persist_accepts(tmp: Path) -> None:
     assert done.returncode == 0, done.stderr
     consolidation = review_dir / "consolidation.json"
     assert run("normalize", str(review_dir / "candidates.json"), "--output", str(consolidation)).returncode == 0
-    rendered = run("consolidate", "--review-dir", str(review_dir), "--render", "--mode", "changes")
+    rendered = verb("review-finish", str(review_dir), "--render", "--mode", "changes")
     assert rendered.returncode == 0, rendered.stderr
     text = (review_dir / "report.md").read_text()
     assert "merged 1 duplicates" in text and "originals:" in text and "Guard absent on empty row" in text, text
@@ -1396,7 +1402,7 @@ def test_a_rendered_body_is_never_read_as_structure(tmp: Path, comment: str) -> 
     consolidation = review_dir / "consolidation.json"
     normalized = run("normalize", str(review_dir / "candidates.json"), "--output", str(consolidation))
     assert normalized.returncode == 0, normalized.stderr
-    assert run("consolidate", "--review-dir", str(review_dir), "--render", "--mode", "changes").returncode == 0
+    assert verb("review-finish", str(review_dir), "--render", "--mode", "changes").returncode == 0
     assert f"   > {comment}\n" in (review_dir / "report.md").read_text()
     out_dir = tmp / "task" / "review" / "20261126000000"
     out_dir.mkdir(parents=True)
@@ -1437,7 +1443,7 @@ def test_two_groups_with_one_title_keep_their_own_originals(tmp: Path) -> None:
     assert done.returncode == 0, done.stderr
     assert len(json.loads((review_dir / "candidates.json").read_text())["groups"]) == 2
     assert run("normalize", str(review_dir / "candidates.json"), "--output", str(review_dir / "consolidation.json")).returncode == 0
-    assert run("consolidate", "--review-dir", str(review_dir), "--render", "--mode", "changes").returncode == 0
+    assert verb("review-finish", str(review_dir), "--render", "--mode", "changes").returncode == 0
     text = (review_dir / "report.md").read_text()
     first, second = text.split("\n2. ")
     assert "Duplicate of the first group" in first and "Duplicate of the second group" not in first, text
@@ -1630,8 +1636,7 @@ def outcome_dir(tmp: Path) -> Path:
 
 
 def log_outcome(directory: Path, fingerprint: str, outcome: str, review_dir: str = "", *extra: str) -> subprocess.CompletedProcess:
-    return run("outcome", "--review-dir", review_dir or str(directory), "--fingerprint", fingerprint, "--persona", "adversarial",
-               "--label", "attention", "--outcome", outcome, "--reason", "applied in the pass", *extra)
+    return verb("review-record-outcome", review_dir or str(directory), fingerprint, "adversarial", "attention", outcome, "applied in the pass", *extra)
 
 
 def outcomes(directory: Path, *acted: str) -> tuple[int, dict]:
@@ -1701,15 +1706,15 @@ def test_a_score_move_recorded_as_an_outcome_needs_its_evidence(tmp: Path) -> No
     sentence = ("--validation", "ran the probe; the guard fires first")
     assert "--validation" in move("--confidence", "4", "--confidence-from", "2").stderr
     assert "--probe refuted" in move("--confidence", "1", "--confidence-from", "4", *sentence).stderr
-    refuted = move("--confidence", "1", "--confidence-from", "4", *sentence, "--probe", "refuted")
-    assert refuted.returncode == 0 and json.loads(refuted.stdout)["probe"] == "refuted", refuted.stderr
+    refuted = move("--confidence", "1", "--confidence-from", "4", *sentence, "--probe", "refuted", "--json")
+    assert refuted.returncode == 0 and json.loads(refuted.stdout)["data"]["probe"] == "refuted", refuted.stderr
     assert "--validation" in move("--confidence", "1", "--confidence-from", "4", "--probe", "refuted").stderr
     assert "cannot also raise" in move("--confidence", "4", "--confidence-from", "2", *sentence, "--probe", "refuted").stderr
 
 
 def test_review_dir_prefers_a_writable_task_and_falls_back_to_a_named_temp_path(tmp: Path) -> None:
     """The task directory when writable (not in PR mode); else a temp path naming the repo, the reason on stderr."""
-    from crew.review import review_workspace
+    from crew.core.review import review_workspace
     task = tmp / "task"
     task.mkdir()
     (task / ".task-id").write_text(json.dumps({"slug": "probe"}))

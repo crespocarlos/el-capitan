@@ -32,7 +32,7 @@ no package, or never dispatched at all.
    dispatched.
 3. **Context tier** — assign the persona to a tier in
    `.cursor/agents/crew-reviewer/references/context-tiers.md`.
-4. **Package assembly** — add the name to `PRIMARY_KINDS` in `crew-assemble-packages.py` with the
+4. **Package assembly** — add the name to `PRIMARY_KINDS` in `src/crew/core/review/assemble_inputs.py` with the
    layer kinds its lens reads first. The tool derives its persona list from `PERSONAS`, so a name
    missing from `PRIMARY_KINDS` stops the run with a message naming it instead of silently writing no
    package.

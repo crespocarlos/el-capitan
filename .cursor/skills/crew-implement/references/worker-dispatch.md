@@ -52,8 +52,8 @@ it on exit, and the orchestrator removes it as soon as a worker returns or fails
 never leaves the tree denied for 6 hours:
 
 ```bash
-~/.agent/bin/crew-task.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"   # Step 5, before the first dispatch
-~/.agent/bin/crew-task.py lock remove "$WORK_DIR"     # builder's last step; the orchestrator's too, when a worker returns or fails
+~/.agent/bin/crew-tool.py task-lock write "$WORK_DIR" "$(basename "$TASK_DIR")"    # Step 5, before the first dispatch
+~/.agent/bin/crew-tool.py task-lock remove "$WORK_DIR" "$(basename "$TASK_DIR")"   # builder's last step; the orchestrator's too, when a worker returns or fails
 ```
 
 The lock is `<tree root>/.crew-worker.lock` (`task=<id>`, `started=<epoch>`), excluded from git
@@ -84,7 +84,7 @@ An autonomous run that pauses or stops (open question, scope change, stacked bas
 blocked gate) records why, once, before the final message:
 
 ```bash
-~/.agent/bin/crew-task.py blocked "$TASK_DIR" "<reason in one line>"
+~/.agent/bin/crew-tool.py task-transition block "$TASK_DIR" --reason "<reason in one line>"
 ```
 
 `crew ls` shows the line until the next stage writes its own transition.
@@ -130,7 +130,7 @@ Under Claude Code the `agent_end` entries make the stage's cost line, so `tokens
 enough. Elsewhere tokens exist only in the harness, so record what it reported when the workers finish:
 
 ```bash
-~/.agent/bin/crew-metric.py "$TASK_DIR" stage_end stage=implement workers=<n> tokens_reported=<n|unknown>
+~/.agent/bin/crew-tool.py task-log "$TASK_DIR" --metric stage_end stage=implement workers=<n> tokens_reported=<n|unknown>
 ```
 
 It validates the keys, appends the line to PROGRESS.md and prints `implement: 3 workers, 410k tokens`;

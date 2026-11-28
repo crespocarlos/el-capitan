@@ -10,15 +10,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import pathlib
 import subprocess
-import sys
 from pathlib import Path
 
 from cli_runner import run as cli
 
-TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_assemble_packages.py"
+TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "tools" / "crew_tool.py"
+
+
+def dispatch(run: Path) -> subprocess.CompletedProcess:
+    """`crew-tool.py review-dispatch <run>`: the packages, then the size, skip and slice lines."""
+    return cli(TOOL, "review-dispatch", str(run))
 
 DIFF = """diff --git a/prompt.md b/prompt.md
 --- a/prompt.md
@@ -61,7 +64,7 @@ def build(tmp: Path, config: dict | None = None, guidance: dict | None = None) -
     payload = {"repo": str(repo), "prompt_files": ["prompt.md"]}
     payload.update(config or {})
     (run / "assemble.json").write_text(json.dumps(payload))
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 0, result.stderr
     return run
 
@@ -109,7 +112,7 @@ def test_lens_questions_come_last_and_check_packages_requires_them(tmp: Path) ->
     assert text.index("# Prompt tier") < text.index("## Questions for this lens"), "questions follow the evidence"
     assert f"1. {asked[0]}" in section and f"2. {asked[1]}" in section
     assert "## Questions for this lens" not in read(run, "adversarial"), "a persona without questions gets no section"
-    findings_tool = TOOL.with_name("crew-review-findings.py")
+    findings_tool = TOOL.with_name("crew_review_findings.py")
     ok = cli(findings_tool, "check-packages", "--review-dir", str(run), "--personas", "prompt-quality")
     assert ok.returncode == 0, ok.stderr
     missing = cli(findings_tool, "check-packages", "--review-dir", str(run), "--personas", "adversarial")
@@ -119,7 +122,7 @@ def test_lens_questions_come_last_and_check_packages_requires_them(tmp: Path) ->
 def test_a_missing_layer_map_still_produces_a_package(tmp: Path) -> None:
     run = build(tmp)
     (run / "layers.json").unlink()
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 0, result.stderr
     text = read(run, "adversarial")
     assert "## Reading map" not in text, "no map means no map, not an empty one"
@@ -132,7 +135,7 @@ def test_elision_falls_back_when_the_index_disagrees(tmp: Path) -> None:
     (run / "hunks.json").write_text(json.dumps({
         "files": [{"path": "prompt.md", "hunkIds": ["h1", "h2"]}],
         "hunks": [{"id": "h1", "file": "prompt.md"}, {"id": "h2", "file": "prompt.md"}]}))
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 0, result.stderr
     assert "sent whole" in result.stdout, "the fallback must be visible in the run output"
     tier = read(run, "prompt-quality")
@@ -142,7 +145,7 @@ def test_elision_falls_back_when_the_index_disagrees(tmp: Path) -> None:
 def test_elision_falls_back_without_a_hunk_index(tmp: Path) -> None:
     run = build(tmp)
     (run / "hunks.json").unlink()
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 0, result.stderr
     tier = read(run, "prompt-quality")
     assert "… (lines" not in tier and "new rule" in tier
@@ -158,7 +161,7 @@ def test_a_keep_list_that_matches_nothing_is_refused(tmp: Path) -> None:
     (run / "agent-context.json").write_text(json.dumps({"files": guidance}))
     (run / "assemble.json").write_text(json.dumps({
         "guidance_keep": {"code-quality": ["Code Style Guidelines"]}}))
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 2
     assert "names no section" in result.stderr and "Tests" in result.stderr
 
@@ -174,7 +177,7 @@ def test_a_refusal_leaves_no_half_written_package_set(tmp: Path) -> None:
     (run / "adversarial.in.md").write_text("STALE from an earlier run")
     (run / "assemble.json").write_text(json.dumps({
         "guidance_keep": {"adversarial": ["Tests"], "prompt-quality": ["No Such Section"]}}))
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 2
     assert (run / "adversarial.in.md").read_text() == "STALE from an earlier run"
 
@@ -189,12 +192,12 @@ def test_pr_mode_refuses_local_excerpts(tmp: Path) -> None:
     (run / "agent-context.json").write_text(json.dumps({"files": {}}))
     pr = {"mode_kind": "pr", "consumers": [["prompt.md", 1, 2, "a consumer"]]}
     (run / "assemble.json").write_text(json.dumps(pr))
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 2
     assert "PR mode" in result.stderr and "consumers" in result.stderr
     # With the extras removed, the same run packages normally.
     (run / "assemble.json").write_text(json.dumps({"mode_kind": "pr", "repo": str(tmp)}))
-    assert cli(TOOL, str(run)).returncode == 0
+    assert dispatch(run).returncode == 0
 
 
 def test_a_layer_without_kind_or_title_still_packages(tmp: Path) -> None:
@@ -202,7 +205,7 @@ def test_a_layer_without_kind_or_title_still_packages(tmp: Path) -> None:
     run = build(tmp)
     (run / "layers.json").write_text(json.dumps({"layers": [
         {"id": "L1", "explainer": "why", "reviewFocus": "- check", "hunks": ["h1"]}]}))
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 0, result.stderr
     text = read(run, "code-quality")
     assert "### 1. layer — L1" in text and "Explain: why" in text
@@ -211,7 +214,8 @@ def test_a_layer_without_kind_or_title_still_packages(tmp: Path) -> None:
 
 def test_the_builders_unverified_claims_reach_every_persona(tmp: Path) -> None:
     report = tmp / "REPORT.md"
-    report.write_text("### Unverified claims\n- cursor runs the hook — verify: `bash run.sh`\n\n### Files Changed\na\n")
+    data = {"schema_version": 1, "unverified_claims": [{"claim": "cursor runs the hook", "verify": "bash run.sh"}]}
+    report.write_text(f"### Report data\n```json\n{json.dumps(data)}\n```\n")
     run = build(tmp / "new", {"report": str(report)})
     for persona in ("adversarial", "architecture", "code-quality", "product-flow", "prompt-quality"):
         text = read(run, persona)
@@ -230,33 +234,23 @@ def test_a_report_without_the_section_changes_nothing(tmp: Path) -> None:
 def test_missing_inputs_are_reported(tmp: Path) -> None:
     run = tmp / "review" / "20260101000001"
     run.mkdir(parents=True)
-    result = cli(TOOL, str(run))
+    result = dispatch(run)
     assert result.returncode == 2 and "package.diff" in result.stderr
 
 
 def test_guidance_that_failed_to_load_is_refused_not_a_traceback(tmp: Path) -> None:
-    """`crew-agent-context.py` prints nothing when it fails, so a redirect leaves an empty file: that is a failed
-    guidance call, refused with the fix (exit 2, no packages written), and so is a missing file."""
+    """An empty or missing `agent-context.json` is a failed guidance step, refused with the fix (exit 2, no packages
+    written)."""
     run = build(tmp)
     for persona in ("adversarial", "code-quality"):
         (run / f"{persona}.in.md").unlink()
     for state, contents in (("empty", ""), ("missing", None)):
         path = run / "agent-context.json"
         path.write_text(contents) if contents is not None else path.unlink()
-        result = cli(TOOL, str(run))
+        result = dispatch(run)
         assert result.returncode == 2 and "Traceback" not in result.stderr, result.stderr
-        assert f"agent-context.json is {state}: run crew-agent-context.py from the reviewed repo's checkout with --root" \
-            in result.stderr, result.stderr
+        assert f"agent-context.json is {state}: rerun crew-tool.py review-prepare" in result.stderr, result.stderr
         assert not (run / "adversarial.in.md").exists(), state
-
-
-def test_the_guidance_tool_prints_nothing_outside_a_checkout(tmp: Path) -> None:
-    """Exit 2 with the --root hint on stderr and an empty stdout, the empty file the refusal above names."""
-    tool = TOOL.parents[1] / "task" / "crew_agent_context.py"
-    (tmp / "plain").mkdir()
-    result = subprocess.run([sys.executable, str(tool), "x.py"], cwd=tmp / "plain", capture_output=True, text=True,
-                            env={**os.environ, "GIT_CEILING_DIRECTORIES": str(tmp)})
-    assert result.returncode == 2 and result.stdout == "" and "--root <checkout>" in result.stderr, result.stderr
 
 
 def file_diff(path: str, body: str) -> str:
@@ -279,7 +273,7 @@ def custom_run(tmp: Path, files: dict[str, str], layers: list[dict], config: dic
     (run / "mem.md").write_text("none\n")
     (run / "agent-context.json").write_text(json.dumps({"files": {}}))
     (run / "assemble.json").write_text(json.dumps(config or {}))
-    done = cli(TOOL, str(run))
+    done = dispatch(run)
     assert done.returncode == 0, done.stderr
     return run, done.stdout
 
@@ -331,7 +325,7 @@ def test_slicing_is_opt_in_and_keeps_every_hunk_reachable(tmp: Path) -> None:
 
 
 def test_the_coverage_gate_refuses_a_slice_that_would_lose_a_hunk(tmp: Path) -> None:
-    from crew.review import assemble_build
+    from crew.core.review import assemble_build
     diff = "".join(file_diff(p, b) for p, b in CODE_FILES.items())
     hunks = {"hunks": [{"id": f"h{i}", "file": p} for i, p in enumerate(CODE_FILES, 1)]}
     layers = [{"kind": "ui", "hunks": ["h1"]}, {"kind": "core", "hunks": ["h2"]}]
@@ -357,12 +351,12 @@ def layout(tmp: Path, config: dict | None = None) -> tuple[Path, str]:
     repo = tmp / "repo"
     (repo / "prompts").mkdir(parents=True)
     (repo / "prompts" / "rule.md").write_text("# Rule\n\n## Rule\nnew wording\nextra wording\nkeep this line\n")
-    (repo / "src" / "crew" / "review").mkdir(parents=True)
-    (repo / "src" / "crew" / "review" / "assemble_build.py").write_text(
+    (repo / "src" / "crew" / "core" / "review").mkdir(parents=True)
+    (repo / "src" / "crew" / "core" / "review" / "assemble_build.py").write_text(
         "def build(persona, review_dir, config, shared, hunks_json):\n    report = {\"whole\": []}\n    parts = [shared]\n    return parts\n")
     previous = tmp / "review" / "20260101000000"
     previous.mkdir(parents=True)
-    (previous / "consolidation.json").write_text(json.dumps([{"file": "src/crew/review/assemble_build.py", "line": 18, "label": "nit",
+    (previous / "consolidation.json").write_text(json.dumps([{"file": "src/crew/core/review/assemble_build.py", "line": 18, "label": "nit",
                                                                "fingerprint": "aaa", "title": "The build reads the diff twice", "disposition": "patch"}]))
     review = tmp / "review" / "20260102000000"
     review.mkdir(parents=True)
@@ -371,10 +365,10 @@ def layout(tmp: Path, config: dict | None = None) -> tuple[Path, str]:
     for persona in PERSONAS:
         (review / f"spec.{persona}.md").write_text(f"SPEC for {persona}\n")
     payload = {"repo": str(repo), "size_gate": "Size gate: full diff — 2 files, 4 changed lines\n",
-               "consumers": [["src/crew/review/assemble_build.py", 18, 21, "the builder"]], "prompt_files": ["prompts/rule.md"],
+               "consumers": [["src/crew/core/review/assemble_build.py", 18, 21, "the builder"]], "prompt_files": ["prompts/rule.md"],
                "prior_review_dir": str(previous), "guidance_keep": {"code-quality": ["Testing"]}, **(config or {})}
     (review / "assemble.json").write_text(json.dumps(payload))
-    result = cli(TOOL, str(review))
+    result = dispatch(review)
     assert result.returncode == 0, result.stderr
     return review, result.stdout
 
@@ -422,7 +416,7 @@ def test_every_package_opens_with_both_contract_parts_as_one_text(tmp: Path) -> 
 
 def test_a_prompt_quality_build_reads_the_diff_once(tmp: Path) -> None:
     review, _ = layout(tmp, {"guidance_keep": {}})
-    from crew.review import assemble_build
+    from crew.core.review import assemble_build
     original, reads = pathlib.Path.read_text, []
 
     def counting(self: Path, *args: object, **kwargs: object) -> str:
@@ -456,7 +450,7 @@ def prior_dir(tmp: Path, findings: list | None) -> Path:
 
 
 def test_the_prior_block_lists_findings_with_the_authors_decision_only_when_recorded(tmp: Path) -> None:
-    from crew.review.assemble_inputs import prior_section
+    from crew.core.review.assemble_inputs import prior_section
 
     directory = prior_dir(tmp, [PRIOR, dict(PRIOR, fingerprint="bbb", title="word " * 200)])
     block = prior_section(directory)
@@ -470,7 +464,7 @@ def test_the_prior_block_lists_findings_with_the_authors_decision_only_when_reco
 
 
 def test_content_identity_is_gits_blob_id_and_unchanged_needs_it_on_both_sides(tmp: Path) -> None:
-    from crew.review import review_workspace as manifest
+    from crew.core.review import review_workspace as manifest
     target = tmp / "a.ts"
     target.write_text("one\n")
     assert manifest.blob_id(target) == hashlib.sha1(b"blob %d\0" % len(target.read_bytes()) + target.read_bytes()).hexdigest()
@@ -490,7 +484,7 @@ def test_content_identity_is_gits_blob_id_and_unchanged_needs_it_on_both_sides(t
 
 
 def test_discovery_finds_the_previous_review_round_only(tmp: Path) -> None:
-    from crew.review import review_workspace as manifest
+    from crew.core.review import review_workspace as manifest
     review = tmp / "review"
     for name in ("20260101000000", "20260102000000", "20260103000000", "notes"):
         (review / name).mkdir(parents=True)
@@ -502,8 +496,8 @@ def test_discovery_finds_the_previous_review_round_only(tmp: Path) -> None:
 
 
 def test_the_collapse_omits_a_reviewed_body_and_keeps_its_ids_citable(tmp: Path) -> None:
-    from crew.review import review_workspace as manifest
-    from crew.review.review_parse import parse
+    from crew.core.review import review_workspace as manifest
+    from crew.core.review.review_parse import parse
 
     parsed = parse(PRIOR_DIFF)
     collapsed = manifest.collapse_reviewed(PRIOR_DIFF, parsed, {"a.ts"}, "20260101000000")

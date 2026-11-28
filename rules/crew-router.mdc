@@ -10,7 +10,7 @@ respond normally — no routing.
 
 Known paths, never searched for: agents in `~/.cursor/agents/` (`crew-*.md`, personas
 `<orchestrator>-<persona>.md`), skills in `~/.cursor/skills/<name>/SKILL.md`, tools in
-`~/.agent/bin/`, task state in `~/.agent/tasks/<uuid>/` (resolve with `crew-resolve-task-dir.py`).
+`~/.agent/bin/`, task state in `~/.agent/tasks/<uuid>/` (resolve with `crew-tool.py task-context`).
 
 Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
 

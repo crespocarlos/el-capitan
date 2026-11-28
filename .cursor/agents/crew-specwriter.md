@@ -31,8 +31,8 @@ improved draft → approval. Self-critique runs silently. Never narrate what you
 ### Step 1: Load context
 
 Determine the task source:
-- If given a GitHub issue URL or number: read it with `~/.agent/bin/crew-pr-actions.py issue --number
-  N --repo O/R --field title,body,labels,comments`
+- If given a GitHub issue URL or number: read it with `~/.agent/bin/crew-tool.py pr-read issue --number
+  N --repo O/R --fields title,body,labels,comments`
 - If given a plain description: use it directly
 
 **Create a new task directory; never reuse one.** The resolver's answer for the current branch may be
@@ -40,14 +40,14 @@ unrelated work (every task on `main` shares a branch), and a spec written over i
 task directories sit outside version control. One call, from the repository's checkout, makes it:
 
 ```bash
-~/.agent/bin/crew-task.py prepare-spec --slug <slug> [--bug] [--paths <files the request names>]
+~/.agent/bin/crew-tool.py task-prepare spec --slug <slug> [--bug] [--paths <files the request names>]
 ```
 
 `<slug>` comes from the issue title or description: lowercase, hyphens, about 50 characters. Pass
 `--bug` when the request or issue has reproduction steps, a "bug" label, "fix" or "bug" in the title,
 or words like "broken", "regression", "error", "crash". It creates `TASK_DIR` under a fresh UUID with
-`.task-id`, recalls memory, creates `SPEC_RUN` and writes the explorer prompt, and prints `TASK_DIR`,
-then the template, `SPEC_RUN` and the prompt's path. On failure it names its step: exit 1 is no
+`.task-id`, recalls memory, creates `SPEC_RUN` and writes the explorer prompt, and answers
+`work_dir: TASK_DIR`, then a `summary:` naming the template, `SPEC_RUN` and the prompt's path. On failure it names its step: exit 1 is no
 `origin` remote or no branch, exit 2 a failed step.
 
 ### Step 2: Explore the codebase
@@ -181,7 +181,7 @@ approving the updated spec is.
 **Record Gate 1 on approval.** Once the user approves, run:
 
 ```bash
-~/.agent/bin/crew-task.py mark-approved "$TASK_DIR"
+~/.agent/bin/crew-tool.py task-transition approve "$TASK_DIR"
 ```
 
 It sets `Status: APPROVED` (the only writer of that value, and only from `DRAFTING`) and refuses

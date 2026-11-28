@@ -29,14 +29,14 @@ from cli_runner import run as cli
 from harness_hook import run as hook
 from task_fixture import record_status
 
-from crew.review import review_workspace
-from crew.task import task_gates, task_state, task_status
+from crew.core.review import review_workspace
+from crew.core.task import task_gates, task_state, task_status
 
 ROOT = Path(__file__).resolve().parents[2]
-TASK_TOOLS = ROOT / "src" / "crew" / "task"
-REVIEW_TOOLS = ROOT / "src" / "crew" / "review"
-LS = TASK_TOOLS / "crew_ls.py"
-TASK = TASK_TOOLS / "crew_task.py"
+REVIEW_TOOLS = ROOT / "src" / "crew" / "core" / "review"
+LS = ROOT / "src" / "crew" / "scripts" / "crew_ls.py"
+TASK = ROOT / "src" / "crew" / "scripts" / "crew_task.py"
+TOOL = ROOT / "src" / "crew" / "tools" / "crew_tool.py"
 
 
 SPEC = "# Probe task\n\n## Status\nIMPLEMENTING\n\n- [x] one criterion\n"
@@ -52,6 +52,10 @@ def check(name: str, condition: bool, detail: object = "") -> None:
 
 def task(*arguments: str, cwd: Path | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
     return cli(TASK, *arguments, cwd=cwd, env=env)
+
+
+def step(directory: Path, text: str, env: dict | None = None) -> subprocess.CompletedProcess:
+    return cli(TOOL, "task-log", str(directory), "--step", text, env=env)
 
 
 def ls(tasks: Path, *arguments: str) -> str:
@@ -310,10 +314,10 @@ def test_the_environment_suffix_never_stamps(tmp: Path) -> None:
     tasks = tmp / "suffix"
     draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
     for name in ("CREW_WORKFLOW", "CREW_MEMBER"):
-        refused = cli(TASK_TOOLS / "crew_progress.py", str(draft), "note", env={name: "-> APPROVED [gate]"})
-        check(f"crew-progress.py refuses the stamp in {name}", refused.returncode == 2 and name in refused.stderr, refused)
-        arrow = cli(TASK_TOOLS / "crew_progress.py", str(draft), "note", env={name: "x → y"})
-        check(f"crew-progress.py refuses an arrow in {name}", arrow.returncode == 2, arrow)
+        refused = step(draft, "note", env={name: "-> APPROVED [gate]"})
+        check(f"task-log refuses the stamp in {name}", refused.returncode == 2 and name in refused.stderr, refused)
+        arrow = step(draft, "note", env={name: "x → y"})
+        check(f"task-log refuses an arrow in {name}", arrow.returncode == 2, arrow)
     with (draft / "PROGRESS.md").open("a", encoding="utf-8") as handle:
         handle.write('[2026-01-01T00:00:00Z] TRANSITION: note {"step":"note","workflow":"-> APPROVED [gate]","crew":null}\n')
     task("restore-status", str(draft))
@@ -352,10 +356,10 @@ def test_only_the_gates_record_a_status(tmp: Path) -> None:
     tasks = tmp / "only-gates"
     draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
     for text in ("DRAFTING → APPROVED", "x -> IMPLEMENTING", "IMPLEMENTING → REVIEW [gate]"):
-        forged = cli(TASK_TOOLS / "crew_progress.py", str(draft), text)
-        check(f"crew-progress.py refuses {text!r}", forged.returncode == 2 and "refused" in forged.stderr
+        forged = step(draft, text)
+        check(f"task-log refuses {text!r}", forged.returncode == 2 and "refused" in forged.stderr
               and text not in progress_text(draft), forged)
-    check("a pipeline step is still a progress note", cli(TASK_TOOLS / "crew_progress.py", str(draft), "IMPLEMENTING → REVIEW").returncode == 0
+    check("a pipeline step is still a progress note", step(draft, "IMPLEMENTING → REVIEW").returncode == 0
           and "TAMPERED" not in ls(tasks, "--repo", "all"))
     legacy = tasks / "legacy"
     legacy.mkdir()
@@ -499,7 +503,7 @@ def test_reconcile_hook(tmp: Path) -> None:
     check("the hook reports the hold, the ready to mark done with each PR and one command (the review checked against the task's "
           "branch, not the cwd's main), a PR open but not closable with its reason, the ready and the stalled task",
           all(line in out for line in ("spec-status: idle -> ON-HOLD", "spec-status: 2 ready to mark done: covered (#2), opened (#1)",
-                                       f"spec-status: close one with: ~/.agent/bin/crew-task.py mark-done {tasks / 'covered'} --pr-url {PR_ONE[:-1]}2",
+                                       f"spec-status: close one with: ~/.agent/bin/crew-tool.py task-transition done {tasks / 'covered'} --pr-url {PR_ONE[:-1]}2",
                                        "spec-status: 1 PR open, not closable: behind (#3: the review does not cover the branch tip",
                                        "spec-status: 1 ready to open PR: ready", "spec-status: 1 stalled IMPLEMENTING: stuck"))
           and "review pass" not in out and status_of(tasks / "opened") == "IMPLEMENTING", out)
@@ -583,7 +587,7 @@ def test_pr_lookup_budget(tmp: Path) -> None:
     a crashing lookup says why; a cached repository is not asked again."""
     import threading
 
-    from crew.task import task_prs
+    from crew.core.task import task_prs
     tasks, release, clock = tmp / "tasks", threading.Event(), [0.0]
     for name in ("slow", "broken"):
         spec(tasks / name, "IMPLEMENTING")
@@ -620,13 +624,13 @@ def test_pr_lookup_budget(tmp: Path) -> None:
 def test_bad_transitions(tmp: Path) -> None:
     """A malformed or unknown `transitions.json` is an error that names the file, never a silent policy."""
     shutil.copytree(ROOT / "src" / "crew", tmp / "bad" / "crew", ignore=shutil.ignore_patterns("__pycache__"))
-    tools, env = tmp / "bad" / "crew" / "task", {**os.environ, "PYTHONPATH": str(tmp / "bad")}
+    tools, env = tmp / "bad" / "crew" / "core" / "task", {**os.environ, "PYTHONPATH": str(tmp / "bad")}
     tasks = spec(tmp / "bad-tasks" / "a", "DRAFTING", "- [ ] a").parent
     for text, words in (("{bad", "error: transitions.json"),
                         ('{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["bogus"],"status":"x","log":"y"}]}', "unknown predicate"),
                         ('{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["idle"],"status":"{typo}","log":"y"}]}', "error: transitions.json")):
         (tools / "transitions.json").write_text(text, encoding="utf-8")
-        done = subprocess.run([sys.executable, "-m", "crew.task.crew_task", "reconcile", "--tasks-dir", str(tasks), "--apply"],
+        done = subprocess.run([sys.executable, "-m", "crew.scripts.crew_task", "reconcile", "--tasks-dir", str(tasks), "--apply"],
                               capture_output=True, text=True, env=env)
         check(f"transitions.json {text[:20]!r}: {words}", done.returncode != 0 and words in done.stderr, done.stderr[-300:])
 
@@ -734,7 +738,7 @@ def test_blocked_events(tmp: Path) -> None:
     rows = json.loads(ls(tasks, "--json"))["items"]
     check("crew ls and --json show the reason", "BLOCKED: stacked base: #51 is not main" in ls(tasks)
           and rows and rows[0].get("blocked", "").startswith("stacked base"), rows)
-    cli(TASK_TOOLS / "crew_progress.py", str(directory), "IMPLEMENTING → REVIEW")
+    step(directory, "IMPLEMENTING → REVIEW")
     check("the next stage clears it", "BLOCKED" not in ls(tasks) and json.loads(ls(tasks, "--json"))["items"][0].get("blocked") == "")
     check("blocked on a missing directory fails", task("blocked", str(tmp / "none"), "x").returncode == 1)
 
@@ -754,19 +758,23 @@ def test_blocked_events(tmp: Path) -> None:
 
 
 def test_lock_and_worktree(tmp: Path) -> None:
-    """`lock write|remove` round-trips outside git status; `worktree pref|record|check` answer once per repo."""
+    """`task-lock write|remove` round-trips outside git status; `worktree pref|record|check` answer once per repo."""
     tree = tmp / "tree"
     subprocess.run(["git", "init", "-q", str(tree)], check=True)
     lock = tree / ".crew-worker.lock"
-    task("lock", "write", str(tree), "--task", "T-123")
-    task("lock", "write", str(tree), "--task", "T-123")
+
+    def locked(action: str) -> subprocess.CompletedProcess:
+        return cli(TOOL, "task-lock", action, str(tree), "T-123")
+
+    locked("write")
+    locked("write")
     body = lock.read_text(encoding="utf-8").splitlines() if lock.is_file() else []
     status = subprocess.run(["git", "-C", str(tree), "status", "--porcelain"], text=True, capture_output=True).stdout
     check("the lock holds task= and started=, is excluded once from git status",
           "task=T-123" in body and any(line.startswith("started=") and line[8:].isdigit() for line in body)
           and ".crew-worker.lock" not in status and (tree / ".git" / "info" / "exclude").read_text().count(".crew-worker.lock") == 1, body)
     check("lock remove deletes it, and again is not an error",
-          task("lock", "remove", str(tree)).returncode == 0 and not lock.exists() and task("lock", "remove", str(tree)).returncode == 0)
+          locked("remove").returncode == 0 and not lock.exists() and locked("remove").returncode == 0)
     repo, record = tmp / "repo", tmp / "task"
     record.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
@@ -829,7 +837,7 @@ def test_crew_worktree_creates_lists_fetches_and_removes(tmp: Path) -> None:
     run_env = {**GIT_ID, "HOME": str(tmp), "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
 
     def worktree(*arguments: str) -> subprocess.CompletedProcess:
-        return cli(TASK_TOOLS / "crew_worktree.py", *arguments, env=run_env, cwd=repo)
+        return cli(TOOL.parent / "crew_worktree.py", *arguments, env=run_env, cwd=repo)
 
     created = worktree("-b", "topic", "origin/main", "--json")
     path = Path(json.loads(created.stdout)["path"]) if created.returncode == 0 else Path()
@@ -923,7 +931,7 @@ def record_hook(tmp: Path, shape: str, command: str, output: str, branch: str, o
     ("DONE match", "claude", "gh pr create --fill", PR_NEW, "feat/d", "acme", {"shipped": "DONE"}, "shipped (DONE): recorded PR", True),
     ("reused branch: the open task wins", "claude", "gh pr create --fill", PR_NEW, "feat/reuse", "acme", {"reuse-new": "DONE"},
      "applied: reuse-new -> DONE", True),
-    ("two matches", "claude", "gh pr create --fill", PR_NEW, "feat/two", "acme", {}, f"crew-task.py mark-done {{tasks}}/twin-a --pr-url {PR_NEW}", True),
+    ("two matches", "claude", "gh pr create --fill", PR_NEW, "feat/two", "acme", {}, f"crew-tool.py task-transition done {{tasks}}/twin-a --pr-url {PR_NEW}", True),
     ("failed create", "claude", "gh pr create --fill", "pull request create failed: GraphQL: No commits", "feat/h", "acme", {}, "", False),
     ("unrelated command", "claude", "git log --oneline", f"see {PR_NEW}", "feat/h", "acme", {}, "", False),
 ])
@@ -1088,9 +1096,11 @@ def test_agent_end_recorded_by_the_subagent_stop_hook(tmp: Path, case: str) -> N
         check(f"{case}: nothing recorded", ends == [], (ends, done.stdout))
         return
     context = sum(USAGE_TWO.values())  # 42,610: the last call; the sum over calls would be 66,110
-    check("one agent_end: the last call's context as tokens, the summed counts beside it", len(ends) == 1 and ends[0].endswith(
-        f"METRIC: agent_end agent=crew-builder persona=crew-builder agent_id=a1 tokens={context} input=1010 output=3100 cache_read=60000 "
-        "cache_write=3000 first_input=1000 first_cache_read=20000 first_cache_write=3000 harness=claude-code"), (ends, done.stdout))
+    expected = {"schema_version": 1, "event": "agent_end", "agent": "crew-builder", "persona": "crew-builder", "agent_id": "a1", "tokens": context,
+                "input": 1010, "output": 3100, "cache_read": 60000, "cache_write": 3000, "first_input": 1000, "first_cache_read": 20000,
+                "first_cache_write": 3000, "harness": "claude-code"}
+    check("one agent_end: the last call's context as tokens, the summed counts beside it",
+          len(ends) == 1 and json.loads(ends[0].split("METRIC: ", 1)[1]) == expected, (ends, done.stdout))
     other = spec(task_dir.parent / "cursor", "IMPLEMENTING")
     (other / "PROGRESS.md").write_text("[2026-11-27T10:00:00Z] METRIC: stage_start stage=implement\n"
                                        "[2026-11-27T11:00:00Z] METRIC: stage_end stage=implement workers=1 tokens_reported=5000\n", encoding="utf-8")
@@ -1121,8 +1131,8 @@ def test_agent_end_counts_a_resumed_agent_once(tmp: Path) -> None:
           and "stage implement: new 9k, cache reads 0, from 1 agent(s)" in report, (ends, cost, report))
 
 
-def test_crew_resolve_task_dir_prefers_the_open_task(tmp: Path) -> None:
-    """Two tasks on one repo and branch: the open one wins over a newer DONE one, and `--all` lists both."""
+def test_task_context_prefers_the_open_task(tmp: Path) -> None:
+    """Two tasks on one repo and branch: the open one wins over a newer DONE one, and the note says so."""
     remote, tasks = "git@example.invalid:owner/demo.git", tmp / ".agent" / "tasks"
     for name, status, month in (("open", "IMPLEMENTING", "01"), ("shipped", "DONE", "02")):
         directory = spec(tasks / name, status)
@@ -1130,17 +1140,12 @@ def test_crew_resolve_task_dir_prefers_the_open_task(tmp: Path) -> None:
                                                         "created_at": f"2026-{month}-01T00:00:00Z"}), encoding="utf-8")
 
     def resolve(branch: str, *arguments: str) -> subprocess.CompletedProcess:
-        return cli(TASK_TOOLS / "crew_resolve_task_dir.py", "--remote", remote, "--branch", branch, *arguments,
-                   env={"HOME": str(tmp)})
+        return cli(TOOL, "task-context", "--remote", remote, "--branch", branch, *arguments, env={"HOME": str(tmp), "CREW_TASK_DIR": None})
 
     best = resolve("feat", "--json")
     record = json.loads(best.stdout)
-    check("the most recent non-DONE task is chosen, and the choice is said",
-          record["slug"] == "open" and record["has_spec"] and "Multiple tasks" in best.stderr, (best.stdout, best.stderr))
-    every = json.loads(resolve("feat", "--all", "--json").stdout)
-    check("--all lists every match with its status",
-          sorted(m["status"] for m in every["matches"]) == ["DONE", "IMPLEMENTING"], every)
-    check("no match prints an empty line", resolve("other").stdout == "\n")
+    check("the most recent non-DONE task is chosen, and the note says so", record["data"]["slug"] == "open" and "2 tasks match" in record["data"]["note"], best)
+    check("no match prints an empty line", resolve("other", "--field", "task_dir").stdout == "\n")
 
 
 def tree(root: Path) -> set[str]:

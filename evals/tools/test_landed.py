@@ -21,10 +21,10 @@ from pathlib import Path
 import pytest
 from cli_runner import run as cli
 
-from crew.task import ls_data
+from crew.core.task import ls_data
 
 ROOT = Path(__file__).resolve().parents[2]
-TASK_TOOLS = ROOT / "src" / "crew" / "task"
+TASK_TOOLS = ROOT / "src" / "crew" / "scripts"
 
 
 URL = "https://github.com/acme/widgets/pull/51"
@@ -488,7 +488,7 @@ END = "METRIC: agent_end agent=x agent_id={} tokens=99000 input={} output=1000 c
 def test_task_usage_totals(lines: tuple, usage: dict, text: str) -> None:
     """One measure: new (input + output + cache_write) and cache reads summed over each agent's latest `agent_end`;
     a stage with only `tokens_reported` adds that final context as `new`, approximate."""
-    from crew.task import task_progress
+    from crew.core.task import task_progress
     entries = [task_progress.parse_entry(f"[2026-11-27T10:0{i}:00Z] {line}") for i, line in enumerate(lines)]
     found = task_progress.task_usage_totals(entries)
     check("the totals and their text", (found, task_progress.usage_text(found)) == (usage, text), found)

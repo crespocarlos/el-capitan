@@ -7,7 +7,7 @@
     },
     {
       "id": "t2",
-      "description": "The `crew-resolve-task-dir.py` tool currently scans all task directories on every call. Add an in-process cache that stores the resolved path for the current repo+branch for the lifetime of a shell session, so repeated calls within one session skip the filesystem scan."
+      "description": "The `crew-tool.py task-context` verb currently scans all task directories on every call. Add an in-process cache that stores the resolved path for the current repo+branch for the lifetime of a shell session, so repeated calls within one session skip the filesystem scan."
     },
     {
       "id": "t3",

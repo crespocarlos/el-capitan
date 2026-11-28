@@ -1,6 +1,6 @@
 """The `prepare` commands: one call sets a stage up, on a temporary repository, with no network.
 
-One test per command (review `prepare` in self mode, `prepare-implement`, `prepare-spec`) plus the PR-mode case,
+One test per verb (`review-prepare` in self mode, `task-prepare implement`, `task-prepare spec`) plus the PR-mode case,
 where a stub `gh` first on PATH answers `pr view`, `pr diff` and GraphQL and logs each call, so the test sees the
 head files fetched in exactly one GraphQL call. HOME is a temporary directory, so the memory store, the templates
 and the review directories of the real owner are never touched.
@@ -18,9 +18,13 @@ from cli_runner import run as cli
 from task_fixture import record_status
 
 ROOT = Path(__file__).resolve().parents[2]
-FINDINGS = ROOT / "src" / "crew" / "review" / "crew_review_findings.py"
-ASSEMBLE = ROOT / "src" / "crew" / "review" / "crew_assemble_packages.py"
-TASK = ROOT / "src" / "crew" / "task" / "crew_task.py"
+FINDINGS = ROOT / "src" / "crew" / "tools" / "crew_review_findings.py"
+TOOL = ROOT / "src" / "crew" / "tools" / "crew_tool.py"
+
+
+def lines(done: subprocess.CompletedProcess) -> list[str]:
+    """A prepare verb's text answer: its directory, then its summary line."""
+    return [line.split(": ", 1)[1] for line in done.stdout.splitlines()]
 
 # `GH_MOVE` set: the second `pr view` reports another head, as a push during `prepare` would.
 GH_STUB = r'''
@@ -114,9 +118,9 @@ def test_review_prepare_self_writes_every_input_and_holds_the_questions(tmp: Pat
     (repo / ".cursor" / "agents" / "x.md").write_text("prompt 2\n")
     env = environment(tmp)
     own_temp(tmp, monkeypatch)
-    done = cli(FINDINGS, "prepare", "--mode", "self", "--base", "feat/parent", env=env, cwd=repo)
+    done = cli(TOOL, "review-prepare", "self", "--base", "feat/parent", env=env, cwd=repo)
     assert done.returncode == 0, done.stderr
-    review, line = done.stdout.splitlines()
+    review, line = lines(done)
     review = Path(review)
     assert (review / "paths.txt").read_text().split() == [".cursor/agents/x.md", "src/a.py", "src/new.py"]
     assert "untracked files not reviewed" in line and ".env.local, dump.log" in line and "git add -N" in line
@@ -126,25 +130,21 @@ def test_review_prepare_self_writes_every_input_and_holds_the_questions(tmp: Pat
     config = json.loads((review / "assemble.json").read_text())
     assert config["selected"] == ["adversarial", "code-quality", "prompt-quality"]
     assert config["prompt_files"] == [".cursor/agents/x.md"] and "Size gate: full diff" in config["size_gate"]
-    assert "personas adversarial code-quality prompt-quality" in line and "TODO(prepare)" in line
-    whole = cli(FINDINGS, "prepare", "--mode", "self", env=env, cwd=repo)
-    assert "src/parent.py" in (Path(whole.stdout.splitlines()[0]) / "paths.txt").read_text()
-    refused = cli(ASSEMBLE, str(review), env=env)
-    assert refused.returncode == 2 and "TODO(prepare)" in refused.stderr
-    quoting = "Does a TODO(prepare) question left in assemble.json stop assembly?"
-    config["questions"] = {p: [quoting, "Who reads src/a.py?"] for p in config["questions"]}
+    assert "personas adversarial code-quality prompt-quality" in line and "write the pending questions" in line
+    assert config["pending"] == ["questions"] and config["schema_version"] == 1
+    whole = cli(TOOL, "review-prepare", "self", env=env, cwd=repo)
+    assert "src/parent.py" in (Path(lines(whole)[0]) / "paths.txt").read_text()
+    refused = cli(TOOL, "review-dispatch", str(review), env=env)
+    assert refused.returncode == 2 and "pending: questions" in refused.stderr
+    config["questions"] = {p: ["Does a question left unwritten stop assembly?", "Who reads src/a.py?"] for p in config["questions"]}
     (review / "assemble.json").write_text(json.dumps(config))
-    assert cli(ASSEMBLE, str(review), env=env).returncode == 0
+    assert cli(TOOL, "review-dispatch", str(review), env=env).returncode == 0
     personas = ["--personas", *config["selected"]]
     assert cli(FINDINGS, "check-packages", "--review-dir", str(review), *personas, env=env).returncode == 0
-    package = review / "adversarial.in.md"
-    package.write_text(package.read_text().replace("Who reads src/a.py?", "TODO(prepare) question 2 for it"))
-    held = cli(FINDINGS, "check-packages", "--review-dir", str(review), *personas, env=env)
-    assert held.returncode == 1 and "TODO(prepare)" in held.stderr
     nothing = tmp / "clean"
     git(tmp, "clone", "-q", str(tmp / "origin.git"), str(nothing))
-    empty = cli(FINDINGS, "prepare", "--mode", "changes", env=env, cwd=nothing)
-    assert empty.returncode == 1 and "prepare: diff:" in empty.stderr
+    empty = cli(TOOL, "review-prepare", "changes", env=env, cwd=nothing)
+    assert empty.returncode == 1 and "error nothing_to_review [diff]" in empty.stderr
 
 
 def test_review_prepare_pr_fetches_every_head_file_in_one_gh_call(tmp: Path, monkeypatch) -> None:
@@ -154,10 +154,9 @@ def test_review_prepare_pr_fetches_every_head_file_in_one_gh_call(tmp: Path, mon
     task = tmp / "task"
     task.mkdir()
     (task / "SPEC.md").write_text("# Unrelated active task\n\n## Status\nIMPLEMENTING\n")
-    done = cli(FINDINGS, "prepare", "--mode", "PR", "--pr", "7", "--repo", "acme/widgets", "--task-dir", str(task),
-               env=env, cwd=tmp)
+    done = cli(TOOL, "review-prepare", "PR", "--pr", "7", "--repo", "acme/widgets", "--task-dir", str(task), env=env, cwd=tmp)
     assert done.returncode == 0, done.stderr
-    review = Path(done.stdout.splitlines()[0])
+    review = Path(lines(done)[0])
     calls = [json.loads(line) for line in (tmp / "gh.log").read_text().splitlines()]
     assert [call[:2] for call in calls].count(["api", "graphql"]) == 1 and len(calls) == 4, calls
     assert not str(review).startswith(str(task)) and not (task / "review").exists()
@@ -170,10 +169,9 @@ def test_review_prepare_pr_fetches_every_head_file_in_one_gh_call(tmp: Path, mon
     assert config["mode_kind"] == "pr" and "prompt_files" not in config and "repo" not in config
     assert "4 files at aaaaaaa in 1 call" in done.stdout
     (tmp / "gh.log").unlink()
-    moved = cli(FINDINGS, "prepare", "--mode", "pr", "--pr", "7", "--repo", "acme/widgets",
-                env={**env, "GH_MOVE": "1"}, cwd=tmp)
+    moved = cli(TOOL, "review-prepare", "pr", "--pr", "7", "--repo", "acme/widgets", env={**env, "GH_MOVE": "1"}, cwd=tmp)
     assert moved.returncode == 2 and "the PR moved" in moved.stderr
-    resolver = cli(ROOT / "src" / "crew" / "review" / "crew_pr_actions.py", "head", "--pr", "7", "--repo",
+    resolver = cli(ROOT / "src" / "crew" / "tools" / "crew_pr_actions.py", "head", "--pr", "7", "--repo",
                    "acme/widgets", "--out", str(tmp / "resolver"), env=env, cwd=tmp)
     assert resolver.returncode == 0 and (tmp / "resolver" / "files" / "index.json").is_file(), resolver.stderr
 
@@ -193,11 +191,14 @@ def test_prepare_implement_cuts_the_branch_and_writes_the_builder_prompts(tmp: P
     tasks = tmp / "home" / ".agent" / "tasks"
     labelled = "- [x] T0: done.\n" + "\n".join(f"- [ ] T{n}: step {n}.\n  - **Verify:** `true`" for n in range(1, 10))
     task = spec_with(tasks / "T1", labelled, "> Tasks 7 and 8 are atomic — commit together.")
-    asked = cli(TASK, "prepare-implement", str(task), env=env, cwd=repo)
-    assert asked.returncode == 1 and "prepare-implement: where:" in asked.stderr
-    done = cli(TASK, "prepare-implement", str(task), "--where", "here", env=env, cwd=repo)
+    def implement(directory: Path, *extra: str) -> subprocess.CompletedProcess:
+        return cli(TOOL, "task-prepare", "implement", "--task-dir", str(directory), *extra, env=env, cwd=repo)
+
+    asked = implement(task)
+    assert asked.returncode == 1 and "error refused [where]" in asked.stderr
+    done = implement(task, "--where", "here")
     assert done.returncode == 0, done.stderr
-    assert Path(done.stdout.splitlines()[0]) == repo.resolve()
+    assert Path(lines(done)[0]) == repo.resolve()
     assert git(repo, "branch", "--show-current").strip() == "feat/widgets"
     assert json.loads((task / ".task-id").read_text())["branch"] == "feat/widgets"
     assert "IMPLEMENTING" in (task / "SPEC.md").read_text() and (task / "BASELINE.diff").is_file()
@@ -211,15 +212,15 @@ def test_prepare_implement_cuts_the_branch_and_writes_the_builder_prompts(tmp: P
     assert "Guidance collected for: ." in guidance, "no task names a path: the root's guidance, said so"
     second = (task / "dispatch" / "builder.7-9.md").read_text()
     assert "TASK_RANGE: 7-9 final" in second and "T7: step 7" in second and "T8: step 8" in second
-    other = cli(TASK, "prepare-implement", str(task), "--branch", "feat/other", env=env, cwd=repo)
+    other = implement(task, "--branch", "feat/other")
     assert other.returncode == 1 and "feat/widgets" in other.stderr and "feat/other" in other.stderr
     git(repo, "switch", "-q", "main")
     ranged = spec_with(tasks / "T2", labelled.replace("[x] T0", "[ ] T0"), "> Tasks 5-7 are atomic.")
-    assert cli(TASK, "prepare-implement", str(ranged), "--branch", "feat/ranged", env=env, cwd=repo).returncode == 0
+    assert implement(ranged, "--branch", "feat/ranged").returncode == 0
     assert sorted(p.name for p in (ranged / "dispatch").iterdir()) == ["builder.0-7.md", "builder.8-9.md"]
     git(repo, "switch", "-q", "main")
     vague = spec_with(tasks / "T3", labelled, "> The schema tasks are atomic.")
-    refused = cli(TASK, "prepare-implement", str(vague), "--branch", "feat/vague", env=env, cwd=repo)
+    refused = implement(vague, "--branch", "feat/vague")
     assert refused.returncode == 1 and "The schema tasks are atomic" in refused.stderr
 
 
@@ -229,9 +230,9 @@ def test_prepare_spec_creates_the_task_and_the_explorer_prompt(tmp: Path) -> Non
     agent = tmp / "home" / ".agent"
     agent.mkdir(parents=True)
     (agent / "_SPEC_TEMPLATE.md").write_text("# Spec: [title]\n")
-    done = cli(TASK, "prepare-spec", "--slug", "add-retry", "--paths", "src/a.py", env=env, cwd=repo)
+    done = cli(TOOL, "task-prepare", "spec", "--slug", "add-retry", "--paths", "src/a.py", env=env, cwd=repo)
     assert done.returncode == 0, done.stderr
-    task = Path(done.stdout.splitlines()[0])
+    task = Path(lines(done)[0])
     assert task.parent == agent / "tasks" and not (task / "SPEC.md").exists()
     identity = json.loads((task / ".task-id").read_text())
     assert identity["slug"] == "add-retry" and identity["branch"] == "main" and identity["uuid"] == task.name
@@ -240,5 +241,5 @@ def test_prepare_spec_creates_the_task_and_the_explorer_prompt(tmp: Path) -> Non
     nonce = (prompt.parent / "specwriter-explorer.expect").read_text().strip()
     assert text.splitlines()[0].endswith(f" specwriter-explorer {nonce}") and f"crew-task: {task}" in text
     assert "Keep it small." in text and "TODO(prepare)" in text and "_SPEC_TEMPLATE.md" in done.stdout
-    missing = cli(TASK, "prepare-spec", "--slug", "x", "--bug", env=env, cwd=repo)
-    assert missing.returncode == 2 and "prepare-spec: template:" in missing.stderr
+    missing = cli(TOOL, "task-prepare", "spec", "--slug", "x", "--bug", env=env, cwd=repo)
+    assert missing.returncode == 2 and "error failed [template]" in missing.stderr

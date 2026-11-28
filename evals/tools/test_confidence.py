@@ -17,7 +17,7 @@ import pytest
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / "src" / "crew" / "review" / "crew_review_findings.py"
+TOOL = ROOT / "src" / "crew" / "tools" / "crew_review_findings.py"
 
 BANDS = {5: "confirmed", 4: "strong", 3: "likely", 2: "uncertain", 1: "suspicion"}
 
@@ -185,9 +185,9 @@ def test_a_raise_logged_as_an_outcome_needs_the_read_that_settled_it(tmp: Path) 
     same = run_outcome(directory, "--confidence", "4", "--confidence-from", "4")
     assert same.returncode == 2 and "not a move" in same.stderr, same.stderr
     evidenced = run_outcome(directory, "--confidence", "4", "--confidence-from", "2",
-                            "--validation", "read src/a.ts:30-50; the guard shadows the caller's")
+                            "--validation", "read src/a.ts:30-50; the guard shadows the caller's", "--json")
     assert evidenced.returncode == 0, evidenced.stderr
-    record = json.loads(evidenced.stdout)
+    record = json.loads(evidenced.stdout)["data"]
     assert record["confidence"] == 4 and record["confidence_from"] == 2, record
     assert "guard shadows" in record["validation"], record
 
@@ -222,9 +222,7 @@ def test_a_deferred_finding_is_not_appended_twice_across_a_score_change(tmp: Pat
 
 
 def run_outcome(review_dir: Path, *extra: str) -> subprocess.CompletedProcess:
-    return run("outcome", "--review-dir", str(review_dir), "--fingerprint", "c3",
-               "--persona", "adversarial", "--label", "attention", "--outcome", "fixed",
-               "--reason", "applied", *extra)
+    return cli(TOOL.with_name("crew_tool.py"), "review-record-outcome", str(review_dir), "c3", "adversarial", "attention", "fixed", "applied", *extra)
 
 
 
@@ -233,9 +231,9 @@ def run_outcome(review_dir: Path, *extra: str) -> subprocess.CompletedProcess:
 
 def test_the_report_line_carries_the_score_beside_the_label(tmp: Path) -> None:
     """`[attention · 4]`, in the label column, not a sentence further down."""
-    from crew.review.review_models import Finding
-    from crew.review.review_render import label_with_score, score_suffix
-    from crew.review.review_vocabulary import ABSENT
+    from crew.core.review.review_models import Finding
+    from crew.core.review.review_render import label_with_score, score_suffix
+    from crew.core.review.review_vocabulary import ABSENT
 
     scored = Finding(title="Guard missing", label="attention", file="a.ts", line=3, confidence=4)
     assert label_with_score(scored) == "[attention · 4]"
