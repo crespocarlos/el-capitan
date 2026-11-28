@@ -41,11 +41,10 @@ PR_BRANCH=$(jq -r .branch <<<"$PR"); PR_TITLE=$(jq -r .title <<<"$PR"); CHANGED=
 ~/.agent/bin/crew-tool.py mem-recall --mode review --query "$PR_TITLE"
 ```
 
-Read guidance once for every path the PR touches, never per thread; its `note` lists dropped
-sections by file. Read that file for a dropped section you need. `task-context` is
-branch context, not authority over
-the PR or the user's instructions. When the worktree lags the PR, `crew-pr-actions.py head --pr
-PR_NUMBER --repo OWNER/REPO --out <dir>` writes its files at the head to `<dir>/files/`.
+Read guidance once for the PR's paths, never per thread; read the file of any dropped section its
+`note` names that you need. `task-context` is branch context; it never overrides the PR or the
+user. When the worktree lags the PR, `crew-pr-actions.py head --pr
+PR_NUMBER --repo OWNER/REPO --out <dir>` writes the head's files to `<dir>/files/`.
 
 Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
 

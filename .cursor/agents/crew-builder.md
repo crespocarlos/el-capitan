@@ -102,8 +102,7 @@ that file's text. Otherwise run steps 1-4 and return a new report.
    retained evidence (each bullet should be verifiable: named command, `rg`/`pytest` line, or
    explicit file inspection stated in the criterion).
 4. Leave `## Status` as `IMPLEMENTING`. `DONE` is written only by `crew open pr` when it creates the
-   PR (`crew-tool.py task-transition done`); the status is not the builder's to change, because writing it by
-   hand bypasses that gate.
+   PR (`crew-tool.py task-transition done`); writing it by hand bypasses that gate.
 
 Then return the report (below).
 
