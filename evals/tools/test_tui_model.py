@@ -597,12 +597,12 @@ def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
 
 
 async def settle(app: App, pilot: Pilot) -> None:
-    """Wait for the reads and moves in flight, those they start included (a GitHub read starts a local one), then for
-    the screen to catch up."""
-    for _ in range(20):
-        await app.workers.wait_for_complete()
-        await pilot.pause()
-        if all(worker.is_finished for worker in app.workers):
+    """Wait until the views are loaded and no read or move is in flight, those they start included (a GitHub read
+    starts a local one). It polls the condition rather than awaiting a worker: a newer read cancels an older one."""
+    for _ in range(400):
+        await pilot.pause(0.05)
+        if getattr(app, "views", None) and all(worker.is_finished for worker in app.workers):
+            await pilot.pause()
             return
 
 
@@ -639,7 +639,9 @@ def test_app_rows_keep_their_place_tabs_and_children(home: Path) -> None:
                 await pilot.press(*keys)
                 await settle(app, pilot)
                 seen.append((app.view_name, table.row_count, isinstance(app.screen, Lines)))
-            await pilot.press("escape", "2", "down", "down", "enter")
+            await pilot.press("escape")  # clears the filter: a reload, awaited before the keys that read its rows
+            await settle(app, pilot)
+            await pilot.press("2", "down", "down", "enter")
             await settle(app, pilot)
             rows = table.row_count
             await pilot.press("down", "o", "s")
@@ -721,7 +723,7 @@ def test_snapshot_per_tab(home: Path, snap_compare: Callable[..., bool], tab: st
     async def ready(pilot: Pilot) -> None:
         await settle(pilot.app, pilot)
         await pilot.press(tab)
-        await pilot.pause()
+        await settle(pilot.app, pilot)
 
     append_run("resolve acme/widgets#6", "start", kind="resolve", target="acme/widgets#6")
     app = CrewApp(home / ".agent" / "tasks", Filters(repo="all"), interval=600, gh=github(SEEDED, []), clock=lambda: NOW)
