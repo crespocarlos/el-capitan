@@ -253,7 +253,7 @@ def native(transcript_path: str | None, **fields) -> dict:
 
 
 @pytest.mark.parametrize("case", ["null", "empty", "the parent's", "missing file", "flat parent, env only",
-                                  "no subagent_id: nonce scan", "no transcript: summary"])
+                                  "no subagent_id: nonce scan", "no transcript: summary", "live: parent conversation id"])
 def test_the_subagent_transcript_is_found_when_agent_transcript_path_misses(tmp: Path, case: str) -> None:
     """`agent_transcript_path` null, empty, the parent's or a missing file: the reply is read from
     `<conv>/subagents/<subagent_id>.jsonl` (from `transcript_path`, or `$CURSOR_TRANSCRIPT_PATH` for a flat parent),
@@ -262,10 +262,14 @@ def test_the_subagent_transcript_is_found_when_agent_transcript_path_misses(tmp:
     home, task = world(tmp)
     directory = task / "review" / "1"
     line = marker(directory, "adversarial", home)
-    parent, sub = conversation(tmp, line + "\nReview.", ["Reading.", PERSONA_REPLY], flat=case.startswith("flat"))
+    live = case.startswith("live")
+    root = home / ".cursor" / "projects" / "p" if live else tmp
+    parent, sub = conversation(root, line + "\nReview.", ["Reading.", PERSONA_REPLY], flat=case.startswith("flat"))
     own = {"null": None, "empty": "", "the parent's": str(parent), "missing file": str(tmp / "gone.jsonl")}
-    payload = native(str(parent), agent_transcript_path=own.get(case), task=line + "\nReview.")
+    payload = native(None if live else str(parent), agent_transcript_path=own.get(case), task=line + "\nReview.")
     env = {}
+    if live:
+        payload.update(subagent_id="toolu_0111", child_conversation_id="x9", parent_conversation_id="c1")
     if case.startswith("flat"):
         payload.pop("transcript_path")
         env = {"CURSOR_TRANSCRIPT_PATH": str(parent)}
@@ -356,14 +360,15 @@ def test_a_transcript_whose_first_line_lands_after_a_second_is_saved(tmp: Path) 
 
 
 def test_a_stop_that_saves_nothing_logs_names_and_sizes_never_content(tmp: Path) -> None:
-    """A non-crew subagent: one line with the payload's key names, `subagent_id`, whether `child_conversation_id` is
-    present, and each candidate path with exists/bytes/lines, and nothing of either transcript's text."""
+    """A non-crew subagent: one line with the payload's key names, its ids and paths, and each candidate path with
+    exists/bytes/lines, and nothing of either transcript's text."""
     home, _ = world(tmp)
     parent, sub = conversation(tmp, "find the SECRET-PROMPT word", ["SECRET-REPLY"])
     done = run_hook(home, native(str(parent), agent_transcript_path=str(tmp / "gone.jsonl")))
     assert (done.returncode, done.stdout) == (0, "{}\n"), done
     log = state(home, "capture-reply.log")
-    assert "no marker; nothing saved (keys=" in log and "subagent_id=s1 child_conversation_id=yes" in log, log
+    assert "no marker; nothing saved (keys=" in log and f"subagent_id=s1 agent_transcript_path={tmp / 'gone.jsonl'} transcript_path={parent}" in log, log
+    assert "parent_conversation_id=- conversation_id=- child_conversation_id=s1" in log, log
     assert f"{tmp / 'gone.jsonl'} exists=0" in log, log
     assert re.search(rf"{re.escape(str(sub))} exists=1 bytes=\d+ lines=3", log), log
     assert "SECRET" not in log and "agent_transcript_path" in log
