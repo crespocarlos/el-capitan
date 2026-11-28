@@ -3,10 +3,11 @@
 Reads the snippet on stdin and prints one target per line, exit 0. A target is the literal path of `open(<p>, <mode
 with w, a, x or +>)` (also `io.open`, `codecs.open` and `Path(<p>).open`), `Path(<p>).write_text`/`write_bytes`, the
 destination of `shutil.copy*`/`shutil.move` and of `os.replace`/`os.rename`. `<p>` is a string literal, a
-`Path(<literal>)`, or a name bound once, by plain assignment, to one of those. Exit 3, and the guard keeps its broader
-rule, when the snippet does not parse or holds a write this cannot resolve: a write whose path or mode is no literal
-(a loop variable, an f-string, a name bound twice), `os.open`/`os.write`, `fileinput` with `inplace`, `subprocess`,
-`exec`, `eval`, `getattr`, `__import__`, or a write function imported or aliased by another name.
+`Path(<literal>)`, or a name bound once, by plain assignment, to one of those. A write this cannot resolve (a path or
+mode that is no literal: a loop variable, an f-string, a name bound twice; `os.open`/`os.write`, `fileinput` with
+`inplace`, `subprocess`, `exec`, `eval`, `getattr`, `__import__`, or a write function imported or aliased by another
+name) prints every string literal outside a dict display instead, since a dict is data such as review JSON. Exit 3, and
+the guard counts every quoted literal, when the snippet does not parse.
 Run as `python3 -I`, so nothing from the working directory is imported.
 """
 
@@ -133,10 +134,27 @@ def targets(source: str) -> list[str]:
     return found
 
 
+def literals(tree: ast.AST) -> list[str]:
+    """Every string literal but data: a dict display's, and the path of a read (`open(<p>)` with no write mode, `<p>.read_text()`)."""
+    data = [part for item in ast.walk(tree) if isinstance(item, ast.Dict) for part in item.keys + item.values]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and called(node) in ("open", "io.open", "codecs.open"):
+            mode = argument(node, 1, "mode")
+            if not WRITE_MODE & set((literal(mode, {}) or "w") if mode else "r"):
+                data.append(argument(node, 0, "file"))
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("read_text", "read_bytes"):
+            data.append(node.func.value)
+    skip = {id(node) for part in data if part for node in ast.walk(part)}
+    return [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip]
+
+
 def main() -> int:
+    source = sys.stdin.read()
     try:
-        found = targets(sys.stdin.read())
-    except (SyntaxError, ValueError, RecursionError, Unresolved):
+        found = targets(source)
+    except Unresolved:
+        found = literals(ast.parse(source))
+    except (SyntaxError, ValueError, RecursionError):
         return 3
     print("\n".join(found))
     return 0

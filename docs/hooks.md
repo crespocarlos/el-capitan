@@ -35,13 +35,13 @@ skipped with one stderr line; credentials instead denies the commands it scans. 
 | `destructive-git` | shell | everywhere | `reset --hard`, `clean` with force, force pushes (`-f`, `--force`, `+ref`, `--force-if-includes` without a lease) |
 | `local-pr-ref` | shell | Cursor | `gh pr checkout` |
 | `pr-repo` | shell | Cursor | `gh pr create` without `--repo` when an `upstream` remote exists |
-| `source-edit` | shell | Cursor | a `python -c`, `node -e` or `perl -e` snippet or heredoc that rewrites a tracked file |
+| `source-edit` | shell | everywhere | a `>`/`>>` redirect, `tee`, `sed -i`, `perl -i`, or a `python -c`, `node -e` or `perl -e` snippet or heredoc that writes an existing tracked file or a task's `SPEC.md`, `PROGRESS.md` or `.task-id`; scratch and new files pass, and a Python snippet whose write target is no literal counts every literal but dict data and read paths |
 | `task-files` | both | everywhere | an `rm`, `unlink` or `find -delete` of a task record, task directory or the tasks root; Cursor's Delete of a task record |
 | `status` | file | Cursor | a write that moves a task `SPEC.md`'s `## Status`, or cannot be applied exactly |
 
-`destructive-git` and `task-files` stay dispatcher rules in Claude Code too: a deny rule matches a command's
-prefix, so it misses `git -C <tree> reset --hard` (the form crew agents use) and a removal named by a variable or
-resolved against the cwd, which only these rules parse.
+`destructive-git`, `task-files` and `source-edit` stay dispatcher rules in Claude Code too: a deny rule matches a
+command's prefix, so it misses `git -C <tree> reset --hard` (the form crew agents use), a removal named by a variable or
+resolved against the cwd, and a write's target, which only these rules parse.
 
 **Demoted rules** run only where the harness's manifest declares no deny rule that holds in the session's mode
 (`deny` in `src/crew/harness/<id>.json`, the event's `deny_rules`): the Cursor app, the Cursor CLI and Codex until a
@@ -51,8 +51,7 @@ hold unattended:
 - `deny`: `gh pr checkout`;
 - `ask`: `Edit(~/.agent/tasks/*/SPEC.md)` (a Status edit is the owner's approval);
 - `gh pr create` is allowed only as `gh pr create --repo ...`, so an implied target prompts;
-- `source-edit` is the `personal.mdc` rule to edit files with the edit tool, which also says to quote a `===`
-  separator (zsh runs a bare one as a command; the `zsh-equals` rule is gone).
+- `zsh-equals` is gone: the `personal.mdc` edit-tool rule says to quote a `===` separator.
 
 The allowlist is narrow: git reads plus `add`, `commit`, `fetch`, `switch -c` and `push` (its force forms are the shell guard's),
 `gh pr view|diff`, `gh pr create --repo`, `gh api -X GET`; no blanket `git`, `gh`, `sed`, `cp`, `mv`, `curl` or
@@ -62,8 +61,8 @@ and Codex its `prefix_rule(decision = "forbidden")` rules in `~/.codex/rules/el-
 
 **Deleted** (no rule replaces them): the write boundary, a failed scan blocking every command, local PR ref reads,
 `cp`/`mv` into task dirs, inline imports of the task modules, a shell fed by an unreadable pipe, edits of evidence files,
-and the `SPEC.md` name and case. Literal shell writes to task records are caught after the fact by the Status integrity
-check (TAMPERED).
+and the `SPEC.md` name and case. A shell write to a task record that `source-edit` cannot parse is caught after the fact
+by the Status integrity check (TAMPERED).
 
 **Branch protection.** Protect `main` on GitHub (require a pull request, block force pushes and deletion): it is the
 boundary the force-push rules approximate. Nothing here sets it up.

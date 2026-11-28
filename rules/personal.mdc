@@ -75,7 +75,7 @@ then this file. Hard constraints always apply.
   keep error handling in the layer that owns it.
 - **Preserve compatibility** — changes to persisted data, APIs, routes, or configuration need a
   migration or versioning path.
-- **Edit files with the edit tool**, not a `python -c` snippet the edit log misses.
+- **Edit with the edit tool**, orchestrators and task files too: no shell rewrites.
   Quote `===`: zsh runs it.
 - **Essential comments only** — comment why a non-obvious choice or invariant exists, in one line.
   Don't narrate code or leave commented-out code.
