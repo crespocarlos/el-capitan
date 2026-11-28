@@ -14,6 +14,7 @@ from pathlib import Path
 from review_parse import header_paths
 from review_vocabulary import PERSONAS as REGISTERED
 from review_vocabulary import PLACEHOLDER, QUESTIONS_HEADING, SELECT_RULES, UNFILLED
+from task_guidance_kinds import kinds, render
 
 from lib.cli import fail
 from lib.files import read_json_object
@@ -93,17 +94,21 @@ def keep_sections(content: str, keep: list[str], used: set[str]) -> tuple[str, l
     return "\n".join(body_lines).strip(), kept_headings, dropped_headings
 
 
-def narrow_guidance(persona: str, guidance: dict, config: dict) -> tuple[str, dict]:
-    """Repository guidance, optionally narrowed to the sections a lens uses, plus a report.
+def narrow_guidance(persona: str, guidance: dict, config: dict, paths: list[str] | None = None) -> tuple[str, dict]:
+    """Repository guidance for one lens, plus a report.
 
-    Narrowing is opt-in through `guidance_keep` in `assemble.json`, keyed by persona and listing
-    level-2 heading prefixes. The text before the first heading is always kept, a persona with no
-    entry or `"*"` keeps the whole file, and every dropped heading is reported: a lens given the
+    By default the lens's kind in `task_guidance_kinds` ranks its sections and caps it, and the note naming
+    what the cap dropped goes into the package. A `guidance_keep` entry in `assemble.json`, keyed by persona
+    and listing level-2 heading prefixes, overrides that: the text before the first heading is always kept,
+    `"*"` or an empty list keeps the whole file, and every dropped heading is reported: a lens given the
     wrong sections silently loses a rule it needed, so a silent cut is the failure mode here.
     """
     keep = (config.get("guidance_keep") or {}).get(persona)
     out: list[str] = []
-    report: dict = {"kept": {}, "dropped": {}, "available": [], "unmatched": []}
+    report: dict = {"kept": {}, "dropped": {}, "available": [], "unmatched": [], "note": ""}
+    if keep is None:
+        block, report["note"] = render(f"reviewer-{persona}", guidance, paths)
+        return block, report
     used: set[str] = set()
     for path, content in guidance.items():
         available = [line[3:].strip() for line in content.splitlines() if line.startswith("## ")]
@@ -161,6 +166,12 @@ def reviewer_personas() -> tuple[str, ...]:
         fail(
             f"assemble-packages: {', '.join(sorted(missing))} is a reviewer persona with no entry "
             "here; add it with its primary layer kinds in PRIMARY_KINDS"
+        )
+    unranked = sorted(name for name in known if f"reviewer-{name}" not in kinds())
+    if unranked:
+        fail(
+            f"assemble-packages: {', '.join(unranked)} has no guidance kind; add `reviewer-<name>` with its topics "
+            "and cap to KINDS in .agent/tools/task/task_guidance_kinds.py"
         )
     return tuple(name for name in CANONICAL if name in known)
 
@@ -321,7 +332,7 @@ def questions_block(persona: str, config: dict) -> str:
 
 
 def guidance_block(review_dir: Path, persona: str, config: dict) -> tuple[str, dict]:
-    """The repository guidance one lens receives, narrowed when `guidance_keep` names it.
+    """The repository guidance one lens receives: ranked and capped for its kind, or as `guidance_keep` names it.
 
     A missing, empty or unparsable `agent-context.json` is a ValueError (exit 2): `crew-agent-context.py` writes
     nothing when it fails, so an empty file means the guidance call failed, not that there was none.
@@ -337,7 +348,9 @@ def guidance_block(review_dir: Path, persona: str, config: dict) -> tuple[str, d
         guidance = json.loads(text).get("files", {})
     except (ValueError, AttributeError) as error:
         raise ValueError(f"agent-context.json is not a guidance object ({error}): {fix}") from error
-    return narrow_guidance(persona, guidance, config)
+    listed = review_dir / "paths.txt"  # `prepare` writes it; without it no section ranks by relevance
+    paths = listed.read_text(encoding="utf-8").split() if listed.is_file() else []
+    return narrow_guidance(persona, guidance, config, paths)
 
 
 EMBEDDED_PROMPT = re.compile(r"(^|/)prompts?/[^/]+\.(md|txt|prompt)$|(^|/)[\w.-]*prompts?[\w.-]*\.(md|txt|prompt)$")

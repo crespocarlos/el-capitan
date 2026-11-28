@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import re
 import sys
 from pathlib import Path
 
 from task_gates import load_task, mark_implementing
-from task_guidance import memory_context
+from task_guidance import collect, memory_context
+from task_guidance_kinds import render
 from task_progress import append_metric
 from task_state import head, spec_branch, unresolved
 from task_worktree_cli import create, existing_worktree
@@ -142,12 +144,47 @@ def place(root: Path, where: str, branch: str, explicit: bool, task_dir: Path) -
     return root, branch
 
 
+def task_paths(blocks: list[str], root: Path) -> tuple[list[str], dict[str, int]]:
+    """`(paths, ambiguous)`: the repository paths the task blocks name in backticks, as written when it exists or has
+    a directory part, else the one tracked file with that basename; and each basename that matches several tracked
+    files, with its count, which is skipped rather than pulling in every match's guidance."""
+    named = sorted({path for block in blocks for path in SPEC_PATH.findall(block)})
+    bare = [path for path in named if "/" not in path and not (root / path).exists()]
+    tracked = output(root, ["ls-files"]).splitlines() if bare else []
+    found = [path for path in named if path not in bare]
+    ambiguous = {}
+    for name in bare:
+        matches = [item for item in tracked if item.rsplit("/", 1)[-1] == name]
+        if len(matches) == 1:
+            found += matches
+        elif matches:
+            ambiguous[name] = len(matches)
+    return sorted(set(found)), ambiguous
+
+
+def guidance_for(work_dir: Path, chosen: list[tuple[int, bool, str]]) -> tuple[str, str]:
+    """`(the builder's guidance block, its note)` for the files the chosen tasks name; the root's when none resolves.
+    The note names the directories collected and any ambiguous basename, so the builder knows what it lacks."""
+    paths, ambiguous = task_paths([block for _, _, block in chosen], work_dir)
+    record = collect(work_dir, [work_dir / p for p in paths])
+    folders = sorted({os.path.relpath(Path(t["path"]).parent, work_dir) for t in record["targets"] if "error" not in t})
+    if not folders:
+        record, folders = collect(work_dir, [work_dir]), ["."]
+    said = [f"Guidance collected for: {', '.join(folders)}. For a file outside these, run "
+            "`~/.agent/bin/crew-agent-context.py <file>`."]
+    if ambiguous:
+        said.append("Ambiguous, not collected: " + ", ".join(f"{name} ({count} files)" for name, count in
+                                                              sorted(ambiguous.items())) + ".")
+    return render("builder", record["files"], paths, said)
+
+
 def prompt(task_dir: Path, work_dir: Path, recalled: str, chosen: list[tuple[int, bool, str]], span: str) -> str:
     header = [f"crew-task: {task_dir}"] + ([f"TASK_RANGE: {span}"] if span else [])
+    guidance = guidance_for(work_dir, chosen)[0]
     return "\n".join([*header, "", "Follow ~/.cursor/agents/crew-builder.md (it owns the rules and the report).", "",
                       f"TASK_DIR: {task_dir}", f"WORK_DIR: {work_dir}", f"SPEC: {task_dir / 'SPEC.md'}",
-                      f"RECALLED_PATTERNS: {recalled.strip() or 'none'}", "", "## Tasks", "",
-                      *(block for _, _, block in chosen), ""])
+                      f"RECALLED_PATTERNS: {recalled.strip() or 'none'}", "", "## Project guidance", "",
+                      guidance.rstrip() or "none", "", "## Tasks", "", *(block for _, _, block in chosen), ""])
 
 
 def plan_batches(spec: str) -> tuple[list[tuple[int, bool, str]], list[list[int]]]:

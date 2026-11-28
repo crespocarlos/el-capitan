@@ -139,6 +139,8 @@ def write_packages(review_dir: Path, assembled: list[tuple]) -> None:
             notes.append(f"guidance narrowed, {narrowed} section(s) dropped: "
                          + "; ".join(f"{p.split('/')[-1]}: {', '.join(v)}"
                                      for p, v in guidance_report["dropped"].items() if v))
+        if guidance_report.get("note"):
+            notes.append(guidance_report["note"])
         if report["whole"]:
             notes.append("prompt files sent whole (elision unsafe): "
                          + ", ".join(p.split("/")[-1] for p in report["whole"]))

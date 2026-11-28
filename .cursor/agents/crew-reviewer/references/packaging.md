@@ -76,9 +76,9 @@ docstring — read it at `.agent/tools/review/crew-assemble-packages.py` in the 
 
 Two settings keep the size honest. The prompt tier elides the regions `package.diff` already quotes
 and keeps every unchanged line, so a rule that collides with surrounding text stays visible.
-`guidance_keep` narrows repository guidance per lens — `Testing` and `Verification pattern` to Code
-Quality, `File layout` and `Symlink rules` to Architecture — because every lens otherwise pays for the
-whole file. A prefix matching no section fails the run and lists the available ones.
+Guidance is ranked per lens and capped by default (`task_guidance_kinds.py`), and the package names
+what the cap dropped. `guidance_keep` overrides a lens (`["*"]` keeps all); a prefix matching no section
+fails the run and lists the available ones.
 
 ## Questions for each lens
 

@@ -548,6 +548,15 @@
       "smoke": "imported by crew-agent-context.py"
     },
     {
+      "name": "task_guidance_kinds.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-agent-context.py, assemble_inputs.py and the prepare modules: guidance ranked per agent kind under one cap per kind, with a note naming each section the cap dropped",
+      "smoke": "imported by crew-agent-context.py"
+    },
+    {
       "name": "task_prepare.py",
       "dir": "task",
       "kind": "module",
@@ -564,6 +573,15 @@
       "owner": "crew-specwriter",
       "help": "imported by crew-task.py: `prepare-spec`, crew spec's setup before the explorer in one call",
       "smoke": "imported by crew-task.py"
+    },
+    {
+      "name": "review_dispatch_stats.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py: `dispatch-bytes` (bytes per prepared dispatch prompt) and `cache-report` (a review run's cache reads per persona)",
+      "smoke": "imported by crew-review-findings.py"
     },
     {
       "name": "review_prepare.py",

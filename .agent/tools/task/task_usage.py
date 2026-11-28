@@ -12,11 +12,12 @@ import json
 import os
 import re
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from task_progress import AGENT_END, CURSOR_STOP, append_metric
 
-from lib.clock import utc_stamp
+from lib.clock import parse_stamp, utc_now, utc_stamp
 
 TASK_LINE = re.compile(r"^crew-task: (\S.*?)[ \t]*$", re.M)
 USAGE = {"input": "input_tokens", "output": "output_tokens", "cache_read": "cache_read_input_tokens",
@@ -74,6 +75,24 @@ def usage(found: list[dict]) -> dict[str, int] | None:
     return {"tokens": sum(count(last.get(field)) for field in USAGE.values()), **sums}
 
 
+def first_call(found: list[dict]) -> list[str]:
+    """`started=<UTC stamp>` (the transcript's first timestamp: the dispatch) and the first call's `first_input`,
+    `first_cache_read` and `first_cache_write`, as METRIC words; what the transcript lacks is left out. The first call
+    is the one a prefix cache shared with an earlier agent can serve."""
+    words = []
+    stamps = [parse_stamp(str(item["timestamp"]).replace("Z", "+00:00")) for item in found
+              if isinstance(item, dict) and item.get("timestamp")]
+    if stamps and stamps[0] is not None:
+        words.append(f"started={utc_stamp(stamps[0])}")
+    for item in found:
+        message = item.get("message") if isinstance(item.get("message"), dict) else {}
+        if item.get("type") == "assistant" and isinstance(message.get("usage"), dict):
+            words += [f"first_{key}={count(message['usage'].get(USAGE[key]))}"
+                      for key in ("input", "cache_read", "cache_write")]
+            break
+    return words
+
+
 def word(value: str) -> str:
     """A METRIC value: one word, never empty."""
     return re.sub(r"\s+", "-", value.strip()) or "unknown"
@@ -92,14 +111,15 @@ def record_usage(prompt: str, found: list[dict], agent: str, persona: str, agent
             *([f"agent_id={word(agent_id)}"] if agent_id else [])]
     if stats is not None:
         counts = {key: count(stats.get(field)) for key, field in CURSOR_STATS.items()}
+        started = utc_stamp(utc_now() - timedelta(milliseconds=counts["duration_ms"]))
         append_metric(task, " ".join([*head, "tokens=unknown", *(f"{key}={value}" for key, value in counts.items()),
-                                      f"harness={word(harness)}"]))
+                                      f"started={started}", f"harness={word(harness)}"]))
         return f"recorded {AGENT_END} tokens=unknown tool_calls={counts['tool_calls']} on {task}"
     sums = usage(found)
     if sums is None:
         return "no usage in the transcript; nothing recorded"
     counted = [f"{key}={value}" for key, value in sums.items()]
-    append_metric(task, " ".join([*head, *counted, f"harness={word(harness)}"]))
+    append_metric(task, " ".join([*head, *counted, *first_call(found), f"harness={word(harness)}"]))
     return f"recorded {AGENT_END} tokens={sums['tokens']} output={sums['output']} on {task}"
 
 

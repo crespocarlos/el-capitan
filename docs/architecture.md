@@ -184,6 +184,19 @@ file and fails when the total exceeds `MAX_ALWAYS_RULE_TOKENS` in `lint_prompts.
 the managed block of `~/.claude/CLAUDE.md`, so neither is charged to every request. Orchestrator
 agents and skill files load per command, and memory is retrieved on demand.
 
+Dispatched agents get repository guidance ranked for their kind and capped
+(`.agent/tools/task/task_guidance_kinds.py`). The prompt names every section the cap dropped, with its file.
+`crew-review-findings.py dispatch-bytes <dir>` prints the bytes each prepared dispatch carries, and
+`crew-review-findings.py cache-report --task-dir <task>` prints one review run's cache counts per persona.
+
+**Staggered dispatch: measured, not adopted.** Dispatching the first persona, waiting, and then the rest was
+measured on a Claude Code self review (2026-11-28): 92,719 shared package bytes, about 23k tokens. After a 30 s
+wait, the later personas' first calls read 2,893 tokens from cache: the tools and system prefix every agent type
+shares, and none of the package. Each persona is its own agent type, so its system prompt differs and the cache
+diverges before the package, and Cursor has one agent definition per persona as well. Reviews dispatch every
+persona in parallel. Sharing would need one agent type for every persona, with the package ahead of the
+lens-specific text: a different design.
+
 ## Configuration
 
 `rules/personal.mdc` is installed as an always-loaded preferences file, read in every Cursor and

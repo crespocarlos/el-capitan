@@ -92,11 +92,11 @@ blocked gate) records why, once, before the final message:
 ## The worker prompt
 
 `prepare-implement` writes it as `$TASK_DIR/dispatch/builder.md` (a batch: `builder.<first>-<last>.md`):
-the task delta only, the unchecked tasks with their verify lines, plus `TASK_DIR`, `WORK_DIR`, the
-`SPEC.md` path, `RECALLED_PATTERNS` and `TASK_RANGE`. The builder file
+the unchecked tasks with their verify lines, `TASK_DIR`, `WORK_DIR`, the `SPEC.md` path,
+`RECALLED_PATTERNS`, `TASK_RANGE`, and the guidance for the files they name, ranked for a builder.
+The builder file
 (`~/.cursor/agents/crew-builder.md`) owns the rules, the report shape and the verification commands,
-so the prompt names its path and does not paste it: pasted rules drift from the file and are paid for
-in every worker. The prompt's first line is `crew-task: <TASK_DIR>`: the subagent-stop hook appends the worker's `agent_end` METRIC to that task
+so the prompt names its path: pasted rules drift and are paid for per worker. The prompt's first line is `crew-task: <TASK_DIR>`: the subagent-stop hook appends the worker's `agent_end` METRIC to that task
 (Claude Code: its transcript's tokens; Cursor: duration and tool calls, tokens unknown), which the
 cost line below then reports, and saves the builder's reply as that task's `REPORT.md`. A `TASK_RANGE: <first>-<last>` line right under it makes
 the reply a part report, and `TASK_RANGE: <first>-<last> final` both the part report and `REPORT.md`.

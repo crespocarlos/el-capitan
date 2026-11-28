@@ -74,6 +74,7 @@ bootstrap = ["task_bootstrap", "review_bootstrap", "memory_bootstrap", "evals_bo
 "evals/tools/test_next_steps.py" = ["TID251"]
 "evals/tools/test_nightshift_e2e.py" = ["ANN201", "TID251"]
 "evals/tools/test_pr_reads.py" = ["ANN201"]
+"evals/tools/test_prompt_sizes.py" = ["TID251"]
 "evals/tools/test_review_cost_metric.py" = ["TID251"]
 "evals/tools/test_task_progress.py" = ["TID251"]
 "evals/tools/test_task_verify.py" = ["E501", "TID251"]
