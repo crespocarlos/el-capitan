@@ -40,7 +40,7 @@ FIXTURES = ROOT / "evals" / "fixtures" / "harness"
 FILE_HOOKS = [HOOKS / "check-task-spec-owner.sh"]
 GUARDS = [HOOKS / "guard" / "shell.sh"]
 # The rules a harness with a deny capability holds with its own deny and ask rules (docs/hooks.md).
-DEMOTED = {"local-pr-ref", "pr-repo", "status"}
+DEMOTED = {"local-pr-ref", "pr-repo"}
 DENIER = re.compile(r"EL_CAPITAN_GUARD_([A-Z_]+)=off for this guard")
 # Exit 3 (gitleaks' --exit-code) when the scanned text, or the commits on no remote, hold the fixture's AKIA key.
 GITLEAKS = """#!/bin/sh

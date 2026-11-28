@@ -49,7 +49,6 @@ probe shows theirs hold. In Claude Code the permission rules of its manifest hol
 hold unattended:
 
 - `deny`: `gh pr checkout`;
-- `ask`: `Edit(~/.agent/tasks/*/SPEC.md)` (a Status edit is the owner's approval);
 - `gh pr create` is allowed only as `gh pr create --repo ...`, so an implied target prompts;
 - `zsh-equals` is gone: the `personal.mdc` edit-tool rule says to quote a `===` separator.
 

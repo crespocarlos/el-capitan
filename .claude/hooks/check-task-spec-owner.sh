@@ -5,8 +5,8 @@
 #   spec-owner  (kept) a task SPEC.md titled for another task, written over a spec past DRAFTING. A task directory
 #               records its slug in `.task-id`; overwriting a finished task's spec there destroyed it once.
 #   task-files  (kept) a Delete of a task record.
-#   status      (demoted) a write that moves the `## Status`; it runs only where the harness holds no `ask` rule on
-#               task SPEC.md files (`deny_rules` false in the event).
+#   status      (kept) a write that moves the `## Status`; only crew-task moves it, so every other spec edit runs
+#               without a prompt.
 # A rule that fails (no verdict) is skipped with one stderr line.
 set -euo pipefail
 HOOK_NAME=check-task-spec-owner
