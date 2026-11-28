@@ -38,60 +38,51 @@ Run inline. Dispatch personas only from the main session; shared harness instruc
 | `crew review idea --auto` | idea auto | idea |
 | `crew review idea --auto --loop` | idea auto-loop | idea |
 
-## Step 2: gather metadata
+## Step 2: prepare
 
-For diff modes, gather names, sizes, and change types before loading a full diff. For PR mode, get names with
-`~/.agent/bin/crew-pr-actions.py diff --pr <n> --repo <owner/repo> --name-only` and change types by
-parsing the same diff's headers (`new file mode`, `deleted file mode`, `rename from`/`rename to`,
-`Binary files`) — the signal `crew-review-hunks.py` already derives. For spec
-review, resolve the task directory with `~/.agent/bin/crew-resolve-task-dir.py`. For idea review, use
-the supplied idea or current topic. In PR mode, a read-only `gh` command failing with a sandbox
-network denial such as `Forbidden` is re-run once with the harness's network elevation
-(`full_network` in Cursor) for the rest of the review; never fall back to a local PR ref.
-Authentication, authorization, and scope failures remain terminal.
+`<selector-mode>` is the base mode lowercased without `auto` or `auto-loop` (`PR` → `pr`). For spec
+review, resolve `TASK_DIR` with `~/.agent/bin/crew-resolve-task-dir.py`; for idea review, use the
+supplied idea or current topic. Then set the run up in one call, from the reviewed repo's checkout:
+
+```bash
+~/.agent/bin/crew-review-findings.py prepare --mode <selector-mode> --task-dir "${TASK_DIR:-}" \
+  [--base <ref>] [--pr <n> --repo <owner/repo>] [--paths <spec or idea paths>] [--query "<title>"] \
+  [--contract] [--compat]
+```
+
+It writes the review directory, the diff, `paths.txt` and hunks (untracked files included), PR-head
+files under `head/`, `agent-context.json`, `mem.md`, `select`'s personas and the `assemble.json`
+skeleton; PR mode ignores `--task-dir`. A stacked branch: `--base <parent branch>`. Line one is
+`REVIEW_ROOT`; line two names the size gate, personas and any gap, which goes in `### Reviewers`. On
+failure it names its step on stderr. Exit 1: report there is nothing to review and stop. Exit 2: report
+the step and stderr and stop; never assemble packages by hand. Pass `--contract` when a spec or PR contract supplies acceptance criteria and `--compat` when the
+change alters behavior of an existing consumer. In PR mode a `Forbidden` sandbox denial is re-run once
+with network elevation (`full_network` in Cursor); never fall back to a local PR ref. Authentication,
+authorization, and scope failures remain terminal.
 
 ## Step 3: size gate
 
-For self, changes, and PR review, use metadata to select the complete diff or the spine-focused
-strategy defined under "Spine files" in
-[context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md), and emit its one-line
-`Size gate:` summary. Skip this step for specs and ideas.
+Emit the `Size gate:` line (self, changes, PR); over the threshold, write the spine counts into it
+("Spine files" in [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md)).
 
 ## Step 4: select reviewers
 
-Derive `<selector-mode>` from the base mode: lowercase it and remove the `auto` or `auto-loop`
-modifier (`PR` → `pr`; `self auto` → `self`). Run `~/.agent/bin/crew-review-findings.py select --mode
-<selector-mode> --paths <changed paths> [--contract] [--compat]` and dispatch every persona it
-returns; pass `--contract` when a spec or PR contract supplies acceptance criteria and `--compat` when
-the change alters behavior of an existing consumer. A returned persona is dispatched unless the
-assembler records its skip with a reason and the report names it; adding one is allowed, and a Prompt
-Quality lens added by judgement goes in `assemble.json` `selected`.
-
-`select` is authoritative: Code Quality and Adversarial for code modes, Prompt Quality and
-Architecture from path patterns, Product Flow under `--contract` or for spec and idea reviews. It
-never selects Explorer — dispatch that one yourself, only when a lens cannot ground a claim from its
-package. Add a persona beyond its output when the change touches prompt or eval files (Prompt
-Quality), routing, installation or cross-harness behavior (Architecture), or a user-visible flow
-(Product Flow). For a frontend diff whose `AGENTS.md` has an `e2e:` line, run `crew-e2e` before Step 5
-([stage rules](~/.cursor/agents/references/stage-rules.md)).
+Dispatch every persona `prepare` selected (`assemble.json` `selected`), unless the assembler records
+its skip with a reason and the report names it. `select` is authoritative: Code Quality and
+Adversarial for code modes, Prompt Quality and Architecture from path patterns, Product Flow under
+`--contract` or for spec and idea reviews. It never selects Explorer — dispatch that one yourself, only
+when a lens cannot ground a claim from its package. Add a persona to `selected` when the change
+touches prompt or eval files (Prompt Quality), routing, installation or cross-harness behavior
+(Architecture), or a user-visible flow (Product Flow). For a frontend diff whose `AGENTS.md` has an
+`e2e:` line, run `crew-e2e` before Step 5 ([stage
+rules](~/.cursor/agents/references/stage-rules.md)).
 
 ## Step 5: build context
 
-`REVIEW_ROOT` is the directory `crew-review-findings.py review-dir` printed ([pipeline
-persistence](~/.cursor/agents/crew-reviewer/references/pipeline.md)); `TASK_DIR` is the resolved task,
-empty for none. Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md).
-From the reviewed repo's checkout, call `~/.agent/bin/crew-agent-context.py --root <checkout>` once,
-passing every changed or reviewed path, and redirect its output to `$REVIEW_ROOT/agent-context.json`;
-`crew-assemble-packages.py` refuses the file missing or empty. Do the same for memory: `crew-mem.py context --mode review
---paths <changed files> > "$REVIEW_ROOT/mem.md"`. One call returns each distinct file once; one call per
-path re-reads the same `AGENTS.md` per file and bloats the package. Include the guidance, from repository root to nearest folder.
-
-Diff modes also split the diff into numbered hunks, order them into layers, and assemble one package
-per persona with the tool. Follow
-[packaging](~/.cursor/agents/crew-reviewer/references/packaging.md) for the layer map, the
-`## Hunk reference` section built from `hunks.index.md`, and `assemble.json`.
-
-Write each persona's lens questions (packaging, "Questions for each lens").
+Follow [context tiers](~/.cursor/agents/crew-reviewer/references/context-tiers.md) and
+[packaging](~/.cursor/agents/crew-reviewer/references/packaging.md): the layer map, then each
+`TODO(prepare)` entry of `assemble.json` — the lens questions ("Questions for each lens") and a spine
+size gate — and `crew-assemble-packages.py "$REVIEW_ROOT"`, which refuses one left unfilled.
 
 Every persona package carries `~/.cursor/agents/references/reviewer-contract.md` with
 `reviewer-reads.md` appended, which own the output; a persona file never restates them. PR mode
@@ -107,8 +98,8 @@ returns stdout only; follow the evidence rules in the shared dispatch instructio
 `$REVIEW_ROOT/<persona>.in.md` for the personas `select` returned, then run
 `~/.agent/bin/crew-review-findings.py check-packages --review-dir "$REVIEW_ROOT" --mode
 <selector-mode> --personas <names>`. Dispatch only on exit 0; otherwise rewrite the named package and
-check again. The generated-hunk rule applies in every mode, the questions rule to packages the tool
-assembled; the Tasks/Hints rule (see "Spec in every code-mode package" in context tiers) applies in
+check again. The generated-hunk rule applies in every mode, the questions rule (no `TODO(prepare)`
+left) to every prepared run; the Tasks/Hints rule (see "Spec in every code-mode package" in context tiers) applies in
 code modes only. The output lists any check skipped for a missing `SPEC.md` or `hunks.json`, and a
 skipped check is not a pass. `persist` repeats the generated-hunk and Tasks/Hints checks, not the
 questions rule, for a directory holding a `package.diff`.

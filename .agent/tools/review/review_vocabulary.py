@@ -37,10 +37,17 @@ SPEC_AGENTS = {"specwriter-explorer", "specwriter-scope", "specwriter-adversaria
 CODE_MODES = {"self", "changes", "pr"}
 # The orchestrator's per-lens questions, written from the diff and the spec's risks: the assembler renders
 # them under this heading and records `QUESTIONS_STAMP` in manifest.json `personas`; `check-packages` refuses a
-# stamped package without the section or outside the count.
+# stamped package without the section, outside the count, or still holding a `prepare` placeholder.
 QUESTIONS_HEADING = "## Questions for this lens"
 QUESTIONS_MIN, QUESTIONS_MAX = 2, 5
 QUESTIONS_STAMP = "questions_rule"
+PLACEHOLDER = "TODO(prepare)"
+# What `prepare` writes where the orchestrator's judgement goes: a question, and a spine size gate. Only a line that
+# starts with one of these prefixes (a list marker allowed) is unfilled, so a real question may quote the token.
+QUESTION_SKELETON = f"{PLACEHOLDER} question "
+SIZE_GATE_SKELETON = f"Size gate: spine strategy — {PLACEHOLDER}:"
+UNFILLED = re.compile(r"^(?:\d+[.)] |[-*+] )?(?:" + re.escape(QUESTION_SKELETON) + "|" + re.escape(SIZE_GATE_SKELETON)
+                      + ")", re.M)
 PERSONA_STATUSES = {"failed", "skipped", "truncated"}
 # Tiered output cap, counted separately so polish cannot evict severity: a nit has a 4-slot budget
 # and non-nits a 12-slot one, so a flat cap cannot bind a real finding out to make room for polish.
@@ -53,6 +60,28 @@ SELECT_RULES = {
     "prompt-quality": re.compile(r"(^|/)(agents|skills|evals)/|\.mdc$"),
     "architecture": re.compile(r"router|orchestrator|install|dispatch|tools\.json|(^|/)\.claude/"),
 }
+
+
+def selected(mode: str, paths: list[str], contract: bool, compat: bool) -> dict[str, str]:
+    """The lenses a change requires (`select`, `prepare`), each with the reason it was selected."""
+    required = {}
+    if mode in CODE_MODES:
+        required["code-quality"] = required["adversarial"] = "code review"
+        for persona, pattern in SELECT_RULES.items():
+            hits = [path for path in paths if pattern.search(path)]
+            if hits:
+                required[persona] = f"paths: {', '.join(hits[:3])}"
+        if compat:
+            required.setdefault("architecture", "--compat")
+    else:
+        # Specs and ideas have no diff to review, so the lenses are fixed rather than
+        # derived from paths; otherwise the selection is empty and nothing is dispatched.
+        required["product-flow"] = "plan coherence"
+        required["adversarial"] = "plan failure modes"
+        required.setdefault("architecture", "plan boundaries and compatibility")
+    if contract:
+        required["product-flow"] = "--contract"
+    return required
 
 
 def verdict(findings: list) -> str:

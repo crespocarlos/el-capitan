@@ -13,7 +13,7 @@ from pathlib import Path
 
 from review_parse import header_paths
 from review_vocabulary import PERSONAS as REGISTERED
-from review_vocabulary import QUESTIONS_HEADING, SELECT_RULES
+from review_vocabulary import PLACEHOLDER, QUESTIONS_HEADING, SELECT_RULES, UNFILLED
 
 from lib.cli import fail
 from lib.files import read_json_object
@@ -58,6 +58,11 @@ def check_inputs(review_dir: Path, config: dict) -> str:
     for required in ("package.diff", "hunks.index.md"):
         if not (review_dir / required).is_file():
             return f"{review_dir} has no {required}; run review-hunks.py first"
+    texts = {"size_gate": [config.get("size_gate")], "mode": [config.get("mode")],
+             "questions": [q for asked in (config.get("questions") or {}).values() for q in asked or []]}
+    unfilled = [key for key, values in texts.items() if any(UNFILLED.search(str(v or "")) for v in values)]
+    if unfilled:
+        return f"assemble.json still holds `{PLACEHOLDER}` in {', '.join(unfilled)}; write them before assembling"
     if config.get("mode_kind") == "pr":
         leaked = [key for key in INDEX_READING_KEYS if config.get(key)]
         if leaked:

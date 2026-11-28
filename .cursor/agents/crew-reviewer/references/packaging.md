@@ -5,43 +5,14 @@ to check, and how the evidence reaches a persona. `REVIEW_ROOT` is the review di
 
 ## Layer map (diff modes only)
 
-```bash
-# self: ~/.agent/bin/crew-diff.sh > "$REVIEW_ROOT/diff.patch"
-# changes: git diff --cached > "$REVIEW_ROOT/diff.patch"
-# PR: ~/.agent/bin/crew-pr-actions.py diff --pr <n> --repo <owner/repo> > "$REVIEW_ROOT/diff.patch"
-python3 ~/.agent/bin/crew-review-hunks.py "$REVIEW_ROOT/diff.patch" --out "$REVIEW_ROOT"
-```
-
-Write the changed-path list in the same step, because nothing downstream can reconstruct it from the
-packages and the `--files` gates need it:
-
-```bash
-~/.agent/bin/crew-diff.sh --name-only > "$REVIEW_ROOT/paths.txt"   # self, changes
-~/.agent/bin/crew-pr-actions.py diff --pr <n> --repo <owner/repo> --name-only \
-  > "$REVIEW_ROOT/paths.txt"                                        # PR
-```
-
-`paths.txt` is that command's stdout, one path per line; no other step writes it.
-
-**Record what this round read, and name the earlier one.** Two rounds of uncommitted work can share a
-`HEAD`, so `Reviewed at:` cannot tell them apart; the manifest is the per-file content id that can.
-Run it in the same step, after `paths.txt`, in diff modes only — a PR review has no task-level round
-to compare against:
-
-```bash
-~/.agent/bin/crew-review-findings.py prior-review --review-dir "$REVIEW_ROOT" \
-  --repo "$(~/.agent/bin/crew-repo-info.py --field root)" --paths $(cat "$REVIEW_ROOT/paths.txt")
-```
-
-It prints `{"prior": "<dir>"|null, "unchanged": [...], "files": N}` and writes
-`$REVIEW_ROOT/manifest.json`. Carry `prior` into `assemble.json` as `prior_review_dir`, so every
-package gains the earlier round's findings under `## Already reported in an earlier round`. That block
-is what stops a reworded re-raise: two measured rounds shared zero finding fingerprints and still
-raised the same subject twice.
-
-`prior: null` on a first review is a success, not a gap — say nothing about it. An `unchanged` list
-larger than half the changed files is what makes `--since-last-review` worth offering; carry it in the
-report's `### Reviewers` line so the reader knows the collapse ran and what it omitted.
+`prepare` (crew-reviewer Step 2) writes `diff.patch`, `paths.txt` (the changed paths, one per line,
+which the `--files` gates need; no other step writes it) and the hunk files below. In self and changes
+mode it also writes `manifest.json`, the per-file content id that tells two rounds at one `HEAD`
+apart, and sets `assemble.json` `prior_review_dir` to the earlier round, so every package gains its
+findings under `## Already reported in an earlier round`: that block stops a reworded re-raise. A PR
+review has no task-level round. Its summary line names the prior round and how many files are
+unchanged since; more than half is what makes `--since-last-review` worth offering, carried in the
+report's `### Reviewers` line. No prior round is a success, not a gap.
 
 `hunks.json` holds the ids the coverage gate checks, `hunks.md` the index plus bodies for the mapping
 pass only, `hunks.index.md` the index alone for persona packages, and `package.diff` the diff with
@@ -63,8 +34,8 @@ Save the reply verbatim as `layers.reply.md` first, then let the command parse a
 fails on a stray comma inside the fence, which coverage would otherwise report only after every
 persona had run, and which a hand-repair before writing would hide entirely. On failure re-dispatch
 `reviewer-layers` once with the parser's error text. It reports no findings and is not a persona, so
-never add it to `--personas`. In PR mode the diff comes only from `crew-pr-actions.py diff`, which
-reads the PR head over the network and never the local checkout.
+never add it to `--personas`. In PR mode the diff comes only from `gh pr diff`, which reads the PR
+head over the network and never the local checkout.
 
 Check the map before any persona runs: `crew-review-findings.py coverage --hunks
 "$REVIEW_ROOT/hunks.json" --layers "$REVIEW_ROOT/layers.json"`. On failure, re-dispatch
@@ -77,8 +48,7 @@ as a `[needs more info]`. When reading the map, drop any
 explainer or `hunkNotes` claim its hunks do not show, and when reviewing a map that reached a real
 run, verify such a claim against the diff before quoting it.
 
-If `crew-review-hunks.py` exits non-zero the diff is empty or malformed: report it and continue
-without a map. Personas then get their normal size-gated package with no `## Reading map` section.
+Without a map, personas get their normal size-gated package with no `## Reading map` section.
 Without `layers.json`, `persist` skips the coverage gate and warns when `hunks.json` exists,
 so an unmapped review is never silent; with one, any hunk left out is rejected, so a map is never
 partially applied.
@@ -94,12 +64,12 @@ heading plus that sentence is what lets every persona cite the ids `persist` req
 
 ## assemble.json
 
-Write `$REVIEW_ROOT/assemble.json`, then run `~/.agent/bin/crew-assemble-packages.py "$REVIEW_ROOT"`.
-Keys: `repo` (path), `mode` (a markdown block), `size_gate` (one line), `consumers` (`[[path, start,
-end, label], …]`), `prompt_files` (`[path, …]`), `guidance_keep` (`{persona: [level-2 heading prefix,
-…]}`, optional), `questions` (`{persona: [question, …]}`, below), and `mode_kind` (`"pr"` when the
-review reads a PR head, which refuses `consumers` and `prompt_files` because those would come from the
-local checkout). Exact shapes: the tool's
+`prepare` writes `$REVIEW_ROOT/assemble.json` with `repo`, `mode`, `size_gate`, `selected`,
+`prompt_files` (the changed prompt files), `prior_review_dir`, `mode_kind` and `TODO(prepare)`
+questions; edit it, then run `~/.agent/bin/crew-assemble-packages.py "$REVIEW_ROOT"`. Other keys:
+`consumers` (`[[path, start, end, label], …]`) and `guidance_keep` (`{persona: [level-2 heading
+prefix, …]}`, optional). `mode_kind: "pr"` refuses `consumers` and `prompt_files`, which would come
+from the local checkout. Exact shapes: the tool's
 docstring — read it at `.agent/tools/review/crew-assemble-packages.py` in the repository, or through
 `readlink -f ~/.agent/bin/crew-assemble-packages.py` when the repository is not the working tree.
 `~/.agent/bin` holds symlinks, so a search tool scoped there finds nothing.
@@ -119,10 +89,11 @@ and a consumer (Architecture), the user's next step (Product Flow), a rule that 
 too late (Prompt Quality), a test a wrong implementation would pass (Code Quality). A question the
 diff answers wastes the budget.
 
-Diff modes put them in `assemble.json` `questions`; the tool renders them last, after the evidence,
-and stamps the run in `manifest.json`. Spec and idea packages append them by hand. `check-packages`
-refuses a stamped package without the section, or with other than 2 to 5 unindented list items under
-its last copy; an unstamped directory passes with a note.
+Diff modes replace the `TODO(prepare)` placeholders in `assemble.json` `questions`; the tool renders
+them last, after the evidence. Spec and idea packages append them by hand. `prepare` and the tool stamp
+the run in `manifest.json`, and `check-packages` refuses a stamped package without the section, with a
+placeholder left, or with other than 2 to 5 unindented list items under its last copy; an unstamped
+directory passes with a note.
 
 ## Why the tool, not the hand
 
@@ -140,7 +111,7 @@ package opens with the same contract and hunk reference.
 
 In spec and idea reviews there is no diff, so the tool does not apply: compose by hand in the same
 order, the contract (`reviewer-contract.md`, one blank line, `reviewer-reads.md`) and `lookups.md`
-first. A PR review appends the head excerpts ([PR review mode](pr-mode.md)).
+first. A PR review appends excerpts from `head/files/` ([PR review mode](pr-mode.md)).
 
 ## The reply marker
 

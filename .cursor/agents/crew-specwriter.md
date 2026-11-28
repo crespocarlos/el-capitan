@@ -36,13 +36,18 @@ Determine the task source:
 
 **Create a new task directory; never reuse one.** The resolver's answer for the current branch may be
 unrelated work (every task on `main` shares a branch), and a spec written over it is unrecoverable:
-task directories sit outside version control. Run the block in [new task
-directory](~/.cursor/agents/references/new-task-dir.md), which sets `SLUG`, `TASK_DIR`, `.task-id`
-and `RECALLED_PATTERNS`.
+task directories sit outside version control. One call, from the repository's checkout, makes it:
 
-**Template selection** — infer it, with no flag: `_BUG_SPEC_TEMPLATE.md` when the request or issue
-has reproduction steps, a "bug" label, "fix" or "bug" in the title, or words like "broken",
-"regression", "error", "crash"; otherwise `_SPEC_TEMPLATE.md`.
+```bash
+~/.agent/bin/crew-task.py prepare-spec --slug <slug> [--bug] [--paths <files the request names>]
+```
+
+`<slug>` comes from the issue title or description: lowercase, hyphens, about 50 characters. Pass
+`--bug` when the request or issue has reproduction steps, a "bug" label, "fix" or "bug" in the title,
+or words like "broken", "regression", "error", "crash". It creates `TASK_DIR` under a fresh UUID with
+`.task-id`, recalls memory, creates `SPEC_RUN` and writes the explorer prompt, and prints `TASK_DIR`,
+then the template, `SPEC_RUN` and the prompt's path. On failure it names its step: exit 1 is no
+`origin` remote or no branch, exit 2 a failed step.
 
 ### Step 2: Explore the codebase
 
@@ -54,32 +59,12 @@ Launch it in the background and wait for its saved reply before drafting.
 questions from the request (spec-writing Step 1) and pass only those, so the explorer describes the
 code as it is instead of confirming a plan.
 
-```
-Task/Agent tool call:
-  subagent_type: specwriter-explorer
-  run_in_background: true
-  prompt: |
-    <the marker and crew-task lines: [spec replies](~/.cursor/agents/references/spec-replies.md), with SPEC_RUN made once>
-    ## Research questions
-    <3–6 questions about existing code: where X lives, how Y is done today, which tests cover Z>
-
-    ## Repo context
-    Repo: <repo name>
-    Likely modules: <hints from the issue about which files/packages are involved>
-    Specific files mentioned: <paths from the issue, or "none">
-
-    ## Project guidance
-    <output of `~/.agent/bin/crew-agent-context.py <specific files mentioned or likely module paths>`; use the repository root when none are known>
-
-    ## Recalled patterns
-    <output from auto-recall in Step 1 — repo-specific conventions the explorer should look for>
-
-    ---
-
-    Explore now. Follow the output format in your persona definition.
-```
-
-Claude Code: this prompt and Step 4's, through Agent by name.
+Dispatch `subagent_type: specwriter-explorer` with `run_in_background: true`, its prompt the file
+`prepare-spec` wrote, with its two `TODO(prepare)` lines replaced: the research questions, and the
+likely modules (hints from the issue about which files or packages are involved). Dispatch only once
+neither line still holds the placeholder. Leave its marker,
+`crew-task:` line, guidance and recalled patterns as written. Claude Code: this prompt and Step 4's,
+through Agent by name.
 
 ### Using the summary
 
@@ -111,8 +96,7 @@ If `$TASK_DIR/SPEC.md` exists (any status, including DRAFTING): Read its `Status
 "SPEC.md exists with status [STATUS]. Overwrite and reset to DRAFTING? (yes/no)" If no → stop, do
 not write. If yes → proceed; write new spec with Status: DRAFTING.
 
-Draft `$TASK_DIR/SPEC.md` from `~/.agent/_SPEC_TEMPLATE.md` (or `~/.agent/_BUG_SPEC_TEMPLATE.md`)
-following spec-writing Step 3, then run its Step 4 self-check before dispatching critics. Populate
+Draft `$TASK_DIR/SPEC.md` from the template `prepare-spec` named following spec-writing Step 3, then run its Step 4 self-check before dispatching critics. Populate
 `## Branch:` with a conventional branch name derived from the type and goal (`<type>/<goal>`,
 e.g. `fix/<goal>` for a bug), under 50 characters, lowercase, hyphen-separated. Copy the
 explorer's validation commands into `### Validation`. The user can change the branch before approving.
@@ -136,7 +120,7 @@ Run two critic personas in parallel against the draft spec.
      subagent_type: specwriter-scope | specwriter-adversarial
      run_in_background: true
      prompt: |
-       <the marker and crew-task lines: [spec replies](~/.cursor/agents/references/spec-replies.md), with SPEC_RUN made once>
+       <the marker and crew-task lines: [spec replies](~/.cursor/agents/references/spec-replies.md)>
        ## Critique context
 
        You are reviewing a draft SPEC.md before it is presented to the user.

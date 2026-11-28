@@ -7,12 +7,11 @@ the nearest `AGENTS.md` are surfaced for the builder, never run; unreadable CI (
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import re
 from pathlib import Path
-from typing import Callable
 
+from task_guidance import guidance_paths
 from task_verify_env import node_pin
 
 from lib.files import FENCE
@@ -70,18 +69,12 @@ def touched_paths(root: Path, ref: str | None) -> list[str]:
     return sorted({path for path in changed if path})
 
 
-def guidance_resolver() -> Callable[[Path, Path], list[Path]]:
-    """`guidance_paths` of `crew-agent-context.py`, the resolver the builder's guidance comes from."""
-    source = Path(__file__).with_name("crew-agent-context.py")
-    spec = importlib.util.spec_from_file_location("crew_agent_context", source)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.guidance_paths
-
-
 def prose_checks(root: Path, ref: str | None) -> list[dict]:
-    """`{command, from}` for the nearest AGENTS.md of each touched path (the root's when nothing is touched)."""
-    resolve = guidance_resolver()
+    """`{command, from}` for the nearest AGENTS.md of each touched path (the root's when nothing is touched).
+
+    The resolver is `crew-agent-context.py`'s (`task_guidance.guidance_paths`), the one the builder's guidance
+    comes from."""
+    resolve = guidance_paths
     top = root.resolve()
     nearest: list[Path] = []
     for path in touched_paths(root, ref) or ["."]:

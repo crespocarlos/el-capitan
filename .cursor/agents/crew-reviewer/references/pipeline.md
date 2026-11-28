@@ -3,28 +3,16 @@
 Inputs: `TASK_DIR` (the resolved task, empty for none) and `REVIEW_ROOT` (below).
 
 Every mode persists, because `crew commit` and `crew review address` read its output.
-Let a command choose the directory, so a sandbox that denies the task path falls back instead of
-failing. Run it on its own line first, then assign — a command that *starts* with `VAR=$(…)` hides
-its own prefix from a permission check, so it asks every time:
+`prepare` (crew-reviewer Step 2) chooses the directory, so a sandbox that denies the task path falls
+back to a temp path instead of failing; a PR review always uses the temp form. Run it on its own
+line, not as `VAR=$(…)`, which hides its prefix from a permission check, and use the path on its first
+line as `REVIEW_ROOT` for the rest of the review. It writes `run.json` (mode, repo, task, creation
+time), so a `/tmp` listing identifies a run — never pick a review directory with `ls -td | head -1`,
+which takes the newest mtime rather than the run you are in. `crew-review-findings.py review-dir`
+creates a directory alone, for a run with no diff to prepare.
 
-```bash
-~/.agent/bin/crew-review-findings.py review-dir \
-  --task-dir "${TASK_DIR:-}" --mode <mode> --repo "$(basename "$PWD")" --prune
-```
-
-Use the path it prints as `REVIEW_ROOT` for the rest of the review.
-
-It creates the directory, prints the path that works, and names the reason on stderr when it is not
-under `TASK_DIR`. A PR review passes `--mode pr`, which always uses the temp form. It also writes
-`run.json` (mode, repo, task, creation time), so a `/tmp` listing identifies a run without guessing
-from the timestamp — never pick a review directory with `ls -td | head -1`, which takes the newest
-mtime rather than the run you are in.
-
-`paths.txt` is written by the diff step below and does not exist before it. A script that needs the
-changed paths must run that step first; treat a missing `paths.txt` as "the review has not reached
-the diff", not as a broken directory. The exact command differs per mode and is named in
-[packaging](packaging.md) under "Layer map": `crew-diff.sh --name-only` for self and changes,
-`crew-pr-actions.py diff --name-only` for PR. Persist each
+`paths.txt` exists once `prepare` has read the diff; a missing one means the review has not reached
+the diff, not a broken directory. Persist each
 dispatched context package as `<persona>.in.md` and raw response as `<persona>.out.md`, where
 `<persona>` is one of `adversarial`, `architecture`, `code-quality`, `product-flow`,
 `prompt-quality`, `explorer`.
@@ -85,8 +73,8 @@ task's `REVIEW.md`.
    adversarial code-quality`; pass every dispatched persona as its own space-delimited argument (for
    example, add `architecture prompt-quality`). Comma-separated values such as
    `adversarial,code-quality` are invalid. `<HEAD SHA>` is `$(~/.agent/bin/crew-repo-info.py --field head)` for self, changes,
-   spec, and idea; for PR it is the head SHA from `~/.agent/bin/crew-pr-actions.py view --field
-   headRefOid`, which the local checkout does not contain and `--head` therefore records without
+   spec, and idea; for PR it is the `head` SHA `$REVIEW_ROOT/head/index.json` records (files under
+   `head/files/`), which the local checkout does not contain and `--head` therefore records without
    resolving.
    `--personas` is required on every call, and persona coverage is checked on every call: each
    named persona must have a real `.in.md` and `.out.md`, and the run fails when

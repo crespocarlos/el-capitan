@@ -42,15 +42,15 @@ PR=$(~/.agent/bin/crew-pr-actions.py view --pr PR_NUMBER --repo OWNER/REPO --fie
 
 Call `crew-agent-context.py` once with every path the PR touches, never per thread; guidance for a
 path governs every thread on it. `crew-task-context.py` is context for the branch, not authority over
-the PR or the user's instructions.
+the PR or the user's instructions. When the worktree lags the PR, `crew-pr-actions.py head --pr
+PR_NUMBER --repo OWNER/REPO --out <dir>` writes its files at the head to `<dir>/files/`.
 
 Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for code whose file you do not already know, or rely on a product or API fact.
 
 ### Step 2: Fetch review threads
 
 Fetch threads with `~/.agent/bin/crew-pr-actions.py fetch --repo OWNER/REPO --pr PR_NUMBER` (a flat
-object, shape in `TOOLS.md`; `--cursor` merges later pages). Failure exits nonzero, so `threads: []`
-means no threads.
+object; `--cursor` merges later pages). Failure exits nonzero, so `threads: []` means no threads.
 
 **Filter every thread first:**
 
@@ -62,7 +62,7 @@ means no threads.
 ### Step 3: Triage and group unresolved threads
 
 Group unresolved threads by `path` into a `file → [threads]` map, so Step 4 reads **each file once
-across the run**, a test file shared by two sources included, not once per comment. No thread is
+across the run**, a test file shared by two sources included. No thread is
 dropped or discounted for its author.
 
 **A bot thread is evaluated exactly like a human one**: its claimed severity is an assertion to
@@ -97,7 +97,7 @@ For each file in the `file → [threads]` map:
      classify **Decide**.
    - For Apply/Adapt, draft every edit for this file together, so Step 7 applies them as one batch.
    - Evaluation has no side effects: no edit, reply, or resolution happens until Step 7, and a probe
-     writes nothing. The verdicts go in the final report, not mid-stream.
+     writes nothing; the verdicts go in the final report, not mid-stream.
 5. **Refute every verdict once, against the same reads**, before the next file: follow [refuting a
    verdict](crew-pr-resolver/references/refuting-a-verdict.md) and record the result as one
    `refuted:` clause on the row.
@@ -111,8 +111,7 @@ its `path:line`; they set Step 5's confidence.
 ### Step 5: Prepare decisions (do not execute yet)
 
 Score each thread 1-5 for whether the comment is right about this code, on the scale in
-`review_vocabulary.py` — `CONFIDENCE` and `confidence_scale()`, read the bands there rather than
-restating them. Then prepare the action, writing nothing yet:
+`review_vocabulary.py` — `CONFIDENCE` and `confidence_scale()`; read the bands there. Then prepare the action, writing nothing yet:
 
 - **Apply/Adapt**: draft the exact edit (file, line range, before/after). When the thread changes
   behavior rather than fixing a fault, say which eval would measure it and the pre-change number;
@@ -144,8 +143,7 @@ Name the expected value a flagged row moves. A reply holding a `|` goes beneath 
 
 **Every unresolved thread appears in that table or the outdated section.**
 
-**Publish this report even when nothing can be applied**: the table, counts, outdated list and
-questions go out, counts reading zero.
+**Publish this report even when nothing can be applied**, counts reading zero.
 
 Outdated threads are listed read-only, in the same table shape, marked `Outdated — verify it applies`.
 Follow [reporting a run](crew-pr-resolver/references/reporting-a-run.md) for that table, the summary
@@ -163,11 +161,10 @@ reply: there is no change to describe. Without `+ journal` the draft is not stor
 ### Step 7: Execute approved actions (main session)
 
 Only after the user responds: follow [acting on threads](crew-pr-resolver/references/acting-on-threads.md)
-for the edit, verify, commit, push, reply, resolve and journal mechanics. Three rules stay here
-because they govern what this run reports: with edits approved, no reply or resolution happens before
-the commit is pushed; with none, replies go out directly. Every reply is written under
-`~/.cursor/rules/voice.mdc`; and an `Ask` thread gets the reply alone and stays open, as does a
-`Decide` thread, and neither is ever resolved.
+for the edit, verify, commit, push, reply, resolve and journal mechanics. Three rules stay here: with
+edits approved, no reply or resolution happens before the commit is pushed; with none, replies go
+out directly. Every reply is written under `~/.cursor/rules/voice.mdc`. An `Ask` or `Decide` thread
+gets the reply alone and stays open, never resolved.
 
 After Step 7, the main session (not the plan) ends with:
 

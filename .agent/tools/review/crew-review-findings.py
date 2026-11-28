@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Normalize review findings, persist review reports, and append outcome records.
 
-Subcommands: `normalize`, `persist`, `select`, `coverage`, `spec-context`,
-`check-packages`, `outcome`, `outcomes`, `review-dir`, `save-out`, `expect`, `capture`, `consolidate`.
-Entry point only: logic in `review_findings`, `review_cli`, `review_coverage`, `review_layers`, `review_report`.
+Subcommands: `normalize`, `persist`, `select`, `coverage`, `spec-context`, `check-packages`, `outcome`, `outcomes`,
+`review-dir`, `prepare` (a review's setup in one call), `save-out`, `expect`, `capture`, `consolidate`. Entry point
+only: logic in `review_findings`, `review_cli`, `review_coverage`, `review_layers`, `review_report`, `review_prepare`.
 Contract (fields, fingerprints, evidence gates, `--files`, `--head`): `.agent/tools/TOOLS.md`.
 """
 from __future__ import annotations
@@ -47,6 +47,7 @@ from review_layers import (
 )
 from review_models import fingerprint
 from review_pr_plan import check_map, comments
+from review_prepare import add_prepare_parser, prepare
 from review_render import add_save_out_parser, save_out
 from review_report import check_outcomes, outcome, persist
 from review_vocabulary import (
@@ -116,13 +117,14 @@ def main() -> int:
     add_save_out_parser(commands)
     add_capture_parsers(commands)
     add_consolidate_parser(commands)
+    add_prepare_parser(commands)
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
                 "spec-context": spec_context,
                 "check-packages": check_packages, "review-dir": review_dir_command,
                 "prior-review": prior_review, "save-out": save_out, "expect": expect, "capture": capture,
-                "consolidate": consolidate,
+                "consolidate": consolidate, "prepare": prepare,
                 "comments": comments, "check-map": check_map}
     try:
         return handlers[args.command](args)
