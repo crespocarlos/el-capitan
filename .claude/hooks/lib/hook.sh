@@ -6,13 +6,10 @@
 #                 Cursor `preToolUse` / `beforeShellExecution`: one JSON deny on stdout, exit 0.
 #   no objection  exit 0 and print nothing on either stream, so the harness's own permission flow
 #                 decides. An explicit allow would skip interactive approval, so none is emitted.
-#                 In Cursor every security guard is `failClosed: true`, so its no objection is `{}`
+#                 In Cursor both guards are `failClosed: true`, so their no objection is `{}`
 #                 (hook_allow); a crash there blocks.
-#   cannot judge  one line on stderr and no objection. A hook that sets `HOOK_FAIL_CLOSED=1` exits 2
-#                 instead while `HOOK_FAIL_BLOCKS` (default: HOOK_FAIL_CLOSED) is 1; the same rule
-#                 carries `onFailure: "block"` in `.claude/settings.template.json` and `failClosed: true` in
-#                 `.cursor/hooks.template.json`, so a crash blocks too. An off switch (hook_off)
-#                 turns that exit 2 into no objection as well.
+#   cannot judge  one line on stderr and no objection.
+# A denial is logged to ~/.agent/state/guard.log: time, rule, harness and a hash of what was denied, never its text.
 #
 # Usage: set HOOK_NAME, source this file, then call hook_input, hook_event, hook_field NAME, and
 # finish with hook_deny MESSAGE or hook_allow. A shell guard reads the command through the
@@ -22,7 +19,6 @@
 
 hook_fail() {
   printf '%s: %s\n' "${HOOK_NAME:-hook}" "$1" >&2
-  if [ "${HOOK_FAIL_BLOCKS:-${HOOK_FAIL_CLOSED:-0}}" = 1 ] && ! hook_off; then exit 2; fi
   hook_allow
 }
 
@@ -116,6 +112,9 @@ hook_deny() {
   switch=EL_CAPITAN_GUARD_$(printf '%s' "${HOOK_NAME:-hook}" | tr 'a-z-' 'A-Z_')
   if hook_off; then hook_allow; fi
   message="$1 (Off switch, set in the harness environment: $switch=off for this guard, EL_CAPITAN_GUARDS=off for all.)"
+  { mkdir -p "$HOME/.agent/state" && printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${HOOK_NAME:-hook}" \
+    "$([ "$HOOK_SHAPE" = claude ] && echo claude-code || echo cursor)" "$(printf '%s' "${HOOK_SUBJECT:-}" | cksum | cut -d' ' -f1)" \
+    >>"$HOME/.agent/state/guard.log"; } 2>/dev/null || true
   if [ "$HOOK_SHAPE" = claude ]; then
     printf '%s\n' "$message" >&2
     exit 2
@@ -129,13 +128,13 @@ hook_deny() {
 # decides. An explicit allow would skip interactive approval, so none is emitted.
 #
 # One measured exception: Cursor reads *no output at all* from a hook registered `failClosed: true` as
-# a crash and blocks the command, so silence there is not a decline. Every security guard is registered
-# that way in Cursor (`.cursor/hooks.template.json`), so a guard answering Cursor's `beforeShellExecution`
+# a crash and blocks the command, so silence there is not a decline. Both guards are registered that
+# way in Cursor (`.cursor/hooks.template.json`), so a guard answering Cursor's `beforeShellExecution`
 # or `preToolUse` says `{}` — an empty decision object, which carries no permission at all, so it adds
 # nothing to the harness's own flow and skips no approval. Observers (other events) stay silent.
 hook_allow() {
   if [ "${HOOK_SHAPE:-}" = cursor ]; then
-    case "${HOOK_FAIL_CLOSED:-0}:${HOOK_EVENT:-}" in 1:* | *:beforeShellExecution | *:preToolUse) printf '{}\n' ;; esac
+    case "${HOOK_EVENT:-}" in beforeShellExecution | preToolUse) printf '{}\n' ;; esac
   fi
   exit 0
 }
@@ -155,9 +154,8 @@ hook_allow() {
 #   - heredoc bodies and here-strings are data of the segment that reads them, never commands,
 #     except when that segment is a shell with no `-c` and no script argument: then the body is its
 #     script and is parsed as a payload. So is the text piped into such a shell by `echo`, `printf`
-#     or a `cat` of a heredoc; any other producer (`cat file | sh`, `curl ... | bash`) cannot be
-#     read, and hook_segments denies it unless the caller set HOOK_SHELL_STDIN=allow;
-#   - past MAX_PAYLOADS nested payloads the command is too complex to judge: hook_segments denies.
+#     or a `cat` of a heredoc; what any other producer (`cat file | sh`) pipes is not read;
+#   - past MAX_PAYLOADS nested payloads the command is too complex to judge: HOOK_OVERFLOW is 1.
 # Two parsers emit these records. With `shfmt` on PATH (optional, preferred) the command is parsed
 # into a real bash syntax tree (`shfmt --to-json`) and lib/segments.jq derives the records from it;
 # each string payload (`sh -c`, `eval`, a shell's stdin) goes through shfmt again. Without shfmt, or
@@ -243,8 +241,7 @@ function resolve(p, dir) {
   return dir "/" p
 }
 # Past MAX_PAYLOADS (HOOK_MAX_PAYLOADS) the END block reports an overflow, so nothing is dropped silently.
-# A process substitution's payload (ps) has a stdin the guard cannot see.
-function enqueue(s, d, ps) { if (QN >= MAX_PAYLOADS) { OVERFLOW = 1; return } QN++; Q[QN] = s; QD[QN] = d; QP[QN] = ps }
+function enqueue(s, d) { if (QN >= MAX_PAYLOADS) { OVERFLOW = 1; return } QN++; Q[QN] = s; QD[QN] = d }
 # The record escapes, as `enc` in lib/segments.jq: \035 is the escape byte, so a US or RS inside a word
 # never splits it, and a newline is RS (BWK awk's split() also splits on a newline). Words are stored
 # escaped; dec gives back the text a payload needs.
@@ -275,11 +272,8 @@ function optval(w, o) {
   if (w == "stdbuf") return o ~ /^-[ioe]$/
   return 0
 }
-# A script argument: stdin by name reads stdin, another descriptor or a process substitution is opaque.
-function script(w, idx) {
-  if (w == "/dev/stdin" || w == "/dev/fd/0") SHIN[idx] = 1
-  else if (w ~ /^\/dev\/fd\// || w ~ /^[<>]\(/) OPAQUE = 1
-}
+# A script argument: stdin by name reads stdin; any other script is a file the guard does not read.
+function script(w, idx) { if (w == "/dev/stdin" || w == "/dev/fd/0") SHIN[idx] = 1 }
 # A shell with `-c` runs its payload, the first word after `-c` that is not an option; with no `-c`
 # and no script argument (or with `-s`) it runs stdin. Mirrors `shellin` in lib/segments.jq.
 function shellin(a, i, n, idx,    j, s) {
@@ -344,7 +338,6 @@ function store(   a, n, i, j, k, out, base, idx, b, m) {
     if (j > n || a[j] !~ /[$`]|[[:cntrl:]]/) DIR = resolve(j <= n ? a[j] : "~", DIR)
   }
   if (base ~ /^(sh|bash|zsh|dash|ksh)$/) shellin(a, i, n, idx)
-  if (base ~ /^(sh|bash|zsh|dash|ksh)$/ && INPS) PSIN[idx] = 1
   if (base == "echo" || base == "printf") LIT[idx] = lit(a, i, n, base)
   if (base == "cat") { CAT[idx] = 1; for (j = i + 1; j <= n; j++) if (a[j] !~ /^-/) CAT[idx] = 0 }
   if (base == "eval" && i < n) { out = a[i + 1]; for (j = i + 2; j <= n; j++) out = out " " a[j]; enqueue(dec(out), DIR) }
@@ -353,21 +346,19 @@ function store(   a, n, i, j, k, out, base, idx, b, m) {
 function endseg(   k, idx) {
   pushword(); idx = store(); LAST = idx
   for (k = 1; k <= PN; k++) if (PO[k] == 0) PO[k] = idx ? idx : -1
-  WSTR = ""; QSTR = ""; NW = 0; HSD = ""; REDIR = 0; ASTR = ""; AQSTR = ""; ANW = 0; ADIFF = 0; INPS = 0
+  WSTR = ""; QSTR = ""; NW = 0; HSD = ""; REDIR = 0; ASTR = ""; AQSTR = ""; ANW = 0; ADIFF = 0
 }
 # After a scan, every shell that runs stdin gets that text as a payload: its own heredoc or
-# here-string, or what an `echo`, `printf` or heredoc `cat` pipes into it. Any other producer is opaque,
-# and so is the stdin of a process substitution (a shell inside one, or one reading `< <(...)`).
-function stdins(first, ps,    k, p) {
+# here-string, or what an `echo`, `printf` or heredoc `cat` pipes into it. What any other producer
+# pipes is not read.
+function stdins(first,    k, p) {
   for (k = first; k <= NSEG; k++) {
     if (!SHIN[k]) continue
-    if (PSIN[k]) { OPAQUE = 1; continue }
     if (SB[k] != "") { enqueue(SB[k], SD[k]); continue }
     p = PIPE[k]
     while (p > 0 && CAT[p] && SB[p] == "") p = PIPE[p]
     if (p > 0 && (p in LIT)) enqueue(LIT[p], SD[k])
     else if (p > 0 && CAT[p]) enqueue(SB[p], SD[k])
-    else if (p != 0 || ps) OPAQUE = 1
   }
 }
 function closing(s, i, n,    c, depth, j) {
@@ -430,11 +421,9 @@ function param(s, i, n,    c, j, depth) {
   return i
 }
 function isparam(s, i) { return substr(s, i, 1) == "$" && substr(s, i + 1, 1) ~ /[{A-Za-z_0-9@*#?$!-]/ }
-# `<(...)` or `>(...)`: the body is a payload whose stdin the guard cannot see; as the target of `<`
-# it is the stdin of the segment's command.
+# `<(...)` or `>(...)`: the body is a payload.
 function psubst(s, i, n,    j) {
-  j = closing(s, i + 2, n); enqueue(substr(s, i + 2, j - i - 2), DIR, 1)
-  if (REDIR == 1 && REDIRIN) INPS = 1
+  j = closing(s, i + 2, n); enqueue(substr(s, i + 2, j - i - 2), DIR)
   add(substr(s, i, j - i + 1)); INW = 1
   return j + 1
 }
@@ -480,7 +469,7 @@ function redirect(s, i, n, c) {
   if (substr(s, i, 1) == "&") { i++; while (i <= n && substr(s, i, 1) ~ /[0-9-]/) i++; return i }
   REDIR = 1; REDIRIN = (c == "<"); return i
 }
-function scan(s, dir, ps,    n, i, c, j, first) {
+function scan(s, dir,    n, i, c, j, first) {
   n = length(s); i = 1; DIR = dir; W = ""; WA = ""; INW = 0; WQ = 0; WSTR = ""; QSTR = ""; NW = 0; REDIR = 0; HSD = ""; PN = 0
   PIPEIN = 0; first = NSEG + 1
   while (i <= n) {
@@ -506,19 +495,18 @@ function scan(s, dir, ps,    n, i, c, j, first) {
     else { add(c); INW = 1; i++ }
   }
   endseg()
-  stdins(first, ps)
+  stdins(first)
 }
 BEGIN { US = sprintf("%c", 31); RS_ = sprintf("%c", 30); MAX_PAYLOADS = max + 0 }
 { text = (NR == 1) ? $0 : text "\n" $0 }
 END {
   QN = 1; Q[1] = text; QD[1] = cwd
-  for (qi = 1; qi <= QN; qi++) scan(Q[qi], QD[qi], QP[qi])
+  for (qi = 1; qi <= QN; qi++) scan(Q[qi], QD[qi])
   for (k = 1; k <= NSEG; k++) {
     print enc(SD[k]) US enc(SB[k]) US SQ[k] US SW[k]
   }
   for (k = 1; k <= RN; k++) print US "redir" US enc(RD[k]) US enc(RW[k])
   if (OVERFLOW) print US "overflow"
-  if (OPAQUE) print US "stdin"
 }
 AWK
   out=$(printf '%s\n' "$1" | awk -v cwd="$HOOK_CWD" -v home="${HOME:-}" -v max="$HOOK_MAX_PAYLOADS" "$HOOK_AWK" 2>/dev/null) \
@@ -526,18 +514,16 @@ AWK
   hook_records "$out"
 }
 
-# Either parser's output into HOOK_SEGS; the overflow and opaque-stdin markers deny here.
+# Either parser's output into HOOK_SEGS; past the payload cap the command is too complex to judge and
+# HOOK_OVERFLOW is 1 (the shell guard denies it as its `too-complex` rule).
 hook_records() {
   local rec
+  HOOK_OVERFLOW=0
   while IFS= read -r rec; do
     case "$rec" in
       "") ;;
       "${HOOK_US}redir${HOOK_US}"*) HOOK_REDIRS[${#HOOK_REDIRS[@]}]=${rec#"${HOOK_US}redir${HOOK_US}"} ;;
-      "${HOOK_US}overflow")
-        hook_deny "Blocked: command too complex for the guard (more than $HOOK_MAX_PAYLOADS nested commands to check). Split it into smaller commands." ;;
-      "${HOOK_US}stdin")
-        [ "${HOOK_SHELL_STDIN:-deny}" = allow ] \
-          || hook_deny "Blocked: a shell reads its script from a pipe the guard cannot read, so the commands it runs go unchecked. Run the script as a file (\`bash FILE\`) or pass it with \`bash -c\`." ;;
+      "${HOOK_US}overflow") HOOK_OVERFLOW=1 ;;
       *) HOOK_SEGS[${#HOOK_SEGS[@]}]=$rec ;;
     esac
   done <<<"$1"

@@ -28,13 +28,12 @@ DENY = [
     ('echo "$(git reset --hard)"', "clean", "destructive-git"),
     ("git reset --hard; # " + "x" * 70000, "clean", "destructive-git"),
     ("git push --force-if-includes origin feature", "clean", "destructive-git"),
-    # A shell reading its script from a heredoc, a here-string or a pipe runs that text.
+    # A shell reading its script from a heredoc, a here-string or an echo, printf or heredoc pipe runs that text.
     ("bash <<'EOF'\ngit reset --hard\nEOF", "clean", "destructive-git"),
     ("bash <<< 'git reset --hard'", "clean", "destructive-git"),
     ("cat <<EOF | sh\ngit reset --hard\nEOF", "clean", "destructive-git"),
     ("echo 'git reset --hard' | bash", "clean", "destructive-git"),
     ("printf 'git reset --hard\\n' | sudo bash -s", "clean", "destructive-git"),
-    ("cat setup.sh | bash", "clean", "destructive-git"),
     # git behind a runner, or behind a wrapper that takes an option value.
     ("timeout 10 git reset --hard", "clean", "destructive-git"),
     ("nice -n 5 git reset --hard", "clean", "destructive-git"),
@@ -52,7 +51,7 @@ DENY = [
     ("git reset --hard; fi", "clean", "destructive-git"),
     ("bash -c 'git reset --hard; fi'", "clean", "destructive-git"),
     # Past the payload cap the command is too complex to judge, so it is denied.
-    ("echo " + "$(:) " * 70, "clean", "destructive-git"),
+    ("echo " + "$(:) " * 70, "clean", "too-complex"),
     # A `cd` into a name with a control character leaves the directory where it was, and a control
     # character inside a word or a directory never shifts the record's fields.
     ("mkdir -p $'\\037' && cd $'\\037' && git reset --hard", "clean", "destructive-git"),
@@ -67,15 +66,10 @@ DENY = [
     ("g${NOPE}it reset --hard", "clean", "destructive-git"),
     ("git ${NOPE}reset --hard", "clean", "destructive-git"),
     ("git reset ${NOPE}--hard", "clean", "destructive-git"),
-    # A shell's script: the first word after `-c` that is not an option, stdin by name, or a process
-    # substitution the guard cannot read (and a shell inside one reads a pipe it cannot see).
+    # A shell's script: the first word after `-c` that is not an option, or stdin by name.
     ("bash -c -- 'git reset --hard'", "clean", "destructive-git"),
     ("bash -c -e 'git reset --hard'", "clean", "destructive-git"),
-    ("echo 'git reset --hard' > >(bash)", "clean", "destructive-git"),
-    ("bash <(echo 'git reset --hard')", "clean", "destructive-git"),
-    ("bash < <(echo 'git reset --hard')", "clean", "destructive-git"),
     ("echo 'git reset --hard' | bash /dev/stdin", "clean", "destructive-git"),
-    ("bash /dev/fd/5 5<<< 'git reset --hard'", "clean", "destructive-git"),
     # A fresh worker lock: a tree change in that tree, named by cwd, `git -C`, a leading `cd` or a runner.
     ("git checkout main", "locked", "worker-tree"),
     ("git restore base.txt", "locked", "worker-tree"),
@@ -91,7 +85,7 @@ DENY = [
     ("git -C {clean} log; git checkout main", "locked", "worker-tree"),
     ("git -C {clean} status && git switch -c x", "locked", "worker-tree"),
     ("sh -c 'git checkout main'", "locked", "worker-tree"),
-    # PR refs, plain and through escapes, aliases and global options.
+    # `gh pr checkout`, plain and through escapes, aliases and global options.
     ("gh pr checkout 12", "clean", "local-pr-ref"),
     ("gh pr chec\\kout 12", "clean", "local-pr-ref"),
     ("g\\h pr 'check'out 12", "clean", "local-pr-ref"),
@@ -99,11 +93,6 @@ DENY = [
     ("gh pr --repo=owner/repo chec\\kout 12", "clean", "local-pr-ref"),
     ("echo 12 | xargs gh pr co", "clean", "local-pr-ref"),
     ("bash -c 'gh pr chec\\kout 12'", "clean", "local-pr-ref"),
-    ("git --no-pager fetch origin pull/7/head:pr7", "clean", "local-pr-ref"),
-    ("git fetch origin refs/pull/$PR/head", "clean", "local-pr-ref"),
-    ('git show "refs/pull/42/head:src/a.ts"', "clean", "local-pr-ref"),
-    ("git log main..pull/42/head", "clean", "local-pr-ref"),
-    ("git fetch origin 'pull/*/head:refs/remotes/pr/*'", "clean", "local-pr-ref"),
     # Snippets that write a tracked file: both quoting styles, a heredoc, an absolute interpreter, a subdirectory cwd.
     ("python3 -c \"open('tracked.txt','w').write('x')\"", "source", "source-edit"),
     ("python3 -c 'open(\"tracked.txt\", \"w\").write(\"x\")'", "source", "source-edit"),
@@ -130,7 +119,27 @@ DENY = [
     ("python3 - <<'PY'\np = '/tmp/hook-case-o'\np = 'tracked.txt'\nopen(p, 'w')\nPY", "source", "source-edit"),
     ("python3 -c \"import subprocess; subprocess.run(['cp', '/tmp/hook-case.txt', 'tracked.txt'])\"", "source",
      "source-edit"),
-    # A secret staged or added in the same command, a large diff with the secret first, and a scan that cannot run.
+    # A secret staged or added in the same command, a large diff with the secret first, and a scan that cannot run;
+    # the kept rules through `bash -c`, an interpreter path, a wrapper and `$(...)`; a secret in a commit a push or a PR
+    # would publish.
+    ("bash -c 'git commit -m leak'", "staged", "credentials"),
+    ("/usr/bin/git commit -m leak", "staged", "credentials"),
+    ("timeout 10 git commit -m leak", "staged", "credentials"),
+    ('echo "$(git commit -m leak)"', "staged", "credentials"),
+    ("git push origin main", "pushleak", "credentials"),
+    ("gh pr create --draft --repo example/upstream", "pushleak", "credentials"),
+    ('echo "$(git checkout main)"', "locked", "worker-tree"),
+    ("/usr/bin/git checkout main", "locked", "worker-tree"),
+    ('echo "$(~/.agent/bin/crew-task.py restore-status /x --accept ok)"', "clean", "owner-only"),
+    ("timeout 5 ~/.agent/bin/crew-task.py restore-status /x --accept ok", "clean", "owner-only"),
+    ("gh pr create --draft", "clean", "pr-repo"),
+    # Deny rules match a command's prefix and miss `git -C <tree>` and a removal resolved against the cwd: both rules
+    # run in every harness, so these rows deny in Claude Code's payload too.
+    ("git -C {clean} reset --hard", "nogit", "destructive-git"),
+    ("git -C {clean} clean -fdx", "nogit", "destructive-git"),
+    ("git -C {clean} push --force", "nogit", "destructive-git"),
+    ('cd {tasks}/DDD-status && rm -rf "$VAR"', "clean", "task-files"),
+    ("cd {tasks}/DDD-status && rm PROGRESS.md", "clean", "task-files"),
     ("git add leak.txt && git commit -m add", "leaky", "credentials"),
     ("git add -A && git commit -m all", "leaky", "credentials"),
     ("git commit -am wip", "leaky", "credentials"),
@@ -140,74 +149,22 @@ DENY = [
     ('git commit -m "restore cd /tmp behavior"', "staged", "credentials"),
     ("git commit -m big", "bigleak", "credentials"),
     ("git commit -m x", "corrupt", "credentials"),
-    ("gh pr create --draft", "clean", "credentials"),
     ("git add -A && git commit -m all", "loose", "credentials"),
-    # A literal shell write to a task's SPEC.md, `.task-id` or review evidence: a redirect, `tee`, `sed -i`, `perl -i`,
-    # a Python heredoc, `cp` onto it or into its directory, `mv` away, a `cd` first, and a resolved or linked path.
-    ("echo x > {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("echo x >> {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("printf 'x\\n' | tee -a {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("sed -i '' 's/DRAFTING/APPROVED/' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("cd {tasks}/DDD-status && sed -i.bak s/DRAFTING/APPROVED/ SPEC.md", "clean", "task-files"),
-    ("perl -pi -e 's/DRAFTING/APPROVED/' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("python3 - <<'PY'\nfrom pathlib import Path\np = Path('{tasks}/DDD-status/SPEC.md')\n"
-     "p.write_text(p.read_text().replace('DRAFTING', 'APPROVED'))\nPY", "clean", "task-files"),
-    ("cp /tmp/hook-case-spec.md {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("cp /tmp/SPEC.md {tasks}/DDD-status/", "clean", "task-files"),
-    ("mv {tasks}/DDD-status/SPEC.md /tmp/hook-case-spec.md", "clean", "task-files"),
-    ("cd {tasks}/DDD-status && cat > SPEC.md <<'EOF'\n## Status\nAPPROVED\nEOF", "clean", "task-files"),
-    ("echo x > {tasks}/DDD-status/../DDD-status/SPEC.md", "clean", "task-files"),
-    ("echo x > {home}/linked-task/SPEC.md", "clean", "task-files"),
-    ("echo '{}' > {tasks}/DDD-status/.task-id", "clean", "task-files"),
-    ("echo n > {tasks}/DDD-status/review/1/adversarial.expect", "clean", "task-files"),
-    ("echo n > {tasks}/DDD-status/spec-agents/1/specwriter-scope.expect", "clean", "task-files"),
-    # PROGRESS.md holds the gate-stamped status; dd, truncate, rsync, ln, awk -i inplace and ruby -i; a cp, mv or rsync
-    # destination anywhere inside a task directory, a whole task folder included, and from a cwd inside one.
-    ("echo 'TRANSITION: DRAFTING → APPROVED [gate]' >> {tasks}/DDD-status/PROGRESS.md", "clean", "task-files"),
-    ("dd if=/tmp/hook-case-x of={tasks}/DDD-status/review/1/a.out.md", "clean", "task-files"),
-    ("truncate -s0 {tasks}/DDD-status/.task-id", "clean", "task-files"),
-    ("rsync /tmp/a.out.md {tasks}/DDD-status/review/1/", "clean", "task-files"),
-    ("ln -sf /tmp/forged {tasks}/DDD-status/.task-id", "clean", "task-files"),
-    ("awk -i inplace '{print}' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("ruby -pi -e 'gsub(/DRAFTING/, \"APPROVED\")' {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
-    ("cp /tmp/hook-case-notes.md {tasks}/DDD-status/", "clean", "task-files"),
-    ("cp -r /tmp/DDD-status {tasks}/", "clean", "task-files"),
-    ("mv /tmp/hook-case-x {tasks}/DDD-status/notes.md", "clean", "task-files"),
-    ("cd {tasks}/DDD-status && cp /tmp/hook-case-x .", "clean", "task-files"),
-    # `$HOME` spelled out; a removal of a record, a task directory or by `find -delete`; a SPEC.md written by shell into
-    # a task that already has a `.task-id` (no longer a first write); inline Python that imports the task modules.
-    ('echo "TRANSITION: DRAFTING → APPROVED [gate]" >> "$HOME/.agent/tasks/DDD-status/PROGRESS.md"', "clean",
-     "task-files"),
-    ("echo x > ${HOME}/.agent/tasks/DDD-status/SPEC.md", "clean", "task-files"),
+    # A removal of a task record, a task directory or the tasks root, by `rm`, `unlink` or `find -delete`.
     ("rm {tasks}/DDD-status/PROGRESS.md", "clean", "task-files"),
     ("rm -f {tasks}/DDD-status/SPEC.md", "clean", "task-files"),
     ("rm -rf {tasks}/DDD-status", "clean", "task-files"),
     ("rm -rf ~/.agent/tasks", "clean", "task-files"),
     ("unlink {tasks}/DDD-status/.task-id", "clean", "task-files"),
     ("find {tasks}/DDD-status -name PROGRESS.md -delete", "clean", "task-files"),
-    ("cat > {tasks}/CCC-fresh/SPEC.md <<'EOF'\n## Status\nDONE\nEOF", "clean", "task-files"),
-    ("python3 -c \"from pathlib import Path; from task_state import load, record_transition; "
-     "record_transition(load(Path('{tasks}/DDD-status')), 'DRAFTING → APPROVED')\"", "clean", "task-files"),
-    ("cd {tasks}/DDD-status && python3 - <<'PY'\nimport task_gates\ntask_gates.restore_status('.', 'ok')\nPY", "clean",
-     "task-files"),
     # Only the owner, in their own terminal, keeps a Status written outside the gates; an abbreviation is the same word.
     ("~/.agent/bin/crew-task.py restore-status {tasks}/DDD-status --acc 'owner ok'", "clean", "owner-only"),
     ("~/.agent/bin/crew-task.py restore-status {tasks}/DDD-status --accept 'owner approved'", "clean", "owner-only"),
     ("python3 ~/.agent/bin/crew-task.py restore-status {tasks}/DDD-status --accept=ok", "clean", "owner-only"),
     ("bash -c '~/.agent/bin/crew-task.py restore-status /x --accept ok'", "clean", "owner-only"),
-    # zsh reads an unquoted word starting with `=` as a command lookup that aborts the line.
-    ("echo =====", "clean", "zsh-equals"),
-    ("echo ==", "clean", "zsh-equals"),
-    ("echo =ls", "clean", "zsh-equals"),
-    ("cat a | cut -c1-9; echo =====; grep -n x b", "clean", "zsh-equals"),
-    ('g "label" f "pattern"; echo x == y', "clean", "zsh-equals"),
-    ("cat a.md; echo =======DISPATCH; cat b.md", "clean", "zsh-equals"),
-    ("cat <<'EOF' > /tmp/f\nbody == data\nEOF\necho =====", "clean", "zsh-equals"),
-    ('cat <<< "$x"; echo =====', "clean", "zsh-equals"),
-    ("cat <<-EOF\n\tbody == data\n\tEOF\necho =====", "clean", "zsh-equals"),
 ]
 
-# Ordinary work: every guard stays silent (Cursor's fail-closed credentials rule answers `{}`).
+# Ordinary work: both guards stay silent (in Cursor, fail-closed, they answer `{}`).
 ALLOW = [
     ("git status", "clean"),
     ("git log --oneline -5 | head -3", "clean"),
@@ -290,23 +247,6 @@ ALLOW = [
     ("python3 -c \"import os; open('/tmp/o','w').write(str(os.listdir('src')))\"", "source"),
     ("git add -u && git commit -m x", "loose"),
     ("git add --update . && git commit -m x", "loose"),
-    # Quoted `=` is text, and so is a lone `=`, a comment, a heredoc body and an assignment.
-    ("echo =", "clean"),
-    ("echo '====='", "clean"),
-    ("printf '%s\\n' '-----'", "clean"),
-    ('x=1; y=2; echo "$x$y"', "clean"),
-    ("rg --glob=!*.md x", "clean"),
-    ('printf "%s\\n" "a=b"', "clean"),
-    ('jq -n "{a:1}"', "clean"),
-    ('grep -c "=" f', "clean"),
-    ('rg -n "===" f', "clean"),
-    ("echo a==b", "clean"),
-    ('[ "$a" = "$b" ] && echo same', "clean"),
-    ('[[ "$a" == "$b" ]] && echo same', "clean"),
-    ("ls -la; # ===== files =====", "clean"),
-    ("grep -n x a\n# ===== next =====\nwc -l b", "clean"),
-    ("python3 - <<'PY'\nprint(\"x == y\")\nPY", "clean"),
-    ("cat <<-EOF\n\tbody == data\n\tEOF\nrm -f /tmp/hook-case-x", "clean"),
     # A task file read, copied elsewhere or moved by crew-task.py, and a task's first SPEC.md; a scratch file beside it.
     ("~/.agent/bin/crew-task.py mark-approved {tasks}/DDD-status", "clean"),
     ("cat {tasks}/DDD-status/SPEC.md", "clean"),
@@ -342,18 +282,16 @@ PARSERS_DIFFER = [
      "the same quoted `)`: awk ends the payload early and reads the quoted tail as an unquoted `git` word"),
 ]
 
-# `(command, cwd, tool, env, by)` run through `credentials.sh` alone with `tool` missing from PATH.
-# Without `grep` the secret scan cannot run, so a commit blocks while a command that needs no scan
-# passes. A failure before the scan starts (no `awk` for the normaliser, no `jq` for the input) lets
-# the command through with exactly one line on stderr, and so does any failure under an off switch.
+# `(command, cwd, tool, env, by)` with `tool` missing from PATH. Without gitleaks the credentials rule denies only the
+# commands it scans (a commit, a push, `gh pr create`); a failure before any rule runs (no `awk` for the normaliser, no
+# `jq` for the input) lets the command through with exactly one line on stderr.
 MISSING = [
-    ("git commit -m x", "clean", "grep", {}, "credentials"),
-    ("git add notes.txt && git commit -m notes", "addable", "grep", {}, "credentials"),
-    ("ls -la", "clean", "grep", {}, None),
-    ("git status && gh pr view 1", "clean", "grep", {}, None),
+    ("git commit -m x", "clean", "gitleaks", {}, "credentials"),
+    ("git push origin main", "clean", "gitleaks", {}, "credentials"),
+    ("gh pr create --draft --repo example/upstream", "clean", "gitleaks", {}, "credentials"),
+    ("ls -la", "clean", "gitleaks", {}, None),
+    ("git status && gh pr view 1", "clean", "gitleaks", {}, None),
     ("ls -la", "clean", "awk", {}, None),
-    ("ls -la", "clean", "jq", {"EL_CAPITAN_GUARDS": "off"}, None),
-    ("git commit -m x", "clean", "jq", {"EL_CAPITAN_GUARD_CREDENTIALS": "off"}, None),
 ]
 
 # `(command, cwd, env, by)` with the hook's environment changed: the documented off switches
@@ -368,10 +306,8 @@ ENV = [
     ("gh pr checkout 12", "clean", {"EL_CAPITAN_GUARD_LOCAL_PR_REF": "off"}, None),
     ("python3 -c \"open('tracked.txt','w')\"", "source", {"EL_CAPITAN_GUARD_SOURCE_EDIT": "off"}, None),
     ("git add leak.txt && git commit -m add", "leaky", {"EL_CAPITAN_GUARD_CREDENTIALS": "off"}, None),
-    ("echo =====", "clean", {"EL_CAPITAN_GUARD_ZSH_EQUALS": "off"}, None),
-    ("echo x > {tasks}/DDD-status/SPEC.md", "clean", {"EL_CAPITAN_GUARD_TASK_FILES": "off"}, None),
+    ("rm {tasks}/DDD-status/SPEC.md", "clean", {"EL_CAPITAN_GUARD_TASK_FILES": "off"}, None),
     ("~/.agent/bin/crew-task.py restore-status /x --accept ok", "clean", {"EL_CAPITAN_GUARD_OWNER_ONLY": "off"}, None),
-    ("echo =====", "clean", {"EL_CAPITAN_GUARDS": "off"}, None),
     ("git checkout main", "locked", {"CREW_WORKER_TASK": "T-1"}, None),
     ("git -C {locked} checkout main", "clean", {"CREW_WORKER_TASK": "T-1"}, None),
     ("git checkout main", "locked", {"CREW_WORKER_TASK": "T-2"}, "worker-tree"),
@@ -383,7 +319,6 @@ MESSAGES = {
     # The denied agent cannot tell a live worker from a crashed one: no task id, no removal command.
     # The age grows while the suite runs (slow runners pass a minute), so only its presence is checked.
     "worker-tree": (("ask the user before removing the lock", " min old)"), ("T-1", "lock remove")),
-    "task-files": (("Task file guard: this shell command",), ()),
     "owner-only": (("Owner only", "own terminal"), ()),
 }
 
@@ -393,34 +328,16 @@ SPEC = "{tasks}/DDD-status/SPEC.md"
 TICK = {"old_string": "- [ ] T1: a", "new_string": "- [x] T1: a"}
 APPROVE = {"old_string": "DRAFTING", "new_string": "APPROVED"}
 
-# `(fields, cwd, by)` sent to every `Write|Edit` hook: a write outside the boundary is denied after
-# `..` is resolved, the agent homes, /tmp and the review pipeline's temp directory are allowed, and a
-# spec titled for one task is never written over another task's existing spec.
+# `(fields, cwd, by)` sent to the `Write|Edit` hook: a spec titled for one task is never written over another task's
+# spec past DRAFTING, while a DRAFTING spec's own title may change.
 FILES = [
     ({"file_path": "{clean}/new.md"}, "clean", None),
-    ({"file_path": "{clean}/deep/a/b/c.ts"}, "clean", None),
-    ({"file_path": "{clean}/../outside.md"}, "clean", "check-write-boundary"),
-    ({"file_path": "{clean}/sub/../../outside.md"}, "clean", "check-write-boundary"),
-    ({"file_path": "{home}/outside.md"}, "clean", "check-write-boundary"),
-    ({"file_path": "/outside/file"}, "clean", "check-write-boundary"),
-    ({"file_path": "{home}/.claude/agents/x.md"}, "clean", None),
-    ({"file_path": "{home}/.cursor/skills/x/SKILL.md"}, "clean", None),
-    ({"file_path": "/tmp/scratch.json"}, "clean", None),
-    ({"file_path": "{tmp}/crew-review-x/f.json"}, "clean", None),
-    ({"file_path": "{review}/layers.json"}, "clean", None),
-    ({"file_path": "{tmp}/not-a-repo/x.json"}, "clean", "check-write-boundary"),
-    # A background job's scratch directory under a config dir the install manifest records, and nothing beside it.
-    ({"file_path": "{home}/.claude-work/jobs/j1/tmp/out.json"}, "clean", None),
-    ({"file_path": "{home}/.claude-work/jobs/j1/state.json"}, "clean", "check-write-boundary"),
-    ({"file_path": "{home}/.claude-work/jobs/j1/x/tmp/out.json"}, "clean", "check-write-boundary"),
-    ({"file_path": "{home}/.claude-work/jobs/j1/tmp/../../../settings.json"}, "clean", "check-write-boundary"),
-    ({"file_path": "{home}/.claude-other/jobs/j1/tmp/out.json"}, "clean", "check-write-boundary"),
-    ({"file_path": "{home}/elsewhere/jobs/j1/tmp/out.json"}, "clean", "check-write-boundary"),
+    ({"file_path": "{home}/outside.md"}, "clean", None),
     ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Reviewer finding kind axis and confidence"},
-     "clean", "check-task-spec-owner"),
-    ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent"}, "clean", "check-task-spec-owner"),
+     "clean", "spec-owner"),
+    ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent"}, "clean", "spec-owner"),
     ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Alignment agent tool frontmatter"},
-     "clean", "check-task-spec-owner"),
+     "clean", "spec-owner"),
     ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent tool frontmatter with the harness"},
      "clean", None),
     ({"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent tool frontmatter"}, "clean", None),
@@ -431,56 +348,47 @@ FILES = [
      "clean", None),
     ({"file_path": "{tasks}/CCC-fresh/SPEC.md", "content": "# Spec: Something else entirely"}, "clean", None),
     ({"file_path": "{home}/.agent/somewhere/SPEC.md", "content": "# Spec: anything at all"}, "clean", None),
+    ({"file_path": SPEC, "content": STATUS_SPEC.replace("Status guard", "Retitled while drafting")}, "clean", None),
     # The Status line of an existing task spec moves only through crew-task.py; every other edit passes.
     ({"file_path": SPEC, **TICK}, "clean", None),
-    ({"file_path": SPEC, **APPROVE}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, **APPROVE}, "clean", "status"),
     ({"file_path": SPEC, "content": STATUS_SPEC.replace("- [ ]", "- [x]")}, "clean", None),
-    ({"file_path": SPEC, "content": STATUS_SPEC.replace("DRAFTING", "APPROVED")}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "content": STATUS_SPEC.replace("DRAFTING", "APPROVED")}, "clean", "status"),
     # A new spec is born DRAFTING (or with no Status yet), never already approved.
     ({"file_path": "{tasks}/BBB-new/SPEC.md", "content": STATUS_SPEC.replace("DRAFTING", "APPROVED")},
-     "clean", "check-task-spec-owner"),
+     "clean", "status"),
     ({"file_path": "{tasks}/BBB-new/SPEC.md", "content": STATUS_SPEC}, "clean", None),
     # The one reader decides: a CR heading before the real one, a lone CR read as a newline, or a blank
     # line and a second section.
     ({"file_path": SPEC, "old_string": "# Spec: Status guard\n",
-      "new_string": "# Spec: Status guard\r## Status\rAPPROVED\r\n"}, "clean", "check-task-spec-owner"),
+      "new_string": "# Spec: Status guard\r## Status\rAPPROVED\r\n"}, "clean", "status"),
     ({"file_path": SPEC, "old_string": "## Status\nDRAFTING",
-      "new_string": "## Status\r\nAPPROVED\n\n## Status\nDRAFTING"}, "clean", "check-task-spec-owner"),
+      "new_string": "## Status\r\nAPPROVED\n\n## Status\nDRAFTING"}, "clean", "status"),
     ({"file_path": SPEC, "content": STATUS_SPEC.replace("## Status\n", "## Status\n\n") + "\n## Status\nAPPROVED\n"},
-     "clean", "check-task-spec-owner"),
+     "clean", "status"),
     # The path is resolved and the name compared case-insensitively.
-    ({"file_path": "{tasks}/DDD-status/../DDD-status/SPEC.md", **APPROVE}, "clean", "check-task-spec-owner"),
-    ({"file_path": "{tasks}//DDD-status/SPEC.md", **APPROVE}, "clean", "check-task-spec-owner"),
-    ({"file_path": "{tasks}/DDD-status/spec.md", **APPROVE}, "clean", "check-task-spec-owner"),
-    ({"file_path": "{home}/linked-task/SPEC.md", **APPROVE}, "clean", "check-task-spec-owner"),
+    ({"file_path": "{tasks}/DDD-status/../DDD-status/SPEC.md", **APPROVE}, "clean", "status"),
+    ({"file_path": "{tasks}//DDD-status/SPEC.md", **APPROVE}, "clean", "status"),
+    ({"file_path": "{home}/linked-task/SPEC.md", **APPROVE}, "clean", "status"),
     # An Edit applies exactly as the tool applies it, or is refused; MultiEdit edits apply in order.
-    ({"file_path": SPEC, "old_string": "not in the file", "new_string": "x"}, "clean", "check-task-spec-owner"),
-    ({"file_path": SPEC, "old_string": "- [ ]", "new_string": "- [x]"}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "old_string": "not in the file", "new_string": "x"}, "clean", "status"),
+    ({"file_path": SPEC, "old_string": "- [ ]", "new_string": "- [x]"}, "clean", "status"),
     ({"file_path": SPEC, "old_string": "- [ ]", "new_string": "- [x]", "replace_all": True}, "clean", None),
     ({"file_path": SPEC, "edits": [TICK]}, "clean", None),
-    ({"file_path": SPEC, "edits": [TICK, APPROVE]}, "clean", "check-task-spec-owner"),
-    ({"file_path": SPEC}, "clean", "check-task-spec-owner"),
+    ({"file_path": SPEC, "edits": [TICK, APPROVE]}, "clean", "status"),
+    ({"file_path": SPEC}, "clean", "status"),
     # The tool decides which fields are read: another tool's fields, or an unknown tool, are refused.
     ({"tool_name": "Write", "file_path": SPEC, "content": STATUS_SPEC.replace("DRAFTING", "APPROVED"), "edits": [TICK]},
-     "clean", "check-task-spec-owner"),
-    ({"tool_name": "Edit", "file_path": SPEC, **TICK, "content": STATUS_SPEC}, "clean", "check-task-spec-owner"),
-    ({"tool_name": "NotebookEdit", "file_path": SPEC, "content": STATUS_SPEC}, "clean", "check-task-spec-owner"),
-    # Cursor's Delete reaches the same guard (its `preToolUse` matcher names it); its path key is undocumented.
-    ({"tool_name": "Delete", "file_path": SPEC}, "clean", "check-task-spec-owner"),
-    ({"tool_name": "Delete", "path": "{tasks}/DDD-status/PROGRESS.md"}, "clean", "check-task-spec-owner"),
-    ({"tool_name": "Delete", "target_file": "{tasks}/DDD-status/.task-id"}, "clean", "check-task-spec-owner"),
-    # The guards' evidence is written only by crew tools.
-    ({"file_path": "{tasks}/DDD-status/.task-id", "content": "{}"}, "clean", "check-task-spec-owner"),
-    ({"file_path": "{tasks}/DDD-status/review/1/adversarial.expect", "content": "n"}, "clean", "check-task-spec-owner"),
-    ({"file_path": "{tasks}/DDD-status/review/1/adversarial.provenance.json", "content": "{}"},
-     "clean", "check-task-spec-owner"),
-    ({"file_path": "{tasks}/DDD-status/review/1/adversarial.out.md", "content": "reply"},
-     "clean", "check-task-spec-owner"),
+     "clean", "status"),
+    ({"tool_name": "Edit", "file_path": SPEC, **TICK, "content": STATUS_SPEC}, "clean", "status"),
+    ({"tool_name": "NotebookEdit", "file_path": SPEC, "content": STATUS_SPEC}, "clean", "status"),
+    # Cursor's Delete of a task record (its `preToolUse` matcher names it; its path key is undocumented).
+    ({"tool_name": "Delete", "file_path": SPEC}, "clean", "task-files"),
+    ({"tool_name": "Delete", "path": "{tasks}/DDD-status/PROGRESS.md"}, "clean", "task-files"),
+    ({"tool_name": "Delete", "target_file": "{tasks}/DDD-status/.task-id"}, "clean", "task-files"),
+    # Evidence files are the TAMPERED check's: an edit passes.
+    ({"file_path": "{tasks}/DDD-status/PROGRESS.md", "content": "x\n"}, "clean", None),
     ({"file_path": "{tasks}/DDD-status/review/1/adversarial.in.md", "content": "brief"}, "clean", None),
-    ({"file_path": "{tasks}/DDD-status/spec-agents/1/specwriter-scope.out.md", "content": "reply"},
-     "clean", "check-task-spec-owner"),
-    ({"file_path": "{tasks}/DDD-status/PROGRESS.md", "content": "TRANSITION: DRAFTING → APPROVED [gate]\n"},
-     "clean", "check-task-spec-owner"),
 ]
 
 # Raw envelopes `(label, claude payload, cursor payload)` with no usable command.
@@ -513,18 +421,10 @@ def _bash(command: str) -> dict:
 # something (a deny, a line, a file); a hook that keeps running answers both copies alike. `notify-idle.sh` keeps
 # running too: `NOTIFY` sends its payload in both copies.
 CURSOR_COPY = [
-    ("guard/destructive-git.sh", _bash("git reset --hard"), "clean"),
-    ("guard/local-pr-ref.sh", _bash("gh pr checkout 12"), "clean"),
-    ("guard/source-edit.sh", _bash("python3 -c \"open('tracked.txt','w').write('x')\""), "source"),
-    ("guard/task-files.sh", _bash("echo x > {tasks}/DDD-status/SPEC.md"), "clean"),
-    ("guard/owner-only.sh", _bash("crew-task.py restore-status {tasks}/DDD-status --accept 'ok'"), "clean"),
-    ("guard/zsh-equals.sh", _bash("echo ====="), "clean"),
-    ("guard/worker-tree.sh", _bash("git checkout main"), "locked"),
-    ("guard/credentials.sh", _bash("git commit -m add"), "staged"),
-    ("check-write-boundary.sh", {"hook_event_name": "PreToolUse", "tool_name": "Write",
-                                 "tool_input": {"file_path": "{home}/outside.md", "content": "x"}}, "clean"),
-    ("check-task-spec-owner.sh", {"hook_event_name": "PreToolUse", "tool_name": "Edit",
-                                  "tool_input": {"file_path": SPEC, **APPROVE}}, "clean"),
+    ("guard/shell.sh", _bash("crew-task.py restore-status {tasks}/DDD-status --accept 'ok'"), "clean"),
+    ("check-task-spec-owner.sh", {"hook_event_name": "PreToolUse", "tool_name": "Write",
+                                  "tool_input": {"file_path": "{tasks}/AAA-other/SPEC.md", "content": "# Spec: Align agent"}},
+     "clean"),
     ("log-tool-use.sh", {"hook_event_name": "PostToolUse", "session_id": "s1", "tool_name": "Bash",
                          "tool_input": {"command": "git commit -m x"}}, "clean"),
     ("record-pr.sh", {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "gh pr create"},

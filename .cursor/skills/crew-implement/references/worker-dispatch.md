@@ -58,7 +58,7 @@ never leaves the tree denied for 6 hours:
 
 The lock is `<tree root>/.crew-worker.lock` (`task=<id>`, `started=<epoch>`), excluded from git
 through `.git/info/exclude`. While it is fresh (younger than 6 hours) the guard hook
-`.claude/hooks/guard/worker-tree.sh` denies `git checkout`, `git switch`, `git restore` and `git
+`.claude/hooks/guard/shell.sh` (its worker-tree rule) denies `git checkout`, `git switch`, `git restore` and `git
 reset --hard` in that tree, whether run from it, as `git -C <path>` or after a leading `cd <path> &&`.
 A stale lock (a worker that died) allows them. The denial gives the lock's age and says to ask the
 user before removing the lock. The guard is defence in depth and protects the main tree when no

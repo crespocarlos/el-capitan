@@ -1,4 +1,4 @@
-"""The path literals a Python snippet writes to, for `guard/source-edit.sh`; the snippet is parsed, never run.
+"""The path literals a Python snippet writes to, for the shell guard's source-edit rule; the snippet is parsed, never run.
 
 Reads the snippet on stdin and prints one target per line, exit 0. A target is the literal path of `open(<p>, <mode
 with w, a, x or +>)` (also `io.open`, `codecs.open` and `Path(<p>).open`), `Path(<p>).write_text`/`write_bytes`, the

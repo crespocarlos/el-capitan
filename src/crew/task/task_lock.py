@@ -1,7 +1,7 @@
 """`crew-task.py lock`: the worker lock a live builder holds on its tree, and the BLOCKED line.
 
 `<tree>/.crew-worker.lock` holds `task=<id>` and integer `started=<epoch>` (read by the bash guard
-`worker-tree.sh`, stale after its `STALE_SECONDS`), excluded through `.git/info/exclude`. The orchestrator
+`guard/shell.sh` worker-tree rule, stale after its `STALE_SECONDS`), excluded through `.git/info/exclude`. The orchestrator
 writes it (`lock write <tree> --task <id>`), the builder removes it, `read_locks` reads it for `crew ls
 --json` and the TUI. `blocked <TASK_DIR> "<reason>"` appends one BLOCKED line `crew ls` shows.
 """
@@ -20,7 +20,7 @@ from crew.task.task_progress import append_blocked, blocked_reason
 
 LOCK_NAME = ".crew-worker.lock"
 BLOCKED = "BLOCKED: "
-LOCK_STALE_SECONDS = 21600  # `STALE_SECONDS` of .claude/hooks/guard/worker-tree.sh: an older lock does not guard
+LOCK_STALE_SECONDS = 21600  # `STALE_SECONDS` of .claude/hooks/guard/shell.sh: an older lock does not guard
 
 
 @dataclass(frozen=True)

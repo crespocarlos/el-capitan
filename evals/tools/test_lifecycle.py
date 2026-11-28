@@ -259,7 +259,7 @@ def test_gates(tmp: Path) -> None:
     check(".task-id records the implementing branch", '"branch": "feat/worktree"' in (recorded / ".task-id").read_text())
 
 
-def test_a_status_written_outside_crew_task_is_tampered(tmp: Path) -> None:
+def test_a_status_written_outside_crew_task_is_tampered(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A Status changed by a plain file write no longer equals the one crew-task recorded: `crew ls` (table, JSON,
     reconcile) shows `TAMPERED (spec says X, crew-task recorded Y)`, every gate refuses with those words and writes
     nothing, and `restore-status` writes the recorded status back, or with `--accept <note>` records the spec's."""
@@ -267,10 +267,11 @@ def test_a_status_written_outside_crew_task_is_tampered(tmp: Path) -> None:
     draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
     (draft / ".task-id").write_text('{"slug":"draft","branch":"main"}', encoding="utf-8")
     task("mark-approved", str(draft))
+    check("mark-approved records the approved title's slug", json.loads((draft / ".task-id").read_text())["slug"] == "t")
     spec_path = draft / "SPEC.md"
     spec_path.write_text(spec_path.read_text(encoding="utf-8").replace("APPROVED", "IMPLEMENTING"), encoding="utf-8")
     words = "TAMPERED (spec says IMPLEMENTING, crew-task recorded APPROVED)"
-    row = next(r for r in json.loads(ls(tasks, "--json", "--repo", "all"))["items"] if r["slug"] == "draft")
+    row = next(r for r in json.loads(ls(tasks, "--json", "--repo", "all"))["items"] if r["slug"] == "t")
     check("crew ls flags it in the table and the JSON", words in ls(tasks, "--repo", "all") and row["tampered"] == words, row)
     check("reconcile lists it and applies no rule to it", words in task("reconcile", "--tasks-dir", str(tasks)).stdout)
     logged = progress_text(draft)
@@ -287,6 +288,11 @@ def test_a_status_written_outside_crew_task_is_tampered(tmp: Path) -> None:
     (born / "PROGRESS.md").unlink()
     check("a spec no transition moved is checked against DRAFTING", "TAMPERED (spec says APPROVED, crew-task recorded DRAFTING)"
           in ls(tasks, "--repo", "all"))
+    agent = task("restore-status", str(born), "--accept", "approved")
+    check("--accept is refused in code to a caller with no terminal", agent.returncode == 2 and "owner" in agent.stderr
+          and "accepted:" not in progress_text(born), agent)
+    check("--accept is never abbreviated", task("restore-status", str(born), "--ac", "approved").returncode == 2 and "accepted:" not in progress_text(born))
+    monkeypatch.setattr(task_gates, "owner", lambda: True)
     check("--accept needs a note", task("restore-status", str(born), "--accept", " ").returncode == 2 and status_of(born) == "APPROVED")
     accepted = task("restore-status", str(born), "--accept", "approved by the owner in review")
     check("--accept records the spec's status with the note and keeps the spec", accepted.returncode == 0 and status_of(born) == "APPROVED"

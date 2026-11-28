@@ -3,9 +3,10 @@
 ## What the guards protect
 
 el-capitan lets an AI agent run shell commands and write files in your repositories. Its guard hooks
-are a security boundary between the agent and your machine: they block destructive git commands,
-commits that carry secrets, writes outside the active worktree, shell-snippet rewrites of tracked
-files, and checkouts in a tree a worker holds. [Hooks](docs/hooks.md) lists every guard and what it
+are a security boundary between the agent and your machine: they block commits and pushes that carry
+secrets, checkouts in a tree a worker holds, the owner-only status override, and a task spec written
+over another task's; Claude Code's deny and ask rules (and, in Cursor, the guards themselves) block
+destructive git commands and task-record removals. [Hooks](docs/hooks.md) lists every rule and what it
 reads.
 
 They are a boundary for an agent following its instructions, not a sandbox. A guard reads the
@@ -25,8 +26,8 @@ reach the hook, so an agent cannot turn a guard off for the command it is runnin
 session when you need to, not as a standing setting, and every denial names both switches.
 `EL_CAPITAN_NOTIFY=off` silences the idle banner; it is not a guard and changes no decision.
 
-Nothing in el-capitan stops an agent from setting a switch for a later session: the write-boundary
-guard allows writes under `~/.claude` and `~/.cursor`, so an agent can add `EL_CAPITAN_GUARDS=off`
+Nothing in el-capitan stops an agent from setting a switch for a later session: no guard checks file
+writes outside task specs, so an agent can add `EL_CAPITAN_GUARDS=off`
 to the `env` of `~/.claude/settings.json`, and a shell command can append it to a profile the
 harness inherits. The guards are off from the next session that reads it. The only checks on that
 write are the harness's own permission prompts. Review an agent's edits to harness settings and shell

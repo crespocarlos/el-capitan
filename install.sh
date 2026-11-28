@@ -1,12 +1,14 @@
 #!/bin/bash
 set -e
 
-# Usage: install.sh [--dry-run] [--claude-config-dir DIR ...]   install or upgrade from this checkout
+# Usage: install.sh [--dry-run] [--sandbox] [--claude-config-dir DIR ...]   install or upgrade from this checkout
 #        install.sh --uninstall [--dry-run]                     remove what install created; ~/.agent data stays
 # --dry-run prints every action and changes nothing. Every Claude config dir gets the settings merge,
 # the agents link and the skills: ~/.claude, $CLAUDE_CONFIG_DIR when set, and each --claude-config-dir
 # (repeatable). They are recorded in ~/.agent/install-manifest.json, and a later install covers them too.
+# --sandbox turns Claude Code's sandbox on in each settings.json (filesystem and network limits for Bash and its children).
 DRY_RUN=0
+SANDBOX=()
 UNINSTALL=0
 ARGS=("$@")
 EXTRA_CONFIG_DIRS=()
@@ -14,6 +16,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --uninstall) UNINSTALL=1 ;;
+    --sandbox) SANDBOX=(--sandbox) ;;
     --claude-config-dir)
       if [ $# -lt 2 ] || [ -z "$2" ]; then echo "error: --claude-config-dir needs a directory" >&2; exit 1; fi
       EXTRA_CONFIG_DIRS+=("$2")
@@ -84,6 +87,16 @@ if [ "$UNINSTALL" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
   fi
 fi
 PY="$VENV/bin/python"
+
+# gitleaks: the shell guard's credentials rule scans commits and pushes with it, and denies them without it. A pinned
+# release binary checked against its SHA-256 (scripts/install-bin.sh), unless one is already on PATH.
+if [ "$UNINSTALL" -eq 0 ] && ! command -v gitleaks >/dev/null 2>&1 && [ ! -x "$HOME/.agent/bin/gitleaks" ]; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "  [dry-run] install the pinned gitleaks into ~/.agent/bin"
+  elif ! bash "$SCRIPT_DIR/scripts/install-bin.sh" gitleaks "$HOME/.agent/bin" >/dev/null; then
+    echo "  WARN: gitleaks is not installed, so the shell guard denies commits and pushes; re-run install.sh" >&2
+  fi
+fi
 [ -x "$PY" ] || PY=$(uv python find '>=3.12') || { echo "error: no Python 3.12+ (uv python install 3.12)" >&2; exit 1; }
 
 # Wrapper: print action in dry-run, execute otherwise.
@@ -462,7 +475,7 @@ if [ -f "$SCRIPT_DIR/.claude/settings.template.json" ]; then
     else
       echo "  auto-memory left on in $config_dir: could not check its Claude memory entries: ${left%%$'\n'*}" >&2
     fi
-    if ! "$PY" "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST" --manifest "$HOME" "${memory_flag[@]}"; then
+    if ! "$PY" "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST" --manifest "$HOME" "${memory_flag[@]}" ${SANDBOX[@]+"${SANDBOX[@]}"}; then
       echo "  ERROR: settings.json merge failed — hooks may not be registered" >&2
       echo "  Run manually: $PY $SCRIPT_DIR/.claude/merge_claude_settings.py $SETTINGS_SRC $SETTINGS_DEST --manifest $HOME" >&2
       FAILED=1
@@ -490,6 +503,14 @@ if [ "$DRY_RUN" -eq 0 ]; then
   mkdir -p "$HOME/.cursor"
   if ! "$PY" "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json" --manifest "$HOME"; then
     echo "  ERROR: ~/.cursor/hooks.json merge failed — Cursor guards are not registered" >&2
+    FAILED=1
+  fi
+  # The Cursor CLI's own deny tokens for the demoted shell rules, added to the CLI's config when it has one.
+  cli_config="$HOME/.cursor/cli-config.json"
+  if [ -f "$cli_config" ] && ! { jq --slurpfile t "$SCRIPT_DIR/.cursor/cli-config.template.json" \
+    '.permissions.deny = ((.permissions.deny // []) + $t[0].permissions.deny | unique)' "$cli_config" >"$cli_config.tmp" \
+    && mv "$cli_config.tmp" "$cli_config"; }; then
+    echo "  ERROR: could not add the deny tokens to $cli_config" >&2
     FAILED=1
   fi
 fi

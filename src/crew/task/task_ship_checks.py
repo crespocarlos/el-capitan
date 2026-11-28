@@ -1,7 +1,7 @@
 """What `crew-task.py ship` refuses to commit: files named like a secret, blobs over 1 MB, credential-like lines.
 
-The credential pattern is the one `guard/credentials.sh` scans commits with (`.claude/hooks/lib/token-patterns.ere`),
-so the hook and ship cannot drift; an unreadable pattern raises rather than passing the scan.
+The credential pattern is `.claude/hooks/lib/token-patterns.ere` (the shell guard scans with gitleaks); an unreadable
+pattern raises rather than passing the scan.
 """
 
 from __future__ import annotations

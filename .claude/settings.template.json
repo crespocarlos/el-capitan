@@ -1,20 +1,33 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl *)",
       "Bash(jq *)",
-      "Bash(source *)",
       "Bash(cd *)",
-      "Bash(git *)",
-      "Bash(gh *)",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git ls-files *)",
+      "Bash(git merge-base *)",
+      "Bash(git blame *)",
+      "Bash(git remote -v)",
+      "Bash(git stash list *)",
+      "Bash(git describe *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git fetch *)",
+      "Bash(git switch -c *)",
+      "Bash(git push *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr create --repo *)",
+      "Bash(gh api -X GET *)",
+      "Bash(gh api --method GET *)",
       "Bash(cat *)",
       "Bash(grep *)",
       "Bash(find *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
-      "Bash(cp *)",
-      "Bash(mv *)",
-      "Bash(sed *)",
       "Bash(awk *)",
       "Bash(echo *)",
       "Bash(printf *)",
@@ -52,6 +65,13 @@
       "WebSearch",
       "Edit(~/.agent/tasks/**)"
     ],
+    "ask": [
+      "Edit(~/.agent/tasks/*/SPEC.md)"
+    ],
+    "deny": [
+      "Bash(gh pr checkout*)",
+      "Bash(gh pr co *)"
+    ],
     "additionalDirectories": [
       "~/.agent/tasks"
     ]
@@ -63,55 +83,14 @@
         "hooks": [
           {
             "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/destructive-git.sh\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/local-pr-ref.sh\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/source-edit.sh\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/task-files.sh\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/owner-only.sh\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/zsh-equals.sh\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/worker-tree.sh\""
-          },
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/guard/credentials.sh\"",
-            "onFailure": "block"
+            "timeout": 60,
+            "command": "bash \"$HOME/.claude/hooks/guard/shell.sh\""
           }
         ]
       },
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "bash \"$HOME/.claude/hooks/check-write-boundary.sh\""
-          },
           {
             "type": "command",
             "timeout": 10,

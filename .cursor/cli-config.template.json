@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "deny": [
+      "Shell(git:reset --hard*)",
+      "Shell(git:clean -*f*)",
+      "Shell(git:clean --force*)",
+      "Shell(git:push -f*)",
+      "Shell(git:push * -f*)",
+      "Shell(git:push *--force)",
+      "Shell(git:push *--force *)",
+      "Shell(git:push * +*)",
+      "Shell(gh:pr checkout*)",
+      "Shell(gh:pr co *)",
+      "Shell(rm:*.agent/tasks*)",
+      "Shell(unlink:*.agent/tasks*)",
+      "Shell(find:*.agent/tasks* -delete*)"
+    ]
+  }
+}

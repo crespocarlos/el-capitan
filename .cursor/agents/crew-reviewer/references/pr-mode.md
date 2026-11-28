@@ -8,8 +8,7 @@ other modes never need it. `REVIEW_ROOT` is the review directory.
 The PR head is authoritative, and nothing from the local checkout builds or verifies PR context: no
 file reads, repository search, code-index search, explorer local-repository tools, or shell
 filesystem commands, in either harness, and no checkout of the PR (`gh pr checkout`, a fetch or pull
-of the PR ref, `git switch`, a worktree). The shell hooks `guard/local-pr-ref.sh` and
-`guard/destructive-git.sh` deny `gh pr checkout` and `pull/<n>` fetches. The one local read is
+of the PR ref, `git switch`, a worktree); `gh pr checkout` is denied. The one local read is
 repository guidance, below.
 
 - `prepare --mode pr` resolves the head SHA (`gh pr view`), reads the diff (`gh pr diff`), checks the

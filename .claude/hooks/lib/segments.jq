@@ -5,7 +5,7 @@
 # Output lines: one record per simple command (dir US body US quoted-bits US words), every field
 # escaped by `enc` (hook.sh undoes it), `US payload US dir US text` for each string the caller must
 # parse again (`sh -c`, `eval`, a shell's stdin), `US redir US dir US target` for each output redirection,
-# `US overflow` and `US stdin` as in the awk path, and
+# `US overflow` as in the awk path, and
 # `US qn US N` last.
 # What awk reads as text and the tree reads as structure: `$(...)`, backticks and process
 # substitutions anywhere (also an unquoted heredoc's body, which bash expands) come straight from the
@@ -44,7 +44,7 @@
   def substs: if type == "object" then (if .Type == "CmdSubst" or .Type == "ProcSubst" then . else .[] | substs end)
     elif type == "array" then .[] | substs else empty end;
   def enq($item): if .count >= $max then .overflow = true else .count += 1 | .queue += [$item] end;
-  def enq_substs($node): reduce ($node | substs) as $s (.; enq({stmts: ($s.Stmts // []), dir: .dir, procsubst: ($s.Type == "ProcSubst")}));
+  def enq_substs($node): reduce ($node | substs) as $s (.; enq({stmts: ($s.Stmts // []), dir: .dir}));
   def resolve($p; $d): if $p == "" or $p == "-" then $d elif $p == "~" then $home elif ($p | startswith("~/")) then $home + $p[1:]
     elif ($p | startswith("/")) then $p else $d + "/" + $p end;
   # Mirrors the awk `optval` in hook.sh; change both (intended differences go in PARSERS_DIFFER).
@@ -63,9 +63,8 @@
           | if $w == "timeout" and .i < $n then .i += 1 else . end
         end)
     | .i;
-  # A script argument: stdin by name reads stdin, another descriptor or a process substitution is opaque.
-  def script($w): if $w == "/dev/stdin" or $w == "/dev/fd/0" then "stdin"
-    elif ($w | test("^/dev/fd/|^[<>]\\(")) then "opaque" else "none" end;
+  # A script argument: stdin by name reads stdin; any other script is a file the guard does not read.
+  def script($w): if $w == "/dev/stdin" or $w == "/dev/fd/0" then "stdin" else "none" end;
   # A shell runs a `-c` payload (the first word after `-c` that is not an option), a script argument,
   # or stdin. Mirrors the awk `shellin` in hook.sh; change both (intended differences go in PARSERS_DIFFER).
   def shellin($a; $i): ($a | length) as $n
@@ -99,7 +98,6 @@
     | ([$rs[] | select(.Op == "<<<") | (.Word | word.t) + "\n"]
        + [$rs[] | select((.Op == "<<" or .Op == "<<-") and .Hdoc != null) | .Hdoc | raw | sub("[^\n]*$"; "")]
        | add // "") as $body
-    | any($rs[]; .Op == "<" and any((.Word.Parts // [])[]; .Type == "ProcSubst")) as $psin
     | enq_substs($nodes) | enq_substs([$rs[] | .Word, .Hdoc]) | redirs($rs)
     | ($ws | map(.t)) as $a
     | lead($a) as $i
@@ -117,8 +115,7 @@
           | if $j == null then .dir = resolve("~"; .dir) elif ($a[$j] | test("[$`]|[[:cntrl:]]") | not) then .dir = resolve($a[$j]; .dir) else . end
         elif ($base | test("^(sh|bash|zsh|dash|ksh)$")) then shellin($a; $i) as $r
           | if $r.r == "c" then enq({text: $a[$r.j], dir: .dir})
-            elif $r.r == "stdin" then .segs[$k].shin = true | .segs[$k].psin = $psin
-            elif $r.r == "opaque" then .opaque = true
+            elif $r.r == "stdin" then .segs[$k].shin = true
             else . end
         elif $base == "echo" or $base == "printf" then .segs[$k].lit = lit($a; $i; $base)
         elif $base == "cat" then .segs[$k].cat = ([$a[$i + 1:][] | select(startswith("-") | not)] | length == 0)
@@ -147,28 +144,24 @@
         | enq_substs($st.Redirs) | redirs($st.Redirs) | .last = 0
       end;
   # After a scan, a shell that reads stdin gets its own heredoc or here-string, or what an `echo`,
-  # `printf` or heredoc `cat` pipes into it; any other producer is opaque, and so is the stdin of a
-  # process substitution (a shell inside one, or one reading `< <(...)`).
-  def stdins($first; $procsubst):
+  # `printf` or heredoc `cat` pipes into it; what any other producer pipes is not read.
+  def stdins($first):
     reduce range($first; .segs | length) as $k (.;
       .segs[$k] as $g
       | if ($g.shin | not) then .
-        elif $g.psin then .opaque = true
         elif $g.body != "" then enq({text: $g.body, dir: $g.dir})
         else .segs as $all
           | ($g.pipe | until(. <= 0 or ($all[. - 1].cat | not) or $all[. - 1].body != ""; $all[. - 1].pipe)) as $p
           | if $p > 0 and $all[$p - 1].lit != null then enq({text: $all[$p - 1].lit, dir: $g.dir})
             elif $p > 0 and $all[$p - 1].cat then enq({text: $all[$p - 1].body, dir: $g.dir})
-            elif $p != 0 or $procsubst then .opaque = true
             else . end
         end);
   def scan($item): (.segs | length) as $first | .dir = $item.dir | .pipein = 0 | .last = 0
-    | reduce $item.stmts[] as $s (.; stmt($s)) | stdins($first; $item.procsubst == true);
-  {dir: $dir, segs: [], redirs: [], pipein: 0, last: 0, queue: [{stmts: (.Stmts // []), dir: $dir}], next: 0, count: $qn, overflow: false, opaque: false}
+    | reduce $item.stmts[] as $s (.; stmt($s)) | stdins($first);
+  {dir: $dir, segs: [], redirs: [], pipein: 0, last: 0, queue: [{stmts: (.Stmts // []), dir: $dir}], next: 0, count: $qn, overflow: false}
   | until(.next >= (.queue | length); .queue[.next] as $it | .next += 1 | if $it.text != null then . else scan($it) end)
   | (.segs[] | [(.dir | enc), (.body | enc), .quoted] + (.words | map(enc)) | join(us)),
     (.redirs[] | us + "redir" + us + (.dir | enc) + us + (.t | enc)),
     (.queue[] | select(.text != null) | us + "payload" + us + (.dir | enc) + us + (.text | enc)),
     (if .overflow then us + "overflow" else empty end),
-    (if .opaque then us + "stdin" else empty end),
     us + "qn" + us + (.count | tostring)

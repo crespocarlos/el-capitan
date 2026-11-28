@@ -461,9 +461,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   gh did not return prints empty with exit 0, so a caller can test it, while a failed call exits
   nonzero carrying gh's own stderr — the same rule `crew-repo-info.py` follows for git facts.
   Mutations stay literal `gh` in the prompts: `gh pr create`, `gh pr comment`, `gh pr checkout`,
-  `gh issue create`, `gh search`. A wrapper would hide the exact argv from `guard/local-pr-ref.sh`
-  and `guard/destructive-git.sh`, which decide on the command text the caller wrote, so wrapping one
-  turns a denial into a silent allow.
+  `gh issue create`, `gh search`. A wrapper would hide the exact argv from the deny rules and
+  the shell guard, which decide on the command text the caller wrote, so wrapping one turns a denial
+  into a silent allow.
 - **A stage's setup is one call.** `crew-review-findings.py prepare --mode M [--task-dir T] [--root R]
   [--base REF] [--pr N --repo O/R] [--paths …] [--query Q] [--contract] [--compat]` writes the review
   directory, `diff.patch` (self: the fork point, or `merge-base(REF, HEAD)` with `--base` for a stacked
@@ -639,7 +639,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   the newest `[gate]`-stamped transition, which only `crew-task.py` writes, must match SPEC.md's Status;
   otherwise SPEC.md plus git and gh decide. Skills may read it for resume context. Its format and
   owner are `task_progress.py` (above); `crew-progress.py` writes a pipeline step only and refuses a
-  status target or the stamp (exit 2). The Status guard and `guard/task-files.sh` refuse writes to it.
+  status target or the stamp (exit 2). The integrity check (TAMPERED) catches any other write to it.
 - **METRIC lines** are append-only audit records for offline analysis, never parsed for gates or
   transitions. Write one with `~/.agent/bin/crew-metric.py "$TASK_DIR" <event> [key=value ...]`; the
   events and fields are the ones `crew-metric.py` validates ("Gates and cost" above).
@@ -687,29 +687,22 @@ The two mechanisms are never mixed in one run, and a Claude allow is never a
 `permissionDecision: "allow"` payload, which would skip interactive approval.
 
 One measured exception: Cursor treats *no output* from a hook registered `failClosed: true` as a
-failure and blocks the command, so silence there is a block rather than a decline. Every Cursor
-security guard (all of `guard/` but `zsh-equals.sh`, plus `check-write-boundary.sh` and
-`check-task-spec-owner.sh`) is registered `failClosed: true`, so a crash, a timeout or invalid JSON
+failure and blocks the command, so silence there is a block rather than a decline. Both Cursor
+guards (`guard/shell.sh`, `check-task-spec-owner.sh`) are registered `failClosed: true`, so a crash, a timeout or invalid JSON
 blocks, and each answers Cursor's `beforeShellExecution` and `preToolUse` with `{}` (no permission)
 when it has no objection (`hook_allow`); `crew doctor` fails an installed one without the flag.
 Observers stay silent on both harnesses.
 
 **Cannot judge is no objection.** A missing `awk`, a command the normaliser cannot read or an unexpected event
-exits `0` after one stderr line. One rule is the exception: `guard/credentials.sh`, which alone
-carries `onFailure: "block"` in `.claude/settings.template.json`, because a silent gap there is a credential
+exits `0` after one stderr line, and a rule that fails is skipped with one line. The credentials
+rule is the exception: it denies the commands it scans, because a silent gap there is a credential
 leak. In Cursor, a failure before the event is read (no `jq`, unreadable input) prints no JSON, so a
 `failClosed` guard blocks.
 
 | File | Event | Purpose |
 | --- | --- | --- |
-| `guard/destructive-git.sh` | Bash | `git reset --hard`, `git clean` with force, force pushes |
-| `guard/local-pr-ref.sh` | Bash | `gh pr checkout` and `refs/pull/...` or `pull/<n>` refs |
-| `guard/source-edit.sh` | Bash | `python -c`, `node -e`, `perl -e` and heredoc snippets that rewrite a tracked file |
-| `guard/zsh-equals.sh` | Bash | a bare unquoted `=word`, which zsh reads as a command path |
-| `guard/worker-tree.sh` | Bash | `git checkout`, `switch`, `restore`, `reset --hard` in a tree with a fresh `.crew-worker.lock` (advisory defence behind the always-on worktree; stale after 6 hours) |
-| `guard/credentials.sh` | Bash | credential-like commits, `gh pr create` with an implied target |
-| `check-write-boundary.sh` | Write, Edit | writes outside the active worktree |
-| `check-task-spec-owner.sh` | Write, Edit | a `SPEC.md` written into another task's directory |
+| `guard/shell.sh` | Bash | the shell guard: one process, its rules as functions (`docs/hooks.md`, Rules) |
+| `check-task-spec-owner.sh` | Write, Edit | the file guard: a `SPEC.md` written over another task's; in Cursor, Status moves and record deletes |
 | `mode-anchor.sh` | UserPromptSubmit | the cached pipeline anchor line |
 | `memory-context.sh`, `cursor-memory-context.sh` | SessionStart | bounded memory context |
 | `spec-status-reconcile.sh` | SessionStart | applies the status policy, refreshes the anchor |
@@ -724,17 +717,17 @@ outcome on stdout (`record-pr.sh` as Claude `additionalContext`), and every othe
 ends in shell before Python starts. Both are `SILENT` in `hook_cases.py`, which checks their failure
 handling only; their behavior is pinned in `test_lifecycle.py` and `test_review_findings.py`.
 
-One rule per file under `guard/`, so a false positive is confined to the rule that caused it and a
-reader sees one purpose per file. `lib/hook.sh` is sourced, never registered; it holds the command
+One guard per event, one function per rule, so a false positive or a crash is confined to the rule
+that caused it. `lib/hook.sh` is sourced, never registered; it holds the command
 normaliser every shell guard reads through and the off switches (`EL_CAPITAN_GUARDS=off`,
-`EL_CAPITAN_GUARD_<NAME>=off`, documented in `docs/hooks.md`). The normaliser prefers
+`EL_CAPITAN_GUARD_<RULE>=off`, documented in `docs/hooks.md`). The normaliser prefers
 `shfmt` (optional) when it is on PATH: `shfmt --to-json` parses the command and `lib/segments.jq`
 turns the tree into the same segment records the awk fallback emits, so the guards never know which
 parser ran; awk reads the whole command when shfmt is absent or fails on any part of it, and when
 the command is over 16 KiB or nests deeply (shfmt's JSON grows with depth times size).
 `evals/tools/test_hook_cases.py` runs every case through both parsers (`PARSERS_DIFFER` in
 `hook_cases.py` lists the rows where awk is wrong), and CI installs the pinned shfmt with
-`evals/install-shfmt.sh`. `lib/anchor.sh`
+`scripts/install-bin.sh`. `lib/anchor.sh`
 holds the anchor line `spec-status-reconcile.sh` computes and `mode-anchor.sh` reprints.
 
 The review-address gate is the user's answer in `crew-address-review` Step 3; no hook or permission
@@ -771,9 +764,7 @@ The two harnesses differ in ways that produce false conclusions if you generaliz
   `~/.claude.json`). Untrusted, `gh`, `git`, and `python3` calls need per-command approval, and in a
   non-interactive `claude -p` run they are simply refused. Cursor has no equivalent gate.
 - **Write boundary.** Cursor's `Write` tool refuses `/tmp` and other paths outside the workspace
-  worktree; Claude Code writes wherever the OS allows. `check-write-boundary.sh` allows
-  `$HOME/.agent`, `$HOME/.claude`, `$HOME/.cursor`, and `/tmp` in both, so the tool is the stricter
-  gate in Cursor.
+  worktree; Claude Code writes wherever the OS allows (`install.sh --sandbox` limits Bash).
 - **Shell aliases leak into command substitution.** This workstation aliases `ls` to
   `eza --icons --group-directories-first`, which renders a symlink as `path -> target`. `eza` is an
   alias, not a builtin, so `$(ls a b | head -1)` captures the whole arrow string and the next command

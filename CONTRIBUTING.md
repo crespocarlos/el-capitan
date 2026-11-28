@@ -11,7 +11,7 @@ guide for anyone editing it, person or agent; this page is the short version.
    actionlint all run through `uvx` at the versions pinned in the repository, so nothing else is
    installed globally.
 3. Optional: [`shfmt`](https://github.com/mvdan/sh), so the hook tests exercise both guard parsers
-   locally as CI does (`bash evals/install-shfmt.sh <dir>` fetches the pinned binary).
+   locally as CI does (`bash scripts/install-bin.sh shfmt <dir>` fetches the pinned binary).
 
 ## The checks
 
