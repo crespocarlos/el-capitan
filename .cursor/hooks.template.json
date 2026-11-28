@@ -19,7 +19,7 @@
     "afterShellExecution": [{"command": "bash \"$HOME/.claude/hooks/record-pr.sh\" 2>/dev/null; exit 0"}],
     "postToolUse": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
     "postToolUseFailure": [{"command": "bash \"$HOME/.claude/hooks/log-tool-use.sh\""}],
-    "subagentStop": [{"command": "bash \"$HOME/.claude/hooks/capture-reply.sh\""}],
+    "subagentStop": [{"command": "bash \"$HOME/.claude/hooks/capture-reply.sh\"", "loop_limit": 1}],
     "stop": [
       {"command": "bash \"$HOME/.claude/hooks/memory-capture-prompt.sh\"", "loop_limit": 1},
       {"command": "bash \"$HOME/.claude/hooks/cursor-usage.sh\""}

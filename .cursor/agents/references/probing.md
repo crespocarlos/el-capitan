@@ -84,8 +84,8 @@ not the whole workflow, the stored record, or the call path around it.
 In self and changes mode `persist` refuses an emitted `[needs more info]` or 1-2 finding until the
 probe is on record. Give the dispatch the `expect --persona probe` marker line and the subagent-stop
 hook saves the reply (Claude Code and Cursor). With no hook, or no `probe.out.md` after the worker
-stops, pipe the worker's reply, unedited, into `crew-review-findings.py save-out
---review-dir <review-dir> --persona probe --harness <name>` (add `--agent-id` when known): it writes
+stops, run `crew-review-findings.py save-out --review-dir <review-dir> --persona probe --harness
+<name>` per [dispatch](dispatch.md), from its transcript (add `--agent-id` when known): it writes
 `probe.out.md` with the provenance record `persist` checks, so a hand-written or edited file is
 refused. When the probe cannot run here, the report says `probe: skipped <reason>: <detail>` instead,
 `<reason>` one of `no-runtime`, `no-network`, `pr-only`, `external-service`; any other reason is

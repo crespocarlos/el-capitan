@@ -4,8 +4,9 @@
 `capture-reply.sh` reads Cursor's `subagentStop` (a transcript of `role` lines, `subagent_id`, `subagent_type`, the
 counts but no tokens) as it reads Claude Code's `SubagentStop`: each agent kind lands where its orchestrator reads it,
 a marker with no `.expect` saves nothing, the latest reply to a marker is the reply (the earlier one `.prev.md`), a
-reply that answers nothing leaves `.unanswered`, and a stale Cursor install drops with a logged line. `cursor-usage.sh`
-records each Cursor `stop`'s raw counts on its conversation's first task; the readers count only rises, shown `~`.
+reply that answers nothing leaves `.unanswered` and asks once for the reply, the subagent's transcript is found when
+the payload's path misses, a repeated stop changes nothing, and a stale Cursor install drops with a logged line.
+`cursor-usage.sh` records each Cursor `stop`'s raw counts on its conversation's first task; readers count only rises.
 """
 from __future__ import annotations
 
@@ -168,6 +169,24 @@ def test_a_cursor_builder_report_is_saved_from_its_transcript(tmp: Path) -> None
     assert (record["harness"], record["agent_id"], record["report_check"]) == ("cursor", "b1", "ok"), record
 
 
+def test_claude_codes_last_assistant_message_is_the_reply_when_the_transcript_lags(tmp: Path) -> None:
+    """Claude Code's transcript is written asynchronously: it holds only the dispatch prompt (the marker) when the
+    hook fires, and the documented `last_assistant_message` carries the reply, saved with `source: hook`."""
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    prompt = marker(directory, "adversarial", home) + "\nReview."
+    path = tmp / "lag.jsonl"
+    path.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": prompt}}) + "\n",
+                    encoding="utf-8")
+    done = run_hook(home, {"hook_event_name": "SubagentStop", "agent_id": "a1", "agent_type": "reviewer-adversarial",
+                           "stop_hook_active": False, "agent_transcript_path": str(path),
+                           "last_assistant_message": PERSONA_REPLY})
+    assert done.returncode == 0 and "capture-reply: saved" in done.stdout, done
+    assert (directory / "adversarial.out.md").read_text(encoding="utf-8") == PERSONA_REPLY
+    record = json.loads((directory / "adversarial.provenance.json").read_text(encoding="utf-8"))
+    assert (record["source"], record.get("reply_from")) == ("hook", None), record
+
+
 @pytest.mark.parametrize("harness", ["cursor", "claude-code"])
 def test_a_quoted_marker_with_no_expect_saves_nothing(tmp: Path, harness: str) -> None:
     """A non-crew subagent whose prompt quotes a marker line: no `.expect` holds its nonce, so nothing is written."""
@@ -209,8 +228,172 @@ def test_the_latest_reply_to_a_marker_is_the_reply(tmp: Path, name: str, place: 
     assert (directory / f"{name}.prev.provenance.json").exists()
     assert not (directory / f"{name}.unanswered").exists() and (directory / f"{name}.expect").exists()
     cursor_stop(home, cursor_transcript(path, prompt, [first, again]), second_agent)
-    assert "already holds this reply" in state(home, "capture-reply.log")
+    assert "already saved" in state(home, "capture-reply.log")
     assert (directory / f"{name}.prev.md").read_text(encoding="utf-8") == first
+
+
+def conversation(tmp: Path, prompt: str, replies: list[str], flat: bool = False) -> tuple[Path, Path]:
+    """Cursor's layout: the parent `<conv>/<conv>.jsonl` (or a flat `<conv>.jsonl`) and `<conv>/subagents/s1.jsonl`."""
+    root = tmp / "agent-transcripts"
+    parent = root / ("c1.jsonl" if flat else "c1/c1.jsonl")
+    parent.parent.mkdir(parents=True, exist_ok=True)
+    cursor_transcript(parent, "crew review this branch", ["Dispatching."])
+    (root / "c1" / "subagents").mkdir(parents=True, exist_ok=True)
+    return parent, cursor_transcript(root / "c1" / "subagents" / "s1.jsonl", prompt, replies)
+
+
+def native(transcript_path: str | None, **fields) -> dict:
+    """A Cursor `subagentStop` payload with both ids, status `completed` and loop 0, minus the fields given as None."""
+    payload = {"hook_event_name": "subagentStop", "cursor_version": "2.1.0", "subagent_id": "s1",
+               "child_conversation_id": "s1", "subagent_type": "generalPurpose", "status": "completed",
+               "transcript_path": transcript_path, "duration_ms": 1000, "tool_call_count": 1, "message_count": 2,
+               "loop_count": 0, **fields}
+    return {key: value for key, value in payload.items() if value is not None or key == "agent_transcript_path"}
+
+
+@pytest.mark.parametrize("case", ["null", "empty", "the parent's", "missing file", "flat parent, env only",
+                                  "no subagent_id: nonce scan", "no transcript: summary"])
+def test_the_subagent_transcript_is_found_when_agent_transcript_path_misses(tmp: Path, case: str) -> None:
+    """`agent_transcript_path` null, empty, the parent's or a missing file: the reply is read from
+    `<conv>/subagents/<subagent_id>.jsonl` (from `transcript_path`, or `$CURSOR_TRANSCRIPT_PATH` for a flat parent),
+    else the folder's file carrying the `task` field's nonce; with no transcript, a completed run's `summary` is saved
+    as `reply_from: summary` but leaves `.unanswered`, so the hook asks once for the real reply."""
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    line = marker(directory, "adversarial", home)
+    parent, sub = conversation(tmp, line + "\nReview.", ["Reading.", PERSONA_REPLY], flat=case.startswith("flat"))
+    own = {"null": None, "empty": "", "the parent's": str(parent), "missing file": str(tmp / "gone.jsonl")}
+    payload = native(str(parent), agent_transcript_path=own.get(case), task=line + "\nReview.")
+    env = {}
+    if case.startswith("flat"):
+        payload.pop("transcript_path")
+        env = {"CURSOR_TRANSCRIPT_PATH": str(parent)}
+    if case.startswith("no subagent_id"):
+        payload.pop("subagent_id"), payload.pop("child_conversation_id")
+    if case.startswith("no transcript"):
+        sub.unlink()
+        payload["summary"] = PERSONA_REPLY
+    done = subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
+                          env={**os.environ, "HOME": str(home), **env})
+    summary = case.startswith("no transcript")
+    log = state(home, "capture-reply.log")
+    assert done.returncode == 0, done
+    assert ("followup_message" in done.stdout) if summary else done.stdout == "{}\n", (done.stdout, log)
+    assert (directory / "adversarial.out.md").read_text(encoding="utf-8") == PERSONA_REPLY, log
+    assert (directory / "adversarial.unanswered").exists() is summary
+    record = json.loads((directory / "adversarial.provenance.json").read_text(encoding="utf-8"))
+    assert (record["source"], record.get("reply_from")) == ("hook", "summary" if summary else None), record
+
+
+def test_a_transcript_that_fails_the_marker_check_is_never_read(tmp: Path) -> None:
+    """`agent_transcript_path` is the parent's and no subagent file exists: the parent's text is never saved as the
+    persona's reply; the dispatch stays pending and the diagnostic is logged."""
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    line = marker(directory, "adversarial", home)
+    parent, sub = conversation(tmp, line + "\nReview.", [PERSONA_REPLY])
+    sub.unlink()
+    cursor_transcript(parent, "crew review this branch", [PERSONA_REPLY])
+    done = run_hook(home, native(str(parent), agent_transcript_path=str(parent), task=line + "\nReview."))
+    assert done.returncode == 0, done
+    assert not (directory / "adversarial.out.md").exists() and (directory / "adversarial.unanswered").exists()
+    assert "no transcript; the marker is from the payload's task (keys=" in state(home, "capture-reply.log")
+
+
+def test_a_stop_that_wrote_nothing_is_retried_by_its_repeat(tmp: Path) -> None:
+    """The first fire cannot write (a read-only review directory): nothing is recorded as seen, so the identical
+    second fire saves."""
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    prompt = marker(directory, "adversarial", home)
+    parent, sub = conversation(tmp, prompt, [PERSONA_REPLY])
+    payload = native(str(parent), agent_transcript_path=str(sub))
+    directory.chmod(0o500)
+    try:
+        run_hook(home, payload)
+    finally:
+        directory.chmod(0o700)
+    assert not (directory / "adversarial.out.md").exists(), state(home, "capture-reply.log")
+    assert run_hook(home, payload).returncode == 0
+    log = state(home, "capture-reply.log")
+    assert (directory / "adversarial.out.md").read_text(encoding="utf-8") == PERSONA_REPLY, log
+
+
+def test_both_payload_variants_at_once_save_once(tmp: Path) -> None:
+    """Cursor fires `subagentStop` twice, with and without `child_conversation_id`: one save, one `agent_end`, no
+    `.prev.md`, and the second logs `already saved`."""
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    prompt = f"{marker(directory, 'adversarial', home)}\ncrew-task: {task}\nReview."
+    parent, sub = conversation(tmp, prompt, [PERSONA_REPLY])
+    with_child = native(str(parent), agent_transcript_path=str(sub))
+    without = {key: value for key, value in with_child.items() if key != "child_conversation_id"}
+    runs = [subprocess.Popen(["bash", str(HOOK)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                             env={**os.environ, "HOME": str(home)}) for _ in range(2)]
+    outs = [run.communicate(json.dumps(payload))[0] for run, payload in zip(runs, (with_child, without))]
+    assert outs == ["{}\n", "{}\n"]
+    assert (directory / "adversarial.out.md").read_text(encoding="utf-8") == PERSONA_REPLY
+    assert not (directory / "adversarial.prev.md").exists()
+    assert len([entry for entry in progress(task).splitlines() if "agent_end" in entry]) == 1, progress(task)
+    assert "already saved" in state(home, "capture-reply.log")
+
+
+def test_a_transcript_whose_first_line_lands_after_a_second_is_saved(tmp: Path) -> None:
+    """The subagent's file exists but is empty when the hook fires; its user line is written 1 s later: polled for at
+    most 3 s, then saved."""
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    prompt = marker(directory, "adversarial", home) + "\nReview."
+    parent, sub = conversation(tmp, prompt, [PERSONA_REPLY])
+    body = sub.read_text(encoding="utf-8")
+    sub.write_text("", encoding="utf-8")
+    writer = subprocess.Popen(["bash", "-c", 'sleep 1; printf "%s" "$1" > "$2"', "-", body, str(sub)])
+    done = run_hook(home, native(str(parent), agent_transcript_path=None))
+    writer.wait()
+    assert (done.returncode, done.stdout) == (0, "{}\n"), done
+    assert (directory / "adversarial.out.md").read_text(encoding="utf-8") == PERSONA_REPLY
+
+
+def test_a_stop_that_saves_nothing_logs_names_and_sizes_never_content(tmp: Path) -> None:
+    """A non-crew subagent: one line with the payload's key names, `subagent_id`, whether `child_conversation_id` is
+    present, and each candidate path with exists/bytes/lines, and nothing of either transcript's text."""
+    home, _ = world(tmp)
+    parent, sub = conversation(tmp, "find the SECRET-PROMPT word", ["SECRET-REPLY"])
+    done = run_hook(home, native(str(parent), agent_transcript_path=str(tmp / "gone.jsonl")))
+    assert (done.returncode, done.stdout) == (0, "{}\n"), done
+    log = state(home, "capture-reply.log")
+    assert "no marker; nothing saved (keys=" in log and "subagent_id=s1 child_conversation_id=yes" in log, log
+    assert f"{tmp / 'gone.jsonl'} exists=0" in log, log
+    assert re.search(rf"{re.escape(str(sub))} exists=1 bytes=\d+ lines=3", log), log
+    assert "SECRET" not in log and "agent_transcript_path" in log
+
+
+@pytest.mark.parametrize("status", ["error", "aborted"])
+def test_an_error_or_aborted_stop_saves_nothing_and_never_continues(tmp: Path, status: str) -> None:
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    parent, sub = conversation(tmp, marker(directory, "adversarial", home), [POINTER])
+    done = run_hook(home, native(str(parent), agent_transcript_path=str(sub), status=status))
+    assert (done.returncode, done.stdout) == (0, "{}\n"), done
+    assert not (directory / "adversarial.out.md").exists() and (directory / "adversarial.expect").exists()
+    assert f"status {status}; nothing saved, the dispatch stays pending" in state(home, "capture-reply.log")
+
+
+def test_an_unanswered_first_stop_asks_for_the_reply_once(tmp: Path) -> None:
+    """A completed first loop whose reply answers nothing returns Cursor's `followup_message` (the dispatch rule's
+    `deliver now` text); its continuation's stop does not, and its answer replaces the pointer."""
+    home, task = world(tmp)
+    directory = task / "review" / "1"
+    prompt = marker(directory, "adversarial", home)
+    parent, sub = conversation(tmp, prompt, [POINTER])
+    first = run_hook(home, native(str(parent), agent_transcript_path=str(sub)))
+    assert json.loads(first.stdout)["followup_message"].startswith("deliver now:"), first
+    cursor_transcript(sub, prompt, [POINTER, POINTER + "Still looking."])
+    again = run_hook(home, native(str(parent), agent_transcript_path=str(sub), loop_count=1))
+    assert again.stdout == "{}\n" and (directory / "adversarial.unanswered").exists(), again
+    cursor_transcript(sub, prompt, [POINTER, PERSONA_REPLY])
+    assert run_hook(home, native(str(parent), agent_transcript_path=str(sub))).stdout == "{}\n"
+    assert (directory / "adversarial.out.md").read_text(encoding="utf-8") == PERSONA_REPLY
 
 
 def test_a_half_written_final_line_keeps_the_dispatch_pending(tmp: Path) -> None:

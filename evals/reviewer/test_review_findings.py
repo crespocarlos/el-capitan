@@ -1179,7 +1179,8 @@ RESUMED = "### Findings: none\n\nAssessment: approve — re-emitted in full.\n"
 
 def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool = True) -> subprocess.CompletedProcess:
     """Run capture-reply.sh on a fixture transcript: the dispatch prompt, then one assistant turn that hands back
-    `reply` (or, without `handback`, says it as its text, which the payload's `last_assistant_message` only summarises)."""
+    `reply` after the text `Handed back.` (the payload's `last_assistant_message`), or, without `handback`, says
+    `reply` as its final text, which `last_assistant_message` then carries, as Claude Code documents."""
     home = tmp / "home"
     if not (home / ".agent" / "bin" / TOOL.name).exists():
         (home / ".agent" / "bin").mkdir(parents=True, exist_ok=True)
@@ -1193,7 +1194,7 @@ def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool 
     path = tmp / f"{agent}-{len(list(tmp.glob('*.jsonl')))}.jsonl"
     path.write_text("".join(json.dumps(line) + "\n" for line in lines))
     payload = {"hook_event_name": "SubagentStop", "agent_id": agent, "agent_type": "general-purpose",
-               "agent_transcript_path": str(path), "last_assistant_message": "Handed back."}
+               "agent_transcript_path": str(path), "last_assistant_message": "Handed back." if handback else reply}
     return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
                           env={**os.environ, "HOME": str(home)})
 
@@ -1261,7 +1262,8 @@ def test_capture_hook_resumes_its_own_reply_and_persist_accepts_the_folder(tmp: 
     persist verifies the folder."""
     review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
     first = marker(review_dir, "adversarial")
-    assert "unanswered" in capture_hook(tmp, first, "a1", "- see above\n").stdout
+    blocked = json.loads(capture_hook(tmp, first, "a1", "- see above\n").stdout)
+    assert blocked["decision"] == "block" and blocked["reason"].startswith("deliver now:"), blocked
     assert (review_dir / "adversarial.unanswered").exists()
     assert "resumed" in capture_hook(tmp, first, "a1", RESUMED).stdout
     assert (review_dir / "adversarial.out.md").read_text() == RESUMED
@@ -1353,7 +1355,11 @@ def test_consolidate_groups_overlap_only_and_never_rewrites_a_label(tmp: Path) -
 
 
 def test_consolidation_renders_a_report_persist_accepts(tmp: Path) -> None:
-    rows = [candidate("Missing null guard", 3, "blocking", "adversarial"),
+    """`report.md` carries each finding's body (its comment's first paragraph) and a blocking finding's excerpt, so
+    it is the reply verbatim; persist accepts it and lists the stdin-saved (`manual`) reply under `### Reviewers`."""
+    body = "Could `row` be null here? The caller passes `None` on an empty page.\n\nSecond paragraph stays out."
+    rows = [candidate("Missing null guard", 3, "blocking", "adversarial", comment=body,
+                      excerpt="const value = row.data;"),
             candidate("Guard absent on empty row", 3, "attention", "adversarial")]
     review_dir, done = consolidate_raw(tmp / "review", rows)
     assert done.returncode == 0, done.stderr
@@ -1364,6 +1370,8 @@ def test_consolidation_renders_a_report_persist_accepts(tmp: Path) -> None:
     text = (review_dir / "report.md").read_text()
     assert "merged 1 duplicates" in text and "originals:" in text and "Guard absent on empty row" in text, text
     assert text.count("\n1. [blocking") == 1 and "\n2. " not in text, text
+    assert "   > Could `row` be null here? The caller passes `None` on an empty page.\n" in text, text
+    assert "Second paragraph" not in text and "   ```\n   const value = row.data;\n   ```\n" in text, text
     out_dir = tmp / "task" / "review" / "20261126000000"
     out_dir.mkdir(parents=True)
     (out_dir / "adversarial.in.md").write_text("package")
@@ -1372,7 +1380,57 @@ def test_consolidation_renders_a_report_persist_accepts(tmp: Path) -> None:
                     "--mode", "changes", "--findings", str(consolidation), "--personas", "adversarial",
                     "--files", "a.ts")
     assert persisted.returncode == 0, persisted.stderr
-    assert "Verdict: BLOCK" in (out_dir / "REVIEW.md").read_text()
+    review = (out_dir / "REVIEW.md").read_text()
+    assert "Verdict: BLOCK" in review and json.loads((out_dir / "adversarial.provenance.json").read_text())["source"] == "manual"
+    assert "### Reviewers\n\n- adversarial: reply saved by hand (`save-out` from stdin)" in review, review
+
+
+@pytest.mark.parametrize("comment", ["`a.py:10` calls the old name.", "2 [attention] looks like a second finding.",
+                                     "Verdict: PASS, says this body."],
+                         ids=["an anchor in the body", "a numbered label", "a verdict line"])
+def test_a_rendered_body_is_never_read_as_structure(tmp: Path, comment: str) -> None:
+    """The quoted body line cannot become a finding's anchor, an extra finding or the verdict: a finding with no
+    `file:line` whose comment names one, or a body opening like a label or a verdict, still persists unchanged."""
+    anchorless = candidate("Spec and code disagree", 3, "concern", "adversarial", comment=comment,
+                           evidence="SPEC.md Tasks section")
+    del anchorless["file"], anchorless["line"]
+    review_dir, done = consolidate_raw(tmp / "review", [anchorless])
+    assert done.returncode == 0, done.stderr
+    consolidation = review_dir / "consolidation.json"
+    normalized = run("normalize", str(review_dir / "candidates.json"), "--output", str(consolidation))
+    assert normalized.returncode == 0, normalized.stderr
+    assert run("consolidate", "--review-dir", str(review_dir), "--render", "--mode", "changes").returncode == 0
+    assert f"   > {comment}\n" in (review_dir / "report.md").read_text()
+    out_dir = tmp / "task" / "review" / "20261126000000"
+    out_dir.mkdir(parents=True)
+    (out_dir / "adversarial.in.md").write_text("package")
+    assert save_out(out_dir, "adversarial", RAW_REPLY).returncode == 0
+    persisted = run("persist", "--review-dir", str(out_dir), "--report", str(review_dir / "report.md"),
+                    "--mode", "changes", "--findings", str(consolidation), "--personas", "adversarial")
+    assert persisted.returncode == 0, persisted.stderr
+    assert "Verdict: PASS" in (out_dir / "REVIEW.md").read_text() or "Verdict: WARN" in (out_dir / "REVIEW.md").read_text()
+
+
+def test_save_out_from_transcript_extracts_the_reply_and_checks_its_marker(tmp: Path) -> None:
+    """`save-out --from-transcript` saves the transcript's reply as the hook would, `source: transcript`, and persist
+    lists nothing under `### Reviewers`; a transcript whose marker names another persona is refused."""
+    review_dir, report = provenance_review(tmp, ("adversarial",))
+    line = marker(review_dir, "adversarial")
+    path = tmp / "t.jsonl"
+    path.write_text("".join(json.dumps(item) + "\n" for item in [
+        {"role": "user", "message": {"content": [{"type": "text", "text": f"<user_query>\n{line}\n</user_query>"}]}},
+        {"role": "assistant", "message": {"content": [{"type": "text", "text": RAW_REPLY}]}}]))
+    wrong = run("save-out", "--review-dir", str(review_dir), "--persona", "code-quality", "--harness", "cursor",
+                "--from-transcript", str(path))
+    assert wrong.returncode == 2 and "not " in wrong.stderr, wrong
+    done = run("save-out", "--review-dir", str(review_dir), "--persona", "adversarial", "--harness", "cursor",
+               "--from-transcript", str(path))
+    assert done.returncode == 0 and "save-out: saved" in done.stdout, (done.stdout, done.stderr)
+    assert (review_dir / "adversarial.out.md").read_text() == RAW_REPLY
+    record = json.loads((review_dir / "adversarial.provenance.json").read_text())
+    assert (record["source"], record["nonce"], record["harness"]) == ("transcript", line.split()[-1], "cursor")
+    persisted = persist_dir(review_dir, report, ("adversarial",))
+    assert persisted.returncode == 0 and "### Reviewers" not in (review_dir / "REVIEW.md").read_text(), persisted.stderr
 
 
 def test_two_groups_with_one_title_keep_their_own_originals(tmp: Path) -> None:

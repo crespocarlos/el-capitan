@@ -1174,7 +1174,16 @@
       "kind": "module",
       "category": "review",
       "owner": "crew-reviewer",
-      "help": "imported by crew-review-findings.py: `expect` (the dispatch nonce and marker) and `capture` (the SubagentStop reply hook)",
+      "help": "imported by crew-review-findings.py: `expect` (the dispatch nonce and marker), `capture` (the SubagentStop reply hook) and `save-out --from-transcript`",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_transcript.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_capture.py: which file holds a stopped subagent's transcript (the payload's path, then `<conversation>/subagents/<id>.jsonl`, then a nonce scan), polled up to 3 s, and a content-free diagnostic line",
       "smoke": "imported by crew-review-findings.py"
     }
   ],

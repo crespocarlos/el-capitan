@@ -39,13 +39,14 @@ def world(tmp: Path) -> tuple[Path, Path]:
 
 
 def stop(tmp: Path, home: Path, prompt: str, reply: str, agent: str) -> subprocess.CompletedProcess:
-    """One SubagentStop over a transcript whose last assistant message is `reply`."""
+    """One SubagentStop over a transcript whose last assistant message is `reply`, which the payload's
+    `last_assistant_message` carries too, as Claude Code documents."""
     said = {"id": "m1", "role": "assistant", "model": "m-1", "content": [{"type": "text", "text": reply}]}
     turns = [{"type": "user", "message": {"role": "user", "content": prompt}}, {"type": "assistant", "message": said}]
     transcript = tmp / "agent.jsonl"
     transcript.write_text("".join(json.dumps(turn) + "\n" for turn in turns), encoding="utf-8")
     payload = {"hook_event_name": "SubagentStop", "agent_id": "a1", "agent_type": agent,
-               "agent_transcript_path": str(transcript), "last_assistant_message": "a summary, not the reply"}
+               "agent_transcript_path": str(transcript), "last_assistant_message": reply}
     return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
                           env={**os.environ, "HOME": str(home)})
 

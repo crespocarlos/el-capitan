@@ -65,38 +65,38 @@ to them. If the resume also points backwards, persist
 the failure artifact and name the gap under `### Reviewers`.
 
 **A dispatch that ends with no reply is resumed once, never re-dispatched.** This holds for every
-persona and spec critic, from `crew-reviewer` and `crew-specwriter` alike. A persona stopped by its
-turn limit still holds what it read, and a relaunch starts cold and spends the budget again. Resume
-it once with `deliver now: write your findings (a critic: your critique) from what you have read,
-and name what you did not check`. If it again returns nothing,
-persist the failure artifact and name the gap (`crew-specwriter`: name the lens and what it could not
-check). Cursor's Task call resumes too (`resume`). Only a harness that cannot resume re-dispatches
-once, with that `deliver now` line before the same prompt, as its one retry.
+persona and spec critic. A persona stopped by its turn limit still holds what it read; a relaunch
+starts cold and spends the budget again. The subagent-stop hook continues it once itself (Cursor's
+`followup_message`, Claude Code's `decision: block`) with `deliver now: write your findings (a
+critic: your critique) from what you have read, and name what you did not check`. Resume it yourself
+with that line (Cursor's Task `resume` too) only when the dispatch is still pending after that. If it
+again returns nothing, persist the failure artifact and name the gap (`crew-specwriter`: the lens and
+what it could not check). Only a harness that cannot resume re-dispatches once, with the `deliver
+now` line before the same prompt, as its one retry.
 
 **The hook saves the reply, in Claude Code and Cursor.** Each dispatch carries the marker line from
 `crew-review-findings.py expect` ([packaging](~/.cursor/agents/crew-reviewer/references/packaging.md),
-"The reply marker"), and the subagent-stop hook saves the reply with its harness, agent id and
-model. The latest reply to a marker is the reply: a resume's becomes `<persona>.out.md`, the earlier
-one `<persona>.prev.md`. A dispatch is answered when `<persona>.out.md` exists and no
-`<persona>.unanswered` sits beside it; otherwise it is pending, so resume it (rule above), and save
-by hand only an `.out.md` still missing after the agent stops. The hook keeps an `.out.md` that
-answers another marker (it logs a name collision): re-dispatch under a free name or directory, never
-`save-out` over it. `--degraded` stays a manual flag.
+"The reply marker"), and the hook saves the reply with its harness, agent id and model. The latest
+reply to a marker is the reply: a resume's becomes `<persona>.out.md`, the earlier one
+`<persona>.prev.md`. A dispatch is answered when `<persona>.out.md` exists and no
+`<persona>.unanswered` sits beside it; otherwise it is pending (rule above). The hook keeps an
+`.out.md` that answers another marker (a name collision): re-dispatch under a free name or
+directory, never `save-out` over it. `--degraded` stays a manual flag.
 
-**Saving replies with `save-out`** (Codex, the `claude -p` fallback, and a missing `.out.md`).
-Personas never write their own artifacts, and the orchestrator
-does not re-type a reply into `<persona>.out.md` either: it pipes the reply to the tool, which stores
-the raw bytes and a provenance record beside them:
+**Saving replies with `save-out`** (an `.out.md` still missing after the agent stops, Codex, the
+`claude -p` fallback). Never retype a reply: the tool stores the raw bytes and a provenance record.
+With the agent's transcript (Cursor: `<conversation>/subagents/<id>.jsonl`), pass it; the tool
+extracts the reply as the hook does and checks its marker against `.expect`:
 
 ```bash
 ~/.agent/bin/crew-review-findings.py save-out --review-dir "$REVIEW_ROOT" --persona <persona> \
-  --harness <cursor|claude-code|codex> [--agent-id <id>] [--model <id>] [--resume] [--degraded] < <reply file>
+  --harness <cursor|claude-code|codex> [--agent-id <id>] [--model <id>] [--resume] [--degraded] \
+  --from-transcript <transcript.jsonl>   # or, with no transcript: < <reply file>
 ```
 
-- The source is a file the harness already holds for the persona's final message when it has one
-  (a Task or background-agent output file), so the reply is not emitted a second time. With none,
-  write the reply verbatim to a scratch file first. Never a digest or a hand-edited copy: `persist` refuses a condensed digest
-  and a reply whose hash no longer matches its record.
+- Without a transcript, pipe a file the harness already holds for the final message (a Task or
+  background-agent output file); `persist` lists that `manual` save under `### Reviewers`. Never a
+  digest or a hand-edited copy: `persist` refuses a digest and a reply whose hash no longer matches.
 - Record the agent id and model the harness reports; leave a flag out when it reports nothing (stored
   as `null`, never guessed). `--resume` marks the one allowed re-emission of the same persona.
 - Fewer agents than lenses (one fork playing every lens, or two personas answered by one agent id)

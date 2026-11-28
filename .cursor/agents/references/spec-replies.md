@@ -17,7 +17,5 @@ Read each reply from `$SPEC_RUN/<agent>.out.md`. The latest reply to a marker is
 resumed agent's lands there and the earlier one moves to `<agent>.prev.md`, so its `Verdict:` line is
 the critic's outcome. A reply is pending, not answered, while `<agent>.unanswered` sits beside it (an
 empty reply, a pointer, a critic with no `Verdict:` line): resume it under the no-reply rule of
-[dispatch](dispatch.md). Only when `<agent>.out.md` is missing after the agent stops did the hook
-save nothing: take the reply the harness returned and pipe it, unedited, into
-`~/.agent/bin/crew-review-findings.py save-out --review-dir "$SPEC_RUN" --persona <agent> --harness
-<name>`.
+[dispatch](dispatch.md). An `<agent>.out.md` missing after the agent stops: `save-out --review-dir
+"$SPEC_RUN" --persona <agent>` per [dispatch](dispatch.md), from its transcript.

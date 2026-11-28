@@ -169,7 +169,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `review_layers.py`: the layer map: validation, hunk references, per-layer reports
 - `review_consolidate.py`: the `consolidate` subcommand: grouping and `candidates.json`
 - `review_render.py`: rendered findings, generated sections, the degraded mark, `save-out` and provenance
-- `review_capture.py`: `expect` (a persona's, the probe's or a spec subagent's dispatch nonce and marker line) and `capture`, the subagent-stop hook (Claude Code and Cursor) that saves the reply
+- `review_capture.py`: `expect` (a persona's, the probe's or a spec subagent's dispatch nonce and marker line) and `capture`, the subagent-stop hook (Claude Code and Cursor) that saves the reply, and `save-out --from-transcript`
+- `review_transcript.py`: which file holds a stopped subagent's transcript, and the content-free diagnostic line when none does
 - `review_report.py`: `persist`: writing the report and gating it against the findings JSON
 - `review_records.py`: deferred and dropped records, the cost METRIC, the outcome journal
 - `review_workspace.py`: where a review writes, and the content manifest of what it read

@@ -1,20 +1,24 @@
 """Reply capture: `expect` writes an agent's nonce at dispatch; `capture` (the subagent-stop hook) saves its reply.
 
-The marker `crew-review-out: <dir> <name> <nonce>` in the first user message counts only when `<name>.expect` holds
-its nonce; the latest reply to a marker is `<name>.out.md` (the earlier one `<name>.prev.md`), and one that answers
-nothing leaves `<name>.unanswered`. Usage goes to the task, a builder's reply to REPORT.md. Claude Code's
-`SubagentStop` and Cursor's `subagentStop` (`subagent_*` fields, `role` lines) are read alike. Exit 0.
+The marker `crew-review-out: <dir> <name> <nonce>` (from Cursor's `task`, else the transcript's first user line)
+counts only when `<name>.expect` holds its nonce. The latest reply is `<name>.out.md` (the earlier `.prev.md`); one
+that answers nothing leaves `.unanswered` and, once per nonce, a `capture-continue:` line. The same stop twice changes
+nothing. Usage goes to the task, a builder's reply to REPORT.md; both harnesses' payloads are read alike. Exit 0.
 """
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import hmac
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
-from review_render import provenance_path, saved_persona, store_reply
+from review_render import provenance_path, save_out, saved_persona, store_reply
+from review_transcript import diagnostic, resolve
 from review_vocabulary import PROBE, has_review_content
 from task_builder_report import capture_builder
 from task_usage import record_usage, text_of
@@ -28,6 +32,14 @@ FAILED = re.compile(r"\A\s*(?:#+[^\n]*\n+\s*)?status:\s*(failed|truncated)\b", r
 ANSWERED = {"specwriter-scope": re.compile(r"^\W*Verdict:", re.M | re.I),
             "specwriter-adversarial": re.compile(r"^\W*Verdict:", re.M | re.I),
             "specwriter-explorer": re.compile(r"^#{2,3} \S", re.M)}
+TASK_LINE = re.compile(r"^crew-task: \S.*$", re.M)
+# The one resume text, shared with dispatch.md's no-reply rule: the hook's continue sends it once per nonce.
+DELIVER_NOW = ("deliver now: write your findings (a critic: your critique) from what you have read, "
+               "and name what you did not check")
+ALREADY = "already saved"
+STOPPED = ("error", "aborted")
+SEEN_KEEP = 500
+LOCK_WAIT = 10.0  # seconds: a stuck hook never stalls later stops longer than this; past it they run unlocked
 
 
 def add_capture_parsers(commands) -> None:
@@ -88,10 +100,23 @@ def last_text(found: list[dict]) -> str:
     return next((text for text in texts if text.strip()), "")
 
 
+def reply_and_origin(found: list[dict], payload: dict) -> tuple[str, str]:
+    """The run's reply and where it came from: the `SubagentHandback` message (the explicit reply, ahead of any text
+    after it), else Claude Code's documented `last_assistant_message` (the final response; the transcript may lag),
+    else the transcript's last assistant text, else a `completed` Cursor run's `summary`, recorded as `reply_from`
+    so a summary is never taken for the reply."""
+    message = payload.get("last_assistant_message")
+    text = handback(found) or (str(message) if isinstance(message, str) and message.strip() else "") or last_text(found)
+    if text:
+        return text, "transcript"
+    summary = payload.get("summary")
+    if isinstance(summary, str) and summary.strip() and payload.get("status") == "completed":
+        return summary, "summary"
+    return "", "transcript"
+
+
 def reply_of(found: list[dict], payload: dict) -> str:
-    """The run's reply, one rule for every capture: the handback, else the transcript's last assistant text, else
-    the payload's `last_assistant_message` (which a harness may fill with a summary)."""
-    return handback(found) or last_text(found) or str(payload.get("last_assistant_message") or "")
+    return reply_and_origin(found, payload)[0]
 
 
 def model_of(found: list[dict], payload: dict) -> str | None:
@@ -133,13 +158,13 @@ def keep_previous(review_dir: Path, persona: str) -> None:
         record.replace(provenance_path(review_dir, f"{persona}.prev"))
 
 
-def save_reply(payload: dict, found: list[dict], match: re.Match | None) -> str:
+def save_reply(payload: dict, found: list[dict], match: re.Match | None, source: str = "hook") -> str:
     """Save the reply the marker names; the one line saying what happened.
 
     The nonce is the check, never the agent id: `.expect` stays after a save and the record keeps the nonce, so any
-    later reply to the same marker (a resume, whatever its id) becomes `<name>.out.md` and the earlier one
-    `<name>.prev.md`: the latest reply to a marker is the reply. A reply that does not answer leaves
-    `<name>.unanswered` beside it, so the dispatch stays pending."""
+    later, different reply to the same marker (a resume, whatever its id) becomes `<name>.out.md` and the earlier one
+    `<name>.prev.md`: the latest reply to a marker is the reply. The same bytes again change nothing (`already
+    saved`). A reply that does not answer leaves `<name>.unanswered` beside it, so the dispatch stays pending."""
     if not match:
         return "no marker in the dispatch prompt; nothing saved"
     review_dir, persona, nonce = Path(match.group(1)), saved_persona(match.group(2)), match.group(3)
@@ -152,12 +177,12 @@ def save_reply(payload: dict, found: list[dict], match: re.Match | None) -> str:
     previous = saved_nonce(review_dir, persona)
     if previous and previous != nonce:
         return f"{persona}: {persona}.out.md answers another dispatch (a name collision); kept"
-    text = reply_of(found, payload)
+    text, origin = reply_and_origin(found, payload)
     reply, out, pending = text.encode("utf-8"), review_dir / f"{persona}.out.md", review_dir / f"{persona}.unanswered"
     if previous is not None and out.read_bytes() == reply:
-        return f"{persona}: {out.name} already holds this reply; nothing saved"
-    if not answered(text, persona):
-        atomic_write(pending, "the reply is empty, a failure, or answers nothing; the dispatch is pending\n")
+        return f"{persona}: {ALREADY} ({out.name} holds this reply); nothing changed"
+    if origin == "summary" or not answered(text, persona):  # a harness summary is a digest: the reply is still owed
+        atomic_write(pending, "the reply is empty, a failure, a summary, or answers nothing; the dispatch is pending\n")
     else:
         pending.unlink(missing_ok=True)
     if not text.strip():
@@ -167,10 +192,11 @@ def save_reply(payload: dict, found: list[dict], match: re.Match | None) -> str:
     args = argparse.Namespace(review_dir=review_dir, persona=persona, harness=payload["harness"],
                               agent_id=payload["agent_id"] or None, model=model_of(found, payload),
                               resume=previous is not None, degraded=False)
-    saved = store_reply(args, reply, nonce=nonce)
+    saved = store_reply(args, reply, nonce=nonce, source=source, reply_from=None if origin == "transcript" else origin)
     how = (", resumed; the earlier reply is " + f"{persona}.prev.md") if args.resume else ""
     flag = f"; unanswered: {pending.name} written" if pending.exists() else ""
-    return f"saved {saved['saved']} ({saved['outcome']}{how}){flag}"
+    via = f"; from the payload's {origin}" if origin != "transcript" else ""
+    return f"saved {saved['saved']} ({saved['outcome']}{how}){flag}{via}"
 
 
 def recorded_usage(payload: dict, found: list[dict], prompt: str, match: re.Match | None, accepted: bool) -> str:
@@ -184,31 +210,139 @@ def recorded_usage(payload: dict, found: list[dict], prompt: str, match: re.Matc
                         payload["harness"], payload if cursor else None)
 
 
-def capture(args: argparse.Namespace) -> int:
-    """The `capture` subcommand: one subagent-stop payload on stdin; the reply line, then the usage line when the
-    prompt names a task. A transcript with no message line is skipped, saying so. Always exit 0."""
-    lines = []
+def continue_text(payload: dict, found: list[dict], match: re.Match | None) -> str:
+    """`DELIVER_NOW` when the reply just handled left `<name>.unanswered` and this nonce was never continued (Cursor: a
+    `completed` first loop; Claude Code: `stop_hook_active` unset), recorded in `<name>.continued`; else ""."""
+    if not match:
+        return ""
+    review_dir, persona, nonce = Path(match.group(1)), saved_persona(match.group(2)), match.group(3)
+    marker = review_dir / f"{persona}.continued"
+    if not (review_dir / f"{persona}.unanswered").exists():
+        return ""
+    if marker.is_file() and marker.read_text(encoding="utf-8").strip() == nonce:
+        return ""
+    if payload["harness"] == "cursor":
+        if payload.get("status") != "completed" or int(payload.get("loop_count") or 0) > 0:
+            return ""
+    elif payload.get("stop_hook_active"):
+        return ""
+    atomic_write(marker, nonce + "\n")
+    return DELIVER_NOW
+
+
+class Seen:
+    """The stops already handled (`~/.agent/state/capture-seen.txt`), behind one lock, so two copies of one stop
+    (Cursor fires `subagentStop` twice) run one after the other and the second changes nothing."""
+
+    def __init__(self) -> None:
+        self.path = Path.home() / ".agent" / "state" / "capture-seen.txt"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock = (self.path.parent / "capture-reply.lock").open("a")
+        self.busy = True
+        deadline = time.monotonic() + LOCK_WAIT
+        while self.busy and time.monotonic() < deadline:
+            try:
+                fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.busy = False
+            except BlockingIOError:
+                time.sleep(0.1)
+
+    @staticmethod
+    def key(payload: dict, needle: str, reply: str, found: list[dict]) -> str:
+        """One stop: the agent, its dispatch, its reply, and how far its transcript and loop had run, so a resume
+        that grew the transcript (same reply text or not) is a new stop."""
+        parts = (payload["harness"], payload["agent_id"], needle, hashlib.sha256(reply.encode()).hexdigest(),
+                 str(len(found)), str(payload.get("loop_count") or 0))
+        return hashlib.sha256("\0".join(parts).encode()).hexdigest()
+
+    def keys(self) -> list[str]:
+        return self.path.read_text(encoding="utf-8").split() if self.path.is_file() else []
+
+    def add(self, key: str) -> None:
+        atomic_write(self.path, "\n".join([*self.keys()[-SEEN_KEEP:], key]) + "\n")
+
+    def close(self) -> None:
+        self.lock.close()
+
+
+def needle_of(text: str) -> str:
+    """What identifies a dispatch in a transcript's first user line: its marker's nonce, else its task line."""
+    match = MARKER.search(text)
+    if match:
+        return match.group(3)
+    task = TASK_LINE.search(text)
+    return task.group(0).strip() if task else ""
+
+
+def located(payload: dict) -> tuple[Path | None, list[Path], str]:
+    """The transcript, the candidates tried, and the dispatch prompt when Cursor's `task` names a marker or a task
+    (else ""): the transcript must then carry the same nonce or task line."""
+    task = payload["task"] if isinstance(payload.get("task"), str) else ""
+    needle = needle_of(task)
+    if needle:
+        path, tried = resolve(payload, lambda line: needle in line, needle)
+        return path, tried, task
+    path, tried = resolve(payload, lambda line: "crew-review-out: " in line or "crew-task: " in line)
+    return path, tried, ""
+
+
+def process(payload: dict) -> tuple[list[str], str]:
+    """The outcome lines and the continue text for one normalized payload."""
+    cursor = payload["harness"] == "cursor"
+    if cursor and payload.get("status") in STOPPED:
+        why = diagnostic(payload, [])
+        return [f"status {payload['status']}; nothing saved, the dispatch stays pending ({why})"], ""
+    path, tried, task_prompt = located(payload)
+    own = payload.get("agent_transcript_path")
+    if path is None and isinstance(own, str) and own and Path(own).is_file() and Path(own).stat().st_size:
+        if not entries(Path(own)):  # only to say so: a transcript that failed the marker check is never read
+            return [f"malformed transcript {own}: no message line; skipped"], ""
+    found = entries(path) if path else []
+    if path and not found:
+        return [f"malformed transcript {path}: no message line; skipped"], ""
+    prompt = task_prompt or first_prompt(found)
+    needle = needle_of(prompt)
+    if not needle:
+        readable = path or not cursor or any(candidate.is_file() for candidate in tried)
+        why = "no marker; nothing saved" if readable else "no transcript and no marker; nothing saved"
+        lines = [why + (f" ({diagnostic(payload, tried)})" if cursor else "")]
+        if payload["agent_type"].rsplit(":", 1)[-1] == "crew-builder":
+            lines.append("no report saved: the dispatch prompt has no `crew-task: <TASK_DIR>` line")
+        return lines, ""
+    note = [f"no transcript; the marker is from the payload's task ({diagnostic(payload, tried)})"] if not path else []
+    seen = Seen()
+    if seen.busy:
+        note.append(f"lock busy after {LOCK_WAIT:.0f} s; handled unlocked")
     try:
-        payload = json.loads(sys.stdin.read() or "{}")
-        payload = normalized(payload if isinstance(payload, dict) else {})
-        path = payload.get("agent_transcript_path")
-        found = entries(Path(path)) if isinstance(path, str) and Path(path).is_file() else None
-    except (OSError, ValueError) as error:
-        payload, found, lines = {}, None, [f"nothing saved: {error}"]
-    if found is None:
-        print(f"capture-reply: {lines[0] if lines else 'no transcript; nothing saved'}")
-        return 0
-    if not found:
-        print(f"capture-reply: malformed transcript {payload['agent_transcript_path']}: no message line; skipped")
-        return 0
-    prompt = first_prompt(found)
+        key = seen.key(payload, needle, reply_of(found, payload), found)
+        if key in seen.keys():
+            return [f"{ALREADY} (agent {payload['agent_id'] or '-'}, the same reply); nothing changed"], ""
+        lines, cont = handle(payload, found, prompt)
+        if any(wrote(line) for line in lines):
+            seen.add(key)  # a stop that wrote nothing stays unrecorded, so a repeat of it retries
+        return note + lines, cont
+    finally:
+        seen.close()
+
+
+def wrote(line: str) -> bool:
+    """Whether an outcome line says state was written: a save, an already-saved reply, a pending mark, a usage line."""
+    return line.startswith(("saved ", "recorded ")) or ALREADY in line or ".unanswered" in line
+
+
+def handle(payload: dict, found: list[dict], prompt: str) -> tuple[list[str], str]:
+    """Save the reply, then record the usage and the builder's report, unless the reply was already saved."""
     match = MARKER.search(prompt)
     try:
-        lines.append(save_reply(payload, found, match))
+        lines = [save_reply(payload, found, match)]
     except (OSError, ValueError) as error:
-        lines.append(f"nothing saved: {error}")
+        lines = [f"nothing saved: {error}"]
+    if ALREADY in lines[0]:
+        return lines, ""
+    accepted = lines[0].startswith("saved ")
+    cont = continue_text(payload, found, match) if accepted or "the reply is empty" in lines[0] else ""
     try:
-        lines.append(recorded_usage(payload, found, prompt, match, lines[-1].startswith("saved ")))
+        lines.append(recorded_usage(payload, found, prompt, match, accepted))
     except (OSError, ValueError) as error:
         lines.append(f"usage not recorded: {error}")
     try:
@@ -216,6 +350,39 @@ def capture(args: argparse.Namespace) -> int:
                                      payload["harness"]))
     except (OSError, ValueError) as error:
         lines.append(f"no report saved: {error}")
+    return lines, cont
+
+
+def capture(args: argparse.Namespace) -> int:
+    """The `capture` subcommand: one subagent-stop payload on stdin; `capture-reply:` outcome lines, and one
+    `capture-continue:` line when the hook should ask the agent to deliver. Always exit 0."""
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+        lines, cont = process(normalized(payload if isinstance(payload, dict) else {}))
+    except (OSError, ValueError) as error:
+        lines, cont = [f"nothing saved: {error}"], ""
     for line in filter(None, lines):
         print(f"capture-reply: {line}")
+    if cont:
+        print(f"capture-continue: {cont}")
     return 0
+
+
+def save_out_command(args: argparse.Namespace) -> int:
+    """`save-out`: the reply on stdin (`source: manual`), or `--from-transcript <file>`: the reply extracted as the
+    hook extracts it, saved only when the file's marker names this directory and persona and `.expect` holds its
+    nonce (`source: transcript`)."""
+    if not args.from_transcript:
+        return save_out(args)
+    found = entries(args.from_transcript)
+    match = MARKER.search(first_prompt(found))
+    if not match:
+        raise ValueError(f"{args.from_transcript}: the first user message carries no crew-review-out marker")
+    if (Path(match.group(1)).resolve() != args.review_dir.resolve()
+            or saved_persona(match.group(2)) != saved_persona(args.persona)):
+        raise ValueError(f"{args.from_transcript}: its marker names {match.group(1)} {match.group(2)}, "
+                         f"not {args.review_dir} {args.persona}")
+    payload = {"harness": args.harness, "agent_id": args.agent_id or "", "subagent_model": args.model}
+    line = save_reply(payload, found, match, source="transcript")
+    print(f"save-out: {line}")
+    return 0 if line.startswith("saved ") or ALREADY in line else 1
