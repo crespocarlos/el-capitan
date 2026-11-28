@@ -79,8 +79,9 @@ this check, because personas see truncated slices. Claims about filesystem or pe
 ("symlink is a real directory", "existing specs use the old format") also need one command (`ls -la`,
 a count over the real data), because personas cannot run shell commands; that check does not
 apply in PR mode unless the claim concerns the local reviewer environment. When a `[blocking]` claim
-needs more than two reads, dispatch one read-only `reviewer-explorer` with only that claim and its
-location, and keep its verdict. In PR mode its prompt must include the PR repository, head SHA, exact
+needs more than two reads, dispatch one read-only `reviewer-explorer` with only that claim, its
+location and its own marker (`expect --review-dir <review root>/claims/<n> --persona explorer`, `<n>`
+the claim's number), and keep its verdict from `claims/<n>/explorer.out.md`. In PR mode its prompt must include the PR repository, head SHA, exact
 claim, and PR-head excerpts, and it must return `[needs more info]` rather than use local tools.
 Outcomes:
 

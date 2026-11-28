@@ -1,16 +1,15 @@
-"""The one owner of a task's PROGRESS.md: append and read entries, the BLOCKED, METRIC, cost and PR views.
+"""The one owner of a task's PROGRESS.md: append and read entries, the BLOCKED, METRIC, usage and PR views.
 
 An entry is `[<UTC stamp>] <KIND>: <body>` (`YYYY-MM-DDTHH:MM:SSZ`, `lib.clock`); legacy local stamps still parse.
-`CREW_WORKFLOW`/`CREW_MEMBER` add a JSON suffix to a transition. `stage_start`/`stage_end ... tokens_reported=<n>`
-and `agent_end ... tokens=<n>` are validated here; an `agent_end` counts toward the stage of the `stage_start` before
-it and replaces that stage's `tokens_reported`. `task_usage_totals` is the one token measure (new and cache reads).
+`stage_start`, `stage_end ... tokens_reported=<n>`, `agent_end ... tokens=<n|unknown>` and `cursor_stop` are validated
+here; an `agent_end` with a count replaces its stage's `tokens_reported`. `task_usage_totals` is the one token measure;
+`task_cost` reads the per-harness views.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
-import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +21,9 @@ STAGES = {"implement": "workers", "review": "personas"}
 KEYS = ("stage_start", "stage_end")
 AGENT_END = "agent_end"
 AGENT_COUNTS = ("tokens", "input", "output", "cache_read", "cache_write")
+CURSOR_STOP = "cursor_stop"  # one Cursor `stop` payload's raw counts, with its conversation and generation ids
+STOP_COUNTS = ("input", "output", "cache_read", "cache_write")
+HARNESS_DEFAULT = "claude-code"  # an `agent_end` written before the `harness=` field
 NEW_FIELDS = ("input", "output", "cache_write")  # an agent's new tokens: every summed count but the cache reads
 UNSTAGED = "other"  # the stage of an `agent_end` with no `stage_start` before it
 
@@ -38,9 +40,13 @@ def validate(words: list[str]) -> str | None:
         return f"tokens_reported must be a count or `unknown`, got {tokens!r}"
     if words and words[0] == AGENT_END:
         if "tokens" not in given:
-            return "agent_end needs tokens=<n>"
-        bad = [key for key in AGENT_COUNTS if key in given and not given[key].isdigit()]
+            return "agent_end needs tokens=<n|unknown>"
+        bad = [key for key in AGENT_COUNTS if key in given and not given[key].isdigit()
+               and not (key == "tokens" and given[key] == "unknown")]
         return f"{bad[0]} must be a count, got {given[bad[0]]!r}" if bad else None
+    if words and words[0] == CURSOR_STOP:
+        bad = [key for key in STOP_COUNTS if not given.get(key, "").isdigit()]
+        return f"{CURSOR_STOP} needs {bad[0]}=<n>" if bad else None
     if not words or words[0] not in KEYS:
         return None
     if given.get("stage") not in STAGES:
@@ -154,10 +160,11 @@ def task_usage_totals(entries: list[Entry], start: datetime | None = None) -> di
     return sum_usage(list(stage_usage(entries, start).values()))
 
 
-def agent_ends(entries: list[Entry]) -> list[tuple[Entry, dict[str, str]]]:
+def agent_ends(entries: list[Entry], unknown: bool = False) -> list[tuple[Entry, dict[str, str]]]:
     """The one stage attribution of `agent_end` entries, for `crew ls --cost` and `crew report`: each agent's latest
     entry (one per `agent_id`; a resumed agent's later stop replaces its earlier one; an entry with no id counts
-    alone), its fields with `stage`: the last `stage_start` before it, else `other`."""
+    alone), its fields with `stage`: the last `stage_start` before it, else `other`. Only entries with a token count,
+    unless `unknown` (a Cursor subagent's `tokens=unknown` too)."""
     stage, latest = UNSTAGED, {}
     for index, entry in enumerate(entries):
         words = entry.body.split()
@@ -166,34 +173,11 @@ def agent_ends(entries: list[Entry]) -> list[tuple[Entry, dict[str, str]]]:
         given = fields(words)
         if words[0] == "stage_start" and given.get("stage") in STAGES:
             stage = given["stage"]
-        elif words[0] == AGENT_END and given.get("tokens", "").isdigit():
+        elif words[0] == AGENT_END and (given.get("tokens", "").isdigit() or (unknown and given.get("tokens"))):
             key = given.get("agent_id") or f"#{index}"
             latest.pop(key, None)
             latest[key] = (entry, {**given, "stage": stage})
     return list(latest.values())
-
-
-def task_summary(task_dir: Path) -> str:
-    """`new 790k, cache reads 401k; implement: 3 workers, new ~410k; ...`, or "" when no stage recorded tokens."""
-    stages = stage_usage(read_entries(task_dir))
-    if not stages:
-        return ""
-    parts = [usage_text(sum_usage(list(stages.values())))]
-    for stage, data in stages.items():
-        count = [f"{data['count']} {data['noun']}"] if data["count"] else []
-        parts.append(f"{stage}: " + ", ".join([*count, f"new {count_text(data['new'], data['approximate'])}"]))
-    return "; ".join(parts)
-
-
-def print_cost(tasks_dir: Path) -> int:
-    """One `<task>: <cost line>` per task that recorded a stage end."""
-    if not tasks_dir.is_dir():
-        print(f"error: no tasks directory: {tasks_dir}", file=sys.stderr)
-        return 2
-    rows = [(d.name, task_summary(d)) for d in sorted(tasks_dir.iterdir()) if d.is_dir()]
-    rows = [(name, summary) for name, summary in rows if summary]
-    print("\n".join(f"{name}: {summary}" for name, summary in rows) if rows else "no recorded stage costs")
-    return 0
 
 
 PROGRESS_FILE = "PROGRESS.md"

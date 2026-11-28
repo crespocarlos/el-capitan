@@ -82,7 +82,7 @@ def main() -> int:
     if args.max_chars < 1:
         parser.error("--max-chars must be at least 1")
     if args.cost:
-        from task_progress import print_cost
+        from task_cost import print_cost
 
         return print_cost(args.tasks_dir)
     if args.interval is not None and not args.watch:

@@ -113,7 +113,7 @@ Then return the report (below).
 
 **Your final reply is the report; you do not write the file.** The harness refuses a subagent's
 write of a report file, so the reply is saved as `$TASK_DIR/REPORT.md` for you: by the
-`SubagentStop` hook under Claude Code, by crew-implement (`crew-task.py report save`) elsewhere.
+subagent-stop hook (Claude Code, Cursor), else by crew-implement (`crew-task.py report save`).
 Use this shape:
 
 ```

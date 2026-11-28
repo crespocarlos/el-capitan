@@ -1086,7 +1086,7 @@ def test_agent_end_recorded_by_the_subagent_stop_hook(tmp: Path, case: str) -> N
     context = sum(USAGE_TWO.values())  # 42,610: the last call; the sum over calls would be 66,110
     check("one agent_end: the last call's context as tokens, the summed counts beside it", len(ends) == 1 and ends[0].endswith(
         f"METRIC: agent_end agent=crew-builder persona=crew-builder agent_id=a1 tokens={context} input=1010 output=3100 cache_read=60000 "
-        "cache_write=3000"), (ends, done.stdout))
+        "cache_write=3000 harness=claude-code"), (ends, done.stdout))
     other = spec(task_dir.parent / "cursor", "IMPLEMENTING")
     (other / "PROGRESS.md").write_text("[2026-11-27T10:00:00Z] METRIC: stage_start stage=implement\n"
                                        "[2026-11-27T11:00:00Z] METRIC: stage_end stage=implement workers=1 tokens_reported=5000\n", encoding="utf-8")
@@ -1097,7 +1097,8 @@ def test_agent_end_recorded_by_the_subagent_stop_hook(tmp: Path, case: str) -> N
     report = cli(LS, "--tasks-dir", str(task_dir.parent), "--report", "--since", "36500d", "--repo", "all", env={"HOME": str(home)}).stdout
     check("crew report applies the replacement per task: 7k + ~5k in one stage, and the agent apart",
           "stage implement: 1 run(s), new ~12k, cache reads 60k, from 1 agent(s)" in report
-          and "agent crew-builder: 1 run(s), new 7k, cache reads 60k" in report, report)
+          and "agent crew-builder (claude-code): 1 run, new 7k, cache reads 60k" in report, report)
+    check("crew ls --cost labels the agent kind with its harness", "agents: crew-builder (claude-code) 1 run, new 7k" in cost, cost)
 
 
 def test_agent_end_counts_a_resumed_agent_once(tmp: Path) -> None:

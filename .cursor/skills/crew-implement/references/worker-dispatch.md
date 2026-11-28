@@ -110,9 +110,9 @@ words, not a gate) and the `SPEC.md` path, plus `TASK_DIR`, `WORK_DIR`, `RECALLE
 `TASK_RANGE`. The builder file (`~/.cursor/agents/crew-builder.md`) owns the rules, the report shape
 and the verification commands, so the prompt names its path and does not paste it: pasted rules
 drift from the file and are paid for in every worker. The prompt's first line is
-`crew-task: <TASK_DIR>`: under Claude Code the `SubagentStop` hook sums the worker's transcript usage
-and appends an `agent_end` METRIC to that task, which the cost line below then reports, and saves the
-builder's reply as that task's `REPORT.md`. A `TASK_RANGE: <first>-<last>` line right under it makes
+`crew-task: <TASK_DIR>`: the subagent-stop hook appends the worker's `agent_end` METRIC to that task
+(Claude Code: its transcript's tokens; Cursor: duration and tool calls, tokens unknown), which the
+cost line below then reports, and saves the builder's reply as that task's `REPORT.md`. A `TASK_RANGE: <first>-<last>` line right under it makes
 the reply a part report, and `TASK_RANGE: <first>-<last> final` both the part report and `REPORT.md`.
 
 ## Batching for large specs

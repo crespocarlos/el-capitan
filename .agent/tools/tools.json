@@ -661,8 +661,17 @@
       "kind": "module",
       "category": "task",
       "owner": "crew-orchestrator",
-      "help": "imported by review_capture.py: a subagent run's token usage (the last call's context, per-field sums beside it), appended as an `agent_end` METRIC to the task its `crew-task:` line names",
+      "help": "imported by review_capture.py and crew-task.py: a subagent run's usage as an `agent_end` METRIC on the task its `crew-task:` line names (Claude Code: the last call's context, per-field sums beside it; Cursor: tokens unknown, its counts), and `usage stop`: a Cursor `stop` payload's raw counts as a `cursor_stop` METRIC",
       "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "task_cost.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-ls.py, ls_report.py and the TUI: usage per agent kind and harness, Cursor session tokens read from raw `cursor_stop` lines without counting any twice, and the `crew ls --cost` lines",
+      "smoke": "imported by crew-ls.py"
     },
     {
       "name": "task_builder_report.py",

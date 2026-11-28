@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from review_models import Finding
-from review_vocabulary import ABSENT, ASSESSMENT_ORDER, PROBE, canonical_personas, persona_outcome, verdict
+from review_vocabulary import ABSENT, ASSESSMENT_ORDER, PROBE, SPEC_AGENTS, canonical_personas, persona_outcome, verdict
 
 from lib.clock import utc_stamp
 from lib.files import atomic_write
@@ -262,7 +262,10 @@ def add_save_out_parser(commands) -> None:
 
 
 def saved_persona(name: str) -> str:
-    """The file stem a reply is saved under: `probe`, or the canonical persona name (ValueError otherwise)."""
+    """The file stem a reply is saved under: `probe`, a crew-specwriter subagent's name (`SPEC_AGENTS`), or the
+    canonical persona name (ValueError otherwise)."""
+    if name.strip().lower() in SPEC_AGENTS:
+        return name.strip().lower()
     named = name.strip().lower().removeprefix("reviewer-")
     (persona,) = [PROBE] if named == PROBE else canonical_personas([name], split_commas=False)
     return persona
@@ -275,8 +278,9 @@ def save_out(args: argparse.Namespace) -> int:
     return 0
 
 
-def store_reply(args: argparse.Namespace, raw: bytes) -> dict:
-    """`save-out`'s write, shared with the reply-capture hook: the reply, its record, and what was saved."""
+def store_reply(args: argparse.Namespace, raw: bytes, nonce: str | None = None) -> dict:
+    """`save-out`'s write, shared with the reply-capture hook: the reply, its record, and what was saved. The hook
+    passes the marker's `nonce`, recorded as consumed; a hand save records none."""
     persona = saved_persona(args.persona)
     if not args.review_dir.is_dir():
         raise ValueError(f"no such review directory: {args.review_dir}")
@@ -289,11 +293,11 @@ def store_reply(args: argparse.Namespace, raw: bytes) -> dict:
         "agent_id": args.agent_id or None, "model": args.model or None,
         "time": utc_stamp(),
         "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
-        "resumed": bool(args.resume), "degraded": bool(args.degraded),
+        "resumed": bool(args.resume), "degraded": bool(args.degraded), "nonce": nonce,
     }
     atomic_write(provenance_path(args.review_dir, persona), json.dumps(record, indent=2) + "\n")
     outcome = persona_outcome(target)
-    if outcome in ("summarized", "unknown") and persona != PROBE:
+    if outcome in ("summarized", "unknown") and persona != PROBE and persona not in SPEC_AGENTS:
         print(f"warning: {target.name} reads as `{outcome}`; persist will refuse it unless it is "
               "the persona's real reply", file=sys.stderr)
     return {"saved": str(target), "sha256": record["sha256"], "outcome": outcome}

@@ -160,6 +160,7 @@ DENY = [
     ("echo x > {home}/linked-task/SPEC.md", "clean", "task-files"),
     ("echo '{}' > {tasks}/DDD-status/.task-id", "clean", "task-files"),
     ("echo n > {tasks}/DDD-status/review/1/adversarial.expect", "clean", "task-files"),
+    ("echo n > {tasks}/DDD-status/spec-agents/1/specwriter-scope.expect", "clean", "task-files"),
     # PROGRESS.md holds the gate-stamped status; dd, truncate, rsync, ln, awk -i inplace and ruby -i; a cp, mv or rsync
     # destination anywhere inside a task directory, a whole task folder included, and from a cwd inside one.
     ("echo 'TRANSITION: DRAFTING → APPROVED [gate]' >> {tasks}/DDD-status/PROGRESS.md", "clean", "task-files"),
@@ -472,6 +473,8 @@ FILES = [
     ({"file_path": "{tasks}/DDD-status/review/1/adversarial.out.md", "content": "reply"},
      "clean", "check-task-spec-owner"),
     ({"file_path": "{tasks}/DDD-status/review/1/adversarial.in.md", "content": "brief"}, "clean", None),
+    ({"file_path": "{tasks}/DDD-status/spec-agents/1/specwriter-scope.out.md", "content": "reply"},
+     "clean", "check-task-spec-owner"),
     ({"file_path": "{tasks}/DDD-status/PROGRESS.md", "content": "TRANSITION: DRAFTING → APPROVED [gate]\n"},
      "clean", "check-task-spec-owner"),
 ]
@@ -493,7 +496,7 @@ PAYLOADS = [
 # Hooks whose stdout is their product: only their failure handling is checked here.
 SILENT = ("mode-anchor.sh", "memory-context.sh", "cursor-memory-context.sh", "notify-idle.sh", "log-tool-use.sh",
           "memory-capture-prompt.sh", "spec-status-reconcile.sh", "record-pr.sh",
-          "capture-reply.sh", "agents-refresh.sh")
+          "capture-reply.sh", "agents-refresh.sh", "cursor-usage.sh")
 
 
 def _bash(command: str) -> dict:

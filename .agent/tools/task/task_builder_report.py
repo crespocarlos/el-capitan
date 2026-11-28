@@ -84,8 +84,9 @@ def task_range_of(prompt: str) -> TaskRange | None:
     return (int(found[0].group(1)), int(found[0].group(2)), bool(found[0].group(3))) if found else None
 
 
-def capture_builder(payload: dict, prompt: str, reply: str, model: str | None) -> str:
-    """The hook's save for a `crew-builder` run, into the task its `crew-task:` line names; "" for any other agent."""
+def capture_builder(payload: dict, prompt: str, reply: str, model: str | None, harness: str = "claude-code") -> str:
+    """The hook's save for a `crew-builder` run, into the task its `crew-task:` line names; "" for any other agent.
+    `payload` carries `agent_type` and `agent_id` in either harness (`review_capture.normalized`)."""
     if str(payload.get("agent_type") or "").rsplit(":", 1)[-1] != BUILDER:
         return ""
     task_dir = task_of(prompt, None)
@@ -95,7 +96,7 @@ def capture_builder(payload: dict, prompt: str, reply: str, model: str | None) -
         task_range = task_range_of(prompt)
     except ValueError as error:
         return UNSAVED + str(error)
-    return save_report(task_dir, reply, "claude-code", task_range, str(payload.get("agent_id") or ""), model)
+    return save_report(task_dir, reply, harness, task_range, str(payload.get("agent_id") or ""), model)
 
 
 def parse_range(value: str) -> tuple[int, int]:

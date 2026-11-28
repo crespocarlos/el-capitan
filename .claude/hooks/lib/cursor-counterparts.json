@@ -12,5 +12,6 @@
   "log-tool-use.sh": "postToolUse",
   "record-pr.sh": "afterShellExecution",
   "cursor-memory-context.sh": "sessionStart",
-  "memory-capture-prompt.sh": "stop"
+  "memory-capture-prompt.sh": "stop",
+  "capture-reply.sh": "subagentStop"
 }

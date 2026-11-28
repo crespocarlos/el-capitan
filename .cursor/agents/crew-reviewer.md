@@ -117,10 +117,10 @@ questions rule, for a directory holding a `package.diff`.
 mode](~/.cursor/agents/crew-reviewer/references/pr-mode.md), "The PR-head excerpt pass").
 
 **Persist both artifacts at dispatch time.** The package is the `.in.md` just checked, delivered per
-the shared dispatch instructions. Save each reply as it returns with `crew-review-findings.py
-save-out` (raw bytes on stdin plus provenance; see [saving
-replies](~/.cursor/agents/references/dispatch.md)), never a digest or a later reconstruction:
-`persist` needs both files and checks the hash.
+the shared dispatch instructions. The hook saves each reply its marker names; `save-out` (raw bytes
+on stdin plus provenance; see [saving replies](~/.cursor/agents/references/dispatch.md)) is for an
+`.out.md` missing after the persona stops, never a digest or a later reconstruction: `persist` needs
+both files and checks the hash.
 
 **Routing and stops.** A user message during a persona run: the routing line in [worker
 dispatch](~/.cursor/skills/crew-implement/references/worker-dispatch.md). An autonomous pause or

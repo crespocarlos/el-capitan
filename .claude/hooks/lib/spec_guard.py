@@ -16,7 +16,8 @@ text `read_status` sees, on both the file and what the write would leave, and `s
 write that leaves more than one `## Status` heading is refused. The tool decides which fields are read
 (Write: `content`; Edit: `old_string`, `new_string`, `replace_all`; MultiEdit: `edits`); a payload with
 another tool's fields, an unknown tool, or an edit that does not apply exactly once is refused.
-`.task-id`, PROGRESS.md and a review's `*.expect`, `*.provenance.json` and `*.out.md` are written only by crew tools.
+`.task-id`, PROGRESS.md and a review's or spec run's (`spec-agents/`) `*.expect`, `*.provenance.json`, `*.out.md`,
+`*.prev.md` and `*.unanswered` are written only by crew tools.
 
 `spec_guard.py --shell <tasks root>` is the path half of `guard/task-files.sh`: NUL-separated `kind` (`w` a write
 target, `d` a copy destination), `cwd`, `path` triples on stdin (the literal targets a shell command writes), one
@@ -34,7 +35,7 @@ from types import ModuleType
 
 HEADING = re.compile(r"^## Status[ \t]*$", re.M)
 MOVES = "crew-task.py mark-approved | mark-implementing | mark-done"
-EVIDENCE = (".expect", ".provenance.json", ".out.md")
+EVIDENCE = (".expect", ".provenance.json", ".out.md", ".prev.md", ".unanswered")
 # The fields each tool reads (Claude Code and Cursor name the tools alike); another tool's fields are refused.
 OWN = {"Write": {"content"}, "Edit": {"old_string", "new_string", "replace_all"}, "MultiEdit": {"edits"}}
 FIELDS = set().union(*OWN.values())
@@ -105,9 +106,9 @@ def written(tool: str, fields: dict, disk: str) -> tuple[str | None, str]:
 
 def evidence(names: list[str]) -> bool:
     """`<task>/.task-id`, `<task>/PROGRESS.md` (its gate-stamped transitions are the recorded status), or
-    `<task>/review/**/<name>` with an evidence suffix (lowercased names)."""
+    `<task>/review/**/<name>` or `<task>/spec-agents/**/<name>` with an evidence suffix (lowercased names)."""
     return names[1:] in ([".task-id"], ["progress.md"]) or (
-        len(names) > 2 and names[1] == "review" and names[-1].endswith(EVIDENCE))
+        len(names) > 2 and names[1] in ("review", "spec-agents") and names[-1].endswith(EVIDENCE))
 
 
 def spec_verdict(path: str, tool: str, fields: dict) -> str:

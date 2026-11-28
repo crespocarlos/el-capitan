@@ -3,7 +3,8 @@
 
 `crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every other write goes
 through here (`gc`: retention, `task_gc.py`; `ship`: commit to DONE, `task_ship.py`). `lock`, `blocked`,
-`worktree` and `report` parse their own arguments (`task_lock.py`, `task_worktrees.py`, `task_builder_report.py`).
+`worktree`, `report` and `usage` parse their own arguments (`task_lock.py`, `task_worktrees.py`,
+`task_builder_report.py`, `task_usage.py`).
 """
 from __future__ import annotations
 
@@ -18,15 +19,20 @@ DELEGATED = {
     "blocked": "<TASK_DIR> <reason>: one BLOCKED line, shown by crew ls",
     "worktree": "pref|record|check: where the worker runs, and whether a branch may be cut here",
     "report": "save <TASK_DIR> [--range A-B] < reply: a builder's reply saved as REPORT.md, as the hook does",
+    "usage": "stop < payload: a Cursor `stop` payload's token counts on its task (the cursor-usage.sh hook)",
 }
 
 
 def delegated(name: str, argv: list[str]) -> int:
-    """Run `lock`, `blocked`, `worktree` or `report` in the module that owns it."""
+    """Run `lock`, `blocked`, `worktree`, `report` or `usage` in the module that owns it."""
     if name == "report":
         from task_builder_report import main as report
 
         return report(argv)
+    if name == "usage":
+        from task_usage import main as usage
+
+        return usage(argv)
     if name in ("lock", "blocked"):
         from task_lock import main as lock
 
@@ -151,7 +157,8 @@ def make_parser() -> argparse.ArgumentParser:
     collect.add_argument("--apply", action="store_true", help="remove and archive (default: list what would go)")
     collect.add_argument("--json", action="store_true",
                          help="the selected paths as a JSON array (with --apply, an archived task names its tarball)")
-    collect.add_argument("--only", choices=["telemetry"], help="select only the legacy ~/.agent/telemetry")
+    collect.add_argument("--only", choices=["telemetry"],
+                         help="select only the legacy ~/.agent/telemetry and the hook logs' old lines")
     collect.add_argument("--tasks-dir", type=Path, default=None, help="default ~/.agent/tasks")
     collect.set_defaults(run=collect_garbage)
     shipper = commands.add_parser("ship", help="after the owner's go: commit, merge the base, re-run ## Tests, push, "
