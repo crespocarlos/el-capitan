@@ -231,8 +231,8 @@ rule_credentials() {
   [ -n "$commits$pushes" ] || return 0
   gitleaks=$(command -v gitleaks || echo "$HOME/.agent/bin/gitleaks")
   [ -x "$gitleaks" ] || deny "Blocked: gitleaks is not installed, so this commit or push cannot be scanned for secrets. Run install.sh."
-  # Every scan below that cannot run (an unreadable index, a gitleaks exit other than 0 or 3) ends the rule with an
-  # error, and `rule` denies the command.
+  # A gitleaks exit other than 0 or 3 ends the rule with an error, and `rule` denies the command. A commit whose index
+  # git cannot read is not scanned (one stderr line): the push scan still runs before anything is published.
   for k in $pushes; do
     hook_seg "$k"
     if hook_git; then hook_repo "$GIT_TREE"; else hook_repo "$SEG_DIR"; fi
@@ -240,7 +240,7 @@ rule_credentials() {
     rc=0
     "$gitleaks" git --no-banner --exit-code 3 -l error --log-opts="--branches --tags --not --remotes" "$REPO" >/dev/null 2>&1 || rc=$?
     [ "$rc" != 3 ] || deny 'Push blocked: a commit not yet on any remote contains a credential-like token or private key (gitleaks). Remove it from history; rotate it if it was real.'
-    [ "$rc" = 0 ]
+    [ "$rc" = 0 ] || return 1
   done
   [ -n "$commits" ] || return 0
   for k in $adds $commits; do
@@ -249,22 +249,28 @@ rule_credentials() {
     hook_repo "$GIT_TREE"
     [ -n "$REPO" ] || continue
     if [ "$GIT_SUB" = add ]; then added+=$'\n'$(hook_git_added "$REPO" yes ${GIT_ARGS[@]+"${GIT_ARGS[@]}"}); continue; fi
-    staged=$(git -C "$REPO" diff --cached -U0 2>/dev/null)
+    if ! staged=$(git -C "$REPO" diff --cached -U0 2>/dev/null); then
+      printf 'shell: credentials: cannot read the git index in %s; this commit is not scanned\n' "$REPO" >&3
+      continue
+    fi
     added+=$'\n'$(hook_plus_lines <<<"$staged")
     if hook_git_arg '^(--all|-[A-Za-z]*a[A-Za-z]*)$'; then added+=$'\n'$(hook_git_added "$REPO" no); fi
   done
   rc=0
   printf '%s\n' "$added" | "$gitleaks" stdin --no-banner --exit-code 3 -l error >/dev/null 2>&1 || rc=$?
   [ "$rc" != 3 ] || deny 'Commit blocked: changes being committed contain a credential-like token or private key (gitleaks). Remove it; rotate it if it was real.'
-  [ "$rc" = 0 ]
+  [ "$rc" = 0 ] || return 1
 }
 
 # Run rule $1 in its own subshell unless its off switch is set ($2: the switch's suffix); deny on its objection.
 # A rule that fails is skipped with one stderr line, except credentials, which only fails on a command it scans.
+# A rule's own stderr is discarded; a line it means to show goes to fd 3. The substitution stands alone, not in an
+# `||` list: bash 5.2 ignores `set -e` inside a substitution there, so errexit would hold on one platform only.
 rule() {
-  local out rc=0 switch=EL_CAPITAN_GUARD_$2
+  local out rc switch=EL_CAPITAN_GUARD_$2
   [ "${!switch:-}" != off ] || return 0
-  out=$(set -e; "rule_${1//-/_}" 2>/dev/null) || rc=$?
+  out=$(set -e; "rule_${1//-/_}" 3>&2 2>/dev/null)
+  rc=$?
   HOOK_NAME=$1
   [ -z "$out" ] || hook_deny "$out"
   [ "$rc" = 0 ] || [ "$1" != credentials ] || hook_deny "Blocked: the secret scan failed (exit $rc), so this commit or push was not checked."

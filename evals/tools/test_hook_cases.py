@@ -412,6 +412,15 @@ def test_cases(part: int, world: tuple) -> None:
     assert not failed, "\n".join(failed)
 
 
+def test_an_unreadable_index_skips_the_commit_scan(world: tuple) -> None:
+    """A commit in a repository whose index git cannot read is not scanned: one stderr line, no denial, in both shapes
+    (the push scan runs before anything is published)."""
+    env, places, _ = world
+    for payload in shapes("git commit -m x", places["corrupt"]):
+        done = run("bash", GUARDS[0], json.dumps(payload), env, places["corrupt"])
+        assert done.returncode == 0 and "cannot read the git index" in done.stderr and '"deny"' not in done.stdout, done
+
+
 def test_a_broken_shfmt_falls_back_to_awk(world: tuple) -> None:
     """A shfmt that prints invalid JSON makes jq fail, and awk then reads the command: the same records
     and the same deny. The real shfmt path, for its part, runs: on every listed difference its records differ."""

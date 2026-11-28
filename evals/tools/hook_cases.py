@@ -119,7 +119,7 @@ DENY = [
     ("python3 - <<'PY'\np = '/tmp/hook-case-o'\np = 'tracked.txt'\nopen(p, 'w')\nPY", "source", "source-edit"),
     ("python3 -c \"import subprocess; subprocess.run(['cp', '/tmp/hook-case.txt', 'tracked.txt'])\"", "source",
      "source-edit"),
-    # A secret staged or added in the same command, a large diff with the secret first, and a scan that cannot run;
+    # A secret staged or added in the same command, and a large diff with the secret first;
     # the kept rules through `bash -c`, an interpreter path, a wrapper and `$(...)`; a secret in a commit a push or a PR
     # would publish.
     ("bash -c 'git commit -m leak'", "staged", "credentials"),
@@ -148,7 +148,6 @@ DENY = [
     ("git -C {staged} commit -m leak", "clean", "credentials"),
     ('git commit -m "restore cd /tmp behavior"', "staged", "credentials"),
     ("git commit -m big", "bigleak", "credentials"),
-    ("git commit -m x", "corrupt", "credentials"),
     ("git add -A && git commit -m all", "loose", "credentials"),
     # A removal of a task record, a task directory or the tasks root, by `rm`, `unlink` or `find -delete`.
     ("rm {tasks}/DDD-status/PROGRESS.md", "clean", "task-files"),

@@ -29,7 +29,7 @@ skipped with one stderr line; credentials instead denies the commands it scans. 
 |---|---|---|---|
 | `owner-only` | shell | everywhere | `crew-task.py restore-status ... --acc*` from any agent shell; `task_gates.restore_status` also refuses `--accept` in code unless stdin is a terminal, and `crew-task.py` accepts no abbreviation of it |
 | `worker-tree` | shell | everywhere | `git checkout`, `switch`, `restore`, `reset --hard` in a tree with a fresh `.crew-worker.lock` (6 hours); the builder is exempt through `CREW_WORKER_TASK` |
-| `credentials` | shell | everywhere | a secret (gitleaks) in what `git commit` records, or in every branch's and tag's commits on no remote for `git push` and `gh pr create`; without gitleaks, or when the scan cannot run, only those commands are denied ("run install.sh"), and `crew doctor` fails |
+| `credentials` | shell | everywhere | a secret (gitleaks) in what `git commit` records, or in every branch's and tag's commits on no remote for `git push` and `gh pr create`; without gitleaks, or when gitleaks fails, only those commands are denied; a commit whose git index cannot be read is not scanned (one stderr line), and the push scan still runs ("run install.sh"), and `crew doctor` fails |
 | `too-complex` | shell | everywhere | a command nesting more payloads than the normaliser reads |
 | `spec-owner` | file | everywhere | a task `SPEC.md` titled for another task's slug, written over a spec past DRAFTING (a DRAFTING spec may be retitled; `mark-approved` records the approved title's slug) |
 | `destructive-git` | shell | everywhere | `reset --hard`, `clean` with force, force pushes (`-f`, `--force`, `+ref`, `--force-if-includes` without a lease) |
