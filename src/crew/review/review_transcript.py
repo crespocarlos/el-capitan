@@ -1,9 +1,8 @@
 """Which file holds a stopped subagent's transcript, and one content-free line saying what was tried.
 
-Cursor documents `agent_transcript_path` as nullable and its live value has missed, so `resolve` tries the payload's
-path, then `<conversation>/subagents/<id>.jsonl` derived from `transcript_path`, `$CURSOR_TRANSCRIPT_PATH` and the
-payload path (by `subagent_id`, then `child_conversation_id`), then any file in those `subagents/` folders whose first
-user line holds the expected nonce. A candidate that exists with no user line yet is polled for at most `WAIT` seconds.
+`agent_transcript_path` is nullable, so `resolve` tries it, then `<conv>/subagents/<id>.jsonl` beside `transcript_path`,
+`$CURSOR_TRANSCRIPT_PATH` or it, then any file whose first user line holds the nonce in those folders or in
+`~/.cursor/projects/*/agent-transcripts/<conversation id>/subagents/`. An empty candidate is polled up to `WAIT` s.
 """
 
 from __future__ import annotations
@@ -50,6 +49,12 @@ def candidates(payload: dict, env: dict) -> tuple[list[Path], list[Path]]:
     folders: list[Path] = []
     for parent in (payload.get("transcript_path"), env.get("CURSOR_TRANSCRIPT_PATH"), own):
         folders.extend(subagents_dirs(parent))
+    live = env.get("CURSOR_TRANSCRIPT_PATH")
+    convs = [payload.get("parent_conversation_id"), payload.get("conversation_id"), Path(live).stem if isinstance(live, str) and live else None]
+    projects = Path(env.get("HOME") or Path.home()) / ".cursor" / "projects"
+    for conv in convs:
+        if isinstance(conv, str) and conv.strip() and "/" not in conv:
+            folders.extend(projects.glob(f"*/agent-transcripts/{conv}/subagents"))
     folders = list(dict.fromkeys(folders))
     named.extend(folder / f"{name}.jsonl" for folder in folders for name in ids)
     return list(dict.fromkeys(named)), folders
@@ -100,10 +105,10 @@ def describe(path: Path) -> str:
 
 
 def diagnostic(payload: dict, tried: list[Path]) -> str:
-    """One line on why nothing was found: the payload's key names, its ids and each candidate's size."""
+    """One line on why nothing was found: the payload's key names, its ids and paths (values, never content) and each
+    candidate's size."""
     keys = ",".join(sorted(payload)) or "none"
-    child = "yes" if "child_conversation_id" in payload else "no"
+    names = ("subagent_id", "agent_transcript_path", "transcript_path", "parent_conversation_id", "conversation_id", "child_conversation_id")
+    ids = " ".join(f"{name}={payload.get(name) or '-'}" for name in names)
     paths = "; ".join(describe(path) for path in tried) or "none"
-    return (
-        f"keys={keys} subagent_id={payload.get('subagent_id') or '-'} child_conversation_id={child} status={payload.get('status') or '-'} candidates: {paths}"
-    )
+    return f"keys={keys} {ids} status={payload.get('status') or '-'} candidates: {paths}"

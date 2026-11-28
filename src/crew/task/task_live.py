@@ -1,9 +1,9 @@
-"""Tokens in use by running agents, from their transcripts `<config dir>/projects/*/*/subagents/agent-<id>.jsonl`.
-
+"""Tokens in use by running agents, from their transcripts `<config dir>/projects/*/*/subagents/agent-<id>.jsonl`
+and the orchestrator's own `<config dir>/projects/*/<session>.jsonl` named at `stage_start` (`session_agents`).
 Bounded: only the config dirs given, `subagents` dirs changed within `SESSION_WINDOW`, transcripts modified within
-`WINDOW`, and only the first user line of a transcript whose `crew-task:` line names no task asked for. A matching
-file's usage is summed from its assistant lines (`task_usage.usage`); `cache` keeps each file's offset and calls. An
-agent runs while its file is fresh and its last assistant message is newer than its latest `agent_end`. Nothing writes.
+`WINDOW`, and only the first user line of a transcript naming no task asked for. Usage is summed from assistant
+lines (`task_usage.usage`); `cache` keeps each file's offset and calls. An agent runs while its file is fresh and its
+last assistant message is newer than its latest `agent_end`. Nothing writes.
 """
 
 from __future__ import annotations
@@ -26,12 +26,14 @@ SESSION_WINDOW = LOCK_STALE_SECONDS  # a `subagents` dir with no agent added for
 class Seen:
     """One transcript as read so far: the byte offset after its last whole line read, the task its first user line
     names (its real path; "" when it names none, None before that line), its assistant usage by message id, and the
-    time of its last assistant message (None before one carries a readable `timestamp`)."""
+    time of its last assistant message (None before one carries a readable `timestamp`). Usage stamped before `since`
+    is skipped (a main session counts from its stage's start)."""
 
     offset: int = 0
     task: str | None = None
     calls: dict[str, dict] = field(default_factory=dict)
     said: float | None = None
+    since: float = 0.0
 
 
 def seconds(stamp: object) -> float | None:
@@ -121,7 +123,7 @@ def advance(path: Path, seen: Seen, wanted: set[str]) -> None:
             if item.get("type") != "assistant":
                 continue
             seen.said = seconds(item.get("timestamp")) or seen.said
-            if isinstance(message.get("usage"), dict):
+            if isinstance(message.get("usage"), dict) and (seen.said or 0) >= seen.since:
                 key = str(message.get("id") or f"#{seen.offset}")
                 seen.calls[key] = {"type": "assistant", "message": {"id": key, "usage": message["usage"]}}
 
@@ -156,6 +158,27 @@ def running_agents(
         # agent from a resumed one; its last assistant message can, compared at the stamp's one-second resolution.
         finished = agent_id in ended and (seen.said is None or int(seen.said) <= ended[agent_id])
         if seen.task in wanted and not finished:
-            counts = usage(list(seen.calls.values())) or {"cache_read": 0}  # no call yet: running, nothing used
-            found.setdefault(wanted[seen.task], []).append(Live(wanted[seen.task], agent_id, path, stamp, new_tokens(counts), counts["cache_read"]))
+            found.setdefault(wanted[seen.task], []).append(live(wanted[seen.task], agent_id, path, stamp, seen))
+    return found
+
+
+def live(task: Path, agent_id: str, path: Path, stamp: float, seen: Seen) -> Live:
+    counts = usage(list(seen.calls.values())) or {"cache_read": 0}  # no call yet: running, nothing used
+    return Live(task, agent_id, path, stamp, new_tokens(counts), counts["cache_read"])
+
+
+def session_agents(sessions: dict[Path, tuple[str, float]], config_dirs: list[Path], now: float, cache: dict[str, Seen]) -> dict[Path, list[Live]]:
+    """`{task: [Live "main"]}` for `{task: (session id, stage start)}`: the session's own transcript while it is fresh,
+    its calls since the stage started. `cache` is the caller's, keyed by file and start, apart from `running_agents`'."""
+    found: dict[Path, list[Live]] = {}
+    for task, (session, since) in sessions.items():
+        path = next((p for config in config_dirs for p in (config / "projects").glob(f"*/{session}.jsonl") if now - modified(p) <= WINDOW), None)
+        if path is None:
+            continue
+        seen = cache.setdefault(f"{real(path)}@{since}", Seen(task=real(task), since=since))
+        try:
+            advance(path, seen, {real(task)})
+        except OSError:
+            continue
+        found[task] = [live(task, "main", path, modified(path), seen)]
     return found

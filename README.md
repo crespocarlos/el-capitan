@@ -81,17 +81,20 @@ its GitHub issue and PRs (terminal links), its progress (checked over total crit
 (`running <stage>`, `stuck <stage>` for a stage open past 6 hours, or days idle such as `idle 3d`). TOKENS is
 what the task's agents used: **new** tokens (input, output and cache writes, summed over every call), such as `259k`,
 or `~259k` when only the orchestrator's reported figure exists; a line under the table totals new tokens and cache
-reads over the tasks shown. While an agent runs, ACTIVITY adds what it has used so far (`running review · 92k`),
-read from its transcript under `~/.claude` or `$CLAUDE_CONFIG_DIR`. A task is DONE once a PR
+reads over the tasks shown. While agents run, LIVE shows what they have used so far (`92k`, `2 · 180k`), and the
+header their total, read every 1.5 s from the new lines of their transcripts under `~/.claude` or
+`$CLAUDE_CONFIG_DIR`; the orchestrator's own session counts too, from the `stage_start` that recorded it. A task is DONE once a PR
 for it is open: `crew open pr` records the PR and marks it, and the merge comes later. `t`, `w` and
 `p` switch views, `r` refreshes, `g` reads `landed` from GitHub, and `o` and `O` open the selected
-task's issue and PR in the browser. `s` lists the `crew-task.py` moves the selected task's state allows:
+task's issue and PR in the browser; the cursor stays on its task across refreshes. `s` lists the `crew-task.py`
+moves the selected task's state allows (`DRAFTING → APPROVED [a] Approve`), and why an unavailable one is:
 approve (`mark-approved`), start (`mark-implementing`), mark done (`mark-done` with the newest recorded
 PR), close as done (`mark-done --force` with a note, by default `none (committed to main)` for
 IMPLEMENTING and `closed: stale` otherwise, on a DRAFTING, APPROVED, IMPLEMENTING or ON-HOLD task with no
 PR to mark done with; never on ABANDONED; LANDED then reads `closed`) and `blocked`
-with a reason. Each move shows the exact command in a confirm dialog, which is your approval for a gate,
-then runs it and shows its output and exit code; a refusal shows the reason. The dashboard never writes a
+with a reason. The dialog takes a move's text inline and shows the exact command; `enter` is your approval for a
+gate, `esc` cancels. The move runs in the background, its row marked `⋯`, and `L` shows each command's output
+and exit code; a refusal shows the reason. The dashboard never writes a
 file itself and never calls a model. It needs Textual, the `tui` dependency group of `pyproject.toml`, never
 installed: from the repository root, run `uv run --group tui python -m crew.tui.crew_tui`.
 `uv run python -m crew.tui.crew_tui --once` prints the same views without Textual, and `crew ls --watch` is

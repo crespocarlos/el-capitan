@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,14 +54,17 @@ def read_locks(trees: list[Path]) -> list[Lock]:
     return found
 
 
-def worktree_paths() -> list[Path]:
-    """The worktrees of the repository around the cwd; none outside a repository."""
+def worktree_paths(roots: Iterable[Path | None] = (None,)) -> list[Path]:
+    """The worktrees of the repositories around `roots` (None: the cwd), each listed once; none outside a repository."""
     from crew.task.task_worktrees import worktrees
 
-    try:
-        return [path for path, _ in worktrees()]
-    except (GitError, OSError):
-        return []
+    found: dict[Path, None] = {}
+    for root in roots:
+        try:
+            found.update(dict.fromkeys(path for path, _ in ([] if root in found else worktrees(root))))
+        except (GitError, OSError):
+            continue
+    return list(found)
 
 
 def exclude_path(tree: Path) -> Path:

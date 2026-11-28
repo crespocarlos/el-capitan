@@ -76,18 +76,9 @@ def progress_cell(r: TaskState) -> str:
     return f"{r.done}/{r.done + r.open}" if r.done + r.open else "-"
 
 
-def live_suffix(base: str, live: list[int]) -> str:
-    """ACTIVITY with the running agents' new tokens: `running review · 92k`, `running review · 2 · 180k`; a stage
-    that looked stuck is running again, and an agent with no open stage is `running · 92k`."""
-    label = base if base.startswith("running") else "running"
-    label += base[len("stuck") :] if base.startswith("stuck") else ""
-    total = count_text(sum(live))
-    return f"{label} · {total}" if len(live) == 1 else f"{label} · {len(live)} · {total}"
-
-
-def activity_cell(r: TaskState, entries: list[Entry], locks: list[Lock], now: float, live: list[int] | None = None) -> str:
+def activity_cell(r: TaskState, entries: list[Entry], locks: list[Lock], now: float, live: bool = False) -> str:
     """`running <stage>` for an open stage or a live worker lock, `stuck <stage>` for a stage open past 6 h,
-    else `idle Nd`; `live` (the new tokens of each agent still running, `task_live`) adds `· <tokens>`.
+    else `idle Nd`; with an agent `live` (the TUI's transcripts), `running <stage>` or `running`, never stuck or idle.
 
     A stage is open from its `stage_start` until its `stage_end`; the lock is the one `crew implement`
     writes, live while younger than the guard's threshold. A DONE task is never running. `stuck` is not
@@ -98,12 +89,11 @@ def activity_cell(r: TaskState, entries: list[Entry], locks: list[Lock], now: fl
         opened = sorted(((at.timestamp(), stage) for stage, (at, _) in open_starts.items()), reverse=True)
         fresh = [stage for at, stage in opened if now - at < LOCK_STALE_SECONDS]
         if fresh:
-            base = f"running {fresh[0]}"
-        elif any(lock.task == r.uuid and now - lock.started < LOCK_STALE_SECONDS for lock in locks):
-            base = "running implement"
-        else:
-            base = f"stuck {opened[0][1]}" if opened else f"idle {r.activity}d"
-        return live_suffix(base, live) if live else base
+            return f"running {fresh[0]}"
+        if any(lock.task == r.uuid and now - lock.started < LOCK_STALE_SECONDS for lock in locks):
+            return "running implement"
+        if opened or live:
+            return f"{'running' if live else 'stuck'} {opened[0][1] if opened else ''}".rstrip()
     return f"idle {r.activity}d"
 
 
@@ -112,9 +102,9 @@ def tokens_cell(usage: dict) -> str:
     return count_text(usage["new"], usage["approximate"])
 
 
-def task_cells(r: TaskState, entries: list[Entry], locks: list[Lock], now: float, live: list[int] | None = None, usage: dict | None = None) -> dict[str, str]:
+def task_cells(r: TaskState, entries: list[Entry], locks: list[Lock], now: float, usage: dict | None = None, live: bool = False) -> dict[str, str]:
     """The ISSUE, PR, PROGRESS, ACTIVITY and TOKENS cells of one task; `usage` is its `task_usage_totals` when the
-    caller already has it."""
+    caller already has it, `live` whether an agent of it is running."""
     usage = task_usage_totals(entries) if usage is None else usage
     return {
         "ISSUE": number_cell(r.issue),
