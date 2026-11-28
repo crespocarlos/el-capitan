@@ -530,6 +530,69 @@
       "smoke": "imported by review_pr_reads.py, crew-pr-actions.py and ls_data.py"
     },
     {
+      "name": "reply_marker.py",
+      "dir": "lib",
+      "kind": "module",
+      "category": "library",
+      "owner": "repository",
+      "help": "imported by review_capture.py and task_prepare_spec.py: the dispatch marker line and the `<name>.expect` nonce it is checked against",
+      "smoke": "imported by review_capture.py and task_prepare_spec.py"
+    },
+    {
+      "name": "task_guidance.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-orchestrator",
+      "help": "imported by crew-agent-context.py, task_verify_sources.py and the prepare modules: repository guidance per path, and `crew-mem.py context` in process",
+      "smoke": "imported by crew-agent-context.py"
+    },
+    {
+      "name": "task_prepare.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-implement",
+      "help": "imported by crew-task.py: `prepare-implement`, crew implement's setup before the builder in one call",
+      "smoke": "imported by crew-task.py"
+    },
+    {
+      "name": "task_prepare_spec.py",
+      "dir": "task",
+      "kind": "module",
+      "category": "task",
+      "owner": "crew-specwriter",
+      "help": "imported by crew-task.py: `prepare-spec`, crew spec's setup before the explorer in one call",
+      "smoke": "imported by crew-task.py"
+    },
+    {
+      "name": "review_prepare.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-findings.py: `prepare`, a review's setup in one call for every mode",
+      "smoke": "imported by crew-review-findings.py"
+    },
+    {
+      "name": "review_head.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by review_prepare.py and crew-pr-actions.py: every changed file of a PR at its head SHA, one GraphQL call per 100 paths",
+      "smoke": "imported by crew-pr-actions.py"
+    },
+    {
+      "name": "review_hunks.py",
+      "dir": "review",
+      "kind": "module",
+      "category": "review",
+      "owner": "crew-reviewer",
+      "help": "imported by crew-review-hunks.py and review_prepare.py: the hunk artifacts (hunks.json, hunks.md, hunks.index.md, package.diff)",
+      "smoke": "imported by crew-review-hunks.py"
+    },
+    {
       "name": "files.py",
       "dir": "lib",
       "kind": "module",

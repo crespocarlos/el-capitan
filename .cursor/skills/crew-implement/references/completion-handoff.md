@@ -1,6 +1,6 @@
 # Completion handoff
 
-Step 7's post-implementation drafts, after every task passed. They are drafts only: the one question
+Step 6's post-implementation drafts, after every task passed. They are drafts only: the one question
 about storing them is the closing confirmation of `crew open pr`
 (`~/.cursor/skills/crew-open-pr/references/closing-confirmation.md`), so nothing here asks.
 

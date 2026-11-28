@@ -42,13 +42,13 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_record.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
-| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_record.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py`, `task_guidance.py`, `task_prepare.py`, `task_prepare_spec.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
+| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `review_prepare.py`, `review_head.py`, `review_hunks.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
 | `maintenance/` | `crew-doctor.py`, `crew-lint.py` | `maintenance_bootstrap.py`, `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
-| `lib/` | — | `files.py`, `git.py`, `git_config.py`, `gh_reads.py`, `claude_plugins.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
+| `lib/` | — | `files.py`, `git.py`, `git_config.py`, `gh_reads.py`, `reply_marker.py`, `claude_plugins.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `workflow_yaml.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | root | — | — | `tools.json`, `TOOLS.md`, `requirements.txt` | The catalog and the dependency note |
 
 The table is grouped by `kind`, which is what the manifest declares: a row's Commands column is
@@ -76,10 +76,11 @@ reaching into a private module.
 directory it lives in, `lib` imports nothing from a package). `review` may read task state (PROGRESS
 METRIC lines, the report check) and `maintenance` reads the retention policy and sizes (`task_gc.py`) and the
 Claude auto-memory entries not yet imported (`memory_claude.py`) for `crew-doctor.py`; `task` never imports
-`review`, and nothing imports `maintenance` or `evals` across packages, nor `memory` except that one read:
+`review`, and nothing imports `maintenance` or `evals` across packages, nor `memory` except that read and the
+ranked recall `task_guidance.memory_context` runs in process for the `prepare` commands:
 
 ```package-edges
-task -> lib
+task -> memory lib
 review -> task lib
 memory -> lib
 evals -> lib
@@ -152,6 +153,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_verify_env.py`: Node pin, pass cache, result file, partial verdict
 - `task_verify_report.py`: `crew-verify.py report-check` of a builder's REPORT.md
 - `task_verify_sources.py`: where gates come from: CI workflows, the gates block, prose checks
+- `task_guidance.py`: repository guidance per path (`crew-agent-context.py`), and `crew-mem.py context` in process
+- `task_prepare.py`: `crew-task.py prepare-implement`, crew implement's setup before the builder in one call
+- `task_prepare_spec.py`: `crew-task.py prepare-spec`, crew spec's setup before the explorer in one call
 
 ### `review/`
 
@@ -171,6 +175,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `review_pr_reads.py`: the read half of `crew-pr-actions.py`: running and printing PR, repo, issue and thread reads
 - `review_pr_plan.py`: the write half: the `gh` mutation plan, `comments` and `check-map`
 - `review_cli.py`: the `crew-review-findings.py` subcommand definitions
+- `review_prepare.py`: `prepare`, a review's setup in one call for every mode
+- `review_head.py`: a PR's changed files at its head SHA, one GraphQL call per 100 paths, under `head/files/`
+- `review_hunks.py`: the hunk artifacts `crew-review-hunks.py` and `prepare` write
 - `assemble_inputs.py`: what each reviewer package reads: config, personas, header, prior round
 - `assemble_build.py`: building and writing the reviewer packages and their manifest record
 - `review/nightshift/` (`client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py`) backs
@@ -210,6 +217,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `git_config.py`: the repository root, its git directory and `origin_url`, read from files without running git
 - `claude_plugins.py`: Claude Code plugin installs, the MCP servers their manifests declare, `enabledPlugins`
 - `gh_reads.py`: the gh argv of one PR, repo or issue read and its argparse verb
+- `reply_marker.py`: the dispatch marker line and the `<name>.expect` nonce the capture hook checks it against
 - `output.py`: bounded output: the size ceiling, row limit and truncation marker
 - `next_steps.py`: the next-step table; it reads the asset `task/next-steps.json`
 - `workflow_yaml.py`: a CI workflow through mikefarah `yq`, else the stdlib reader
@@ -460,6 +468,42 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   `gh issue create`, `gh search`. A wrapper would hide the exact argv from `guard/local-pr-ref.sh`
   and `guard/destructive-git.sh`, which decide on the command text the caller wrote, so wrapping one
   turns a denial into a silent allow.
+- **A stage's setup is one call.** `crew-review-findings.py prepare --mode M [--task-dir T] [--root R]
+  [--base REF] [--pr N --repo O/R] [--paths …] [--query Q] [--contract] [--compat]` writes the review
+  directory, `diff.patch` (self: the fork point, or `merge-base(REF, HEAD)` with `--base` for a stacked
+  branch, against the working tree; with no remote the base is `HEAD~1`, as for `crew-diff.sh`.
+  Untracked files are included through `git diff --no-index`, so the index is never touched, except
+  secret-shaped names (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `*.p12`, `credentials*`) and files over
+  256 KiB, which the summary lists with the `git add -N` hint; changes: the staged diff; PR: `gh pr
+  diff`, the head re-read after it, exit 2 when it moved), `paths.txt`, the hunk files, `manifest.json`
+  and the prior round (self, changes), `head/` (PR), `agent-context.json`, `mem.md`, and
+  `assemble.json` with `selected`, the size gate and `TODO(prepare)` questions; spec and idea runs
+  stamp the questions rule in `manifest.json` instead. `crew-assemble-packages.py` (in `questions`,
+  `size_gate`, `mode`) and `check-packages` (anywhere in a package) refuse only what `prepare` wrote:
+  a line starting with `TODO(prepare) question ` or `Size gate: spine strategy — TODO(prepare):`, so a
+  real question may quote the token. PR mode ignores `--task-dir`, and reads guidance only from a
+  checkout whose repository name equals the PR's: the owner is not compared, deliberately, so a fork's
+  checkout counts. `crew-task.py prepare-implement TASK_DIR [--where worktree|here] [--branch B]` and
+  `prepare-spec --slug S [--bug] [--paths …]` do the same for crew implement (the batch plan first,
+  then where the worker runs, the branch or worktree, `mark-implementing`, the stage metrics,
+  `BASELINE.diff`, memory, `dispatch/builder*.md`, batched over 8 open tasks, never inside an atomic
+  group; no lock, which the orchestrator writes at dispatch, after the bootstrap) and crew spec (the
+  task directory, `.task-id`, the template, `SPEC_RUN` and the explorer prompt with its marker). Each
+  prints its directory, then one summary line; a failure prints `<command>: <step>: <reason>` on
+  stderr, exit 1 for a state the user decides (nothing to review, the worktree question, a dirty tree,
+  a `--branch` other than the checked-out feature branch, an unreadable atomic line, an unapproved
+  spec, no `origin`), exit 2 otherwise.
+- **PR-head files come from one GraphQL query, not the tarball.** `prepare --mode pr` and
+  `crew-pr-actions.py head --pr N --repo O/R --out DIR` ask `repository.object(expression:
+  "<sha>:<path>")` for every changed path in one `gh api graphql` call (100 paths per call), the
+  expressions passed as variables, against the head repository (a fork's own); the paths come from
+  `gh pr diff` in both. Each text blob is written to `head/files/<path>`, apart from the index, so a
+  PR's own root `index.json` cannot overwrite it; `head/index.json` records the SHA and each path's status: `ok`, `absent`
+  (deleted at the head), `binary`, `oversized` (over 256 KiB, not written) or `truncated`, the last two
+  with the one `gh api …/contents/<path>?ref=<sha>` read that fetches the file by hand. The tarball was
+  rejected: it downloads the whole repository at the head for a diff that touches a few files, and
+  unpacking an archive from the network is a path-traversal surface; the query reads only the changed
+  paths, and a path with `..` or a leading `/` is refused before anything is written.
 - `crew-review-hunks.py <diff> --out <dir>` writes `hunks.json`, `hunks.md`, `hunks.index.md`, and
   `package.diff` (the diff persona packages embed, generated files' hunks collapsed to one note),
   numbering every hunk `h1`, `h2`, … in diff order, including one synthetic hunk for a file with no

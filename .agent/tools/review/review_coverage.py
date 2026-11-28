@@ -19,15 +19,17 @@ from review_render import read_record
 from review_vocabulary import (
     ASSESSMENT_WORDS,
     CODE_MODES,
+    PLACEHOLDER,
     PROBE,
     QUESTIONS_HEADING,
     QUESTIONS_MAX,
     QUESTIONS_MIN,
     QUESTIONS_STAMP,
-    SELECT_RULES,
+    UNFILLED,
     assessment_of,
     canonical_personas,
     persona_outcome,
+    selected,
 )
 from review_workspace import MANIFEST_FILE
 
@@ -151,27 +153,9 @@ def spec_for(persona: str, spec: str) -> str:
 
 
 def select(args: argparse.Namespace) -> int:
-    """The lenses a change requires, each with the reason it was selected."""
-    required = {}
-    if args.mode in CODE_MODES:
-        required["code-quality"] = "code review"
-        required["adversarial"] = "code review"
-        for persona, pattern in SELECT_RULES.items():
-            hits = [path for path in args.paths if pattern.search(path)]
-            if hits:
-                required[persona] = f"paths: {', '.join(hits[:3])}"
-        if args.compat:
-            required.setdefault("architecture", "--compat")
-    else:
-        # Specs and ideas have no diff to review, so the lenses are fixed rather than
-        # derived from paths; otherwise the selection is empty and nothing is dispatched.
-        required["product-flow"] = "plan coherence"
-        required["adversarial"] = "plan failure modes"
-        required.setdefault("architecture", "plan boundaries and compatibility")
-    if args.contract:
-        required["product-flow"] = "--contract"
-    payload = {"required": sorted(required), "reasons": required}
-    print(bounded_json(payload, args.max_chars, what="selected personas"))
+    """The lenses a change requires, each with the reason it was selected (`review_vocabulary.selected`)."""
+    required = selected(args.mode, args.paths, args.contract, args.compat)
+    print(bounded_json({"required": sorted(required), "reasons": required}, args.max_chars, what="selected personas"))
     return 0
 
 
@@ -197,7 +181,8 @@ def questions_stamped(review_dir: Path) -> bool:
 
 def question_violations(review_dir: Path, personas: list[str], report: dict) -> list[str]:
     """Each stamped package carries `QUESTIONS_HEADING` (the last one counts, since a pasted prompt may quote it)
-    with `QUESTIONS_MIN` to `QUESTIONS_MAX` unindented list items under it.
+    with `QUESTIONS_MIN` to `QUESTIONS_MAX` unindented list items under it, and no line `prepare` left unfilled
+    (`UNFILLED`: a question or size-gate skeleton, not a question that merely quotes the token).
 
     Only a directory the current assembler stamped is held to it; an older one (a resume included) passes with a
     note under `skipped`. Pre-dispatch only: `persist` does not repeat it.
@@ -210,7 +195,10 @@ def question_violations(review_dir: Path, personas: list[str], report: dict) -> 
         package = review_dir / f"{persona}.in.md"
         if not package.is_file():
             continue
-        lines = [line.rstrip() for line in package.read_text(encoding="utf-8", errors="replace").splitlines()]
+        text = package.read_text(encoding="utf-8", errors="replace")
+        lines = [line.rstrip() for line in text.splitlines()]
+        if UNFILLED.search(text):
+            errors.append(f"{package.name} still holds a `{PLACEHOLDER}` line from prepare; write it from the diff")
         if QUESTIONS_HEADING not in lines:
             errors.append(f"{package.name} has no `{QUESTIONS_HEADING}` section; write {QUESTIONS_MIN} to "
                           f"{QUESTIONS_MAX} questions for this lens from the diff and the spec's risks "

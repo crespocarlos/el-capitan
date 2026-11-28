@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Fetch PR review threads or plan GitHub PR review-thread actions; mutations require --execute.
 
-`reply` and `resolve` print the exact `gh` plan unless `--execute`. The reads (`view`, `diff`, `repo`,
-`issue`, with `--field a,b`) and `fetch` (threads as a flat object) replace hand-written `gh` reads;
-a missing field prints empty with exit 0, a failed call exits nonzero with gh's stderr. Other
-mutations stay literal `gh` in prompts, where the guards see them. Contract: `.agent/tools/TOOLS.md`.
+`reply` and `resolve` print the exact `gh` plan unless `--execute`. The reads (`view`, `diff`, `repo`, `issue`, with
+`--field a,b`), `fetch` (threads as a flat object) and `head --out DIR` (every changed file at the head SHA,
+`review_head`) replace hand-written `gh` reads; a missing field prints empty with exit 0, a failed call exits nonzero
+with gh's stderr. Other mutations stay literal `gh` in prompts, where the guards see them. Contract: `TOOLS.md`.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from pathlib import Path
 
 import review_bootstrap  # noqa: F401
 
+from review_head import changed_paths, fetch_head, pr_head, summary
 from review_pr_plan import (
     default_query,
     guard,
@@ -44,6 +45,24 @@ def fetch(args: argparse.Namespace) -> int:
     return threads(command[1:], args.cursor)
 
 
+def head(args: argparse.Namespace) -> int:
+    """Every changed file at the PR's head SHA under `--out/files`: the head, `gh pr diff --name-only`, the head again
+    (a push in between exits 2), then one GraphQL call per 100 paths."""
+    try:
+        found = pr_head(args.repo, args.pr)
+        paths = changed_paths(args.repo, args.pr)
+        if pr_head(args.repo, args.pr)["sha"] != found["sha"]:
+            print("pr-actions: head: the PR moved while its paths were read; rerun", file=sys.stderr)
+            return 2
+        index = fetch_head(found["head_repo"], found["sha"], paths, args.out)
+    except (RuntimeError, ValueError, OSError) as error:
+        print(f"pr-actions: head: {error}", file=sys.stderr)
+        return 1
+    print(args.out.resolve())
+    print(summary(index))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -57,6 +76,10 @@ def main() -> int:
                               help="print the plan naming the exact gh command; never calls gh")
     for name in READS:
         add_read_parser(commands, name)
+    head_parser = commands.add_parser("head", help="every changed file at the head SHA, written under --out")
+    head_parser.add_argument("--repo", required=True)
+    head_parser.add_argument("--pr", required=True, type=int)
+    head_parser.add_argument("--out", required=True, type=Path, help="the head/ directory to write")
     for name in ("resolve", "reply"):
         action = commands.add_parser(name)
         action.add_argument("--repo", required=True)
@@ -71,6 +94,8 @@ def main() -> int:
         return fetch(args)
     if args.command in READS:
         return read(args.command, args)
+    if args.command == "head":
+        return head(args)
     return mutation(args)
 
 

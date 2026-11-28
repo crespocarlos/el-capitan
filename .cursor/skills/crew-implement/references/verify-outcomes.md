@@ -1,6 +1,6 @@
 # Verify outcomes
 
-`crew-verify.py` (and `crew-verify.py --wait <json>`) is read by its process exit code alone. Step 7
+`crew-verify.py` (and `crew-verify.py --wait <json>`) is read by its process exit code alone. Step 6
 of `crew-implement` and Step 2c of `crew-commit` act on it as defined here, once. "Hand off / commit"
 means the implement handoff or the commit, whichever step you are in.
 

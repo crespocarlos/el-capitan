@@ -1,8 +1,8 @@
 # Worker dispatch
 
-What the orchestrator does around a worker. Step 4 and Step 6 of `crew-implement` link here; the
+What the orchestrator does around a worker. Step 3 and Step 5 of `crew-implement` link here; the
 router's `crew resolve PR` dispatch follows the reliability rules too. Inputs: `TASK_DIR` (the task
-directory) and `BRANCH_NAME` (below).
+directory) and `WORK_DIR` (the tree the worker runs in, line one of `prepare-implement`).
 
 ## Dispatch reliability
 
@@ -22,51 +22,37 @@ Both workers, `crew-builder` and the read-only `crew-pr-resolver`, are backgroun
 
 This tool is project-agnostic, so a worktree is opt-in. The default is a branch off the default
 branch in the current checkout (no worktree); a worktree is created only when the user asks for one
-or the repo's `AGENTS.md` sets `worktree: true`. Resolve it with `crew-task.py worktree pref`,
-which prints `worktree`, `here` or `ask`. On `ask` the repo never answered: ask once per repo ("Use a
-worktree for this repo? Default: no"), then record the answer so it is never asked again:
+or the repo's `AGENTS.md` sets `worktree: true`. `prepare-implement` reads that choice (`crew-task.py
+worktree pref`: `worktree`, `here` or `ask`). On `ask` the repo never answered, and it stops with exit
+1 naming the question: ask once per repo ("Use a worktree for this repo? Default: no") and run it
+again with `--where worktree|here`, which records the answer (a marker and one `WORKTREE:` line in
+PROGRESS.md) so it is never asked again.
 
-```bash
-~/.agent/bin/crew-task.py worktree record <worktree|here> "$TASK_DIR"   # marker + one WORKTREE: line in PROGRESS.md
-```
+The branch is SPEC.md's `## Branch:`; when absent derive type-prefix/slug (<=50 chars), confirm it,
+and pass `--branch`. Here, `prepare-implement` checks the checkout first (`worktree check`):
 
-Here (the default): `BRANCH_NAME` is SPEC.md's `## Branch:`; when absent derive type-prefix/slug
-(<=50 chars) and confirm it. `WORK_DIR` is the tree the worker runs in; set it, then check it before
-any switch:
+- `ok`: it fetches the default branch and cuts the branch from it (or switches to it when it exists).
+- `on-feature-branch`: the checkout is already on a non-default branch; it is used as-is. A
+  `--branch` naming another branch stops with exit 1 naming both: ask whether to switch first, use a
+  worktree, or drop `--branch`.
+- `dirty` (exit 1): uncommitted changes besides the task's own files; nothing is switched. Ask once:
+  commit them, stash them, use a worktree (`--where worktree`), or stop. Then follow the answer.
 
-```bash
-WORK_DIR=$(~/.agent/bin/crew-repo-info.py --field root)
-DEFAULT=$(~/.agent/bin/crew-default-branch.sh)
-~/.agent/bin/crew-task.py worktree check "$WORK_DIR" --task-dir "$TASK_DIR"
-```
-
-- `ok` (exit 0): cut the branch as below.
-- `on-feature-branch` (exit 4): the checkout is already on a non-default branch; use it as-is, cut no
-  new branch, unless the user asked for one. `BRANCH_NAME` is then the current branch.
-- `dirty` (exit 5): uncommitted changes besides the task's own files; switch nothing, ask once:
-  commit them, stash them, use a worktree, or stop. Then follow the answer.
-- exit 2: the check itself failed; show its stderr and stop.
-
-```bash
-git -C "$WORK_DIR" fetch origin "$DEFAULT"
-git -C "$WORK_DIR" switch -c "$BRANCH_NAME" "origin/$DEFAULT"   # a branch that already exists: git -C "$WORK_DIR" switch "$BRANCH_NAME"
-```
-
-Worktree: `WORK_DIR=$(~/.agent/bin/crew-worktree.py -b "$BRANCH_NAME" "origin/$(~/.agent/bin/crew-default-branch.sh)")`;
-if it resolves the main tree itself (the branch is checked out there), tell the user and use here.
-A dirty tree or a branch with unpublished work: stop and ask before switching.
+With a worktree it reuses the one holding the branch, else creates `<repo>-<branch>` beside the
+checkout from the default branch. A branch with unpublished work: stop and ask before switching.
 
 Either way the orchestrator runs its own git as `git -C <tree> ...` and never changes the branch of a
 tree a worker holds, because a checkout under a running worker discards the worker's edits.
 
 ## The worker lock
 
-At dispatch, once `WORK_DIR` exists, write the lock. The builder removes it on exit, and the
-orchestrator removes it as soon as a worker returns or fails, so a crashed builder never leaves the
-tree denied for 6 hours:
+The orchestrator writes the lock at dispatch (crew-implement Step 5), after the bootstrap, so a setup
+command never runs in a locked tree and a failed `prepare-implement` leaves none. The builder removes
+it on exit, and the orchestrator removes it as soon as a worker returns or fails, so a crashed builder
+never leaves the tree denied for 6 hours:
 
 ```bash
-~/.agent/bin/crew-task.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"
+~/.agent/bin/crew-task.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"   # Step 5, before the first dispatch
 ~/.agent/bin/crew-task.py lock remove "$WORK_DIR"     # builder's last step; the orchestrator's too, when a worker returns or fails
 ```
 
@@ -105,40 +91,38 @@ blocked gate) records why, once, before the final message:
 
 ## The worker prompt
 
-Pass the task delta only: the unchecked tasks with their verify lines (a guideline of about 400
-words, not a gate) and the `SPEC.md` path, plus `TASK_DIR`, `WORK_DIR`, `RECALLED_PATTERNS` and
-`TASK_RANGE`. The builder file (`~/.cursor/agents/crew-builder.md`) owns the rules, the report shape
-and the verification commands, so the prompt names its path and does not paste it: pasted rules
-drift from the file and are paid for in every worker. The prompt's first line is
-`crew-task: <TASK_DIR>`: the subagent-stop hook appends the worker's `agent_end` METRIC to that task
+`prepare-implement` writes it as `$TASK_DIR/dispatch/builder.md` (a batch: `builder.<first>-<last>.md`):
+the task delta only, the unchecked tasks with their verify lines, plus `TASK_DIR`, `WORK_DIR`, the
+`SPEC.md` path, `RECALLED_PATTERNS` and `TASK_RANGE`. The builder file
+(`~/.cursor/agents/crew-builder.md`) owns the rules, the report shape and the verification commands,
+so the prompt names its path and does not paste it: pasted rules drift from the file and are paid for
+in every worker. The prompt's first line is `crew-task: <TASK_DIR>`: the subagent-stop hook appends the worker's `agent_end` METRIC to that task
 (Claude Code: its transcript's tokens; Cursor: duration and tool calls, tokens unknown), which the
 cost line below then reports, and saves the builder's reply as that task's `REPORT.md`. A `TASK_RANGE: <first>-<last>` line right under it makes
 the reply a part report, and `TASK_RANGE: <first>-<last> final` both the part report and `REPORT.md`.
 
 ## Batching for large specs
 
-When the spec has more than 8 unchecked tasks, split them into
-consecutive batches of at most 6, never splitting a declared atomic group, and launch one fresh
-worker per batch. Its prompt carries one `TASK_RANGE: <first>-<last>` line in the header, beside
-`crew-task:`; the batch containing the last task gets `TASK_RANGE: <first>-<last> final`. The save
-reads that line, and only from the header, so name earlier ranges elsewhere in other words. Launch the
-next batch only after the previous batch's `REPORT.part-*.md` is saved and reports no failed task; on
-a failure, stop and go to Step 7 with that part report. The final batch runs the Completion Protocol
+When the spec has more than 8 unchecked tasks, `prepare-implement` splits them into consecutive
+batches of at most 6, never ending one inside a declared atomic group (`> Tasks 4 and 5 are atomic`,
+`Tasks 4-6`, `3, 4 and 5`; numbers are `T<n>` labels when every task has one), one prompt and one
+fresh worker per batch. An atomic line it cannot read stops it with exit 1 naming the line: rewrite it
+in one of those forms. Each prompt's header carries one `TASK_RANGE: <first>-<last>`
+line beside `crew-task:`; the last batch's says `final`. The save reads that line, and only from the
+header, so name earlier ranges elsewhere in other words. Launch the next batch only after the previous
+batch's `REPORT.part-*.md` is saved and reports no failed task; on a failure, stop and go to Step 6
+with that part report. The final batch runs the Completion Protocol
 and returns the merged report (the part reports' task results, decisions, and verification
 results), which is saved as its part report and as `REPORT.md`.
 
 ## Recording the branch
 
-Both `--root` flags of crew-implement Step 5 read `WORK_DIR`, not the current directory: Step 4
-selects the worktree in a separate shell, so a bare read reports the drafting checkout and would record
-the wrong branch and checkout. `mark-implementing` records the branch actually being implemented in
-`.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
-branch and implemented on another, and task resolution matches either: without this every
-later `crew` command in the worktree resolves no task and silently skips its gates.
-`--branch` may be omitted when the command runs from the implementation checkout (`--root`, default
-the current directory): it then takes that checkout's branch and refuses with exit 2 on the default
-branch, in another repository, or on a branch another task records. The checkout is recorded as
-`.task-id` `worktree` only when it holds the recorded branch.
+`prepare-implement` runs `mark-implementing` with `--branch` and `--root` set to the branch and the
+tree it just settled, not the drafting checkout it runs from. It records the branch actually being
+implemented in `.task-id` (keeping the drafting branch in `spec_branch`). The spec is drafted on one
+branch and implemented on another, and task resolution matches either: without this every later
+`crew` command in the worktree resolves no task and silently skips its gates. The checkout is
+recorded as `.task-id` `worktree` only when it holds the recorded branch.
 
 ## The stage cost line
 

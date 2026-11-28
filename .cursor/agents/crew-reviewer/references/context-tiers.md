@@ -141,7 +141,8 @@ Size gate: full diff — N files, M changed lines
 
 ### PR review mode
 
-The tiers above, built from the PR head: [PR review mode](pr-mode.md), "Context packages".
+The tiers above, built from the PR-head files in `$REVIEW_ROOT/head/files/`: [PR review
+mode](pr-mode.md), "Context packages".
 
 ### Spec review mode
 
@@ -160,18 +161,11 @@ summary).
 `## Questions for this lens`). Absent sections are omitted; the rest keep this order. Head and diff are
 identical in a run's packages, so a prefix cache pays once (`test_assemble_packages.py` pins it).
 
-## Repo memory
+## Repo memory and guidance
 
-Before dispatch, call `crew-mem.py context --mode review --paths <changed files>` once. Append its output
-under `# Repo memory` in every context package, in the shared head; on exit 2, `warning: memory
-unavailable`.
-
-## Package build inputs
-
-`crew-assemble-packages.py` composes every package from files the review directory already holds; the
-two it cannot produce itself, `agent-context.json` and `mem.md`, are written in Step 5 of
-[crew-reviewer](../../crew-reviewer.md), which owns those commands. A missing or empty
-`agent-context.json` stops the tool with exit 2 (the guidance call failed: rerun it from the reviewed
-repo's checkout with `--root`); a missing `mem.md` gives `warning: memory unavailable`. A non-zero exit
-from the memory command can still have written its file, so keep what was written and report the
-exit code.
+`prepare` (Step 2 of [crew-reviewer](../../crew-reviewer.md)) writes `mem.md` (review-mode recall over
+the changed files) and `agent-context.json` (guidance from repository root to nearest folder, each
+file once). Every package carries the memory under `# Repo memory`, in the shared head; with no store
+it is `warning: memory unavailable`, and the summary names the gap. A missing or empty
+`agent-context.json` stops `crew-assemble-packages.py` with exit 2: rerun `prepare` from the reviewed
+repo's checkout, or pass `--root`.

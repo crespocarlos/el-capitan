@@ -1,17 +1,12 @@
 # Spec subagent replies
 
-`crew-specwriter` reads this before its first dispatch. Inputs: `TASK_DIR`, the spec's task directory.
+`crew-specwriter` reads this before its first dispatch. Inputs: `TASK_DIR`, the spec's task directory,
+and `SPEC_RUN`, the run directory `crew-task.py prepare-spec` created under `$TASK_DIR/spec-agents/`.
 
-Every `specwriter-explorer`, `specwriter-scope` and `specwriter-adversarial` dispatch prompt opens
-with two lines, so the subagent-stop hook (Claude Code and Cursor) can tell these agents from any
-other subagent and save each reply where the spec writer reads it. A subagent that merely quotes a
-marker saves nothing, because no `.expect` holds its nonce.
-
-Once per spec run, create the run directory:
-
-```bash
-SPEC_RUN="$TASK_DIR/spec-agents/$(date -u +%Y%m%dT%H%M%SZ)" && mkdir -p "$SPEC_RUN"
-```
+Every `specwriter-*` dispatch prompt opens with two lines, so the subagent-stop hook (Claude Code and
+Cursor) can tell these agents from any other subagent and save each reply where the spec writer reads
+it; a subagent that merely quotes a marker saves nothing, because no `.expect` holds its nonce. The
+explorer prompt `prepare-spec` wrote has both; a critic's are:
 
 1. Line one is what `~/.agent/bin/crew-review-findings.py expect --review-dir "$SPEC_RUN" --persona
    <agent>` prints, run just before that dispatch; `<agent>` is the full name, such as

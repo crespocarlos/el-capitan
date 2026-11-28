@@ -12,21 +12,23 @@ of the PR ref, `git switch`, a worktree). The shell hooks `guard/local-pr-ref.sh
 `guard/destructive-git.sh` deny `gh pr checkout` and `pull/<n>` fetches. The one local read is
 repository guidance, below.
 
-- Read the diff with `~/.agent/bin/crew-pr-actions.py diff --pr <n> --repo <owner/repo>` and file
-  contents at the head SHA with `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"`
-  (quoted: an unquoted `?ref=` is a zsh glob).
-- Keep every `gh` evidence read a single literal command with a quoted URL, output redirected to a
-  file; the guard rejects shell loops and variable expansion. Never guess a path from a symbol name:
-  list the parent first (`gh api "repos/<owner>/<repo>/contents/<dir>?ref=<headSHA>" --jq '.[].name'`).
+- `prepare --mode pr` resolves the head SHA (`gh pr view`), reads the diff (`gh pr diff`), checks the
+  head again (a push in between exits 2: rerun), and writes every changed file at that SHA under
+  `$REVIEW_ROOT/head/files/<path>`, one GraphQL call per 100 paths; `head/index.json` records the SHA
+  and each path's status (`ok`, `absent`, `binary`, `oversized` over 256 KiB, `truncated`). Every
+  `path:line@headSHA7` label uses that SHA.
+- An `oversized` or `truncated` file uses the command its `read` entry in `head/index.json` names; a
+  file outside the diff uses `gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>"` (quoted:
+  an unquoted `?ref=` is a zsh glob), output redirected to a file. The guard rejects shell loops and
+  variable expansion. Never guess a path from a symbol name: list the parent first (`gh api
+  "repos/<owner>/<repo>/contents/<dir>?ref=<headSHA>" --jq '.[].name'`).
+- `crew-pr-resolver` writes the same layout with `crew-pr-actions.py head --pr <n> --repo
+  <owner/repo> --out <dir>` when it needs the PR's files at the head rather than its worktree.
 
 ## Context packages
 
-Resolve the repository and its immutable head SHA once, with
-`~/.agent/bin/crew-pr-actions.py view --pr <n> --repo <owner/repo> --field
-headRefOid,headRepositoryOwner,headRepository`, before any read: every later
-`?ref=` and every `path:line@headSHA7` label depends on that one value, so deriving it late leaves
-earlier reads unattributable. Build the same Tier 1–3 and prompt-tier packages ([context
-tiers](context-tiers.md)) from the head reads above, labeling every excerpt `path:line@headSHA7`.
+Build the same Tier 1–3 and prompt-tier packages ([context tiers](context-tiers.md)) from
+`head/files/`, labeling every excerpt `path:line@headSHA7`.
 
 **Repository guidance** is the orchestrator's one local read, and it belongs to the orchestrator
 rather than the persona: `crew-reviewer` may run `crew-agent-context.py` to collect repository
@@ -37,11 +39,9 @@ changes a guidance file, treat the collected text as approximate and cite a head
 conclusion that depends on the rule being added. A persona reads guidance from its package, never
 the working tree, so the evidence trail in `<persona>.in.md` stays complete.
 
-`crew-agent-context.py` needs a git checkout, so run it from the reviewed repo's local checkout and
-name it: `cd <checkout> && ~/.agent/bin/crew-agent-context.py --root
-<checkout> <changed paths> > "$REVIEW_ROOT/agent-context.json"`. On exit 2 it writes nothing, and
-`crew-assemble-packages.py` refuses the empty file. Without a local checkout of that repo, write
-`{"files": {}}` to that file yourself and say in `### Reviewers` that the packages carry no guidance.
+`prepare` reads it from the checkout it runs in (or `--root`) only when that checkout's repository
+name equals the PR's; the owner is not compared, deliberately, so a fork's checkout counts. Otherwise
+it writes `{"files": {}}` and says so; that gap goes in `### Reviewers`.
 
 Before a PR validator dispatch, add `## PR validation` with the repository, head SHA, exact claim, and
 supplied `path:line@headSHA7` excerpts.
@@ -60,8 +60,8 @@ Two additions apply only to this mode:
   Apply the server-response contract supplement of context tiers to Architecture and Product Flow,
   with the producer or consumer fetched at the PR head.
 
-For large PRs, use the spine-focused strategy on the PR diff and fetch only spine files plus named
-consumers through `gh api`. PR mode has no local-read fallback.
+For large PRs, use the spine-focused strategy on the PR diff: excerpt spine files from `head/files/` and
+fetch named consumers through `gh api`. PR mode has no local-read fallback.
 
 ## The PR-head excerpt pass
 
@@ -71,23 +71,12 @@ with three context lines and no way to ground a claim about a function's scope, 
 absence.
 
 After `crew-assemble-packages.py "$REVIEW_ROOT"` succeeds, **append the PR-head excerpts to each
-`<persona>.in.md` before `check-packages`**, under a heading that says where they came from:
-
-```bash
-mkdir -p "$REVIEW_ROOT/head"
-gh api "repos/<owner>/<repo>/contents/<path>?ref=<headSHA>" --jq .content \
-  | base64 --decode > "$REVIEW_ROOT/head/<slug>.txt"
-```
-
-Create the directory first, once, before the first fetch: the redirect does not create it, and a
-missing directory turns one setup omission into a failed network read per excerpt.
-
-Read at the head SHA the run resolved once, never at the local checkout, and label every excerpt
-`path:line@headSHA7` as the PR-mode evidence rule requires. What to fetch is the same material the
-refused extras would have supplied, scoped to the files the diff touches: Tier 1's surrounding lines
-and signatures, Tier 2's enclosing function, Tier 3's consumers, and any file a finding's claim turns
-on. Fetching is per claim, not per file set — a diff-only review of a 54-hunk PR does not need every
-file opened, and a review whose findings are all nits needs almost none.
+`<persona>.in.md` before `check-packages`**, under a heading that says where they came from. Excerpt
+them from `$REVIEW_ROOT/head/files/`, never the local checkout, labeled `path:line@headSHA7`. What to
+excerpt is the material the refused extras would have supplied, scoped to the files the diff touches:
+Tier 1's surrounding lines and signatures, Tier 2's enclosing function, Tier 3's consumers (a file
+outside the diff is one `gh api` read), and any file a finding's claim turns on — per claim, not per
+file set.
 
 Write the appended block with the edit or write tool, then run `check-packages`. An excerpt pass that
 fails leaves the package exactly as assembled, which is weaker evidence but not a broken package: say

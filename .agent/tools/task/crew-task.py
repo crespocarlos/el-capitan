@@ -2,9 +2,9 @@
 """Change a task's state: gates, restore-status, reconcile, record-pr, status migration, BLOCKED, lock, gc, ship.
 
 `crew-ls.py` only reads task state and `crew-progress.py` only appends a transition line; every other write goes
-through here (`gc`: retention, `task_gc.py`; `ship`: commit to DONE, `task_ship.py`). `lock`, `blocked`,
-`worktree`, `report` and `usage` parse their own arguments (`task_lock.py`, `task_worktrees.py`,
-`task_builder_report.py`, `task_usage.py`).
+through here (`gc`: retention, `task_gc.py`; `ship`: commit to DONE, `task_ship.py`; `prepare-implement|spec`: a
+stage's setup in one call, `task_prepare*.py`). `lock`, `blocked`, `worktree`, `report` and `usage` parse their own
+arguments (`task_lock.py`, `task_worktrees.py`, `task_builder_report.py`, `task_usage.py`).
 """
 from __future__ import annotations
 
@@ -118,6 +118,19 @@ def ship(args: argparse.Namespace) -> int:
     return ship_task(args.task_dir, args.title, args.body_file, args.base, args.repo, args.attribution, args.phase)
 
 
+def add_prepare_parsers(commands) -> None:
+    """`prepare-implement` and `prepare-spec`: a stage's setup in one call (`task_prepare`, `task_prepare_spec`)."""
+    from task_prepare import add_prepare_parser
+    from task_prepare import main as implement
+    from task_prepare_spec import add_prepare_spec_parser
+    from task_prepare_spec import main as spec
+
+    add_prepare_parser(commands)
+    add_prepare_spec_parser(commands)
+    commands.choices["prepare-implement"].set_defaults(run=implement)
+    commands.choices["prepare-spec"].set_defaults(run=spec)
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="crew-task.py", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -174,6 +187,7 @@ def make_parser() -> argparse.ArgumentParser:
     shipper.add_argument("--attribution", default="",
                          help="the commit's trailer line (empty: Co-Authored-By: Claude <noreply@anthropic.com>)")
     shipper.set_defaults(run=ship)
+    add_prepare_parsers(commands)
     for name, text in DELEGATED.items():
         commands.add_parser(name, help=text, add_help=False)
     # No abbreviated options: `--acc` would be `--accept` past the owner-only guard, which matches words as written.

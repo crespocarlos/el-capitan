@@ -64,76 +64,42 @@ If the SPEC.md status is `DRAFTING`, stop:
 If the status is already `IMPLEMENTING` and PROGRESS.md has completed tasks, you're resuming —
 inform the user which tasks are done and which remain.
 
-### Step 3: Auto-recall
+### Step 3: Prepare
 
-Set `SPEC_TITLE` to the SPEC.md title without the leading `#`, and `SPEC_PATHS` to a bash array of
-the file paths the spec names, for example `SPEC_PATHS=(src/a.ts src/b.ts)` (empty array when none).
-
-```bash
-RECALLED_PATTERNS=$(~/.agent/bin/crew-mem.py context --mode implement --query "$SPEC_TITLE" --paths "${SPEC_PATHS[@]}" --warn-unavailable)
-RECALLED_PATTERNS=${RECALLED_PATTERNS:-none}
-```
-
-`--warn-unavailable` prints `none` when the store is unavailable, and the fallback covers any other
-failure, so `RECALLED_PATTERNS` is never empty: an empty value makes crew-builder run the recall again.
-
-### Step 4: Where the worker runs
-
-Run `~/.agent/bin/crew-task.py worktree pref`; when it is `here`, run `worktree check` too. Follow [worker dispatch](references/worker-dispatch.md).
-
-Then **bootstrap dependencies**: read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup
-command and run it in `WORK_DIR`. The UUID task directory (`$TASK_DIR`) is stable and does not move.
-
-### Step 5: Update progress
+From the checkout the spec was drafted in, one call does the setup:
 
 ```bash
-~/.agent/bin/crew-task.py mark-implementing "$TASK_DIR" --root "$WORK_DIR" \
-  --branch "$(~/.agent/bin/crew-repo-info.py --root "$WORK_DIR" --field branch)"
-~/.agent/bin/crew-metric.py "$TASK_DIR" implement_start 2>/dev/null || true
-~/.agent/bin/crew-metric.py "$TASK_DIR" stage_start stage=implement 2>/dev/null || true
+~/.agent/bin/crew-task.py prepare-implement "$TASK_DIR" [--where worktree|here] [--branch <name>]
 ```
 
-When `mark-implementing` exits non-zero, stop here and report its message: no worker is
-dispatched for a task whose branch was not recorded. Both `--root` flags read `WORK_DIR`, not the
-current directory; why, and when `--branch` may be omitted: [worker
-dispatch](references/worker-dispatch.md), "Recording the branch".
+In order it settles where the worker runs, cuts or keeps the branch (default: the spec's `## Branch:`)
+or creates the worktree, runs `mark-implementing --branch --root`, logs `implement_start` and
+`stage_start`, writes `BASELINE.diff` once (`crew commit` reads it for out-of-scope edits), recalls
+memory, and writes the builder prompts under `$TASK_DIR/dispatch/`; it writes no lock. Line one is
+`WORK_DIR`; line two names the branch and the prompt files. On failure it names its step on stderr:
+exit 1 is a decision for the user (the worktree question, a dirty tree, a `--branch` other than the
+checked-out one, an unreadable atomic line, an unapproved spec): ask it the way [worker
+dispatch](references/worker-dispatch.md) says, then run again. Exit 2 is a failed step: report it and
+stop. No worker is dispatched for a task whose branch was not recorded.
 
-### Step 5b: Capture baseline diff
+### Step 4: Bootstrap dependencies
 
-Before making any code changes, capture the current state of the working tree:
+Read the repo's `AGENTS.md` (or `CONTRIBUTING.md`) for a setup command and run it in `WORK_DIR`. The
+UUID task directory (`$TASK_DIR`) is stable and does not move.
 
-```bash
-# Re-entry guard: skip if BASELINE.diff already exists (resuming a previous session)
-if [ ! -f "$TASK_DIR/BASELINE.diff" ]; then
-  git diff HEAD > "$TASK_DIR/BASELINE.diff"
-fi
-```
+### Step 5: Launch worker
 
-This snapshot is used by `crew commit` to detect out-of-scope modifications.
+Write the worker lock right before the first dispatch, never before Step 4's bootstrap:
+`~/.agent/bin/crew-task.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"`. Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code:
+read `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` and follow its protocol
+directly), per [dispatch reliability](references/worker-dispatch.md#dispatch-reliability). The prompt
+is a `$TASK_DIR/dispatch/builder*.md` file, unchanged: `crew-task:` and `TASK_RANGE` lines,
+`TASK_DIR`, the literal `WORK_DIR`, `RECALLED_PATTERNS` and the open tasks. The worker reads
+crew-builder itself, so never paste rules into the prompt. Several files are batches, dispatched in
+order: [worker dispatch](references/worker-dispatch.md), "Batching for large specs", which also holds
+the blocked line, cost line and message routing.
 
-### Step 6: Launch worker
-
-**Read the crew-builder agent now** — find it at `~/.cursor/agents/crew-builder.md` or
-`~/.claude/agents/crew-builder.md` (whichever exists).
-
-Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code:
-follow crew-builder's protocol directly), per [dispatch reliability](references/worker-dispatch.md#dispatch-reliability).
-Pass these inputs:
-
-- `TASK_DIR` — the resolved task directory path (absolute)
-- `WORK_DIR` — the worktree or repo directory (absolute path, for example
-  `/Users/you/repo-feature/feature-xyz`), where every file read, edit, and shell command runs. Pass
-  the literal path, not a shell variable.
-- `RECALLED_PATTERNS` — the patterns found in Step 3 (or "none")
-- The task delta: the unchecked tasks (about 400 words, a guideline, not a gate) and the `SPEC.md`
-  path. The worker reads `~/.cursor/agents/crew-builder.md` itself, so never paste rules into the prompt.
-
-Lock, blocked line, cost line and message routing: [worker dispatch](references/worker-dispatch.md).
-
-**A spec with more than 8 unchecked tasks** runs in batches of at most 6, one fresh worker each:
-[worker dispatch](references/worker-dispatch.md), "Batching for large specs".
-
-### Step 7: Handle results
+### Step 6: Handle results
 
 Read the worker's report first: the file is the contract and everything below is read from it. The
 worker's final reply is the report itself, from `## Implementation Report` on; a worker cannot write
@@ -182,7 +148,7 @@ When the Implementation Report is available:
 - The skill handles every user interaction; the worker is non-interactive.
 - Surface worker failures to the user with options.
 - Tests the run adds follow the [testing policy](~/.cursor/agents/references/testing-policy.md).
-- **Stop after all tasks pass.** Never commit, push, or create a PR; output the Step 7 handoff
+- **Stop after all tasks pass.** Never commit, push, or create a PR; output the Step 6 handoff
   before stopping. Committing and opening the PR belong to `crew-task.py ship`, which `crew open pr`
   runs after the owner approves the PR.
 - **Code changes follow crew-builder's protocol**, through the subagent or by reading and following

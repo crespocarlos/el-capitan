@@ -11,7 +11,6 @@ import argparse
 import hmac
 import json
 import re
-import secrets
 import sys
 from pathlib import Path
 
@@ -21,8 +20,8 @@ from task_builder_report import capture_builder
 from task_usage import record_usage, text_of
 
 from lib.files import atomic_write
+from lib.reply_marker import MARKER, write_expect
 
-MARKER = re.compile(r"^crew-review-out: (.+) (\S+) ([0-9a-f]{32})[ \t]*$", re.M)
 HANDBACK = "SubagentHandback"
 FAILED = re.compile(r"\A\s*(?:#+[^\n]*\n+\s*)?status:\s*(failed|truncated)\b", re.I)
 # What makes a crew-specwriter subagent's reply an answer: a critic's verdict line, an explorer's sections.
@@ -40,12 +39,7 @@ def add_capture_parsers(commands) -> None:
 
 def expect(args: argparse.Namespace) -> int:
     """Write a fresh nonce to `<persona>.expect` and print the marker line the dispatch prompt carries."""
-    persona = saved_persona(args.persona)
-    if not args.review_dir.is_dir():
-        raise ValueError(f"no such review directory: {args.review_dir}")
-    nonce = secrets.token_hex(16)
-    atomic_write(args.review_dir / f"{persona}.expect", nonce + "\n")
-    print(f"crew-review-out: {args.review_dir.resolve()} {persona} {nonce}")
+    print(write_expect(args.review_dir, saved_persona(args.persona)))
     return 0
 
 
