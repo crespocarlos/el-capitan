@@ -1,7 +1,7 @@
 # Spec subagent replies
 
 `crew-specwriter` reads this before its first dispatch. Inputs: `TASK_DIR`, the spec's task directory,
-and `SPEC_RUN`, the run directory `crew-task.py prepare-spec` created under `$TASK_DIR/spec-agents/`.
+and `SPEC_RUN`, the run directory `crew-tool.py task-prepare spec` created under `$TASK_DIR/spec-agents/`.
 
 Every `specwriter-*` dispatch prompt opens with two lines, so the subagent-stop hook (Claude Code and
 Cursor) can tell these agents from any other subagent and save each reply where the spec writer reads

@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from crew.evals import crew_evals_compare as MODULE
+from crew.scripts import crew_evals_compare as MODULE
 
 
 def main():

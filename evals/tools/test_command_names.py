@@ -26,13 +26,12 @@ pytestmark = pytest.mark.timeout(300)
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
 INSTALL = ROOT / "install.sh"
-SOURCE_ONLY = {"task-env.sh", "crew-diff.sh"}
 HELP_LINE_CEILING = 40
 TOOLS_DOC = (TOOLS / "TOOLS.md").read_text()
 # (case, module, parser function, text the --help must show, text it must not)
 HELP_TEXTS = (
-    ("crew-task.py worktree --help lists every action, check included", "crew.task.task_worktrees", "pref_main", ("pref", "record", "check <TREE>"), ()),
-    ("crew-verify.py report-check --help describes the report check, not the task listing", "crew.task.task_verify_report", "main", ("builder",),
+    ("crew-task.py worktree --help lists every action, check included", "crew.core.task.task_worktrees", "pref_main", ("pref", "record", "check <TREE>"), ()),
+    ("crew-verify.py report-check --help describes the report check, not the task listing", "crew.core.task.task_verify_report", "main", ("builder",),
      ("Rendering task state",)),
 )
 SAMPLE_DIFF = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,3 @@\n one\n-two\n+two\n+three\n"
@@ -45,11 +44,11 @@ def check(name: str, condition: bool, detail: object = "") -> None:
 
 def catalog() -> list[dict]:
     data = json.loads((TOOLS / "tools.json").read_text())
-    return [entry for section in ("tools", "scripts", "modules", "assets") for entry in data.get(section, [])]
+    return [entry for section in ("tools", "modules", "assets") for entry in data.get(section, [])]
 
 
 def commands() -> list[dict]:
-    return [entry for entry in catalog() if entry.get("kind") == "command" and entry["name"] not in SOURCE_ONLY]
+    return [entry for entry in catalog() if entry.get("kind") == "command"]
 
 
 def command(entry: dict, *arguments: str, env: dict | None = None, cwd: Path = ROOT) -> subprocess.CompletedProcess:

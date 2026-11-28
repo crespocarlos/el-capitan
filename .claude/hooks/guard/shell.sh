@@ -303,6 +303,7 @@ rule() {
 
 HOOK_NAME=too-complex
 hook_segments "$cmd"
+[ -z "$HOOK_UNPARSED" ] || hook_deny "Blocked: the guard could not parse this command $HOOK_UNPARSED."
 [ "$HOOK_OVERFLOW" = 0 ] || hook_deny "Blocked: command too complex for the guard (more than $HOOK_MAX_PAYLOADS nested commands to check). Split it into smaller commands."
 rule owner-only OWNER_ONLY
 rule worker-tree WORKER_TREE

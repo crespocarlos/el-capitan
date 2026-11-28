@@ -41,8 +41,8 @@ Only the latest commit on `main` is supported; fixes are not backported to a tag
 
 Report it privately through GitHub: on the repository's **Security** tab, choose **Report a
 vulnerability**. Include the command or payload, the harness (Cursor or Claude Code) and its
-version, the operating system, and whether `shfmt` was installed, since the guards parse with it
-when it is present. Please do not open a public issue or pull request for it.
+version, the operating system, and the `shfmt --version` the guards parse with. Please do not open a
+public issue or pull request for it.
 
 A confirmed bypass is fixed with a case added to
 `evals/tools/hook_cases.py`, so it stays fixed, and credited in the release notes unless you ask

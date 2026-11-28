@@ -124,11 +124,6 @@ def conflicted_paths(root: Path | None) -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-def is_clean(root: Path | None) -> bool:
-    """True when nothing is staged, modified, or untracked."""
-    return not dirty_files(root)
-
-
 def staged_paths(root: Path | None) -> list[str]:
     """Paths staged against HEAD; before the first commit that is the whole index."""
     return [line for line in output(root, ["diff", "--cached", "--name-only"]).splitlines() if line]
@@ -143,6 +138,39 @@ def unstaged_paths(root: Path | None, paths: list[str] | None = None) -> list[st
     arguments = ["diff", "--name-only", "--"]
     arguments.extend(paths or [])
     return [line for line in output(root, arguments).splitlines() if line]
+
+
+def status(root: Path | None) -> dict:
+    """One `status --porcelain=v2 --branch` read: branch (None when detached), head, upstream, and the paths
+    staged, edited in the tree (`changed`), both (`staged_dirty`), untracked, and all of them (`dirty`)."""
+    heads, paths = {}, {"staged": [], "changed": [], "staged_dirty": [], "untracked": []}
+    entries = iter(output(root, ["status", "--porcelain=v2", "--branch", "-z"]).split("\0"))
+    for entry in entries:
+        kind, _, rest = entry.partition(" ")
+        if kind in ("1", "2", "u"):
+            fields = rest.split(" ", {"1": 7, "2": 8, "u": 9}[kind])
+            (x, y), path = fields[0], fields[-1]
+            for name, hit in (("staged", x != "."), ("changed", y != "."), ("staged_dirty", "." not in (x, y))):
+                paths[name] += [path] if hit else []
+            if kind == "2":
+                next(entries, None)  # the rename's original path
+        elif kind in ("#", "?"):
+            key, _, value = rest.partition(" ") if kind == "#" else ("untracked", "", rest)
+            heads[key] = value if value not in ("(detached)", "(initial)") else None
+            paths["untracked"] += [rest] if kind == "?" else []
+    dirty = sorted({path for found in paths.values() for path in found})
+    return {"branch": heads.get("branch.head"), "head": heads.get("branch.oid"), "upstream": heads.get("branch.upstream"), **paths, "dirty": dirty}
+
+
+def remote_urls(root: Path | None) -> dict[str, str]:
+    """Every remote's fetch URL, `insteadOf` applied, in one read."""
+    lines = [line.split() for line in output(root, ["remote", "-v"]).splitlines()]
+    return {name: url for name, url, *kind in lines if kind == ["(fetch)"]}
+
+
+def diff(root: Path | None, base: str, mode: str = "", files: list[str] | None = None) -> str:
+    """`git diff [mode] <base> -- files`: the base against the working tree (mode `--stat`, `--name-only`, ...)."""
+    return output(root, ["diff", *([mode] if mode else []), base, "--", *(files or [])])
 
 
 def blob_at(root: Path | None, ref_and_path: str) -> str:
@@ -204,19 +232,12 @@ def fork_point(root: Path | None, base: str, ref: str = "HEAD") -> str:
 
 
 def base_ref(root: Path | None) -> str:
-    """The ref a branch's diff starts from, resolved from local refs and never over the network.
-
-    A fork's `upstream` default comes first, then `origin`'s, which is the branch point review
-    already treats as the start of a diff; `HEAD~1` is the last resort for a checkout with no
-    remote. Each default is read from the remote's local `HEAD` symref, so a review never waits on
-    a network round trip to know where its own diff begins.
-    """
+    """The ref a branch's diff starts from, from local refs only (each remote's `HEAD` symref, never the network):
+    a fork's `upstream` default, then `origin`'s, then `HEAD~1` for a checkout with no remote."""
     for remote in ("upstream", "origin"):
         if remote_url(root, remote) is None:
             continue
-        symref = run_git(root, ["symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD"], check=False)
-        names = [symref.stdout.strip().removeprefix(f"{remote}/")] if symref.returncode == 0 else []
-        for name in [*filter(None, names), "main", "master"]:
+        for name in [*filter(None, [symref_default(root, remote)]), "main", "master"]:
             candidate = f"{remote}/{name}"
             found = run_git(root, ["rev-parse", "--verify", "--quiet", candidate], check=False)
             if found.returncode == 0:
@@ -251,12 +272,17 @@ def repo_slug(root: Path | None, remote: str = "origin") -> str:
     return slug
 
 
+def symref_default(root: Path | None, remote: str) -> str | None:
+    """The default branch from the remote's local `HEAD` symref alone: no request leaves the machine."""
+    local = run_git(root, ["symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD"], check=False)
+    return local.stdout.strip().removeprefix(f"{remote}/") if local.returncode == 0 and local.stdout.strip() else None
+
+
 def local_default_branch(root: Path | None, remote: str) -> tuple[str, str]:
     """(branch, error) from git alone: the local symref, then `ls-remote --symref`, then remote show."""
     try:
-        local = run_git(root, ["symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD"], check=False)
-        if local.returncode == 0 and local.stdout.strip():
-            return local.stdout.strip().removeprefix(f"{remote}/"), ""
+        if found := symref_default(root, remote):
+            return found, ""
         lsremote = run_git(root, ["ls-remote", "--symref", remote, "HEAD"], check=False, timeout=NETWORK_TIMEOUT)
     except (OSError, subprocess.SubprocessError) as error:
         return "", f"git unavailable: {error}"

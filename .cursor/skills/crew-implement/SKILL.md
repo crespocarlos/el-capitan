@@ -27,16 +27,16 @@ to resume.') Otherwise, set `TASK_DIR` to its parent directory, export
 Otherwise:
 
 ```bash
-source ~/.agent/bin/task-env.sh
-~/.agent/bin/crew-task-context.py --artifacts task_id,spec,progress,report,handoff --max-chars 4000
+TASK_DIR=$(~/.agent/bin/crew-tool.py task-context --field task_dir)
+~/.agent/bin/crew-tool.py task-context --artifacts task_id,spec,progress,report,handoff --max-chars 4000
 ```
 
 If `$TASK_DIR` is non-empty, use the returned available artifacts to resume; do not assume a spec,
 progress log, report, or handoff exists. If empty, scan globally for other specs (see Step 2).
 
-**If `CREW_TASK_STATE=error`, stop here** — before the scan above — and report the resolver message:
-the repo state is unreadable (detached HEAD, no `origin` remote), so task state cannot be determined
-and every gate below would silently skip. A scan is only valid for `CREW_TASK_STATE=none`.
+**If `task-context` exits nonzero, stop here** — before the scan above — and report its error: the
+repo state is unreadable (detached HEAD, no `origin` remote), so every gate below would silently
+skip. A scan is only valid for `state: none`.
 
 ### Step 2: Gate check
 
@@ -69,14 +69,14 @@ inform the user which tasks are done and which remain.
 From the checkout the spec was drafted in, one call does the setup:
 
 ```bash
-~/.agent/bin/crew-task.py prepare-implement "$TASK_DIR" [--where worktree|here] [--branch <name>]
+~/.agent/bin/crew-tool.py task-prepare implement --task-dir "$TASK_DIR" [--where worktree|here] [--branch <name>]
 ```
 
 In order it settles where the worker runs, cuts or keeps the branch (default: the spec's `## Branch:`)
 or creates the worktree, runs `mark-implementing --branch --root`, logs `implement_start` and
 `stage_start`, writes `BASELINE.diff` once (`crew commit` reads it for out-of-scope edits), recalls
-memory, and writes the builder prompts under `$TASK_DIR/dispatch/`; it writes no lock. Line one is
-`WORK_DIR`; line two names the branch and the prompt files. On failure it names its step on stderr:
+memory, and writes the builder prompts under `$TASK_DIR/dispatch/`; it writes no lock. It answers
+`work_dir: WORK_DIR` and a `summary:` line naming the branch and the prompt files. On failure it names its step on stderr:
 exit 1 is a decision for the user (the worktree question, a dirty tree, a `--branch` other than the
 checked-out one, an unreadable atomic line, an unapproved spec): ask it the way [worker
 dispatch](references/worker-dispatch.md) says, then run again. Exit 2 is a failed step: report it and
@@ -90,7 +90,7 @@ UUID task directory (`$TASK_DIR`) is stable and does not move.
 ### Step 5: Launch worker
 
 Write the worker lock right before the first dispatch, never before Step 4's bootstrap:
-`~/.agent/bin/crew-task.py lock write "$WORK_DIR" --task "$(basename "$TASK_DIR")"`. Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code:
+`~/.agent/bin/crew-tool.py task-lock write "$WORK_DIR" "$(basename "$TASK_DIR")"`. Launch crew-builder as a background subagent in Cursor (`run_in_background: true`; Claude Code:
 read `~/.claude/agents/crew-builder.md` and follow its protocol
 directly), per [dispatch reliability](references/worker-dispatch.md#dispatch-reliability). The prompt
 is a `$TASK_DIR/dispatch/builder*.md` file, unchanged: `crew-task:` and `TASK_RANGE` lines,
@@ -123,7 +123,7 @@ When the Implementation Report is available:
 1. Run the completion metric:
 
    ```bash
-   ~/.agent/bin/crew-metric.py "$TASK_DIR" implement_complete result=ok 2>/dev/null || true
+   ~/.agent/bin/crew-tool.py task-log "$TASK_DIR" --metric implement_complete result=ok
    ```
 2. **Draft memory candidates** per [completion handoff](references/completion-handoff.md): zero to
    three typed drafts in `~/.agent/memory/.inbox/`, written without asking. Nothing is stored or
@@ -149,7 +149,7 @@ When the Implementation Report is available:
 - Surface worker failures to the user with options.
 - Tests the run adds follow the [testing policy](~/.cursor/agents/references/testing-policy.md).
 - **Stop after all tasks pass.** Never commit, push, or create a PR; output the Step 6 handoff
-  before stopping. Committing and opening the PR belong to `crew-task.py ship`, which `crew open pr`
+  before stopping. Committing and opening the PR belong to `crew-tool.py task-ship`, which `crew open pr`
   runs after the owner approves the PR.
 - **Code changes follow crew-builder's protocol**, through the subagent or by reading and following
   the protocol directly, never ad hoc. The orchestrator handles setup and verification.
@@ -164,4 +164,4 @@ Use plain language, without compressed summaries, at each gate checkpoint:
 
 Continue once the user provides direction.
 
-> Next: run `crew review` to verify the change, then `crew open pr`, which ships it with `crew-task.py ship`.
+> Next: run `crew review` to verify the change, then `crew open pr`, which ships it with `crew-tool.py task-ship`.

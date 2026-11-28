@@ -6,8 +6,7 @@ Hook cases: each shell row of `hook_cases.py` is sent as each adapter's `pre_she
 deny names its off switches and the row's rule; a demoted rule (`DEMOTED`) denies only where the adapter's manifest
 declares no deny rule that holds (the cursor fallback), so its row expects an allow elsewhere. An allow fails on any
 output beyond the harness's empty answer. `gitleaks` is a stub on PATH that finds the AKIA key. The claude-code rows
-also run under `/bin/bash` (bash 3.2 on macOS) and through both parsers of `hook_segments` (shfmt on PATH, and PATH
-without it), whose verdicts must match, `PARSERS_DIFFER` naming the rows where awk's is another. Every rule script survives unreadable input and a missing
+also run under `/bin/bash` (bash 3.2 on macOS). Every rule script survives unreadable input and a missing
 `jq` with exit 0 and at most one stderr line, and every hook file is in `contract.json`.
 
 Render goldens: each contract rule is registered once per native event its manifest maps, with its fail mode and a
@@ -30,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-from hook_cases import ALLOW, DENY, ENV, FILES, MESSAGES, MISSING, NOTIFY, PARSERS_DIFFER, PAYLOADS, SECRET, SILENT, STATUS_SPEC
+from hook_cases import ALLOW, DENY, ENV, FILES, MESSAGES, MISSING, NOTIFY, PAYLOADS, SECRET, SILENT, STATUS_SPEC
 
 from crew.harness import adapters, claude_code, codex, cursor, harness_install
 
@@ -226,8 +225,6 @@ def cases(places: dict[str, Path]) -> list[dict]:
     """One row per table entry and harness: what to send, where, and what must come back."""
     every = shell_harnesses()
     rows = shell_rows("deny", DENY, places, {}, every) + shell_rows("allow", [(c, t, None) for c, t in ALLOW], places, {}, every)
-    for command, tree, by, awk_by, _ in PARSERS_DIFFER:
-        rows += [{**row, "awk_by": expected(awk_by, row["harness"])} for row in shell_rows("parsers differ", [(command, tree, by)], places, {}, every)]
     for command, tree, tool, env, by in MISSING:
         rows += [{**row, "loose": True, "missing": (tool,)} for row in shell_rows(f"no-{tool} {env}", [(command, tree, by)], places, env, every)]
     for command, tree, env, by in ENV:
@@ -256,14 +253,6 @@ def path_without(home: Path, *tools: str) -> str:
     return os.pathsep.join(entries)
 
 
-def parsers() -> list[str]:
-    """Both parsers of `hook_segments`; without shfmt installed only awk runs locally, and CI must have it."""
-    if shutil.which("shfmt"):
-        return ["shfmt", "awk"]
-    assert not os.environ.get("CI"), "CI installs shfmt so the shfmt parser path runs"
-    return ["awk"]
-
-
 def bashes(home: Path) -> list[str]:
     """PATH prefixes: none (the bash on PATH), and one whose `bash` is /bin/bash when that is another bash."""
     found = shutil.which("bash") or "/bin/bash"
@@ -276,16 +265,16 @@ def bashes(home: Path) -> list[str]:
     return ["", str(shim)]
 
 
-def row_env(row: dict, env: dict, home: Path, parser: str, bash: str) -> dict:
-    """The row's environment; the awk parser runs with shfmt removed from PATH, a bash prefix goes first."""
-    hidden = row.get("missing", ()) + (("shfmt",) if parser == "awk" else ())
+def row_env(row: dict, env: dict, home: Path, bash: str) -> dict:
+    """The row's environment: its missing tools removed from PATH, a bash prefix first."""
+    hidden = row.get("missing", ())
     path = path_without(home, *hidden) if hidden else env["PATH"]
     return {**env, **row["env"], "PATH": os.pathsep.join(filter(None, [bash, path]))}
 
 
-def failure(row: dict, verdict: str, parser: str, bash: str) -> str:
-    where = f"{row['label']} [{row['harness']} {row['native']}, {parser}{', /bin/bash' if bash else ''}]"
-    by = row.get("awk_by", row["by"]) if parser == "awk" else row["by"]
+def failure(row: dict, verdict: str, bash: str) -> str:
+    where = f"{row['label']} [{row['harness']} {row['native']}{', /bin/bash' if bash else ''}]"
+    by = row["by"]
     if verdict.startswith("error"):
         return f"{where}: {verdict}"
     if by is None and verdict != "allow":
@@ -295,30 +284,14 @@ def failure(row: dict, verdict: str, parser: str, bash: str) -> str:
     return ""
 
 
-def judge(job: tuple[dict, str, str], env: dict, home: Path) -> str:
-    row, parser, bash = job
-    return failure(row, run_row(row, row_env(row, env, home, parser, bash)), parser, bash)
-
-
-RECORDS = 'HOOK_NAME=records; . "$1"; HOOK_CWD=$2; hook_segments "$3"; printf "%s\\n" ${HOOK_SEGS[@]+"${HOOK_SEGS[@]}"} ${HOOK_REDIRS[@]+"${HOOK_REDIRS[@]}"}'
-
-
-def records(row: dict, env: dict, home: Path, parser: str) -> tuple:
-    """What `hook_segments` gives the guards for the row's command, through one parser."""
-    done = subprocess.run(["bash", "-c", RECORDS, "records", str(HOOKS / "lib" / "hook.sh"), str(row["cwd"]), row["command"]],
-                          capture_output=True, text=True, env=row_env(row, env, home, parser, ""), cwd=str(row["cwd"]), timeout=120)
-    return done.returncode, done.stdout, done.stderr
+def judge(job: tuple[dict, str], env: dict, home: Path) -> str:
+    row, bash = job
+    return failure(row, run_row(row, row_env(row, env, home, bash)), bash)
 
 
 def jobs_for(rows: list[dict], home: Path) -> list[tuple]:
-    """Every row through the first parser in every harness; the claude-code rows also under /bin/bash and, when the
-    two parsers give different records, through the awk parser."""
-    found = parsers()
-    jobs = [(row, found[0], "") for row in rows]
-    jobs += [(row, found[0], bash) for row in rows if row["harness"] == "claude-code" for bash in bashes(home)[1:]]
-    if len(found) == 2:
-        jobs += [(row, "awk", "") for row in rows if row["harness"] == "claude-code" and "command" in row]
-    return jobs
+    """Every row in every harness; the claude-code rows also under /bin/bash."""
+    return [(row, "") for row in rows] + [(row, bash) for row in rows if row["harness"] == "claude-code" for bash in bashes(home)[1:]]
 
 
 def fixture_home() -> Path:
@@ -345,17 +318,15 @@ def world() -> Iterator[tuple[dict, dict[str, Path], list[dict]]]:
         env.pop(key)
     try:
         places: dict[str, Path] = {**fixture(home), "home": home, "tmp": tmp, "tasks": home / ".agent" / "tasks"}
-        review = subprocess.run([sys.executable, str(ROOT / "src/crew/review/crew_review_findings.py"), "review-dir", "--repo", "boundary-probe"],
+        review = subprocess.run([sys.executable, str(ROOT / "src/crew/tools/crew_review_findings.py"), "review-dir", "--repo", "boundary-probe"],
                                 capture_output=True, text=True, env=env)
         places["review"] = Path(review.stdout.strip())
         assert review.returncode == 0 and places["review"].is_absolute(), review
         rows = cases(places)
-        for missing in {row.get("missing", ()) for row in rows}:
-            path_without(home, *missing, "shfmt")
-            if missing:
-                path_without(home, *missing)
+        for missing in {row.get("missing", ()) for row in rows if row.get("missing")}:
+            path_without(home, *missing)
         bashes(home)
-        places["no-jq"], places["no-awk"] = Path(path_without(home, "jq")), Path(path_without(home, "awk", "shfmt"))
+        places["no-jq"], places["no-shfmt"] = Path(path_without(home, "jq")), Path(path_without(home, "shfmt"))
         yield env, places, rows
     finally:
         shutil.rmtree(home, ignore_errors=True)
@@ -396,23 +367,21 @@ def test_an_unreadable_index_skips_the_commit_scan(world: tuple) -> None:
     assert done.returncode == 0 and "cannot read the git index" in done.stderr, done
 
 
-def test_a_broken_shfmt_falls_back_to_awk(world: tuple) -> None:
-    """A shfmt that prints invalid JSON makes jq fail, and awk then reads the command: the same deny."""
+def test_a_broken_shfmt_is_too_complex(world: tuple) -> None:
+    """A shfmt that prints invalid JSON makes jq fail: the command is too complex to judge, never allowed."""
     env, places, _ = world
     stub = places["home"] / "broken-shfmt"
     stub.mkdir(exist_ok=True)
     (stub / "shfmt").write_text("#!/bin/sh\ncat >/dev/null\necho '{'\n", encoding="utf-8")
     (stub / "shfmt").chmod(0o755)
     native, payload = fixture_for("cursor", "pre_shell")
-    row = {"harness": "cursor", "native": native, "cwd": places["clean"], "by": "destructive-git", "env": {},
+    row = {"harness": "cursor", "native": native, "cwd": places["clean"], "by": "too-complex", "env": {},
            "payload": fill(payload, {"command": "git reset --hard", "cwd": str(places["clean"])})}
-    assert run_row(row, {**env, "PATH": f"{stub}{os.pathsep}{path_without(places['home'], 'shfmt')}"}) == "deny destructive-git"
+    assert run_row(row, {**env, "PATH": f"{stub}{os.pathsep}{path_without(places['home'], 'shfmt')}"}) == "deny too-complex"
 
 
 def test_a_deep_pipeline_is_denied_quickly(world: tuple) -> None:
-    """shfmt's JSON grows with nesting depth times size (1.6 GB for this one), so a command this deep is read by awk."""
-    if "shfmt" not in parsers():
-        pytest.skip("shfmt is not installed; the awk path alone has no JSON to grow")
+    """shfmt's JSON grows with nesting depth times size (1.6 GB for this one), so a command this deep is never parsed."""
     env, places, _ = world
     native, payload = fixture_for("cursor", "pre_shell")
     start = time.monotonic()
@@ -505,12 +474,12 @@ def unreadable(job: tuple[Path, str, str], env: dict, places: dict[str, str]) ->
     """A rule that cannot read its event or lacks `jq` reports one line and gets out of the way."""
     script, label, stdin = job
     blocking = script in GUARDS + FILE_HOOKS
-    run_env = {**env, "PATH": places[label.replace(" ", "-")]} if label in ("no jq", "no awk") else env
+    run_env = {**env, "PATH": places[label.replace(" ", "-")]} if label in ("no jq", "no shfmt") else env
     done = subprocess.run(["bash", str(script)], input=stdin, capture_output=True, text=True, env=run_env, cwd=places["nogit"], timeout=120)
     lines = len(done.stderr.strip().splitlines())
     expected = 0 if label == "empty input" else 1  # no input is an empty event: nothing to judge, nothing to say
     ok = done.returncode == 0 and (lines == expected and done.stdout.strip() == "" if blocking else lines <= 1)
-    if label == "no awk":  # a rule that needs awk says so in one line; one that does not judges as usual
+    if label == "no shfmt":  # a rule that needs shfmt says so in one line; one that does not judges as usual
         ok = done.returncode == 0 and lines <= 1 and "not found" not in done.stderr
     return "" if ok else f"{script.name} {label}: exit {done.returncode} stdout={done.stdout[:200]!r} stderr={done.stderr[:300]!r}"
 
@@ -519,7 +488,7 @@ def test_every_rule_survives_bad_input(world: tuple) -> None:
     env, places, _ = world
     probe = json.dumps({"event": "pre_shell", "harness": "cursor", "input": {"command": "git reset --hard", "file_path": "/outside/file"}})
     scripts = [HOOKS / rule["run"] for rule in adapters.contract(HOOKS)["rules"]]
-    inputs = (("malformed JSON", "{not json"), ("empty input", ""), ("no jq", probe), ("no awk", probe))
+    inputs = (("malformed JSON", "{not json"), ("empty input", ""), ("no jq", probe), ("no shfmt", probe))
     failed = in_parallel(lambda job: unreadable(job, env, {k: str(v) for k, v in places.items()}), [(s, label, i) for s in scripts for label, i in inputs])
     assert not failed, "\n".join(failed)
 

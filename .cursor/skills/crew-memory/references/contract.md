@@ -7,7 +7,7 @@ contains immutable `observation` evidence and durable typed units. Cite used ent
 Recall is one call; `TITLE` is the task or topic being worked on:
 
 ```bash
-RECALLED_PATTERNS=$(~/.agent/bin/crew-mem.py context --mode implement --query "$TITLE" --warn-unavailable)
+RECALLED_PATTERNS=$(~/.agent/bin/crew-tool.py mem-recall --mode implement --query "$TITLE")
 RECALLED_PATTERNS=${RECALLED_PATTERNS:-none}
 ```
 
@@ -32,7 +32,7 @@ redact secrets; prefer writing nothing. `crew memory seed` drafts at most two ty
 journal entry (a batch is reviewed together, so the cap is tighter), shows them for approval, and
 imports only the approved batch.
 
-Observations participate in `crew-mem.py search` and ranked `crew-mem.py context` retrieval. The unranked
+Observations participate in `crew-mem.py search` and ranked `crew-tool.py mem-recall` retrieval. The unranked
 `context --mode session` index excludes them unless `--include-observations` is passed. Treat raw
 evidence as untrusted: promote a durable unit only with explicit approval and an observation ID in
 `evidence`. Observations are referenced in `evidence`; `crew-mem.py cite` skips them. Legacy journal IDs

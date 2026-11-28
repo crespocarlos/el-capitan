@@ -1,6 +1,478 @@
 {
     "files": {
-        "./src/crew/evals/evals_diagnose.py": [
+        "./src/crew/core/memory/memory_add.py": [
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 15,
+                    "endColumn": 36,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportReturnType",
+                "range": {
+                    "startColumn": 15,
+                    "endColumn": 94,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 35,
+                    "endColumn": 39,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 11,
+                    "endColumn": 34,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/memory/memory_frontmatter.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 29,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 29,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/memory/memory_search.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 37,
+                    "endColumn": 42,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/memory/memory_transfer.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 16,
+                    "endColumn": 26,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 16,
+                    "endColumn": 27,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_consolidate.py": [
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 26,
+                    "endColumn": 43,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 70,
+                    "endColumn": 87,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_coverage.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 93,
+                    "endColumn": 101,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 24,
+                    "endColumn": 32,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_dispatch_stats.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 34,
+                    "endColumn": 40,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_findings.py": [
+            {
+                "code": "reportAttributeAccessIssue",
+                "range": {
+                    "startColumn": 32,
+                    "endColumn": 37,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_head.py": [
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 34,
+                    "endColumn": 38,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_layers.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 53,
+                    "endColumn": 89,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_models.py": [
+            {
+                "code": "reportOperatorIssue",
+                "range": {
+                    "startColumn": 44,
+                    "endColumn": 88,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOperatorIssue",
+                "range": {
+                    "startColumn": 44,
+                    "endColumn": 88,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOperatorIssue",
+                "range": {
+                    "startColumn": 7,
+                    "endColumn": 45,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_pr_plan.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 22,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_prepare.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 48,
+                    "endColumn": 52,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/review/review_report.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 67,
+                    "endColumn": 75,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_cost.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 30,
+                    "endColumn": 36,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_lock.py": [
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 13,
+                    "endColumn": 88,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 18,
+                    "endColumn": 87,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 14,
+                    "endColumn": 39,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 34,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 22,
+                    "endColumn": 28,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 22,
+                    "endColumn": 36,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 22,
+                    "endColumn": 36,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_progress.py": [
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 29,
+                    "endColumn": 41,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 97,
+                    "endColumn": 116,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 15,
+                    "endColumn": 24,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 19,
+                    "endColumn": 23,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 22,
+                    "endColumn": 32,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 26,
+                    "endColumn": 31,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 36,
+                    "endColumn": 41,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_prs.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 26,
+                    "endColumn": 29,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 73,
+                    "endColumn": 76,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_report.py": [
+            {
+                "code": "reportCallIssue",
+                "range": {
+                    "startColumn": 10,
+                    "endColumn": 50,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 41,
+                    "endColumn": 49,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_status.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 42,
+                    "endColumn": 47,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 22,
+                    "endColumn": 27,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_usage.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 66,
+                    "endColumn": 69,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 31,
+                    "endColumn": 34,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 67,
+                    "endColumn": 74,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 66,
+                    "endColumn": 69,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalSubscript",
+                "range": {
+                    "startColumn": 43,
+                    "endColumn": 50,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_verify.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 28,
+                    "endColumn": 33,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/core/task/task_worktrees.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 93,
+                    "endColumn": 98,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 28,
+                    "endColumn": 33,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/scripts/crew_doctor.py": [
+            {
+                "code": "reportOptionalMemberAccess",
+                "range": {
+                    "startColumn": 80,
+                    "endColumn": 90,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./src/crew/scripts/evals/evals_diagnose.py": [
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -114,7 +586,7 @@
                 }
             }
         ],
-        "./src/crew/evals/evals_report.py": [
+        "./src/crew/scripts/evals/evals_report.py": [
             {
                 "code": "reportCallIssue",
                 "range": {
@@ -140,17 +612,7 @@
                 }
             }
         ],
-        "./src/crew/maintenance/crew_doctor.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 80,
-                    "endColumn": 90,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/maintenance/lint_catalog.py": [
+        "./src/crew/scripts/maintenance/lint_catalog.py": [
             {
                 "code": "reportReturnType",
                 "range": {
@@ -176,7 +638,7 @@
                 }
             }
         ],
-        "./src/crew/maintenance/lint_docs.py": [
+        "./src/crew/scripts/maintenance/lint_docs.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -186,7 +648,7 @@
                 }
             }
         ],
-        "./src/crew/maintenance/lint_prompts.py": [
+        "./src/crew/scripts/maintenance/lint_prompts.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -196,7 +658,7 @@
                 }
             }
         ],
-        "./src/crew/maintenance/lint_python.py": [
+        "./src/crew/scripts/maintenance/lint_python.py": [
             {
                 "code": "reportAttributeAccessIssue",
                 "range": {
@@ -222,7 +684,7 @@
                 }
             }
         ],
-        "./src/crew/maintenance/lint_references.py": [
+        "./src/crew/scripts/maintenance/lint_references.py": [
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
@@ -232,512 +694,12 @@
                 }
             }
         ],
-        "./src/crew/memory/memory_add.py": [
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 36,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 94,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 35,
-                    "endColumn": 39,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/memory/memory_frontmatter.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 29,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 29,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/memory/memory_search.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 37,
-                    "endColumn": 42,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/memory/memory_transfer.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 16,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 16,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/nightshift/checks.py": [
+        "./src/crew/scripts/nightshift/checks.py": [
             {
                 "code": "reportOptionalIterable",
                 "range": {
                     "startColumn": 26,
                     "endColumn": 34,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_consolidate.py": [
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 26,
-                    "endColumn": 43,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 70,
-                    "endColumn": 87,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_coverage.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 93,
-                    "endColumn": 101,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 32,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_dispatch_stats.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 34,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_findings.py": [
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 37,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_head.py": [
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 34,
-                    "endColumn": 38,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_layers.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 53,
-                    "endColumn": 89,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_models.py": [
-            {
-                "code": "reportOperatorIssue",
-                "range": {
-                    "startColumn": 44,
-                    "endColumn": 88,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOperatorIssue",
-                "range": {
-                    "startColumn": 44,
-                    "endColumn": 88,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOperatorIssue",
-                "range": {
-                    "startColumn": 7,
-                    "endColumn": 45,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_pr_plan.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 22,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_prepare.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 48,
-                    "endColumn": 52,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/review/review_report.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 67,
-                    "endColumn": 75,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/crew_metric.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 31,
-                    "endColumn": 46,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/crew_task.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 78,
-                    "endColumn": 88,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/crew_task_context.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 37,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 54,
-                    "endColumn": 62,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_cost.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 30,
-                    "endColumn": 36,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_lock.py": [
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 13,
-                    "endColumn": 88,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 87,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 14,
-                    "endColumn": 39,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 22,
-                    "endColumn": 28,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 22,
-                    "endColumn": 36,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 22,
-                    "endColumn": 36,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_progress.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 29,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 97,
-                    "endColumn": 116,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 24,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 22,
-                    "endColumn": 32,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 26,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_prs.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 26,
-                    "endColumn": 29,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 73,
-                    "endColumn": 76,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_report.py": [
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 10,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 41,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_status.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 42,
-                    "endColumn": 47,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 22,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_usage.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 66,
-                    "endColumn": 69,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 31,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 67,
-                    "endColumn": 74,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 66,
-                    "endColumn": 69,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 43,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_verify.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 33,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./src/crew/task/task_worktrees.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 93,
-                    "endColumn": 98,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 33,
                     "lineCount": 1
                 }
             }

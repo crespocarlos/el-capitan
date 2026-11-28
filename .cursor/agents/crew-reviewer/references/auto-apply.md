@@ -29,7 +29,7 @@ action?
 
 **Loop extension (`--auto --loop` only):** after the summary above, instead of stopping:
 
-- Re-run `~/.agent/bin/crew-diff.sh --stat` to get the updated branch diff.
+- Re-run `~/.agent/bin/crew-tool.py repo-facts --field diff_stat` to get the updated branch diff.
 - Check convergence: does a fresh review of the updated branch diff produce ≤2 findings, all `[nit]`
   or `[needs more info]`?
   - **Yes (converged):** stop. Output: `Loop complete: converged after N iteration(s).` Then output

@@ -31,18 +31,18 @@ and scope failures are terminal.
 
 ```bash
 cd WORKTREE_PATH
-PR=$(~/.agent/bin/crew-pr-actions.py view --pr PR_NUMBER --repo OWNER/REPO --field branch,title,files)
-{ read -r PR_BRANCH; read -r PR_TITLE; read -r CHANGED; } <<<"$PR"
+PR=$(~/.agent/bin/crew-tool.py pr-read view --pr PR_NUMBER --repo OWNER/REPO --fields branch,title,files --field record)
+PR_BRANCH=$(jq -r .branch <<<"$PR"); PR_TITLE=$(jq -r .title <<<"$PR"); CHANGED=$(jq -r '[.files[].path] | join(" ")' <<<"$PR")
 
-~/.agent/bin/crew-agent-context.py --kind resolver $CHANGED
+~/.agent/bin/crew-tool.py guidance --kind resolver $CHANGED
 
-~/.agent/bin/crew-task-context.py --branch "$PR_BRANCH" --artifacts task_id,handoff --max-chars 2000
+~/.agent/bin/crew-tool.py task-context --branch "$PR_BRANCH" --artifacts task_id,handoff --max-chars 2000
 
-~/.agent/bin/crew-mem.py context --mode review --query "$PR_TITLE" --warn-unavailable
+~/.agent/bin/crew-tool.py mem-recall --mode review --query "$PR_TITLE"
 ```
 
 Read guidance once for every path the PR touches, never per thread; its `note` lists dropped
-sections by file. Read that file for a dropped section you need. `crew-task-context.py` is
+sections by file. Read that file for a dropped section you need. `task-context` is
 branch context, not authority over
 the PR or the user's instructions. When the worktree lags the PR, `crew-pr-actions.py head --pr
 PR_NUMBER --repo OWNER/REPO --out <dir>` writes its files at the head to `<dir>/files/`.

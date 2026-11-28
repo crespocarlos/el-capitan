@@ -1,20 +1,19 @@
-# The shfmt path of hook_segments (lib/hook.sh): `shfmt --to-json` gives a real bash syntax tree, and
-# this program turns it into the records the awk normaliser prints, so the guards read one format.
+# The normaliser of hook_segments (lib/hook.sh): `shfmt --to-json` gives a real bash syntax tree, and
+# this program turns it into the records the guards read.
 # Input: the tree on stdin. Arguments: $src (the parsed text, --rawfile), $dir (where it runs), $home,
 # $qn (payloads counted so far, the root included) and $max (HOOK_MAX_PAYLOADS).
 # Output lines: one record per simple command (dir US body US quoted-bits US words), every field
 # escaped by `enc` (hook.sh undoes it), `US payload US dir US text` for each string the caller must
 # parse again (`sh -c`, `eval`, a shell's stdin), `US redir US dir US target` for each output redirection,
-# `US overflow` as in the awk path, and
-# `US qn US N` last.
-# What awk reads as text and the tree reads as structure: `$(...)`, backticks and process
+# `US overflow` past the payload cap, and `US qn US N` last.
+# Read as structure: `$(...)`, backticks and process
 # substitutions anywhere (also an unquoted heredoc's body, which bash expands) come straight from the
 # tree as payloads; `[[ ]]`, `(( ))`, `let` and loop headers give only those payloads.
 ($src | if utf8bytelength == length then null
         else [0] + ([foreach explode[] as $c (0; . + (if $c < 128 then 1 elif $c < 2048 then 2 elif $c < 65536 then 3 else 4 end); .)] | .[:-1])
         end) as $starts
 | def us: "\u001f";
-  # The record escapes, as `enc` in the awk path: \035 is the escape byte, so a US or RS inside a field
+  # The record escapes (hook.sh's `hook_unesc` undoes them): \035 is the escape byte, so a US or RS inside a field
   # never splits it, and a newline is RS.
   def enc: gsub("\u001d"; "\u001de") | gsub("\u001f"; "\u001du") | gsub("\u001e"; "\u001dr") | gsub("\n"; "\u001e");
   # shfmt counts bytes, jq slices code points.
@@ -47,12 +46,11 @@
   def enq_substs($node): reduce ($node | substs) as $s (.; enq({stmts: ($s.Stmts // []), dir: .dir}));
   def resolve($p; $d): if $p == "" or $p == "-" then $d elif $p == "~" then $home elif ($p | startswith("~/")) then $home + $p[1:]
     elif ($p | startswith("/")) then $p else $d + "/" + $p end;
-  # Mirrors the awk `optval` in hook.sh; change both (intended differences go in PARSERS_DIFFER).
+  # Options of a wrapper that take the next word as their value.
   def optval($w; $o): if $w == "nice" then $o == "-n" elif $w == "sudo" then $o | test("^-[ugCDhpRrtTU]$")
     elif $w == "env" then $o | test("^-[uCS]$") elif $w == "timeout" then $o | test("^-[sk]$")
     elif $w == "stdbuf" then $o | test("^-[ioe]$") else false end;
   # The index of the command word: leading assignments and wrappers with their options are skipped.
-  # Mirrors the awk `lead` in hook.sh; change both (intended differences go in PARSERS_DIFFER).
   def lead($a): ($a | length) as $n
     | {i: 0, done: false}
     | until(.done or .i >= $n;
@@ -66,7 +64,7 @@
   # A script argument: stdin by name reads stdin; any other script is a file the guard does not read.
   def script($w): if $w == "/dev/stdin" or $w == "/dev/fd/0" then "stdin" else "none" end;
   # A shell runs a `-c` payload (the first word after `-c` that is not an option), a script argument,
-  # or stdin. Mirrors the awk `shellin` in hook.sh; change both (intended differences go in PARSERS_DIFFER).
+  # or stdin.
   def shellin($a; $i): ($a | length) as $n
     | {j: ($i + 1), s: false, r: null}
     | until(.r != null;
@@ -86,7 +84,7 @@
     | (if $base == "echo" then first(range(0; $r | length) as $k | select($r[$k] | test("^-[neE]+$") | not) | $k) // ($r | length) else 0 end) as $k
     | $r[$k:] | join(" ") | gsub("\\\\n"; "\n");
   def bits($ws): $ws | map(if .q then "1" else "0" end) | join("");
-  # The target of each output redirection (`>`, `>>`, `>|`, `&>`, `&>>`), as the awk path keeps it.
+  # The target of each output redirection (`>`, `>>`, `>|`, `&>`, `&>>`).
   def redirs($rs): .dir as $d
     | .redirs += [($rs // [])[] | select(.Op == ">" or .Op == ">>" or .Op == ">|" or .Op == "&>" or .Op == "&>>")
                   | {dir: $d, t: (.Word | word.t)}];
@@ -122,7 +120,7 @@
         elif $base == "eval" and $i < ($a | length) - 1 then enq({text: ($a[$i + 1:] | join(" ")), dir: .dir})
         else . end
       end;
-  # Statements in order; `cd` moves the directory for everything after it, as in the awk path.
+  # Statements in order; `cd` moves the directory for everything after it.
   def stmt($st):
     def stmts($l): reduce ($l // [])[] as $s (.; stmt($s));
     def ifc($c): stmts($c.Cond) | stmts($c.Then) | if $c.Else != null then ifc($c.Else) else . end;

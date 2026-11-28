@@ -16,11 +16,11 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from crew.core.task.ls_data import load_bases, local_remotes, reachable_from, verdict
+from crew.core.task.task_progress import GITHUB_PR_URL, ISSUE_URL
+from crew.core.task.task_report import number_cell
 from crew.lib.files import atomic_write
 from crew.lib.git import gh
-from crew.task.ls_data import load_bases, local_remotes, reachable_from, verdict
-from crew.task.task_progress import GITHUB_PR_URL, ISSUE_URL
-from crew.task.task_report import number_cell
 
 REFRESH = 360.0  # seconds between reads (6 minutes); `R` reads at once
 PR_FIELDS = (

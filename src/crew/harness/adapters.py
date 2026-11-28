@@ -183,7 +183,7 @@ def shared(checkout: Path) -> dict[str, tuple[str, str]]:
         if path.is_file() and "fixtures" not in path.relative_to(hooks).parts and "__pycache__" not in path.parts
     }
     # The file guard's Status reader (stdlib only) beside it, so the copy needs no checkout.
-    found[".agent/hooks/lib/task_status.py"] = ("file", (checkout / "src" / "crew" / "task" / "task_status.py").read_text(encoding="utf-8"))
+    found[".agent/hooks/lib/task_status.py"] = ("file", (checkout / "src" / "crew" / "core" / "task" / "task_status.py").read_text(encoding="utf-8"))
     found.update({f".cursor/agents/{name}": ("link", str(source / name)) for name in AGENT_DIRS if (source / name).is_dir()})
     for skill in skills(checkout):
         found[f".cursor/skills/{skill.name}/SKILL.md"] = ("link", str(skill / "SKILL.md"))

@@ -65,14 +65,11 @@ heading plus that sentence is what lets every persona cite the ids `persist` req
 ## assemble.json
 
 `prepare` writes `$REVIEW_ROOT/assemble.json` with `repo`, `mode`, `size_gate`, `selected`,
-`prompt_files` (the changed prompt files), `prior_review_dir`, `mode_kind` and `TODO(prepare)`
-questions; edit it, then run `~/.agent/bin/crew-assemble-packages.py "$REVIEW_ROOT"`. Other keys:
+`prompt_files` (the changed prompt files), `prior_review_dir`, `mode_kind`, and `pending`: the keys
+you write (`questions`, a spine `size_gate`); edit it, then run `~/.agent/bin/crew-tool.py review-dispatch "$REVIEW_ROOT"`. Other keys:
 `consumers` (`[[path, start, end, label], …]`) and `guidance_keep` (`{persona: [level-2 heading
 prefix, …]}`, optional). `mode_kind: "pr"` refuses `consumers` and `prompt_files`, which would come
-from the local checkout. Exact shapes: the tool's
-docstring — read it at `src/crew/review/crew_assemble_packages.py` in the repository, or through
-`readlink -f ~/.agent/bin/crew-assemble-packages.py` when the repository is not the working tree.
-`~/.agent/bin` holds symlinks, so a search tool scoped there finds nothing.
+from the local checkout. Exact shapes: the `assemble.json` section of `src/crew/TOOLS.md`.
 
 Two settings keep the size honest. The prompt tier elides the regions `package.diff` already quotes
 and keeps every unchanged line, so a rule that collides with surrounding text stays visible.
@@ -89,10 +86,10 @@ and a consumer (Architecture), the user's next step (Product Flow), a rule that 
 too late (Prompt Quality), a test a wrong implementation would pass (Code Quality). A question the
 diff answers wastes the budget.
 
-Diff modes replace the `TODO(prepare)` placeholders in `assemble.json` `questions`; the tool renders
+Diff modes write them in `assemble.json` `questions` (assembly refuses an empty list); the tool renders
 them last, after the evidence. Spec and idea packages append them by hand. `prepare` and the tool stamp
-the run in `manifest.json`, and `check-packages` refuses a stamped package without the section, with a
-placeholder left, or with other than 2 to 5 unindented list items under its last copy; an unstamped
+the run in `manifest.json`, and `check-packages` refuses a stamped package without the section or
+with other than 2 to 5 unindented list items under its last copy; an unstamped
 directory passes with a note.
 
 ## Why the tool, not the hand

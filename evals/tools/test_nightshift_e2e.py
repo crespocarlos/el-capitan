@@ -20,7 +20,7 @@ from pathlib import Path
 
 from cli_runner import run as cli
 
-TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_nightshift_e2e.py"
+TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "scripts" / "crew_nightshift_e2e.py"
 KEY = "elastic__kibana__12345"
 TESTED_HEAD = "0123456789ab"  # arbitrary: the tool must pass `meta.headSha` through unchanged
 

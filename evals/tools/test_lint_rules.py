@@ -18,45 +18,45 @@ from pathlib import Path
 import pytest
 from cli_runner import run as cli
 
-from crew.maintenance import crew_lint as LINT
-from crew.maintenance import lint_prompts as LINT_PROMPTS
-from crew.maintenance.lint_prompts import MCP_PLACEHOLDER, PROBE_AGENT_TOOLS, READONLY_AGENT_TOOLS, RESOLVER_AGENT_TOOLS
-from crew.maintenance.lint_references import lint_handoff
-from crew.maintenance.lint_writing import lint_local_state_tracked
+from crew.scripts import crew_lint as LINT
+from crew.scripts.maintenance import lint_prompts as LINT_PROMPTS
+from crew.scripts.maintenance.lint_prompts import MCP_PLACEHOLDER, PROBE_AGENT_TOOLS, READONLY_AGENT_TOOLS, RESOLVER_AGENT_TOOLS
+from crew.scripts.maintenance.lint_references import lint_handoff
+from crew.scripts.maintenance.lint_writing import lint_local_state_tracked
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
-LINT_PATH = TOOLS / "maintenance" / "crew_lint.py"
+LINT_PATH = TOOLS / "scripts" / "crew_lint.py"
 
 # (case, rule, file under src/crew, text appended to it: a new file starts empty)
 SEEDED = (
-    ("git-argv", "direct-git", "task/task_seeded_git.py", "ARGV = [\"git\", \"status\"]\n"),
-    ("long-module", "module-size", "task/task_seeded_long.py", "X = 1\n" * 401),
+    ("git-argv", "direct-git", "core/task/task_seeded_git.py", "ARGV = [\"git\", \"status\"]\n"),
+    ("long-module", "module-size", "core/task/task_seeded_long.py", "X = 1\n" * 401),
 
-    ("second-atomic-write", "single-owner", "task/task_seeded_atomic.py", "def atomic_write() -> None:\n    pass\n"),
-    ("systemexit-message", "no-systemexit-str", "task/task_seeded_exit.py", "raise SystemExit(f'bad: {1}')\n"),
-    ("task-imports-review", "package-direction", "task/task_seeded_import.py", "from crew.review import review_pr_reads\n"),
-    ("lib-imports-task", "package-direction", "lib/seeded.py", "def later() -> None:\n    from crew.task.task_progress import read_text\n"),
-    ("memory-imports-maintenance", "package-direction", "memory/memory_seeded.py", "from crew.maintenance.lint_files import rel\n"),
-    ("second-read-json", "single-owner", "review/review_seeded_json.py", "def read_json_object() -> None:\n    pass\n"),
-    ("progress-append", "single-owner", "task/task_seeded_progress.py", "from pathlib import Path\n\nPath('t', 'PROGRESS.md').open('a').write('x')\n"),
-    ("slug-regex", "single-owner", "task/task_seeded_slug.py", "import re\n\nSLUG = re.compile(r'[:/]([^/:]+)/([^/]+?)(?:\\.git)?$')\n"),
-    ("fence-regex", "single-owner", "review/review_seeded_fence.py", "import re\n\nFENCE = re.compile(r'^```json\\n')\n"),
-    ("removed-verify-form", "removed-command-form", "task/task_seeded_verify.py", "USAGE = 'crew-progress.py verify --repo .'\n"),
+    ("second-atomic-write", "single-owner", "core/task/task_seeded_atomic.py", "def atomic_write() -> None:\n    pass\n"),
+    ("systemexit-message", "no-systemexit-str", "core/task/task_seeded_exit.py", "raise SystemExit(f'bad: {1}')\n"),
+    ("core-imports-tools", "package-direction", "core/task/task_seeded_import.py", "from crew.tools import crew_task\n"),
+    ("lib-imports-task", "package-direction", "lib/seeded.py", "def later() -> None:\n    from crew.core.task.task_progress import read_text\n"),
+    ("harness-imports-scripts", "package-direction", "harness/harness_seeded.py", "from crew.scripts.crew_lint import main\n"),
+    ("second-read-json", "single-owner", "core/review/review_seeded_json.py", "def read_json_object() -> None:\n    pass\n"),
+    ("progress-append", "single-owner", "core/task/task_seeded_progress.py", "from pathlib import Path\n\nPath('t', 'PROGRESS.md').open('a').write('x')\n"),
+    ("slug-regex", "single-owner", "core/task/task_seeded_slug.py", "import re\n\nSLUG = re.compile(r'[:/]([^/:]+)/([^/]+?)(?:\\.git)?$')\n"),
+    ("fence-regex", "single-owner", "core/review/review_seeded_fence.py", "import re\n\nFENCE = re.compile(r'^```json\\n')\n"),
+    ("removed-verify-form", "removed-command-form", "core/task/task_seeded_verify.py", "USAGE = 'crew-progress.py verify --repo .'\n"),
     ("removed-mark-flag", "removed-command-form", "TOOLS.md", "\nRun `crew-ls.py --mark-done \"$TASK_DIR\"`.\n"),
     ("removed-wrapped-form", "removed-command-form", "TOOLS.md", "\napplied by `crew-ls.py --reconcile\n--apply`.\n"),
     ("removed-flag-form", "removed-command-form", "TOOLS.md", "\nRun `crew-verify.py --wait out.json --since 1`.\n"),
     ("removed-form-in-eval-task", "removed-command-form", "../../evals/tasks.json", '{"d": "run `crew-ls.py --mark-done x`"}\n'),
     ("removed-form-in-workflow", "removed-command-form", "../../.github/workflows/seeded.yml", "run: crew-next.py --stages\n"),
-    ("long-docstring", "docstring-length", "task/task_seeded_doc.py", '"""One.\n\n2\n3\n4\n5\n6\n7\n"""\n'),
-    ("narrated-comment", "no-incident-narration", "task/task_seeded_story.py", "X = 1  # this used to crash\n"),
-    ("measured-docstring", "no-incident-narration", "review/review_seeded_story.py", '"""A reader: measured over 9 runs, 3 of 9 failed."""\n'),
+    ("long-docstring", "docstring-length", "core/task/task_seeded_doc.py", '"""One.\n\n2\n3\n4\n5\n6\n7\n"""\n'),
+    ("narrated-comment", "no-incident-narration", "core/task/task_seeded_story.py", "X = 1  # this used to crash\n"),
+    ("measured-docstring", "no-incident-narration", "core/review/review_seeded_story.py", '"""A reader: measured over 9 runs, 3 of 9 failed."""\n'),
 
-    ("sibling-run", "no-sibling-subprocess", "task/task_seeded_sibling.py", "import subprocess\n\nsubprocess.run(['python3', 'crew-ls.py'])\n"),
-    ("sibling-path", "no-sibling-subprocess", "review/review_seeded_sibling.py",
+    ("sibling-run", "no-sibling-subprocess", "core/task/task_seeded_sibling.py", "import subprocess\n\nsubprocess.run(['python3', 'crew-ls.py'])\n"),
+    ("sibling-path", "no-sibling-subprocess", "core/review/review_seeded_sibling.py",
      "import subprocess\nfrom pathlib import Path\n\nTOOL = Path(__file__).with_name('crew-pr-actions.py')\nsubprocess.run([TOOL, 'pr'])\n"),
 )
-CATALOG = {"schema_version": 1, "tools": [], "scripts": [], "modules": [], "assets": [],
+CATALOG = {"schema_version": 1, "tools": [], "modules": [], "assets": [],
            "mcp_servers": {"sourcerer": ["sourcerer_code_search", "sourcerer_code_grep"]},
            "native_tools": ["Bash", "Edit", "Glob", "Grep", "Read", "Write"]}
 READONLY = f"readonly: true\ntools: Read, Grep, Glob{MCP_PLACEHOLDER}\n"
@@ -128,8 +128,8 @@ FIXTURES = (
                                                     "Stop calling tools at 6 and write the review.\n")]), {"persona-turn-budget": 1}),
     ("a broken frontmatter is its own finding, not a missing flag",
      {".cursor/agents/reviewer-broken.md": "---\nname: reviewer-broken\ndescription: \"Fixture agent.\"\nBody.\n"}, {"invalid-agent-frontmatter": 1}),
-    ("an unprefixed command", {"src/crew/task/task-progress.py": "#!/usr/bin/env python3\n", "src/crew/tools.json": json.dumps({**CATALOG, "tools": [
-        {"name": "task-progress.py", "dir": "task", "kind": "command", "category": "task", "owner": "crew-orchestrator", "help": "argparse", "smoke": "--help"}]})},
+    ("an unprefixed command", {"src/crew/tools/task-progress.py": "#!/usr/bin/env python3\n", "src/crew/tools.json": json.dumps({**CATALOG, "tools": [
+        {"name": "task-progress.py", "dir": "tools", "audience": "agent", "kind": "command", "category": "task", "owner": "crew-orchestrator", "help": "argparse", "smoke": "--help"}]})},
      {"command-name": 1}),
     ("removed forms in the settings, the hook contract and three removed paths",
      {".claude/settings.json": '{"hooks": {"SessionEnd": [{"command": "bash ~/.claude/hooks/session-event.sh end"}]}}\n',
@@ -163,7 +163,7 @@ FIXTURES = (
       SKILL.format("crew-e2e"): "Deploy Kibana on 5601.\n"}, {"vendor-tools-scoped": 3}),
     ("a placeholder used before it is defined",
      {SKILL.format("a"): "Inputs: `$QUX` is the task, `${QUUX}` the review.\n\nRun `x $FOO $QUX $QUUX`.\n\n`BAR` is the input: `x $BAR`.\n\n"
-      "```bash\nBAZ=1\nx \"$BAZ\" \"$HOME\"\nsource task-env.sh\nx \"$TASK_DIR\"\n```\n"},
+      "```bash\nBAZ=1\nx \"$BAZ\" \"$HOME\"\nTASK_DIR=$(x)\nx \"$TASK_DIR\"\n```\n"},
      {"undefined-placeholder": 1}),
     ("a journal write or draft import outside the closing confirmation, the resolver and the memory commands",
      {SKILL.format("a"): "Then save a journal entry: `crew-mem.py journal\nadd --title x`.\n", ".claude/hooks/stop.sh": "crew-mem.py import-inbox \"$f\"\n",

@@ -8,10 +8,8 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 ## Naming and layout
 
-- **Executables are kebab-case** — `^crew-[a-z0-9-]+\.(py|sh)$`, for example `crew-ls.py` or
-  `crew-default-branch.sh`. A new command that does not follow it is a defect, not a style choice.
-  One exemption, declared rather than inferred: `task-env.sh` is sourced, so it cannot be renamed —
-  `source` needs a real file at a fixed path.
+- **Executables are kebab-case** — `^crew-[a-z0-9-]+\.(py|sh)$`, for example `crew-ls.py`. A new
+  command that does not follow it is a defect, not a style choice.
 - **A Python module imported by another tool is snake_case** — `^[a-z0-9_]+\.py$`. Python cannot
   import a hyphenated module, so `task_status.py` stays snake_case while its siblings are CLIs. A
   module is an exception the catalog must declare: list it under `modules` in `tools.json` with
@@ -23,29 +21,34 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 - **`kind` is what tells them apart** — every `tools.json` entry declares `kind: command`, `module`,
   or `asset`. `install.sh` links `kind: command` and nothing else, and `crew-lint.py` fails a command
   whose basename lacks the prefix and a module that carries a command's basename.
-- **One subpackage per responsibility** — `lib/`, `task/`, `review/`, `memory/`, `evals/`,
-  `maintenance/`, `harness/`, `tui/`. `tools.json` and `TOOLS.md` stay at the root of `src/crew/`, because they
-  describe the whole tree rather than belonging to one group.
+- **The top level is by role:** `lib/` (generic helpers), `core/` (the domain logic, no entry points:
+  `core/task`, `core/review`, `core/memory`, each verb a typed function), `harness/` (hook runtime and
+  adapters), `tools/` (agent entry points), `scripts/` (owner entry points, with their own `maintenance`,
+  `evals` and `nightshift` packages), `tui/`. An
+  entry point's `audience` in `tools.json` fixes its directory; install links every audience but `dev`.
+  `tools.json` and `TOOLS.md` stay at the root of `src/crew/`.
 - **`lib/` is imported, never installed as a command.** `src/crew/lib/` holds the helpers every
   tool shares, each defined once (crew-lint `single-owner`); its map is below. Import paths:
   "Imports" in `src/crew/AGENTS.md`.
-- **PROGRESS.md has one owner, `task/task_progress.py`.** It appends every entry as
+- **PROGRESS.md has one owner, `core/task/task_progress.py`.** It appends every entry as
   `[YYYY-MM-DDTHH:MM:SSZ] KIND: body` (TRANSITION, METRIC, BLOCKED, WORKTREE, PR, WARN) and reads them back;
   legacy local `[YYYY-MM-DD HH:MM:SS]` and `[YYYY-MM-DD HH:MM]` lines still parse. No other module names the file in code.
-- **The installed surface is flat.** `install.sh` links each command into `~/.agent/bin/`: a Python
-  command to its launcher in `~/.agent/venv/bin` (`[project.scripts]` in `pyproject.toml`), a shell one
-  to its file in the checkout. Catalog names are unique (`invalid-tool-catalog`).
+- **The installed surface is flat.** `install.sh` links each command into `~/.agent/bin/`, to its
+  launcher in `~/.agent/venv/bin` (`[project.scripts]` in `pyproject.toml`). Catalog names are unique
+  (`invalid-tool-catalog`).
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_status.py`, `task_state.py`, `task_record.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py`, `task_guidance.py`, `task_guidance_kinds.py`, `task_prepare.py`, `task_prepare_spec.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
-| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `review_prepare.py`, `review_dispatch_stats.py`, `review_head.py`, `review_hunks.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
-| `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
-| `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
-| `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
-| `maintenance/` | `crew-doctor.py`, `crew-lint.py` | `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py`, `doctor_env.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
+| `tools/` | `crew-tool.py`, `crew-verify.py`, `crew-worktree.py`, `crew-mem.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `envelope.py` | — | The agent tools: `crew-tool.py`'s verbs (the typed core functions) in one envelope, and the agent commands no verb covers yet |
+| `scripts/` | `crew-task.py`, `crew-doctor.py`, `crew-lint.py`, `crew-ls.py`, `crew-inbox.py`, `crew-evals-compare.py`, `crew-evals-inspect.py`, `crew-nightshift-e2e.py` | — | — | The owner's commands (`crew-task.py` also serves the TUI's moves and the hooks' `record-pr`, `report`, `usage`) |
+| `scripts/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
+| `scripts/evals/` | — | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
+| `scripts/maintenance/` | — | `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py`, `doctor_env.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
+| `core/task/` | — | `api.py`, `task_status.py`, `task_state.py`, `task_record.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py`, `task_guidance.py`, `task_guidance_kinds.py`, `task_prepare.py`, `task_prepare_spec.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
+| `core/review/` | — | `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `review_prepare.py`, `review_dispatch_stats.py`, `review_head.py`, `review_hunks.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `core/memory/` | — | `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
 | `harness/` | `crew-hook.py` | `adapters.py`, `claude_code.py`, `cursor.py`, `cursor_cli.py`, `codex.py`, `harness_install.py` | `claude-code.json`, `cursor.json`, `cursor-cli.json`, `codex.json` | The one hook entry point, a manifest and an adapter (`render`, `normalize`, `encode`) per harness, and the writer install and doctor share |
-| `lib/` | — | `files.py`, `git.py`, `git_config.py`, `gh_reads.py`, `reply_marker.py`, `claude_plugins.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `markdown.py`, `runs.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts, the runs ledger |
+| `lib/` | — | `errors.py`, `files.py`, `git.py`, `git_config.py`, `gh_reads.py`, `reply_marker.py`, `claude_plugins.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `markdown.py`, `runs.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts, the runs ledger |
 | `tui/` | — | `crew_tui.py`, `tui_app.py`, `tui_model.py`, `tui_views.py`, `tui_moves.py`, `tui_github.py`, `tui_widgets.py` | — | The dashboard (`uv run --group tui python -m crew.tui.crew_tui`), not installed |
 | root | — | — | `tools.json`, `TOOLS.md` | The catalog |
 
@@ -53,10 +56,7 @@ The table is grouped by `kind`, which is what the manifest declares: a row's Com
 every `kind: command` entry in that directory, so `install.sh` links exactly those basenames and
 nothing else.
 
-`task-env.sh` is the one command with no `crew-` prefix: it is sourced, so `source` must find a real
-file at that exact path.
-
-`crew-mem.py`, `crew-review-findings.py`, `crew-ls.py`, `crew-task-context.py`, `crew-evals-compare.py`,
+`crew-mem.py`, `crew-review-findings.py`, `crew-ls.py`, `crew-tool.py`, `crew-evals-compare.py`,
 and `crew-lint.py` are argparse entry points over their modules: each parses the command line and
 dispatches, and holds no command logic. Modules import each other by their namespaced name in
 dependency order (`memory_paths` → `memory_frontmatter` → `memory_store` → `memory_add`/`memory_search`/
@@ -66,25 +66,20 @@ dependency order (`memory_paths` → `memory_frontmatter` → `memory_store` →
 `evals_report` → `evals_diagnose`/`evals_sources`; `lint_files` → `lint_catalog`/`lint_prompts`/
 `lint_references`/`lint_writing`/`lint_python`, `lint_writing` → `lint_style`, `lint_catalog` → `lint_docs`), so a module never imports back
 into one that imports it. Import paths: "Imports" in `src/crew/AGENTS.md`. The entry points
-re-export the names their public contract names, listed in each one's `__all__`, so
-`crew-assemble-packages.py` and the tests can keep importing them from the command file rather than
-reaching into a private module.
+re-export the names their public contract names, listed in each one's `__all__`, so the tests can
+keep importing them from the command file rather than reaching into a private module.
 
-**Packages import along these edges only** (crew-lint `package-direction`; a module's package is the
-directory it lives in, `lib` imports nothing from a package). `review` may read task state (PROGRESS
-METRIC lines, the report check) and `maintenance` reads the retention policy and sizes (`task_gc.py`) and the
-Claude auto-memory entries not yet imported (`memory_claude.py`) for `crew-doctor.py`; `task` never imports
-`review`, and nothing imports `maintenance` or `evals` across packages, nor `memory` except that read and the
-ranked recall `task_guidance.memory_context` runs in process for the `prepare` commands:
+**Roles import along these edges only** (crew-lint `package-direction`; a module's role is its top-level
+directory under `src/crew/`, and `lib` imports nothing from crew). The entry points and the TUI reach the
+domain through `core`; only the owner's scripts read the harness adapters (lint and doctor, in
+`scripts/maintenance`), and neither `core` nor `harness` imports the other:
 
 ```package-edges
-task -> memory lib
-review -> task lib
-memory -> lib
-evals -> lib
-maintenance -> task memory harness lib
+core -> lib
 harness -> lib
-tui -> task lib
+tools -> core lib
+scripts -> core harness lib
+tui -> core lib
 lib ->
 ```
 
@@ -126,7 +121,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_builder_report.py`: a builder's reply saved as its task's `REPORT.md` (a batch's part report; the `final` batch both), by the `capture-reply.sh` hook or `crew-task.py report save` (stdin); a report that fails `report-check` is saved with a `WARN` line in PROGRESS.md
 - `task_live.py`: the TUI's tokens of agents still running: transcripts modified in the last 15 minutes whose first user line names the task, read on from a per-file cache
 - `task_record_pr.py`: `crew-task.py record-pr`, the PR hook: the task of a `gh pr create` PR (from `gh pr view`), marked done, given the PR, or created minimal and DONE
-- `task_ship.py`: `crew-task.py ship <TASK_DIR> [--phase]|--no-task --base B --repo R`, run in the task's recorded worktree (or the current checkout) after the owner's go. Exit 2 before anything runs when the task is not IMPLEMENTING, the worktree is missing, on another branch or of another repository, `mark-done` would refuse it (with `--phase`, only a review that does not cover HEAD counts), or the approved base and target differ from its own resolution. Then: stage (never an ignored file; an untracked or staged file named like a secret or over 1 MB stops it), commit (after scanning the added lines with the credential hook's pattern, `.claude/hooks/lib/token-patterns.ere`), merge the freshly fetched base, re-run the spec's `## Tests` commands (10 min each, 20 in all, every `CLAUDE*` variable unset, the process group killed on exit; files they leave stop it), push (never forced), open or reuse this head's open draft PR (`task_prs.branch_urls`), then `mark-done`, or with `--phase` (one PR of a program) `append_pr` with the task left IMPLEMENTING; each finished step appends `SHIP: <branch> <step> <value>` to PROGRESS.md and a re-run on that branch resumes at the first missing step or the first whose re-check fails (the PR's must still be OPEN), so a later phase on a new branch starts fresh
+- `task_ship.py`: `crew-tool.py task-ship TITLE BODY_FILE BASE REPO [--task-dir T [--phase]]`, run in the task's recorded worktree (or the current checkout) after the owner's go. Exit 2 before anything runs when the task is not IMPLEMENTING, the worktree is missing, on another branch or of another repository, `mark-done` would refuse it (with `--phase`, only a review that does not cover HEAD counts), or the approved base and target differ from its own resolution. Then: stage (never an ignored file; an untracked or staged file named like a secret or over 1 MB stops it), commit (after scanning the added lines with the credential hook's pattern, `.claude/hooks/lib/token-patterns.ere`), merge the freshly fetched base, re-run the spec's `## Tests` commands (10 min each, 20 in all, every `CLAUDE*` variable unset, the process group killed on exit; files they leave stop it), push (never forced), open or reuse this head's open draft PR (`task_prs.branch_urls`), then `mark-done`, or with `--phase` (one PR of a program) `append_pr` with the task left IMPLEMENTING; each finished step appends `SHIP: <branch> <step> <value>` to PROGRESS.md and a re-run on that branch resumes at the first missing step or the first whose re-check fails (the PR's must still be OPEN), so a later phase on a new branch starts fresh
 - `task_ship_checks.py`: what `ship` refuses to commit: untracked or staged files named like a secret or over 1 MB, and added lines matching the credential hook's pattern
 - `task_resolve.py`: task resolution: repo and branch to `.task-id`
 - `task_report.py`: rendering task state for `crew-ls.py`, the ISSUE, PR, PROGRESS, ACTIVITY and TOKENS cells, the 120-column fit, and `reconcile`
@@ -134,8 +129,9 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_prs.py`: the branch PRs reconcile asks GitHub for: due tasks, a fork's parent, the 24-hour cache, the thread pool and its budget
 - `ls_report.py`: `crew-ls.py --report`: opened and closed, verdicts, findings and fixed rate, the window's tokens, stage costs and durations, tool failures
 - `task_gc.py`: `~/.agent/config.json` (`gc`, `doctor`, `ls`, and `mcp`: `{"docs": [...], "code_search": [...]}`, the MCP server names `crew-doctor.py` looks for, empty by default so el-capitan names no vendor server; defaults, validation, exit 2 on a bad value), the retention policy (with the hook logs under `~/.agent/state`, pruned line by line; `--only telemetry` selects those and the legacy telemetry), `crew-task.py gc`, the state sizes `crew-doctor.py` checks
-- `task_lock.py`: the worker lock (written, read across the worktrees, removed) and the `crew-task.py lock|blocked` commands
-- `task_artifacts.py`: bounded task artifacts: read one, render the resolved task
+- `task_lock.py`: the worker lock (written, read across the worktrees, removed), the worker-tree rule every lock write, implement move and ship runs, and BLOCKED lines
+- `api.py`: the task verbs as typed functions (`crew-tool.py task-*`, `repo-facts`, `guidance`), each a dataclass or a `ToolError`
+- `task_artifacts.py`: bounded task artifacts: each one's text, cut at its edge
 - `task_repo_facts.py`: the repository record a prompt reads: root, branch, head, remotes, files
 - `task_worktrees.py`: worktree reads: listing, `worktree check`, `worktree pref|record`
 - `task_worktree_cli.py`: worktree writes and the `crew-worktree.py` subcommands: create, sync, prune, remove
@@ -143,10 +139,10 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_verify_env.py`: Node pin, pass cache, result file, partial verdict
 - `task_verify_report.py`: `crew-verify.py report-check` of a builder's REPORT.md
 - `task_verify_sources.py`: where gates come from: CI workflows, the gates block, prose checks
-- `task_guidance.py`: repository guidance per path (`crew-agent-context.py`), and `crew-mem.py context` in process
+- `task_guidance.py`: repository guidance per path (`crew-tool.py guidance`), and memory recall in process
 - `task_guidance_kinds.py`: guidance ranked per agent kind (reviewer lens, builder, explorer, resolver), sections naming the agent's paths first, under one cap per kind, with a note naming each section the cap dropped; the one place those defaults live
-- `task_prepare.py`: `crew-task.py prepare-implement`, crew implement's setup before the builder in one call
-- `task_prepare_spec.py`: `crew-task.py prepare-spec`, crew spec's setup before the explorer in one call
+- `task_prepare.py`: `crew-tool.py task-prepare implement`, crew implement's setup before the builder in one call
+- `task_prepare_spec.py`: `crew-tool.py task-prepare spec`, crew spec's setup before the explorer in one call
 
 ### `review/`
 
@@ -253,7 +249,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 
 | Command | Output | Bound |
 |---|---|---|
-| `crew-agent-context.py` | JSON always | — |
+| `crew-tool.py` | the envelope as concise text, compact JSON with `--json`, one field bare with `--field` | `--limit`, `--max-chars` (per verb) |
 | `crew-lint.py` | findings, or JSON with `--json`; `--commands` a Markdown table; `--dead-code` a table of caller counts, or JSON with `--json` | — |
 | `crew-ls.py` | table, `--md`, or with `--json` one object whose `items` are the tasks; `--report` text or JSON | `--limit`, `--max-chars` |
 | `crew-doctor.py` | one screen of `ok`, `note`, `WARN` and `FAIL` lines; exit 1 on a `FAIL` only | — |
@@ -263,19 +259,17 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 | `crew-nightshift-e2e.py` | JSON always (needs a nightshift server) | `--limit`, `--max-chars` |
 | `crew-evals-inspect.py` | JSON always (needs Elasticsearch) | `--limit`, `--max-chars` |
 | `crew-evals-compare.py` | tables; JSON for `diagnose --json` | — |
-| `crew-task-context.py` | Markdown, or JSON with `--json` | `--max-chars` |
-| `crew-repo-info.py` | `key: value` lines, or JSON with `--json` | — |
 | `crew-worktree.py` | the path, or JSON with `--json` | `--max-chars` |
-| `crew-resolve-task-dir.py` | the path, or JSON with `--json` | — |
-| `crew-pr-actions.py` | a plan or record as JSON; `--field` prints bare lines | — |
-| `crew-assemble-packages.py`, `crew-metric.py`, `crew-progress.py`, `crew-task.py`, `crew-verify.py` | human text (`crew-verify.py` also writes a JSON result; `crew-task.py gc --json` lists the selected paths, each archived one with its tarball under `--apply`) | — |
+| `crew-pr-actions.py` | a plan or the threads as JSON | — |
+| `crew-tool.py` | the envelope: text, `--json`, or one field bare with `--field` | `--max-chars` (task-context) |
+| `crew-task.py`, `crew-verify.py` | human text (`crew-verify.py` also writes a JSON result; `crew-task.py gc --json` lists the selected paths, each archived one with its tarball under `--apply`) | — |
 
 - **Truncation is never silent.** `--max-chars` and `--limit` print one `[truncated: …]` marker naming
   what was dropped and which flag raises the bound; `--json` output becomes
   `{"items": [...], "total": N, "truncated": true, "hint": ...}` rather than an array that looks
   complete. The rule lives once, in `lib/output.py`; text keeps its head unless it is an append-only
   log or a report whose identity fields come last, which keeps its tail — the same rule
-  `crew-task-context.py` applies per artifact.
+  `task-context` applies per artifact.
 - `tools.json` also declares the external tool surface that lint resolves. `mcp_servers` maps an MCP
   server name to the tool names this repository uses on it; `native_tools` lists the harness tool ids
   an agent's `tools:` line may name. `crew-lint.py` reports `mcp-tool-unknown` for an
@@ -283,24 +277,30 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   native id outside `native_tools`; a project that adds either adds it here in the same change.
   `agents-inherit-tools` checks each agent's `tools:` line against its class in `lint_prompts.py`
   (`src/crew/AGENTS.md`, "Authoring agent and skill files").
-- `crew-diff.sh` is source-only; it exports review context and intentionally does not implement an
-  executable `--help`.
-- `task-env.sh` is source-only; it sets `TASK_DIR` and exports `CREW_TASK_DIR` plus a tri-state
-  `CREW_TASK_STATE` (`ok`, `none`, `error`). Skills source it instead of copying the resolver block.
-  Gates that require a task must abort on `error` rather than treating it as `none`.
-- `crew-task-context.py` is the task-artifact reader. It composes `crew-resolve-task-dir.py` with the task
-  artifacts listed in `ARTIFACTS` (`task_artifacts.py`), honoring `CREW_TASK_DIR` and `--task-dir`
-  before resolving so it
-  cannot disagree with the shell's cached `$TASK_DIR`. It returns exit 0 with `task.found: false`
-  when no task matches; resolver failures keep their nonzero exit, and resolver warnings reach
-  stderr. `--artifacts` selects a subset and `--max-chars` bounds each artifact, keeping the tail for
-  append-only logs and for reports whose identity fields are appended last. Agents and skills use it
-  for read-side task context; write-side state still goes through `task-env.sh` and `$TASK_DIR`.
-- `crew-ls.py` only reads; `crew-task.py` holds every task-state write. `crew-ls.py --status-file
+- **`crew-tool.py` is the one agent surface** (`tools/`): each verb is a typed core function (`core/task/api.py`,
+  `review_prepare`, `assemble_build`, `review_consolidate`, `review_report`, `review_pr_reads`, `memory_search`,
+  `memory_add`) returning a dataclass or raising `lib/errors.ToolError` with an enumerated `code`; the command line
+  is built from its signature, so an MCP server can register the same functions. Each answers `{v, ok, data |
+  error:{code, step, message, hint}, warnings}` (`v` versions the records too); an argparse error is one line,
+  exit 2. Reads: `task-context`, `task-list`, `repo-facts`, `pr-read`, `mem-recall`, `guidance`,
+  `review-prepare`. Moves: `task-transition MOVE TASK_DIR` (approve, implement, done, block; no owner-only
+  move), `task-log`, `task-prepare`, `task-lock`, `task-ship`, `review-dispatch`, `review-finish`,
+  `review-record-outcome`, `mem-write`. The worker-tree rule lives in `task_lock.worker_tree` (lock write and
+  remove, the implement move, ship); the credential scan in `task_ship`.
+- `task-context` resolves `--task-dir`, else `CREW_TASK_DIR`, else this repo and branch: `state: ok`, or
+  `state: none` with an empty `task_dir` (exit 0); git it cannot read is exit 2. `--artifacts` selects
+  artifacts (`task_artifacts.py`), each bounded by `--max-chars`, keeping the tail for append-only logs and
+  for reports whose identity fields are appended last. `TASK_DIR=$(crew-tool.py task-context --field
+  task_dir)` is the shell form.
+- `repo-facts` reads each field only when asked (`task_repo_facts.py`): one `git status --porcelain=v2
+  --branch` for the tree fields, one `git remote -v` for the remotes; `default_branch` is the local symref
+  unless `--network`. `diff_base`, `fork_point`, `diff_source`, `changed_files`, `diff_stat` and `diff`
+  are the review diff: the fork point against the working tree, so committed and pending work both count.
+- `crew-ls.py` only reads; every task-state write is a `task_gates.py` function, reached by an agent through
+  `crew-tool.py` and by the owner (and the TUI) through `crew-task.py`. `crew-ls.py --status-file
   SPEC.md` is the single reader for the `## Status` contract, implemented in `task_status.py`; hooks
   and other tools import it and must not re-implement it. The listing and the reconcile report live
-  in `task_report.py`, and every transition gate (`crew-task.py mark-approved`, `mark-implementing`,
-  `mark-done`) lives in `task_gates.py`, so a refused transition's message
+  in `task_report.py`, and every transition gate (approve, implement, done) lives in `task_gates.py`, so a refused transition's message
   is defined beside the check that produced it. Each gate first refuses a TAMPERED task: its Status is
   not the target of the newest status TRANSITION in PROGRESS.md (`task_state.tampered`; DRAFTING when
   there is none); `crew-task.py restore-status <TASK_DIR> [--accept <note>]` clears it.
@@ -391,7 +391,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   before anything packages it: exactly one fenced `json` block, valid JSON, a `layers` array. A stray
   comma inside the fence is otherwise reported by the coverage gate only after every persona has run,
   or hidden entirely when the block is hand-repaired before writing.
-- `crew-review-findings.py outcome` appends one JSONL record per decision `crew review address`
+- `crew-tool.py review-record-outcome` appends one JSONL record per decision `crew review address`
   makes; `outcomes --review-dir <dir> --acted <id> …` reads them back and exits 1 naming any acted
   finding with no record, which is what fails a summary that skipped one. `outcome --confidence N
   --confidence-from M --validation "<the read>"` records the score a decision was made under when it
@@ -406,7 +406,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `crew-review-findings.py persist --files` records the reviewed paths and gates evidence against them;
   it deliberately does not compare that list with the diff. `persist` runs in three modes with no
   single base ref, so inferring one would be wrong more often than right. Tree identity is carried by
-  `--head` instead: `crew-task.py mark-done` refuses unless the reviewed commit is an ancestor of HEAD. In PR
+  `--head` instead: the done move (`task_gates.mark_done`) refuses unless the reviewed commit is an ancestor of HEAD. In PR
   mode `--head` is the GitHub head SHA, which the local checkout never fetches, so `persist` records
   it without a local existence check and requires it explicitly. A PR review is never a valid
   `mark-done` ancestor and `persist` rejects PR artifacts under a task directory.
@@ -446,34 +446,33 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   everything fetched, and `--cursor` merges later pages into the same set and recounts them. A failed
   fetch exits nonzero with gh's message and prints no JSON, so `threads: []` always means the PR has
   no review threads.
-- **The reads have a command; the writes stay literal.** `crew-pr-actions.py view`, `diff`, `repo`,
-  and `issue` answer the GitHub questions a prompt used to ask with `gh pr view`, `gh pr diff`,
-  `gh repo view`, and `gh issue view` plus a `--jq` per call. `--field a,b` prints one bare line per
-  name in the order asked and `--json` prints the record, so a field list is written once instead of
-  being re-derived and re-parsed at 20 call sites; `diff` passes the patch through unchanged. A field
-  gh did not return prints empty with exit 0, so a caller can test it, while a failed call exits
-  nonzero carrying gh's own stderr — the same rule `crew-repo-info.py` follows for git facts.
+- **The reads have a verb; the writes stay literal.** `crew-tool.py pr-read view|diff|repo|issue`
+  answers the GitHub questions a prompt used to ask with `gh pr view`, `gh pr diff`, `gh repo view`, and
+  `gh issue view` plus a `--jq` per call: `--fields a,b` returns those fields in the order asked (`--field
+  record` prints them as one JSON object for `jq`), and `diff` passes the patch through unchanged. A field
+  gh did not return is null, so a caller can test it, while a failed call is the `gh` error carrying gh's
+  own stderr — the same rule `repo-facts` follows for git facts.
   Mutations stay literal `gh` in the prompts: `gh pr create`, `gh pr comment`, `gh pr checkout`,
   `gh issue create`, `gh search`. A wrapper would hide the exact argv from the deny rules and
   the shell guard, which decide on the command text the caller wrote, so wrapping one turns a denial
   into a silent allow.
-- **A stage's setup is one call.** `crew-review-findings.py prepare --mode M [--task-dir T] [--root R]
+- **A stage's setup is one call.** `crew-tool.py review-prepare MODE [--task-dir T] [--root R]
   [--base REF] [--pr N --repo O/R] [--paths …] [--query Q] [--contract] [--compat]` writes the review
   directory, `diff.patch` (self: the fork point, or `merge-base(REF, HEAD)` with `--base` for a stacked
-  branch, against the working tree; with no remote the base is `HEAD~1`, as for `crew-diff.sh`.
+  branch, against the working tree; with no remote the base is `HEAD~1`, as for `repo-facts`.
   Untracked files are included through `git diff --no-index`, so the index is never touched, except
   secret-shaped names (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `*.p12`, `credentials*`) and files over
   256 KiB, which the summary lists with the `git add -N` hint; changes: the staged diff; PR: `gh pr
   diff`, the head re-read after it, exit 2 when it moved), `paths.txt`, the hunk files, `manifest.json`
   and the prior round (self, changes), `head/` (PR), `agent-context.json`, `mem.md`, and
-  `assemble.json` with `selected`, the size gate and `TODO(prepare)` questions; spec and idea runs
-  stamp the questions rule in `manifest.json` instead. `crew-assemble-packages.py` (in `questions`,
-  `size_gate`, `mode`) and `check-packages` (anywhere in a package) refuse only what `prepare` wrote:
-  a line starting with `TODO(prepare) question ` or `Size gate: spine strategy — TODO(prepare):`, so a
-  real question may quote the token. PR mode ignores `--task-dir`, and reads guidance only from a
+  `assemble.json` (`schema_version` 1) with `selected`, the size gate and `pending`: the keys the
+  orchestrator writes (`questions`, and `size_gate` for a spine-sized diff); spec and idea runs stamp the
+  questions rule in `manifest.json` instead. `review-dispatch` refuses while a `pending` key is
+  unwritten (a persona with no question, an empty size gate), or, in an `assemble.json` prepared before
+  `pending`, a `TODO(prepare)` entry is left. PR mode ignores `--task-dir`, and reads guidance only from a
   checkout whose repository name equals the PR's: the owner is not compared, deliberately, so a fork's
-  checkout counts. `crew-task.py prepare-implement TASK_DIR [--where worktree|here] [--branch B]` and
-  `prepare-spec --slug S [--bug] [--paths …]` do the same for crew implement (the batch plan first,
+  checkout counts. `crew-tool.py task-prepare implement --task-dir T [--where worktree|here] [--branch B]` and
+  `task-prepare spec --slug S [--bug] [--paths …]` do the same for crew implement (the batch plan first,
   then where the worker runs, the branch or worktree, `mark-implementing`, the stage metrics,
   `BASELINE.diff`, memory, `dispatch/builder*.md`, batched over 8 open tasks, never inside an atomic
   group; no lock, which the orchestrator writes at dispatch, after the bootstrap) and crew spec (the
@@ -503,7 +502,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   depend on another checkout. Its ids, statuses, and lines match nightshift-pr-helper's
   `parseDiff`; that parity is what lets a crew review and a nightshift review of one PR cite the
   same `h1`.
-- `crew-assemble-packages.py <review-dir>` composes one `<persona>.in.md` package per
+- `crew-tool.py review-dispatch <review-dir>` composes one `<persona>.in.md` package per
   reviewer from files the run already wrote, in one order: the shared head (contract, lookups, mode, hunk
   reference, memory), then `package.diff` in full, then the per-persona tail (size gate, spec, reading
   map, guidance narrowed for that lens, prior-round block, consumer and prompt extras). The head and
@@ -515,7 +514,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   the git index, not the working tree, and `mode_kind: "pr"` refuses both because a PR review may not
   read the local checkout at all. The persona list is derived from `crew-review-findings.py`, and a persona
   with no `PRIMARY_KINDS` entry stops the run instead of shipping without a package.
-- **Assembly decisions.** `crew-assemble-packages.py` skips a persona that cannot apply (today Prompt
+- **Assembly decisions.** `review-dispatch` skips a persona that cannot apply (today Prompt
   Quality, when no changed path is a prompt, agent, skill, rule or a prompt embedded in code such as
   `**/prompts/*.md`, and no `prompt_files` were named) and records the skip, with its reason, in
   `manifest.json` under `personas` (merged, so `prior-review` keeps writing the keys it reads); it also
@@ -556,8 +555,8 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   "NOT VERIFIED" (exit 3, or 2 with `--strict`). It writes `gates.json` (`schema_version: 1`). `crew-task.py worktree pref|record` resolves where the
   worker runs (here by default) and records the one-time answer. `crew ls --watch [--interval N]`
   redraws the table (data from `ls_data.py`). The `AGENTS.md` settings (`gates`, `landing_bases`,
-  `worktree`, `verify`, `e2e`) are documented in `src/crew/AGENTS.md`. `crew-task.py lock write|remove` owns
-  `.crew-worker.lock` and `crew-task.py blocked` writes the `BLOCKED:` line `crew ls` shows. `crew-metric.py` accepts
+  `worktree`, `verify`, `e2e`) are documented in `src/crew/AGENTS.md`. `crew-tool.py task-lock write|remove` owns
+  `.crew-worker.lock` and `task-transition block` writes the `BLOCKED:` line `crew ls` shows. `crew-tool.py task-log --metric` accepts
   `stage_start stage=<implement|review>` and `stage_end stage=... tokens_reported=<n|unknown>` (tokens
   only as the harness reported them), prints the cost line, and `crew ls --cost` totals them ("One token
   measure" below); `crew ls
@@ -574,27 +573,15 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   package beside it holds the HTTP client (`client.py`), the checkout and machine probes
   (`location.py`), the preflight table (`checks.py`), its assembly (`doctor.py`), and the run
   operations (`commands.py`).
-- `crew-default-branch.sh [--strict] [remote]` prints a remote's default branch. It is the single
-  definition used by skills and `crew-worktree.py`: the ref walk now lives in `lib/git.py`
-  (`default_branch`), and this script is a thin wrapper over `crew-repo-info.py --network`.
-- `crew-repo-info.py` is the one command that answers the facts a prompt used to ask git for:
-  `root`, `branch`, `head`, `head_short`, `dirty`, `changed`, `staged`, `staged_dirty`, `remote`,
-  `remote_url`, `repo` (owner/repo), `repo_name`, `origin_repo`, and `default_branch`. `changed` is
-  the working-tree name list and `staged` the index list; `staged_dirty` is the subset of `staged` still
-  edited afterwards, which is what `crew commit`'s fast path checks: an edited-but-restaged file
-  keeps the same staged names, so the list alone cannot prove a review still applies. `--field NAME`
-  prints one value bare, so a prompt assigns it instead of parsing; `--json` prints the whole record;
-  `--root PATH` reads another checkout, which is how a worktree's branch is read without `cd`.
-  `--remote` defaults to `upstream` when it exists and `origin` otherwise, so a fork reports the repo
-  its PR targets. `--network` resolves the default branch through `gh` first and `git` second;
-  without it the answer comes from the local symref, so a prompt pays no round trip for a branch it
-  does not need — which is why the hook scripts may call it on every write. `--diff-base` and
-  `--fork-point` answer the diff question `crew-diff.sh` used to walk itself. Exit 1 when the fact
-  asked for is unavailable, because a printed null with exit 0 is the silent-empty answer this
-  command exists to remove.
+- `repo-facts` answers the facts a prompt used to ask git for: `root`, `branch`, `head`, `head_short`,
+  `upstream`, `staged`, `changed` (edited in the tree), `staged_dirty` (staged, then edited again: what
+  `crew commit`'s fast path checks, since a restaged file keeps its staged name), `untracked`, `dirty`,
+  `remote`, `remote_url`, `repo` (owner/repo), `repo_name`, `origin_repo`, `default_branch`, and the diff
+  fields. `--field NAME` prints one value bare (a list one item per line) and exits 1 when that fact is
+  unavailable; `--root PATH` reads another checkout; `--remote` defaults to `upstream`, else `origin`.
 - **Git is reached through `lib/git.py`, never through a hand-rolled call.** No Python module outside
   that file builds a `git` or `gh` argv, and no prompt runs git to learn the root, branch, remote, or
-  diff base — it asks `crew-repo-info.py` or sources `crew-diff.sh`. A module imports the helper for
+  diff base — it asks `crew-tool.py repo-facts`. A module imports the helper for
   its question; a local read (root, branch, HEAD, ancestry, status, index, blob) lives in `git.py`
   and uses git alone, while the remote questions (default branch, remote tip, fetch, compare), in the
   same module, try `gh` first because it carries the authentication, and fall back to git, raising
@@ -615,7 +602,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `crew-worktree.py` auto-prunes only worktrees whose remote branch is gone and that are clean. It
   deletes the local branch with `git branch -d` and keeps unmerged ones; merged branches with a live
   remote are left for `--remove`.
-- The `src/crew/evals` package targets Kibana by design (`@kbn/evals-suite-*` suites found by
+- The `src/crew/core/evals` package targets Kibana by design (`@kbn/evals-suite-*` suites found by
   their `kibana.jsonc`). The Elasticsearch tools are read-only. `crew-evals-inspect.py` and `crew-evals-compare.py` use `ES_URL`,
   plus `ES_API_KEY` or `ES_USER`/`ES_PASS`. `evals_query.py` owns that access for the compare tool
   (the HTTP call and the paged score/trace queries), `evals_rows.py` the row record built from one
@@ -631,11 +618,13 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - **PROGRESS.md** is a task's append-only event log. Its one gate input is the status integrity check:
   the newest `[gate]`-stamped transition, which only `crew-task.py` writes, must match SPEC.md's Status;
   otherwise SPEC.md plus git and gh decide. Skills may read it for resume context. Its format and
-  owner are `task_progress.py` (above); `crew-progress.py` writes a pipeline step only and refuses a
-  status target or the stamp (exit 2). The integrity check (TAMPERED) catches any other write to it.
+  owner are `task_progress.py` (above); `crew-tool.py task-log --step` writes a pipeline step only and
+  refuses a status target or the stamp (exit 2). The integrity check (TAMPERED) catches any other write to it.
 - **METRIC lines** are append-only audit records for offline analysis, never parsed for gates or
-  transitions. Write one with `~/.agent/bin/crew-metric.py "$TASK_DIR" <event> [key=value ...]`; the
-  events and fields are the ones `crew-metric.py` validates ("Gates and cost" above).
+  transitions. Write one with `crew-tool.py task-log "$TASK_DIR" --metric <event> [key=value ...]`; it is
+  stored as one JSON object (`schema_version`, `event`, the fields, counts as numbers) through
+  `task_progress.append_metric`, and read back only through `task_progress.metric`, which also reads the
+  `event key=value` lines tasks recorded before JSON.
 - **`agent_end`** is written by the `capture-reply.sh` hook (`task_usage.py`), never by hand: one per
   subagent whose prompt carries `crew-task: <TASK_DIR>`, with `harness=claude-code|cursor`. A Cursor
   entry has `tokens=unknown` (its `subagentStop` reports none) and counts toward no token total;
@@ -701,14 +690,11 @@ it scans when it cannot scan them.
 One guard per event, one function per rule, so a false positive or a crash is confined to the rule
 that caused it. `lib/hook.sh` is sourced, never registered; it holds the command
 normaliser every shell guard reads through and the off switches (`EL_CAPITAN_GUARDS=off`,
-`EL_CAPITAN_GUARD_<RULE>=off`, documented in `docs/hooks.md`). The normaliser prefers
-`shfmt` (optional) when it is on PATH: `shfmt --to-json` parses the command and `lib/segments.jq`
-turns the tree into the same segment records the awk fallback emits, so the guards never know which
-parser ran; awk reads the whole command when shfmt is absent or fails on any part of it, and when
-the command is over 16 KiB or nests deeply (shfmt's JSON grows with depth times size).
-`evals/tools/test_harness_parity.py` runs every case through each adapter and both parsers (`PARSERS_DIFFER` in
-`hook_cases.py` lists the rows where awk is wrong), and CI installs the pinned shfmt with
-`scripts/install-bin.sh`. `lib/anchor.sh`
+`EL_CAPITAN_GUARD_<RULE>=off`, documented in `docs/hooks.md`). The normaliser is `shfmt` (on PATH, else
+the venv's, pinned by the `shfmt-py` wheel): `shfmt --to-json` parses the command and `lib/segments.jq`
+turns the tree into segment records; a command shfmt cannot parse, or one that nests deeply (shfmt's JSON
+grows with depth times size), is too complex to judge. `evals/tools/test_harness_parity.py` runs every case
+through each adapter. `lib/anchor.sh`
 holds the anchor line `spec-status-reconcile.sh` computes and `mode-anchor.sh` reprints.
 
 The review-address gate is the user's answer in `crew-address-review` Step 3; no hook or permission

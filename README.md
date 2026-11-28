@@ -38,7 +38,7 @@ Every command is typed into the AI chat. `crew help` prints these tables.
 | `crew spec` issue/URL/description | Draft a SPEC.md, then stop at Gate 1 for approval. |
 | `crew implement` | Orchestrate implementation of an approved SPEC.md. |
 | `crew commit` | Generate a semantic commit message and commit. |
-| `crew open pr` | Write the PR description, then after approval ship the task (commit, push, draft PR, DONE) with crew-task.py ship. |
+| `crew open pr` | Write the PR description, then after approval ship the task (commit, push, draft PR, DONE) with crew-tool.py task-ship. |
 | `crew review address` | Work through findings from the most recent crew review inline. |
 | `crew review` [PR #X \| spec \| idea \| changes \| (self)] | Multi-lens review of code, a PR, a spec or an idea. |
 | `crew pr` view\|diff\|repo\|issue | Read a PR, its diff, the repository or an issue through one read-only tool; writes stay `gh`. |
@@ -71,7 +71,7 @@ Not a pipeline stage; run it when you need it.
 <!-- /generated:standalone -->
 
 <!-- generated:counts (crew-lint.py --write-readme) -->
-4 crew agents (orchestrators and workers), 11 personas, 13 skills, 20 `crew` commands and 25 installed commands.
+4 crew agents (orchestrators and workers), 11 personas, 13 skills, 20 `crew` commands and 16 installed commands.
 <!-- /generated:counts -->
 
 ### Dashboard (optional)
@@ -166,7 +166,7 @@ and the settings backups stay; delete them yourself if you want them gone.
 | [`uv`](https://docs.astral.sh/uv/) | Any recent version: it provides CPython 3.12+ and the pinned dependencies |
 | Git, [`gh`](https://cli.github.com) (signed in), `jq` | Any recent version |
 | [`gitleaks`](https://github.com/gitleaks/gitleaks) | Installed by `install.sh` (a pinned, checksum-verified release) unless on PATH: the secret scan |
-| [`shfmt`](https://github.com/mvdan/sh) | Optional: a real bash parser for the guards |
+| [`shfmt`](https://github.com/mvdan/sh) | Installed into `~/.agent/venv` (the pinned `shfmt-py` wheel): the guards' bash parser |
 | [`uv`](https://docs.astral.sh/uv/) | Optional: runs the pinned test and lint tools when you work on el-capitan itself |
 
 ## Moving to a new machine

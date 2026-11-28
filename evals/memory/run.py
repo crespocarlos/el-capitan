@@ -19,7 +19,7 @@ def command(memory_dir, *arguments, journal_dir=None, input=None):
     }
     if journal_dir:
         env['CREW_JOURNAL_DIR'] = str(journal_dir)
-    result = subprocess.run([sys.executable, '-m', 'crew.memory.crew_mem', *arguments], text=True,
+    result = subprocess.run([sys.executable, '-m', 'crew.tools.crew_mem', *arguments], text=True,
         capture_output=True, env=env, input=input)
     return result
 
@@ -33,7 +33,7 @@ def store_error_checks(temporary):
     """A missing store is reported as one line with exit 2, and the store error never shadows the builtin MemoryError."""
     import builtins
 
-    from crew.memory import memory_paths
+    from crew.core.memory import memory_paths
     missing = command(temporary / 'no-store', 'search', 'anything')
     return (hasattr(memory_paths, 'MemoryStoreError')
             and getattr(memory_paths, 'MemoryError', builtins.MemoryError) is builtins.MemoryError
@@ -93,9 +93,9 @@ approval gate.
             store, 'journal', 'add', '--title', 'Owner repo scope', '--tags', 'x',
             '--repo', 'acme/acme-gamma', journal_dir=journal, input='Owner scoped.\n',
         )
-        manual_observation = command(
-            store, 'add', '--type', 'observation', '--scope', 'global',
-            '--title', 'immutable observation', input='Manual raw evidence.\n',
+        manual_observation = subprocess.run(
+            [sys.executable, '-m', 'crew.tools.crew_tool', 'mem-write', 'observation', 'global', 'immutable observation', 'Manual raw evidence.\n', '--field', 'id'],
+            text=True, capture_output=True, env={**os.environ, 'CREW_MEMORY_DIR': str(store)},
         )
         supersede_observation = command(store, 'supersede', manual_observation.stdout.strip(), manual_observation.stdout.strip())
         traversal_add = command(

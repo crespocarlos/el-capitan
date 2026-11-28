@@ -33,7 +33,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 INSTALL = PROJECT / "install.sh"
 MERGE = PROJECT / ".claude" / "merge_claude_settings.py"
 BLOCKS = PROJECT / ".claude" / "install_blocks.py"
-DOCTOR = PROJECT / "src" / "crew" / "maintenance" / "crew_doctor.py"
+DOCTOR = PROJECT / "src" / "crew" / "scripts" / "crew_doctor.py"
 MEMORY = "<!-- el-capitan:memory -->\nMEMORY\n<!-- /el-capitan:memory -->"
 IMPORTS = "<!-- el-capitan:imports -->\n@~/.claude/el-capitan/x.md\n<!-- /el-capitan:imports -->"
 SEEDED = "# a\n\n<!-- el-capitan:memory -->\nstale\n<!-- /el-capitan:memory -->\n\n# b\n"
@@ -135,14 +135,14 @@ def test_permission_rules() -> None:
     check("no allow rule shadows an ask rule", not shadowed, shadowed)
     check("an ask rule on a task directory targets a file, not its whole tree",
           all(not r.endswith("/**") for r in ask_rules if ".agent/tasks" in r), ask_rules)
-    task = "~/.agent/bin/crew-task.py"
-    gates = (f"{task} mark-approved /tmp/t", f"{task} mark-done /tmp/t", f"{task} mark-done /tmp/t --force",
-             f"{task} restore-status /tmp/t", f"{task} restore-status /tmp/t --accept note")
+    task, tool = "~/.agent/bin/crew-task.py", "~/.agent/bin/crew-tool.py"
+    gates = (f"{tool} task-transition approve /tmp/t", f"{tool} task-transition done /tmp/t", f"{task} mark-done /tmp/t --force",
+             f"{task} restore-status /tmp/t", f"{task} restore-status /tmp/t --accept note", f"{task} normalize-status")
     covered = [c for c in allow for command in gates if command == c or command.startswith(c + " ")]
-    check("no allow rule covers Gate 1, Gate 2 or restore-status, so each prompts", not covered, covered)
-    routine = ("mark-implementing", "reconcile", "normalize-status", "lock", "blocked", "worktree")
-    check("crew-task.py's routine subcommands and crew-review-findings.py are allowed one by one, not bin/*",
-          all(f"{task} {name}" in allow for name in routine) and "~/.agent/bin/crew-review-findings.py" in allow
+    check("no allow rule covers Gate 1, Gate 2 or an owner move, so each prompts", not covered, covered)
+    routine = (f"{tool} task-transition implement", f"{tool} task-transition block", f"{tool} task-lock", f"{task} reconcile", f"{task} worktree")
+    check("the routine moves and crew-review-findings.py are allowed one by one, not bin/*",
+          all(name in allow for name in routine) and "~/.agent/bin/crew-review-findings.py" in allow
           and "~/.agent/bin/*" not in allow, [c for c in allow if "agent/bin" in c])
     check("hook fixtures are allowed without elevation", any("fixtures" in c for c in allow), allow)
     broad = {"Bash(~/.agent/bin/*)", "Bash(python3 *)", "Bash(node *)", "Bash(npx *)", "Bash(chmod *)"}
@@ -508,7 +508,7 @@ def test_doctor_mcp(tmp: Path, case: str, files: dict[str, str], wanted: dict | 
     in the approved repo file, minus disabled servers, in each existing config dir; a gap is a WARN naming the server
     and the place, never a FAIL and never a setup instruction."""
     cli_load(DOCTOR)
-    from crew.maintenance.doctor_mcp import check_mcp
+    from crew.scripts.maintenance.doctor_mcp import check_mcp
     (tmp / "home" / ".claude").mkdir(parents=True)
     files = {"home/.agent/tasks/t1/.task-id": json.dumps({"repo_remote_url": CREW}), **files}
     for name, text in files.items():
@@ -587,7 +587,7 @@ def test_render_rules(tmp: Path) -> None:
     """Server names keep only the characters a tool id keeps, matched whole; only the frontmatter `tools:` line is
     templated, so the placeholder in prose is text."""
     cli_load(DOCTOR)
-    from crew.task.task_gc import ConfigError, load_config
+    from crew.core.task.task_gc import ConfigError, load_config
     for bad in ("elastic.docs", "docs\n", "docs a"):
         install_with_config(tmp, {"docs": [bad]})
         check(f"{bad!r} is rejected by install and by the config", adapters.mcp_server_names(tmp)[0] == []
@@ -605,7 +605,7 @@ def test_render_rules(tmp: Path) -> None:
 def test_mcp_config_section(tmp: Path) -> None:
     """The shared defaults name no server; a list of names is accepted and anything else is a config error."""
     cli_load(DOCTOR)
-    from crew.task.task_gc import ConfigError, load_config
+    from crew.core.task.task_gc import ConfigError, load_config
     check("the defaults are empty", load_config(tmp)["mcp"] == {"docs": [], "code_search": []})
     (tmp / "config.json").write_text(json.dumps({"mcp": {"docs": ["docs-a"]}}), encoding="utf-8")
     check("a list of names is merged over the defaults",
@@ -646,3 +646,16 @@ def test_doctor_auto_memory(installed: Path, tmp: Path, case: str, damage: Calla
           any(found[:2] == [level, "memory"] and all(word in found[2] for word in words) for found in lines)
           and not any(found[0] == "FAIL" and found[1] not in ("tools", "gh") for found in lines)
           and done.returncode == (1 if machine else 0), done.stdout)
+
+
+def test_installed_hook_python_runs_under_the_system_python_without_crew(installed: Path, tmp: Path) -> None:
+    """The hooks run their Python as `python3 -I` from `~/.agent/hooks`, outside the venv: no file there imports a
+    `crew.*` module (a moved package would break every guard), and spec_guard answers a payload from the copy."""
+    hooks = installed / ".agent" / "hooks"
+    scripts = sorted(hooks.rglob("*.py"))
+    crew = [str(p) for p in scripts if re.search(r"^\s*(from|import) crew\b", p.read_text(encoding="utf-8"), re.M)]
+    check("no installed hook Python imports crew", bool(scripts) and not crew, crew)
+    python = "/usr/bin/python3" if Path("/usr/bin/python3").is_file() else "python3"
+    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(tmp / "x.md"), "content": "x"}})
+    done = subprocess.run([python, "-I", str(hooks / "lib" / "spec_guard.py"), str(tmp / "tasks")], input=payload, capture_output=True, text=True)
+    check("spec_guard runs from the installed copy", done.returncode == 0 and done.stdout.strip() and "Traceback" not in done.stderr, done)

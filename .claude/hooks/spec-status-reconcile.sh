@@ -48,7 +48,7 @@ if [ -n "$closable" ]; then
   printf 'spec-status: %s ready to mark done: %s\n' "$(tr ',' '\n' <<<"$closable" | wc -l | tr -d ' ')" "$closable"
   url=$(awk -F'\t' '{sub(/^pr=/,"",$2); print $2}' <<<"$first")
   dir=$(awk -F'\t' '{sub(/^dir=/,"",$3); print $3}' <<<"$first")
-  printf 'spec-status: close one with: ~/.agent/bin/crew-task.py mark-done %s --pr-url %s\n' "$dir" "$url"
+  printf 'spec-status: close one with: ~/.agent/bin/crew-tool.py task-transition done %s --pr-url %s\n' "$dir" "$url"
 fi
 [ -n "$blocked_pr" ] && printf 'spec-status: %s PR open, not closable: %s\n' "$(tr ',' '\n' <<<"$blocked_pr" | wc -l | tr -d ' ')" "$blocked_pr"
 [ -n "$ready" ] && printf 'spec-status: %s ready to open PR: %s\n' "$(tr ',' '\n' <<<"$ready" | wc -l | tr -d ' ')" "$ready"

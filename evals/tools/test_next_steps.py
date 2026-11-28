@@ -17,9 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 from crew.lib.next_steps import known_stages, load_table, resolve, sentence  # noqa: E402
-from crew.maintenance.lint_references import routing_commands  # noqa: E402
+from crew.scripts.maintenance.lint_references import routing_commands  # noqa: E402
 
-TABLE = ROOT / "src" / "crew" / "task" / "next-steps.json"
+TABLE = ROOT / "src" / "crew" / "core" / "task" / "next-steps.json"
 ROUTER = ROOT / "rules" / "crew-router.mdc"
 
 

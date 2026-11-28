@@ -24,18 +24,20 @@ from cli_runner import run as cli
 from harness_hook import command
 from harness_hook import run as hook
 
+from crew.core.task.task_progress import metric, read_entries
+
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
-FINDINGS = TOOLS / "review" / "crew_review_findings.py"
-TASK = TOOLS / "task" / "crew_task.py"
-LS = TOOLS / "task" / "crew_ls.py"
+FINDINGS = TOOLS / "tools" / "crew_review_findings.py"
+TASK = TOOLS / "scripts" / "crew_task.py"
+LS = TOOLS / "scripts" / "crew_ls.py"
 PERSONA_REPLY = "### Findings: none\n\nAssessment: approve — nothing in this lane.\n"
 CRITIC_REPLY = "Verdict: pass\n\n1. [Consider] The verify line could name the test file.\n"
 EXPLORER_REPLY = "## Files involved\n- a.py\n\n## Tests\n- test_a.py\n"
 POINTER = "The findings are listed above.\n"
 REPORT = ("## Implementation Report\n\n**Tasks:** 1/1 passed\n**Harness:** cursor\n\n### Quality gates\ntest exit=0\n"
           "- `test` — pass\n\n### Unverified claims\nnone\n\n### Report data\n```json\n"
-          '{"schema_version": 1, "tasks": {"passed": 1, "total": 1}, "gates": [{"name": "test", "exit": 0}]}\n```\n')
+          '{"schema_version": 1, "tasks": {"passed": 1, "total": 1}, "gates": [{"name": "test", "exit": 0}], "unverified_claims": []}\n```\n')
 
 
 def world(tmp: Path) -> tuple[Path, Path]:
@@ -50,6 +52,10 @@ def world(tmp: Path) -> tuple[Path, Path]:
     (task / "gates.json").write_text(json.dumps({"schema_version": 1, "gates": [{"name": "test", "exit": 0}]}),
                                      encoding="utf-8")
     return home, task
+
+
+def metrics(task: Path, event: str) -> list[dict]:
+    return [given for found, given in map(metric, read_entries(task)) if found == event]
 
 
 def marker(directory: Path, name: str, home: Path) -> str:
@@ -150,12 +156,12 @@ def test_each_agent_kind_lands_where_its_orchestrator_reads_it(tmp: Path, harnes
         (harness, "s1", model, line.split()[-1]), record
     assert (directory / f"{name}.expect").exists() and not (directory / f"{name}.unanswered").exists()
     assert "capture-reply: saved" in state(home, "capture-reply.log")
-    ends = [entry for entry in progress(task).splitlines() if "agent_end" in entry]
-    expected = (r"tokens=unknown duration_ms=61000 tool_calls=7 messages=9 started=\S+Z harness=cursor"
-                if harness == "cursor" else "tokens=150 input=100 output=50 cache_read=0 cache_write=0 "
-                "started=2026-11-28T10:00:00Z first_input=100 first_cache_read=0 first_cache_write=0 "
-                "harness=claude-code")
-    assert len(ends) == 1 and re.search(f"agent={kind} persona={name} agent_id=s1 {expected}$", ends[0]), ends
+    ends = metrics(task, "agent_end")
+    expected = ({"tokens": "unknown", "duration_ms": "61000", "tool_calls": "7", "messages": "9", "harness": "cursor"}
+                if harness == "cursor" else {"tokens": "150", "input": "100", "output": "50", "cache_read": "0", "cache_write": "0",
+                "started": "2026-11-28T10:00:00Z", "first_input": "100", "first_cache_read": "0", "first_cache_write": "0",
+                "harness": "claude-code"})
+    assert len(ends) == 1 and {"agent": kind, "persona": name, "agent_id": "s1", **expected}.items() <= ends[0].items(), ends
 
 
 def test_a_cursor_builder_report_is_saved_from_its_transcript(tmp: Path) -> None:
@@ -490,8 +496,9 @@ def test_two_consecutive_cursor_stops_are_recorded_raw_and_read_once(tmp: Path, 
         done = usage_stop(home, stop_payload(repo, f"g{index}", counts))
         assert (done.returncode, done.stdout) == (0, "{}\n"), done
     usage_stop(home, stop_payload(repo, "g1", series[1]))
-    lines = [line for line in progress(task).splitlines() if "cursor_stop" in line]
-    assert len(lines) == 3 and "conversation_id=c1 generation_id=g0 model=model-x loop_count=1" in lines[0], lines
+    lines = metrics(task, "cursor_stop")
+    first = {"conversation_id": "c1", "generation_id": "g0", "model": "model-x", "loop_count": "1"}
+    assert len(lines) == 3 and first.items() <= lines[0].items(), lines
     cost = cli(LS, "--tasks-dir", str(task.parent), "--cost", env={"HOME": str(home)}).stdout
     shown = f"cursor sessions: new ~{round(new / 1000)}k, cache reads ~{round(cache_read / 1000)}k (2 stops)"
     assert shown in cost, cost
@@ -513,8 +520,8 @@ def test_a_conversation_stays_on_its_first_task_across_a_branch_switch(tmp: Path
     git("checkout", "-q", "-b", "feat/y", cwd=repo)
     usage_stop(home, stop_payload(repo, "g1", (1500, 200, 0, 0)))
     usage_stop(home, stop_payload(repo, "g2", (10, 1, 0, 0), "c2"))
-    assert len([line for line in progress(task).splitlines() if "cursor_stop" in line]) == 2
-    assert [line for line in progress(other).splitlines() if "cursor_stop" in line][0].count("conversation_id=c2")
+    assert len(metrics(task, "cursor_stop")) == 2
+    assert metrics(other, "cursor_stop")[0]["conversation_id"] == "c2"
     assert f"c1 {task}" in state(home, "cursor-conversations.txt")
 
 

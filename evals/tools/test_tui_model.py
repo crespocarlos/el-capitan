@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING
 import pytest
 from task_fixture import record_status
 
+from crew.core.task.task_gc import old_lines
+from crew.core.task.task_progress import append_metric
 from crew.lib.runs import append_run, open_run, read_runs
-from crew.task import crew_task
-from crew.task.task_gc import old_lines
-from crew.task.task_progress import append_metric
+from crew.scripts import crew_task
 from crew.tui import tui_model, tui_views
 from crew.tui.tui_github import Facts, fetch, landed, pr_cell, query
 from crew.tui.tui_model import Caches, Filters, collect, live_tick, parse_filter
@@ -326,7 +326,7 @@ def test_the_fast_tick_reads_appended_lines_and_the_orchestrator_session(home: P
     tasks = home / ".agent" / "tasks"
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "s9")
     append_metric(home / "bare", "stage_start stage=review")
-    assert (home / "bare" / "PROGRESS.md").read_text().endswith("METRIC: stage_start stage=review session=s9\n")
+    assert (home / "bare" / "PROGRESS.md").read_text().endswith('METRIC: {"schema_version":1,"event":"stage_start","stage":"review","session":"s9"}\n')
     for task, hours in (("T3", 3), ("T1", 1)):
         progress = tasks / task / "PROGRESS.md"
         progress.write_text(progress.read_text() + f"[{stamp(hours)}] METRIC: stage_start stage=review session=s9\n")
@@ -378,7 +378,7 @@ def test_live_reading_is_bounded_and_cached(home: Path) -> None:
     15 minutes is not, and a `subagents` dir unchanged past 6 hours is not listed at all. A config dir reached twice
     (a symlink) counts each transcript once. The cache carries a matching file's offset, so a refresh reads only the
     lines added since, and drops a file once it is quiet past 15 minutes."""
-    from crew.task.task_live import running_agents
+    from crew.core.task.task_live import running_agents
 
     tasks = home / ".agent" / "tasks"
     other = transcript(home, "x1", str(home / "elsewhere"), 30, minutes_ago=2)
@@ -412,7 +412,7 @@ def test_live_agent_end_in_the_same_second_as_the_last_message(home: Path, later
                                                                 running: bool) -> None:
     """`agent_end` is stamped to the second and the transcript to the millisecond: a last message in the very second
     the hook stamped is finished; one in the next second is a resumed agent, running."""
-    from crew.task.task_live import running_agents
+    from crew.core.task.task_live import running_agents
 
     tasks = home / ".agent" / "tasks"
     path = transcript(home, "s1", str(tasks / "T1"), 2, minutes_ago=0.5)
@@ -563,7 +563,7 @@ def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
     """At COLUMNS=120 every table line fits; when NOTE alone can absorb the excess, every TASK is printed in full and
     the cut NOTE ends with `…`; an ON-HOLD task's STATE is `ON-HOLD` and `was APPROVED` starts its NOTE; REPO drops
     the owner every row shares. `fitted` cuts TASK only once NOTE is down to its header's width."""
-    from crew.task.task_report import fitted
+    from crew.core.task.task_report import fitted
 
     tasks = home / ".agent" / "tasks"
     progress = tasks / "T2" / "PROGRESS.md"

@@ -16,11 +16,11 @@ import pytest
 from cli_runner import run as cli
 from task_fixture import record_status
 
-from crew.task import task_ship
-from crew.task.task_ship_checks import MAX_BYTES
+from crew.core.task import task_ship
+from crew.core.task.task_ship_checks import MAX_BYTES
 
 ROOT = Path(__file__).resolve().parents[2]
-TASK = ROOT / "src" / "crew" / "task" / "crew_task.py"
+TOOL = ROOT / "src" / "crew" / "tools" / "crew_tool.py"
 
 
 PR = "https://github.com/acme/widgets/pull/7"
@@ -84,9 +84,9 @@ def world(tmp: Path, *commands: str, boxes: str = "- [x] a") -> tuple[Path, Path
 
 def ship(tmp: Path, env: dict, *target: str, base: str = "main",
          cwd: Path | None = None) -> subprocess.CompletedProcess:
-    """Run ship with the approved base and target, TASK_DIR or `--no-task` in `target`."""
-    return cli(TASK, "ship", *target, "--title", "feat(x): ship it", "--body-file", str(tmp / "body.md"),
-               "--base", base, "--repo", "acme/widgets", env=env, cwd=cwd)
+    """Run task-ship with the approved base and target: TASK_DIR (and `--phase`), or nothing for the checkout's branch."""
+    named = [f"--task-dir={word}" if not word.startswith("--") else word for word in target]
+    return cli(TOOL, "task-ship", "feat(x): ship it", str(tmp / "body.md"), base, "acme/widgets", *named, env=env, cwd=cwd)
 
 
 def progress(task: Path) -> str:
@@ -202,7 +202,7 @@ def test_failing_tests_stop_and_a_rerun_resumes_reusing_the_open_pr(tmp: Path) -
 
 def test_no_task_ships_the_current_checkout(tmp: Path) -> None:
     _, tree, env = world(tmp, "true")
-    result = ship(tmp, env, "--no-task", cwd=tree)
+    result = ship(tmp, env, cwd=tree)
     assert result.returncode == 0 and "pr create" in calls(tmp) and PR in result.stdout, result
 
 

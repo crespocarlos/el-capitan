@@ -10,16 +10,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from crew.task.ls_data import stale
-from crew.task.ls_report import cursor_sessions, stage_pairs
-from crew.task.ls_report import render as render_report
-from crew.task.task_cost import session_text
-from crew.task.task_gc import stamp_of
-from crew.task.task_live import Live
-from crew.task.task_lock import LOCK_STALE_SECONDS, Lock
-from crew.task.task_progress import blocked_reason, count_text, sum_usage, task_usage_totals, usage_text
-from crew.task.task_report import CLOSED_OUTSIDE, held_from, number_cell, ordered_rows, task_cells
-from crew.task.task_state import DONE_ITEM, OPEN_ITEM, TaskState, closed_outside, head, name, spec_branch, tampered
+from crew.core.task.ls_data import stale
+from crew.core.task.ls_report import cursor_sessions, stage_pairs
+from crew.core.task.ls_report import render as render_report
+from crew.core.task.task_cost import session_text
+from crew.core.task.task_gc import stamp_of
+from crew.core.task.task_live import Live
+from crew.core.task.task_lock import LOCK_STALE_SECONDS, Lock
+from crew.core.task.task_progress import blocked_reason, count_text, sum_usage, task_usage_totals, usage_text
+from crew.core.task.task_report import CLOSED_OUTSIDE, held_from, number_cell, ordered_rows, task_cells
+from crew.core.task.task_state import DONE_ITEM, OPEN_ITEM, TaskState, closed_outside, head, name, spec_branch, tampered
 from crew.tui.tui_github import Facts, issue_cell, pr_cell
 from crew.tui.tui_moves import Move, moves, restore_moves
 

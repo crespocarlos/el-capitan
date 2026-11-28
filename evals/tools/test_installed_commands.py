@@ -25,7 +25,6 @@ from cli_runner import launcher
 pytestmark = pytest.mark.timeout(300)
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
-SOURCE_ONLY = {"task-env.sh", "crew-diff.sh"}
 GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
 
@@ -33,7 +32,7 @@ GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
 # `{tmp}` and `{root}` are filled in per run. A command that needs live infrastructure (a nightshift
 # server, Elasticsearch) gets a subcommand `--help` or the documented "unavailable" exit instead.
 READS = {
-    "crew-agent-context.py": (["{repo}/README.md"], {0}),
+    "crew-tool.py": (["repo-facts", "--json", "--root", "{repo}"], {0}),
     "crew-lint.py": (["--json", "--root", "{root}"], {0, 1}),
     "crew-ls.py": (["--json", "--tasks-dir", "{tasks}"], {0}),
     "crew-doctor.py": (["--offline"], {1}),  # the throwaway HOME has no install: problems, exit 1
@@ -42,25 +41,15 @@ READS = {
                             "--comment-id", "C", "--body", "b"], {0}),
     "crew-review-findings.py": (["select", "--mode", "self"], {0}),
     "crew-review-hunks.py": (["{diff}", "--out", "{tmp}/hunks"], {0}),
-    "crew-assemble-packages.py": (["{task}"], {2}),
     "crew-nightshift-e2e.py": (["worktrees", "--help"], {0}),
     "crew-evals-compare.py": (["runs", "--help"], {0}),
     "crew-evals-inspect.py": (["latest"], {2}),
-    "crew-metric.py": (["{task}", "probe=1"], {0}),
-    "crew-progress.py": (["{task}", "IMPLEMENTING → REVIEW"], {0}),
     "crew-verify.py": (["report-check", "{task}/REPORT.md"], {0, 1}),
     "crew-task.py": (["normalize-status", "--tasks-dir", "{tasks}"], {0}),
     "crew-mem.py": (["list", "--json", "--limit", "1"], {0}),
     "crew-inbox.py": (["--json"], {0}),
-    "crew-resolve-task-dir.py": (["--json"], {0}),
-    "crew-task-context.py": (["--json", "--remote", "https://example.invalid/none.git",
-                              "--branch", "none"], {0}),
     "crew-worktree.py": (["--list"], {0}),
-    "crew-repo-info.py": (["--json"], {0}),
     "crew-hook.py": (["--help"], {0}),
-    "crew-default-branch.sh": ([], {0}),
-    "task-env.sh": ([], {0}),
-    "crew-diff.sh": (["--name-only"], {0}),
 }
 
 SAMPLE_DIFF = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1,2 @@\n one\n+two\n"
@@ -68,8 +57,7 @@ SAMPLE_DIFF = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1,2 @@\n
 
 def catalog() -> list[dict]:
     data = json.loads((TOOLS / "tools.json").read_text(encoding="utf-8"))
-    return [entry for section in ("tools", "scripts") for entry in data.get(section, [])
-            if entry.get("kind") == "command"]
+    return [entry for entry in data["tools"] if entry.get("kind") == "command"]
 
 
 def git(*args: str, cwd: Path) -> None:
@@ -89,7 +77,6 @@ def workspace(tmp: Path) -> dict[str, str]:
         git("commit", "-qm", name, cwd=repo)
     git("remote", "add", "origin", str(origin), cwd=repo)
     git("push", "-q", "origin", "main", cwd=repo)
-    (repo / "b.txt").write_text("changed\n", encoding="utf-8")  # pending work for crew-diff.sh
     task = tmp / "tasks" / "T-1"
     task.mkdir(parents=True)
     (task / "REPORT.md").write_text("## Implementation Report\n", encoding="utf-8")
@@ -106,11 +93,7 @@ def link_commands(entries: list[dict], bin_dir: Path) -> None:
 
 
 def invoke(link: Path, args: list[str], cwd: str, env: dict) -> subprocess.CompletedProcess:
-    if link.name in SOURCE_ONLY:
-        argv = ["bash", "-c", 'f=$1; shift; . "$f" "$@"', "bash", str(link), *args]
-    else:
-        argv = [str(link), *args]
-    return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True,
+    return subprocess.run([str(link), *args], cwd=cwd, env=env, capture_output=True, text=True,
                           stdin=subprocess.DEVNULL, timeout=120)
 
 

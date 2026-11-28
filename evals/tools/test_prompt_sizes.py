@@ -15,12 +15,12 @@ from cli_runner import run as cli
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
 
-from crew.task.task_guidance import collect  # noqa: E402
-from crew.task.task_guidance_kinds import KINDS, RECOVERY, narrow  # noqa: E402
-from crew.task.task_prepare import guidance_for  # noqa: E402
+from crew.core.task.task_guidance import collect  # noqa: E402
+from crew.core.task.task_guidance_kinds import KINDS, RECOVERY, narrow  # noqa: E402
+from crew.core.task.task_prepare import guidance_for  # noqa: E402
 
-FINDINGS = TOOLS / "review" / "crew_review_findings.py"
-CONTEXT = TOOLS / "task" / "crew_agent_context.py"
+FINDINGS = TOOLS / "tools" / "crew_review_findings.py"
+CONTEXT = TOOLS / "tools" / "crew_tool.py"
 CONVENTIONS = ("# Repo\n\nintro\n\n## Conventions\n\n### Frontend\nui rules\n\n"
                "### Node\nMigrations are expand-only.\n\n## Hooks\nA hook exits 2 with one stderr line.\n\n"
                "## Project structure\n{tree}\n")
@@ -32,7 +32,7 @@ def kept(kind: str, paths: list[str]) -> str:
 
 
 def test_each_kind_keeps_its_must_hold_rules_here_and_stays_under_its_cap() -> None:
-    tools = ["src/crew/task/task_prepare.py"]
+    tools = ["src/crew/core/task/task_prepare.py"]
     prompts = kept("reviewer-prompt-quality", tools)
     assert "## Authoring agent and skill files" in prompts
     assert "load the `prompt-authoring` skill first" in prompts
@@ -84,8 +84,8 @@ def test_builder_paths_skip_an_ambiguous_basename_and_fall_back_to_the_root(tmp:
     assert "Guidance collected for: ." in said and "root rule" in block, "nothing resolved: the root's guidance"
     block, said = guidance_for(tmp, [(1, False, "- [ ] T1: edit `a/index.ts`.")])
     assert "Guidance collected for: a." in said and "a rules" in block
-    shown = cli(CONTEXT, "--kind", "resolver", "--root", str(tmp), str(tmp / "a" / "index.ts"))
-    assert json.loads(shown.stdout)["kind"] == "resolver", shown
+    shown = cli(CONTEXT, "guidance", "--json", "--kind", "resolver", "--root", str(tmp), str(tmp / "a" / "index.ts"))
+    assert shown.returncode == 0 and "AGENTS.md" in " ".join(json.loads(shown.stdout)["data"]["files"]), shown
 
 
 def test_dispatch_bytes_reports_size_guidance_and_the_shared_prefix(tmp: Path) -> None:

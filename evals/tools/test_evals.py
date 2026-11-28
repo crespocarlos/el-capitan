@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """The Kibana evals package's offline logic: score rows, pairing, the sign test and the verdict.
 
-No other suite loads `src/crew/evals`, so it has this file. The commands query Elasticsearch and
+No other suite loads `src/crew/scripts/evals`, so it has this file. The commands query Elasticsearch and
 are not run here; only the pure functions between the query and the printout are.
 """
 from __future__ import annotations
 
 import pytest
 
-from crew.evals import evals_diagnose as diagnose
-from crew.evals import evals_report as report
+from crew.scripts.evals import evals_diagnose as diagnose
+from crew.scripts.evals import evals_report as report
 
 
 def document(experiment: str, example: str, score: object, commit: str = "abcdef0123", repetition: int = 0) -> dict:

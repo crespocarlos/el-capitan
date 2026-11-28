@@ -132,12 +132,10 @@ if [ "$UNINSTALL" -eq 1 ]; then
 fi
 
 
-# The catalog's `kind: command` entries as `target<TAB>name` lines: the whole of what ~/.agent/bin
-# receives. A Python command's target is its launcher in the venv (pyproject.toml `[project.scripts]`),
-# a shell command's its file in the checkout.
+# The catalog's `kind: command` entries for an agent, a hook or the owner (never `dev`) as `target<TAB>name`
+# lines: the whole of what ~/.agent/bin receives, each command's launcher in the venv (pyproject.toml `[project.scripts]`).
 catalog_commands() {
-  jq -r --arg venv "$VENV/bin" --arg tree "$SCRIPT_DIR/src/crew" '(.tools + .scripts)[] | select(.kind == "command")
-    | (if (.name | endswith(".py")) then "\($venv)/\(.name)" else "\($tree)/\(.dir)/\(.name)" end) + "\t" + .name' \
+  jq -r --arg venv "$VENV/bin" '.tools[] | select(.kind == "command" and .audience != "dev") | "\($venv)/\(.name)\t\(.name)"' \
     "$SCRIPT_DIR/src/crew/tools.json"
 }
 

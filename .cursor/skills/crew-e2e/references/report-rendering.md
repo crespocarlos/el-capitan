@@ -1,7 +1,7 @@
 # Reading the report
 
 Step 4 detail for `crew e2e`. Render the report from the JSON only; never retell it from memory.
-`TASK_DIR` is the task `task-env.sh` resolved, empty for none.
+`TASK_DIR` is the task `task-context` resolved, empty for none.
 
 Once `state` is `done`, `report` returns the verdict, summary, `prIntent`, `approach`, `setup`,
 `checks` (each with `status`, `via`, `category`, `details`, `evidence`, `screenshots`, and a computed
@@ -55,7 +55,7 @@ point at it. Do not offer a rerun until the cause is addressed, and name the `do
 
 ## Persist the report
 
-Write it to `$TASK_DIR/E2E.md` when a source `~/.agent/bin/task-env.sh` resolves a task, otherwise to
+Write it to `$TASK_DIR/E2E.md` when `task-context` resolves a task, otherwise to
 `/tmp/crew-e2e-<key>/E2E.md`, prefixed with the date.
 
 **Keep a history.** Nightshift replaces a PR key's run directory on its next run, so a report cited

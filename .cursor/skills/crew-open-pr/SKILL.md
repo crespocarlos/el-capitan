@@ -1,7 +1,7 @@
 ---
 disable-model-invocation: true
 name: crew-open-pr
-description: "Write the PR description, then after approval ship the task (commit, push, draft PR, DONE) with crew-task.py ship. Trigger: 'crew open pr'."
+description: "Write the PR description, then after approval ship the task (commit, push, draft PR, DONE) with crew-tool.py task-ship. Trigger: 'crew open pr'."
 ---
 
 **Workflow**: build | **Stage**: open-pr
@@ -16,8 +16,8 @@ description: "Write the PR description, then after approval ship the task (commi
 
 ```bash
 EXISTING_PR=""
-if PR_FACTS=$(~/.agent/bin/crew-pr-actions.py view --field number,state,url 2>&1); then
-  { read -r NUMBER; read -r STATE; read -r URL; } <<<"$PR_FACTS"
+if PR_FACTS=$(~/.agent/bin/crew-tool.py pr-read view --fields number,state,url --field record 2>&1); then
+  read -r NUMBER STATE URL < <(jq -r '"\(.number) \(.state) \(.url)"' <<<"$PR_FACTS")
   EXISTING_PR="#$NUMBER ($STATE): $URL"
 fi
 ```
@@ -36,17 +36,17 @@ marked done now rather than at a later session start, then stop and report:
 Do not proceed with PR creation.
 
 ```bash
-BRANCH=$(~/.agent/bin/crew-repo-info.py --field branch)
-source ~/.agent/bin/task-env.sh
-~/.agent/bin/crew-task-context.py --artifacts spec,review --max-chars 6000
+BRANCH=$(~/.agent/bin/crew-tool.py repo-facts --field branch)
+TASK_DIR=$(~/.agent/bin/crew-tool.py task-context --field task_dir)
+~/.agent/bin/crew-tool.py task-context --artifacts spec,review --max-chars 6000
 ```
 
 Detect fork workflow from the remotes this checkout has. Do not read the repository through `gh` at
-this point — it freezes in VS Code terminals, and `crew-repo-info.py` answers both remotes locally:
+this point — it freezes in VS Code terminals, and `repo-facts` answers both remotes locally:
 
 ```bash
-ORIGIN_REPO=$(~/.agent/bin/crew-repo-info.py --field origin_repo)
-UPSTREAM_REPO=$(~/.agent/bin/crew-repo-info.py --remote upstream --field repo)
+ORIGIN_REPO=$(~/.agent/bin/crew-tool.py repo-facts --field origin_repo)
+UPSTREAM_REPO=$(~/.agent/bin/crew-tool.py repo-facts --remote upstream --field repo)
 ```
 
 **Target upstream first.** If `UPSTREAM_REPO` is non-empty, `origin` is a fork and the PR targets
@@ -54,7 +54,7 @@ UPSTREAM_REPO=$(~/.agent/bin/crew-repo-info.py --remote upstream --field repo)
 the repo the PR will target: the default branch of `upstream` for a fork, otherwise of `origin`.
 
 ```bash
-BASE=$(~/.agent/bin/crew-repo-info.py --network --remote "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)" --field default_branch)
+BASE=$(~/.agent/bin/crew-tool.py repo-facts --network --remote "$([ -n "$UPSTREAM_REPO" ] && echo upstream || echo origin)" --field default_branch)
 ```
 
 ```bash
@@ -72,11 +72,11 @@ default branch only is normal. For any other base, print exactly this one line a
 `stack` keeps the named base; `<default>` retargets to the default branch. List in the merge order
 only PRs that exist (look them up); with none, omit the clause. An autonomous run stops with that
 line at the top of the final message and opens nothing, after running
-`crew-task.py blocked "$TASK_DIR" "<reason>"`. With an `upstream` remote, a non-default base must exist there, so check; if it
+`crew-tool.py task-transition block "$TASK_DIR" --reason "<reason>"`. With an `upstream` remote, a non-default base must exist there, so check; if it
 does not, the PR cannot target upstream. Say so, and switch to `origin` only after the user confirms:
 
 ```bash
-if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/crew-repo-info.py --remote upstream --field default_branch)" ]; then
+if [ -n "$UPSTREAM_REPO" ] && [ "$BASE" != "$(~/.agent/bin/crew-tool.py repo-facts --remote upstream --field default_branch)" ]; then
   GH_PAGER=cat gh api "repos/$UPSTREAM_REPO/branches/$BASE" --silent 2>/dev/null \
     || echo "BASE '$BASE' not found on $UPSTREAM_REPO (or the check failed); ask before targeting $ORIGIN_REPO"
 fi
@@ -120,12 +120,11 @@ both the commit message and the PR title. If the repo uses a PR template, fill i
 rather than the default format. After approval, write the approved description to a file `BODY`
 (`$TASK_DIR/artifacts/pr-body.md`; with no task, a temporary file) and run, with `ATTRIBUTION` set to
 the commit attribution line your harness gives (empty when it gives none; ship then uses its
-default). `TARGET` is `"$TASK_DIR"`, or `--no-task` when `TASK_DIR` is empty (run it from the
-checkout to ship; there is no `mark-done`). With `CREW_TASK_STATE=error`, stop and report instead.
+default). `TARGET` is `--task-dir "$TASK_DIR"`, or empty when `TASK_DIR` is empty (run it from the
+checkout to ship; there is no `mark-done`). If `task-context` failed, stop and report instead.
 
 ```bash
-~/.agent/bin/crew-task.py ship $TARGET --title "TITLE" --body-file "$BODY" --base "$BASE" \
-  --repo "$TARGET_REPO" --attribution "$ATTRIBUTION"
+~/.agent/bin/crew-tool.py task-ship "TITLE" "$BODY" "$BASE" "$TARGET_REPO" $TARGET --attribution "$ATTRIBUTION"
 ```
 
 `ship` is the one way a task is committed and its PR opened. It runs in the task's recorded worktree
@@ -162,8 +161,7 @@ for it is open. `mark-done` adds the URL to the task's PR list and refuses unles
 HEAD:
 
 ```bash
-source ~/.agent/bin/task-env.sh
-[ -n "$TASK_DIR" ] && ~/.agent/bin/crew-task.py mark-done "$TASK_DIR" --pr-url "$PR_URL"
+[ -n "$TASK_DIR" ] && ~/.agent/bin/crew-tool.py task-transition done "$TASK_DIR" --pr-url "$PR_URL"
 ```
 
 Show a refusal's `error:` line with its reason and the PR URL, and say the task is not marked done.

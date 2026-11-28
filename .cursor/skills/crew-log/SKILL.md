@@ -11,8 +11,8 @@ description: "Log an agentic engineering session to the journal. Trigger: 'crew 
 Resolve context:
 
 ```bash
-source ~/.agent/bin/task-env.sh
-~/.agent/bin/crew-task-context.py --artifacts report,progress --max-chars 4000
+TASK_DIR=$(~/.agent/bin/crew-tool.py task-context --field task_dir)
+~/.agent/bin/crew-tool.py task-context --artifacts report,progress --max-chars 4000
 ```
 
 Use the returned available report and progress artifacts, plus recent `git log -5 --format="%h %s"`.
