@@ -32,7 +32,7 @@ INSTALL = PROJECT / "install.sh"
 SETTINGS = PROJECT / ".claude" / "settings.template.json"
 MERGE = SETTINGS.parent / "merge_claude_settings.py"
 BLOCKS = SETTINGS.parent / "install_blocks.py"
-DOCTOR = PROJECT / ".agent" / "tools" / "maintenance" / "crew-doctor.py"
+DOCTOR = PROJECT / "src" / "crew" / "maintenance" / "crew_doctor.py"
 MEMORY = "<!-- el-capitan:memory -->\nMEMORY\n<!-- /el-capitan:memory -->"
 IMPORTS = "<!-- el-capitan:imports -->\n@~/.cursor/rules/x.mdc\n<!-- /el-capitan:imports -->"
 SEEDED = "# a\n\n<!-- el-capitan:memory -->\nstale\n<!-- /el-capitan:memory -->\n\n# b\n"
@@ -515,7 +515,7 @@ def test_doctor_mcp(tmp: Path, case: str, files: dict[str, str], wanted: dict | 
     in the approved repo file, minus disabled servers, in each existing config dir; a gap is a WARN naming the server
     and the place, never a FAIL and never a setup instruction."""
     cli_load(DOCTOR)
-    from doctor_mcp import check_mcp
+    from crew.maintenance.doctor_mcp import check_mcp
     (tmp / "home" / ".claude").mkdir(parents=True)
     files = {"home/.agent/tasks/t1/.task-id": json.dumps({"repo_remote_url": CREW}), **files}
     for name, text in files.items():
@@ -622,7 +622,7 @@ def test_render_rules(tmp: Path) -> None:
     templated, so the placeholder in prose is text."""
     blocks = load_blocks()
     cli_load(DOCTOR)
-    from task_gc import ConfigError, load_config
+    from crew.task.task_gc import ConfigError, load_config
     for bad in ("elastic.docs", "docs\n", "docs a"):
         install_with_config(tmp, {"docs": [bad]})
         check(f"{bad!r} is rejected by install and by the config", blocks.mcp_server_names(tmp)[0] == []
@@ -645,7 +645,7 @@ def test_render_rules(tmp: Path) -> None:
 def test_mcp_config_section(tmp: Path) -> None:
     """The shared defaults name no server; a list of names is accepted and anything else is a config error."""
     cli_load(DOCTOR)
-    from task_gc import ConfigError, load_config
+    from crew.task.task_gc import ConfigError, load_config
     check("the defaults are empty", load_config(tmp)["mcp"] == {"docs": [], "code_search": []})
     (tmp / "config.json").write_text(json.dumps({"mcp": {"docs": ["docs-a"]}}), encoding="utf-8")
     check("a list of names is merged over the defaults",
@@ -673,7 +673,7 @@ def test_cursor_guards_without_jq(installed: Path, tmp: Path) -> None:
     home = tmp / "home"
     copy_install(installed, home)
     cli_load(DOCTOR)
-    from doctor_checks import check_cursor_fail_closed
+    from crew.maintenance.doctor_checks import check_cursor_fail_closed
     lines = [(line.level, line.text) for line in check_cursor_fail_closed(home, PROJECT, jq=None)]
     check("crew doctor fails a fail-closed Cursor install on a machine without jq",
           any(level == "FAIL" and "jq is not on PATH" in text for level, text in lines), lines)
@@ -689,7 +689,7 @@ def test_doctor_cursor_duplicates(installed: Path, tmp: Path) -> None:
     home = tmp / "home"
     copy_install(installed, home)
     cli_load(DOCTOR)
-    from doctor_checks import check_cursor_duplicates
+    from crew.maintenance.doctor_checks import check_cursor_duplicates
 
     def found(cwd: Path) -> list[tuple[str, str]]:
         return [(line.level, line.text) for line in check_cursor_duplicates(home, cwd)]

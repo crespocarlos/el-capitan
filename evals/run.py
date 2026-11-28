@@ -27,7 +27,7 @@ import os
 import pathlib
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 try:
     import anthropic
@@ -251,7 +251,7 @@ def main() -> None:
 
     arms = [a.strip() for a in args.arms.split(",")]
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     results_dir = results_root / run_id
     results_dir.mkdir(parents=True, exist_ok=True)
 

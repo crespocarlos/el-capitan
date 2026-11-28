@@ -11,6 +11,7 @@ Fix: validate in `crew-ls.py` with `choices=ACCEPTED` (or a case-insensitive `ty
 2. [needs more info · 3] **`.agent/tools/task/ls_data.py:17`** — `head(r)` is called on a `TaskState`, and `head` may not be importable from `task_state`
 ```python
 from task_state import TaskState, head, load
+
 ...
 head(r) in wanted
 ```
@@ -18,7 +19,7 @@ head(r) in wanted
 
 3. [attention · 3] **`.agent/tools/task/crew-ls.py:25`** — the help text promises a behavior the code doesn't implement
 ```python
-help="only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded"
+help = "only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded"
 ```
 Nothing in the diff handles "stale" or "unfolded" rows. A grep of the task directory found no fold or stale logic, and I didn't read `print_listing`. A person who reads this help expects stale tasks to be shown specially. Separately, `--all` says it "adds done specs". It's unclear whether `--status DONE` shows anything without `--all`. If `print_listing` still hides done specs, the filter returns an empty list with no explanation.
 Fix: remove the "stale…unfolded" clause, or implement it. Also decide whether `--status DONE` should imply `--all`, and document the answer in the help text.

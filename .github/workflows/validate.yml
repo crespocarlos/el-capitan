@@ -29,16 +29,19 @@ jobs:
           enable-cache: false
 
       - name: Repo conventions (routing, catalog, references, prompt budget)
-        run: python3 .agent/tools/maintenance/crew-lint.py --budget
+        run: uv run --frozen --managed-python crew-lint.py --budget
 
-      - name: Ruff (version pinned in ruff.toml)
-        run: bash evals/ruff.sh check .
+      - name: Ruff lint and format (version pinned in ruff.toml)
+        run: bash evals/ruff.sh check . && bash evals/ruff.sh format --check .
+
+      - name: Types (basedpyright, pinned in uv.lock; the baseline in .basedpyright only shrinks)
+        run: uv run --frozen --managed-python basedpyright
 
       - name: Spelling in prompts and docs (codespell, pinned)
-        run: uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md CHANGELOG.md .github .agent/tools/AGENTS.md .agent/tools/TOOLS.md
+        run: uvx codespell==2.4.1 rules .cursor .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md CHANGELOG.md .github src/crew/AGENTS.md src/crew/TOOLS.md
 
       - name: Prompt and doc prose (Vale, pinned; styles in .vale/styles)
-        run: uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md .agent/tools/AGENTS.md
+        run: uvx --from vale==3.12.0.0 vale rules .cursor/agents .cursor/skills .claude/CLAUDE.md AGENTS.md README.md docs CONTRIBUTING.md SECURITY.md src/crew/AGENTS.md
 
       - name: Workflow security (zizmor, pinned, offline audits)
         run: uvx zizmor==1.33.1 --offline .github/workflows
@@ -50,17 +53,16 @@ jobs:
         run: |
           bash -n install.sh
           for f in .claude/hooks/*.sh .claude/hooks/guard/*.sh .claude/hooks/lib/*.sh; do bash -n "$f"; done
-          find .agent/tools -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+          find src/crew -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
 
   tests:
-    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.9", "3.12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,23 +70,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # uv provides the interpreter (and activates a venv with it): setup-python has no 3.9 for the newest Ubuntu image.
+      # uv provides the uv-managed CPython 3.12+ that pyproject.toml and uv.lock pin; install.sh uses the same.
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           enable-cache: false
-          python-version: ${{ matrix.python }}
-
-      - name: Interpreter on PATH
-        env:
-          WANT: ${{ matrix.python }}
-        run: |
-          uv python install "$WANT"
-          dirname "$(uv python find "$WANT")" >> "$GITHUB_PATH"
-
-      - name: Interpreter in use
-        env:
-          WANT: ${{ matrix.python }}
-        run: python3 -c 'import os, sys; print(sys.version); assert "%d.%d" % sys.version_info[:2] == os.environ["WANT"]'
 
       # The hook tests run every case through both normaliser paths: shfmt (this pinned binary) and awk.
       - name: shfmt (pinned release binary, checksum checked)
@@ -92,11 +81,11 @@ jobs:
           bash evals/install-shfmt.sh "$RUNNER_TEMP/shfmt-bin"
           echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
 
-      - name: Tests (pytest and pytest-xdist, versions pinned in evals/test.sh)
+      - name: Tests (the dev group of pyproject.toml, pinned in uv.lock)
         run: bash evals/test.sh -n auto
 
       - name: Install migration and idempotency
         run: bash .claude/hooks/fixtures/install.sh
 
       - name: Memory eval
-        run: python3 evals/memory/run.py
+        run: uv run --frozen --managed-python python evals/memory/run.py

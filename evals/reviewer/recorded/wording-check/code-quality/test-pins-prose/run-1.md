@@ -5,6 +5,7 @@ Read beyond the package: none. A grep for the phrases and a glob for `*.md` in t
 1. [attention · 4] **`evals/tools/test_lint_rules.py:11`** — The test pins exact prose, so rewording breaks it and a broken rule still passes
 ```python
 "A critic that returns no reply gets one\n   resume, never a second dispatch"
+
 ...
 assert rule in text and "`deliver now: " in text, path
 ```

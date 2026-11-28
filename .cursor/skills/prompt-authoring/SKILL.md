@@ -50,7 +50,7 @@ the code, or the reasoning that produced it.
   (`duplicate-passages`); a prompt file stays under 11,500 bytes (`prompt-budget`). A file that is
   appended to several dispatches (`reviewer-contract.md`, `critic-contract.md`) is how shared
   instructions reach personas without a copy in each.
-- Use the glossary in `.agent/tools/AGENTS.md` and its label table (`Crew.Glossary`,
+- Use the glossary in `src/crew/AGENTS.md` and its label table (`Crew.Glossary`,
   `glossary-terms`).
 - Elastic-specific tool ids and examples live only in the prompts that target that stack by design
   (`crew-e2e`, `crew-evals`), in the owner's personal rules (`personal.mdc`, `voice.mdc`, which

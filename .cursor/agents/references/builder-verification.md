@@ -18,7 +18,7 @@ Oversized command transcripts (Completion Protocol) go under `$TASK_DIR/artifact
 
 Run `~/.agent/bin/crew-verify.py --repo <WORK_DIR> --task-dir $TASK_DIR` (for
 a long run add `--background`, then `--wait $TASK_DIR/gates.json`). It runs the base branch's CI
-(`.agent/tools/TOOLS.md` "Gates and cost"), prints `<name> exit=<N>` lines and writes
+(`src/crew/TOOLS.md` "Gates and cost"), prints `<name> exit=<N>` lines and writes
 `$TASK_DIR/gates.json`. Never claim a result from memory or from a narrower command.
 
 ## Check the report in the same worker

@@ -8,22 +8,19 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / ".agent" / "tools"
-sys.path.insert(0, str(TOOLS / "task"))
-sys.path.insert(0, str(TOOLS))
+TOOLS = ROOT / "src" / "crew"
 
-from task_guidance import collect  # noqa: E402
-from task_guidance_kinds import KINDS, RECOVERY, narrow  # noqa: E402
-from task_prepare import guidance_for  # noqa: E402
+from crew.task.task_guidance import collect  # noqa: E402
+from crew.task.task_guidance_kinds import KINDS, RECOVERY, narrow  # noqa: E402
+from crew.task.task_prepare import guidance_for  # noqa: E402
 
-FINDINGS = TOOLS / "review" / "crew-review-findings.py"
-CONTEXT = TOOLS / "task" / "crew-agent-context.py"
+FINDINGS = TOOLS / "review" / "crew_review_findings.py"
+CONTEXT = TOOLS / "task" / "crew_agent_context.py"
 CONVENTIONS = ("# Repo\n\nintro\n\n## Conventions\n\n### Frontend\nui rules\n\n"
                "### Node\nMigrations are expand-only.\n\n## Hooks\nA hook exits 2 with one stderr line.\n\n"
                "## Project structure\n{tree}\n")
@@ -35,7 +32,7 @@ def kept(kind: str, paths: list[str]) -> str:
 
 
 def test_each_kind_keeps_its_must_hold_rules_here_and_stays_under_its_cap() -> None:
-    tools = [".agent/tools/task/task_prepare.py"]
+    tools = ["src/crew/task/task_prepare.py"]
     prompts = kept("reviewer-prompt-quality", tools)
     assert "## Authoring agent and skill files" in prompts
     assert "load the `prompt-authoring` skill first" in prompts

@@ -24,20 +24,19 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from cli_runner import launcher
 from cli_runner import run as cli
 from task_fixture import record_status
 
-ROOT = Path(__file__).resolve().parents[2]
-TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
-REVIEW_TOOLS = ROOT / ".agent" / "tools" / "review"
-LS = TASK_TOOLS / "crew-ls.py"
-TASK = TASK_TOOLS / "crew-task.py"
-sys.path[:0] = [str(TASK_TOOLS), str(REVIEW_TOOLS)]
+from crew.review import review_workspace
+from crew.task import task_gates, task_state, task_status
 
-import review_workspace  # noqa: E402
-import task_gates  # noqa: E402
-import task_state  # noqa: E402
-import task_status  # noqa: E402
+ROOT = Path(__file__).resolve().parents[2]
+TASK_TOOLS = ROOT / "src" / "crew" / "task"
+REVIEW_TOOLS = ROOT / "src" / "crew" / "review"
+LS = TASK_TOOLS / "crew_ls.py"
+TASK = TASK_TOOLS / "crew_task.py"
+
 
 SPEC = "# Probe task\n\n## Status\nIMPLEMENTING\n\n- [x] one criterion\n"
 STATES = ("DRAFTING", "APPROVED", "IMPLEMENTING", "ON-HOLD", "DONE")
@@ -304,9 +303,9 @@ def test_the_environment_suffix_never_stamps(tmp: Path) -> None:
     tasks = tmp / "suffix"
     draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
     for name in ("CREW_WORKFLOW", "CREW_MEMBER"):
-        refused = cli(TASK_TOOLS / "crew-progress.py", str(draft), "note", env={name: "-> APPROVED [gate]"})
+        refused = cli(TASK_TOOLS / "crew_progress.py", str(draft), "note", env={name: "-> APPROVED [gate]"})
         check(f"crew-progress.py refuses the stamp in {name}", refused.returncode == 2 and name in refused.stderr, refused)
-        arrow = cli(TASK_TOOLS / "crew-progress.py", str(draft), "note", env={name: "x → y"})
+        arrow = cli(TASK_TOOLS / "crew_progress.py", str(draft), "note", env={name: "x → y"})
         check(f"crew-progress.py refuses an arrow in {name}", arrow.returncode == 2, arrow)
     with (draft / "PROGRESS.md").open("a", encoding="utf-8") as handle:
         handle.write('[2026-01-01T00:00:00Z] TRANSITION: note {"step":"note","workflow":"-> APPROVED [gate]","crew":null}\n')
@@ -346,10 +345,10 @@ def test_only_the_gates_record_a_status(tmp: Path) -> None:
     tasks = tmp / "only-gates"
     draft = spec(tasks / "draft", "DRAFTING", "- [ ] a")
     for text in ("DRAFTING → APPROVED", "x -> IMPLEMENTING", "IMPLEMENTING → REVIEW [gate]"):
-        forged = cli(TASK_TOOLS / "crew-progress.py", str(draft), text)
+        forged = cli(TASK_TOOLS / "crew_progress.py", str(draft), text)
         check(f"crew-progress.py refuses {text!r}", forged.returncode == 2 and "refused" in forged.stderr
               and text not in progress_text(draft), forged)
-    check("a pipeline step is still a progress note", cli(TASK_TOOLS / "crew-progress.py", str(draft), "IMPLEMENTING → REVIEW").returncode == 0
+    check("a pipeline step is still a progress note", cli(TASK_TOOLS / "crew_progress.py", str(draft), "IMPLEMENTING → REVIEW").returncode == 0
           and "TAMPERED" not in ls(tasks, "--repo", "all"))
     legacy = tasks / "legacy"
     legacy.mkdir()
@@ -464,7 +463,7 @@ def test_reconcile_hook(tmp: Path) -> None:
     home = tmp / "hook-home"
     (home / ".agent" / "bin").mkdir(parents=True)
     for name in ("crew-ls.py", "crew-task.py"):
-        (home / ".agent" / "bin" / name).symlink_to(TASK_TOOLS / name)
+        (home / ".agent" / "bin" / name).symlink_to(launcher(name))
     tasks = home / ".agent" / "tasks"
     spec(tasks / "idle", "DRAFTING", "- [ ] a", old=True)
     spec(tasks / "shipped", "done")
@@ -577,8 +576,7 @@ def test_pr_lookup_budget(tmp: Path) -> None:
     a crashing lookup says why; a cached repository is not asked again."""
     import threading
 
-    import task_prs
-
+    from crew.task import task_prs
     tasks, release, clock = tmp / "tasks", threading.Event(), [0.0]
     for name in ("slow", "broken"):
         spec(tasks / name, "IMPLEMENTING")
@@ -614,15 +612,15 @@ def test_pr_lookup_budget(tmp: Path) -> None:
 
 def test_bad_transitions(tmp: Path) -> None:
     """A malformed or unknown `transitions.json` is an error that names the file, never a silent policy."""
-    tools = tmp / "bad" / "task"
-    shutil.copytree(TASK_TOOLS, tools, ignore=shutil.ignore_patterns("__pycache__"))
-    shutil.copytree(ROOT / ".agent" / "tools" / "lib", tmp / "bad" / "lib", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "src" / "crew", tmp / "bad" / "crew", ignore=shutil.ignore_patterns("__pycache__"))
+    tools, env = tmp / "bad" / "crew" / "task", {**os.environ, "PYTHONPATH": str(tmp / "bad")}
     tasks = spec(tmp / "bad-tasks" / "a", "DRAFTING", "- [ ] a").parent
     for text, words in (("{bad", "error: transitions.json"),
                         ('{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["bogus"],"status":"x","log":"y"}]}', "unknown predicate"),
                         ('{"idle_days":14,"auto":[{"from":["DRAFTING"],"kind":"hold","when":["idle"],"status":"{typo}","log":"y"}]}', "error: transitions.json")):
         (tools / "transitions.json").write_text(text, encoding="utf-8")
-        done = subprocess.run([sys.executable, str(tools / "crew-task.py"), "reconcile", "--tasks-dir", str(tasks), "--apply"], capture_output=True, text=True)
+        done = subprocess.run([sys.executable, "-m", "crew.task.crew_task", "reconcile", "--tasks-dir", str(tasks), "--apply"],
+                              capture_output=True, text=True, env=env)
         check(f"transitions.json {text[:20]!r}: {words}", done.returncode != 0 and words in done.stderr, done.stderr[-300:])
 
 
@@ -729,7 +727,7 @@ def test_blocked_events(tmp: Path) -> None:
     rows = json.loads(ls(tasks, "--json"))["items"]
     check("crew ls and --json show the reason", "BLOCKED: stacked base: #51 is not main" in ls(tasks)
           and rows and rows[0].get("blocked", "").startswith("stacked base"), rows)
-    cli(TASK_TOOLS / "crew-progress.py", str(directory), "IMPLEMENTING → REVIEW")
+    cli(TASK_TOOLS / "crew_progress.py", str(directory), "IMPLEMENTING → REVIEW")
     check("the next stage clears it", "BLOCKED" not in ls(tasks) and json.loads(ls(tasks, "--json"))["items"][0].get("blocked") == "")
     check("blocked on a missing directory fails", task("blocked", str(tmp / "none"), "x").returncode == 1)
 
@@ -824,7 +822,7 @@ def test_crew_worktree_creates_lists_fetches_and_removes(tmp: Path) -> None:
     run_env = {**GIT_ID, "HOME": str(tmp), "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
 
     def worktree(*arguments: str) -> subprocess.CompletedProcess:
-        return cli(TASK_TOOLS / "crew-worktree.py", *arguments, env=run_env, cwd=repo)
+        return cli(TASK_TOOLS / "crew_worktree.py", *arguments, env=run_env, cwd=repo)
 
     created = worktree("-b", "topic", "origin/main", "--json")
     path = Path(json.loads(created.stdout)["path"]) if created.returncode == 0 else Path()
@@ -860,7 +858,7 @@ def record_world(tmp: Path) -> tuple[Path, Path, dict]:
     """A HOME with crew-task.py, the tasks of RECORD_TASKS, a main checkout and a worktree on feat/wt, and a stub gh."""
     home, repo, env = tmp / "home", tmp / "checkout", {**os.environ, **GIT_ID}
     (home / ".agent" / "bin").mkdir(parents=True)
-    (home / ".agent" / "bin" / "crew-task.py").symlink_to(TASK)
+    (home / ".agent" / "bin" / "crew-task.py").symlink_to(launcher("crew-task.py"))
     subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True, env=env)
     subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", "git@github.com:acme/widgets.git"], check=True, env=env)
     subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "base"], check=True, env=env)
@@ -1047,7 +1045,7 @@ def usage_world(tmp: Path) -> tuple[Path, Path]:
     """A HOME with crew-review-findings.py and one IMPLEMENTING task `built` whose implement stage has started."""
     home, tasks = tmp / "home", tmp / "home" / ".agent" / "tasks"
     (home / ".agent" / "bin").mkdir(parents=True)
-    (home / ".agent" / "bin" / "crew-review-findings.py").symlink_to(REVIEW_TOOLS / "crew-review-findings.py")
+    (home / ".agent" / "bin" / "crew-review-findings.py").symlink_to(launcher("crew-review-findings.py"))
     task_dir = spec(tasks / "built", "IMPLEMENTING")
     (task_dir / "PROGRESS.md").write_text("[2026-11-27T10:00:00Z] METRIC: stage_start stage=implement\n", encoding="utf-8")
     return home, task_dir
@@ -1126,7 +1124,7 @@ def test_crew_resolve_task_dir_prefers_the_open_task(tmp: Path) -> None:
                                                         "created_at": f"2026-{month}-01T00:00:00Z"}), encoding="utf-8")
 
     def resolve(branch: str, *arguments: str) -> subprocess.CompletedProcess:
-        return cli(TASK_TOOLS / "crew-resolve-task-dir.py", "--remote", remote, "--branch", branch, *arguments,
+        return cli(TASK_TOOLS / "crew_resolve_task_dir.py", "--remote", remote, "--branch", branch, *arguments,
                    env={"HOME": str(tmp)})
 
     best = resolve("feat", "--json")

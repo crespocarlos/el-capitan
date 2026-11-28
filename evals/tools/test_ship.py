@@ -13,15 +13,15 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from cli_runner import load
 from cli_runner import run as cli
 from task_fixture import record_status
 
+from crew.task import task_ship
+from crew.task.task_ship_checks import MAX_BYTES
+
 ROOT = Path(__file__).resolve().parents[2]
-TASK = ROOT / ".agent" / "tools" / "task" / "crew-task.py"
-load(TASK)  # sets the import path the way the entry point does
-import task_ship  # noqa: E402
-from task_ship_checks import MAX_BYTES  # noqa: E402
+TASK = ROOT / "src" / "crew" / "task" / "crew_task.py"
+
 
 PR = "https://github.com/acme/widgets/pull/7"
 URL = "git@github.com:acme/widgets.git"

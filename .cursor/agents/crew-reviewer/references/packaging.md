@@ -70,7 +70,7 @@ questions; edit it, then run `~/.agent/bin/crew-assemble-packages.py "$REVIEW_RO
 `consumers` (`[[path, start, end, label], …]`) and `guidance_keep` (`{persona: [level-2 heading
 prefix, …]}`, optional). `mode_kind: "pr"` refuses `consumers` and `prompt_files`, which would come
 from the local checkout. Exact shapes: the tool's
-docstring — read it at `.agent/tools/review/crew-assemble-packages.py` in the repository, or through
+docstring — read it at `src/crew/review/crew_assemble_packages.py` in the repository, or through
 `readlink -f ~/.agent/bin/crew-assemble-packages.py` when the repository is not the working tree.
 `~/.agent/bin` holds symlinks, so a search tool scoped there finds nothing.
 

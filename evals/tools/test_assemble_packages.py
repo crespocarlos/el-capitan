@@ -18,7 +18,7 @@ from pathlib import Path
 
 from cli_runner import run as cli
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-assemble-packages.py"
+TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_assemble_packages.py"
 
 DIFF = """diff --git a/prompt.md b/prompt.md
 --- a/prompt.md
@@ -252,7 +252,7 @@ def test_guidance_that_failed_to_load_is_refused_not_a_traceback(tmp: Path) -> N
 
 def test_the_guidance_tool_prints_nothing_outside_a_checkout(tmp: Path) -> None:
     """Exit 2 with the --root hint on stderr and an empty stdout, the empty file the refusal above names."""
-    tool = TOOL.parents[1] / "task" / "crew-agent-context.py"
+    tool = TOOL.parents[1] / "task" / "crew_agent_context.py"
     (tmp / "plain").mkdir()
     result = subprocess.run([sys.executable, str(tool), "x.py"], cwd=tmp / "plain", capture_output=True, text=True,
                             env={**os.environ, "GIT_CEILING_DIRECTORIES": str(tmp)})
@@ -331,9 +331,7 @@ def test_slicing_is_opt_in_and_keeps_every_hunk_reachable(tmp: Path) -> None:
 
 
 def test_the_coverage_gate_refuses_a_slice_that_would_lose_a_hunk(tmp: Path) -> None:
-    sys.path[:0] = [str(TOOL.parent), str(TOOL.parents[1])]
-    import assemble_build
-
+    from crew.review import assemble_build
     diff = "".join(file_diff(p, b) for p, b in CODE_FILES.items())
     hunks = {"hunks": [{"id": f"h{i}", "file": p} for i, p in enumerate(CODE_FILES, 1)]}
     layers = [{"kind": "ui", "hunks": ["h1"]}, {"kind": "core", "hunks": ["h2"]}]
@@ -352,7 +350,6 @@ PERSONAS = ("adversarial", "architecture", "code-quality", "product-flow", "prom
 CONSUMER_PERSONAS = ("adversarial", "architecture", "product-flow")
 PRIOR_HEADING = "## Already reported in an earlier round"
 TAIL_HEADINGS = ("# Size gate", "## Spec", "## Reading map", "# Repository guidance", PRIOR_HEADING)
-sys.path[:0] = [str(REVIEW_TOOL.parent), str(REVIEW_TOOL)]
 
 
 def layout(tmp: Path, config: dict | None = None) -> tuple[Path, str]:
@@ -360,12 +357,12 @@ def layout(tmp: Path, config: dict | None = None) -> tuple[Path, str]:
     repo = tmp / "repo"
     (repo / "prompts").mkdir(parents=True)
     (repo / "prompts" / "rule.md").write_text("# Rule\n\n## Rule\nnew wording\nextra wording\nkeep this line\n")
-    (repo / ".agent" / "tools" / "review").mkdir(parents=True)
-    (repo / ".agent" / "tools" / "review" / "assemble_build.py").write_text(
+    (repo / "src" / "crew" / "review").mkdir(parents=True)
+    (repo / "src" / "crew" / "review" / "assemble_build.py").write_text(
         "def build(persona, review_dir, config, shared, hunks_json):\n    report = {\"whole\": []}\n    parts = [shared]\n    return parts\n")
     previous = tmp / "review" / "20260101000000"
     previous.mkdir(parents=True)
-    (previous / "consolidation.json").write_text(json.dumps([{"file": ".agent/tools/review/assemble_build.py", "line": 18, "label": "nit",
+    (previous / "consolidation.json").write_text(json.dumps([{"file": "src/crew/review/assemble_build.py", "line": 18, "label": "nit",
                                                                "fingerprint": "aaa", "title": "The build reads the diff twice", "disposition": "patch"}]))
     review = tmp / "review" / "20260102000000"
     review.mkdir(parents=True)
@@ -374,7 +371,7 @@ def layout(tmp: Path, config: dict | None = None) -> tuple[Path, str]:
     for persona in PERSONAS:
         (review / f"spec.{persona}.md").write_text(f"SPEC for {persona}\n")
     payload = {"repo": str(repo), "size_gate": "Size gate: full diff — 2 files, 4 changed lines\n",
-               "consumers": [[".agent/tools/review/assemble_build.py", 18, 21, "the builder"]], "prompt_files": ["prompts/rule.md"],
+               "consumers": [["src/crew/review/assemble_build.py", 18, 21, "the builder"]], "prompt_files": ["prompts/rule.md"],
                "prior_review_dir": str(previous), "guidance_keep": {"code-quality": ["Testing"]}, **(config or {})}
     (review / "assemble.json").write_text(json.dumps(payload))
     result = cli(TOOL, str(review))
@@ -425,8 +422,7 @@ def test_every_package_opens_with_both_contract_parts_as_one_text(tmp: Path) -> 
 
 def test_a_prompt_quality_build_reads_the_diff_once(tmp: Path) -> None:
     review, _ = layout(tmp, {"guidance_keep": {}})
-    import assemble_build
-
+    from crew.review import assemble_build
     original, reads = pathlib.Path.read_text, []
 
     def counting(self: Path, *args: object, **kwargs: object) -> str:
@@ -460,7 +456,7 @@ def prior_dir(tmp: Path, findings: list | None) -> Path:
 
 
 def test_the_prior_block_lists_findings_with_the_authors_decision_only_when_recorded(tmp: Path) -> None:
-    from assemble_inputs import prior_section
+    from crew.review.assemble_inputs import prior_section
 
     directory = prior_dir(tmp, [PRIOR, dict(PRIOR, fingerprint="bbb", title="word " * 200)])
     block = prior_section(directory)
@@ -474,8 +470,7 @@ def test_the_prior_block_lists_findings_with_the_authors_decision_only_when_reco
 
 
 def test_content_identity_is_gits_blob_id_and_unchanged_needs_it_on_both_sides(tmp: Path) -> None:
-    import review_workspace as manifest
-
+    from crew.review import review_workspace as manifest
     target = tmp / "a.ts"
     target.write_text("one\n")
     assert manifest.blob_id(target) == hashlib.sha1(b"blob %d\0" % len(target.read_bytes()) + target.read_bytes()).hexdigest()
@@ -495,8 +490,7 @@ def test_content_identity_is_gits_blob_id_and_unchanged_needs_it_on_both_sides(t
 
 
 def test_discovery_finds_the_previous_review_round_only(tmp: Path) -> None:
-    import review_workspace as manifest
-
+    from crew.review import review_workspace as manifest
     review = tmp / "review"
     for name in ("20260101000000", "20260102000000", "20260103000000", "notes"):
         (review / name).mkdir(parents=True)
@@ -508,8 +502,8 @@ def test_discovery_finds_the_previous_review_round_only(tmp: Path) -> None:
 
 
 def test_the_collapse_omits_a_reviewed_body_and_keeps_its_ids_citable(tmp: Path) -> None:
-    import review_workspace as manifest
-    from review_parse import parse
+    from crew.review import review_workspace as manifest
+    from crew.review.review_parse import parse
 
     parsed = parse(PRIOR_DIFF)
     collapsed = manifest.collapse_reviewed(PRIOR_DIFF, parsed, {"a.ts"}, "20260101000000")

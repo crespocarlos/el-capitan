@@ -16,7 +16,7 @@ return [r for r in rows if not wanted or head(r) in wanted]
 
 3. [attention · 3] **`.agent/tools/task/crew-ls.py:25`** — help text promises behavior the code doesn't implement, and the `--all` interaction is unclear
 ```python
-help="only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded"
+help = "only tasks in STATE (repeatable); shows stale IMPLEMENTING tasks unfolded"
 ```
 The diff has no "stale" or "unfolded" logic, so the help text describes something the change doesn't do. `--status done` also depends on `--all`, which `select` doesn't consult. Whether `print_listing` hides DONE rows without `--all` can't be seen from the package. If it does, `crew ls --status done` may print nothing with no hint to add `--all`.
 Fix: drop or correct the "stale … unfolded" clause. Make `--status done` imply showing done specs, or tell the owner to add `--all`.

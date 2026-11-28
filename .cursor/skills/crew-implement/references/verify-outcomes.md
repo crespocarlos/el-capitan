@@ -16,4 +16,4 @@ A `NOT VERIFIED: partial mirror (N steps skipped)` line means part of the CI was
 `if:`, an expression, a deployment job, a publish command, a CI workflow with a release trigger): the
 gates ran, but the run is NOT VERIFIED even when every gate line is `exit=0`. A failed gate is still
 exit 1. A workflow with no `push` or `pull_request` trigger is listed as `not CI` and does not count.
-How the mirror runs is in `.agent/tools/TOOLS.md` "Gates and cost".
+How the mirror runs is in `src/crew/TOOLS.md` "Gates and cost".

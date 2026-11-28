@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 BASE=6e81879
-CODE='^(\.agent/tools/.*\.py|\.claude/hooks/.*|\.claude/[^/]*\.py|install\.sh|tui/[^/]*\.py)$'
+CODE='^(\.agent/tools/.*\.py|src/crew/.*\.py|\.claude/hooks/.*|\.claude/[^/]*\.py|install\.sh|tui/[^/]*\.py)$'
 TESTS='^evals/.*\.py$'
 PROMPTS='^(\.cursor/agents/|\.cursor/skills/|rules/)'
 ALWAYS='^rules/(personal|agent-output|crew-router|crew-orchestrator|memory-capture)\.mdc$'

@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
-# Run the test suite with the pinned pytest, pytest-xdist and pytest-timeout, on the `python3` found on PATH.
-# Usage: bash evals/test.sh [-n auto] [pytest arguments]   (needs uv; CI installs it with astral-sh/setup-uv)
-# Every test fails after `timeout_seconds`, so a hung test is a named failure, not a silent wait; a later
-# `--timeout N` argument overrides it.
+# Run the test suite in the project's dev environment (the `dev` group of pyproject.toml, pinned in uv.lock).
+# Usage: bash evals/test.sh [-n auto] [pytest arguments]   (needs uv)
+# Every test fails after 60 s, so a hung test is a named failure, not a silent wait; a later `--timeout N`
+# overrides it. Tests run offline: an install into a throwaway HOME reuses this uv cache and interpreter.
 set -euo pipefail
-pytest_version=8.4.2
-xdist_version=3.8.0
-timeout_version=2.4.0
-timeout_seconds=60
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if ! command -v uvx >/dev/null 2>&1; then
-    echo "test.sh: install uv (uvx) to run pytest $pytest_version with pytest-xdist $xdist_version" >&2
-    exit 2
-fi
-python="$(command -v python3)" || { echo "test.sh: python3 is not on PATH" >&2; exit 2; }
-cd "$root"
-# The TUI's pin (tui/requirements.txt) joins the environment, so its pilot smoke runs with the suite.
-exec uvx --python "$python" --with "pytest-xdist==$xdist_version" --with "pytest-timeout==$timeout_version" \
-    --with-requirements tui/requirements.txt "pytest==$pytest_version" --timeout "$timeout_seconds" "$@"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+command -v uv >/dev/null 2>&1 || { echo "test.sh: install uv to run the suite" >&2; exit 2; }
+uv sync --frozen --managed-python --quiet
+UV_CACHE_DIR="$(uv cache dir)" UV_PYTHON_INSTALL_DIR="$(uv python dir)" UV_OFFLINE=1 \
+    exec uv run --frozen --managed-python pytest --timeout 60 "$@"

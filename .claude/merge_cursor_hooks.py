@@ -13,6 +13,7 @@ With `--manifest`, the (event, command) pairs and keys the destination lacked ar
 recorded in `<home>/.agent/install-manifest.json`; `uninstall.py` removes only
 those (`unmerge`). An existing file is first copied to `<dest>.bak.<epoch>`.
 """
+
 import json
 import os
 import shutil
@@ -46,13 +47,16 @@ def added(before: dict, template: dict, created: bool) -> tuple:
     """
     hooks = before.get("hooks")
     theirs, ours = entries_by_pair(hooks), entries_by_pair(template["hooks"])
-    keys = [[event, command, key] for (event, command), entry in ours.items()
-            if (event, command) in theirs for key in entry if key not in theirs[(event, command)]]
-    record = {"created": created,
-              "keys": [key for key in ("version", "hooks") if key not in before],
-              "events": [event for event in template["hooks"] if not isinstance(hooks, dict) or event not in hooks],
-              "hooks": sorted([list(pair) for pair in set(ours) - set(theirs)]),
-              "hook_keys": sorted(keys)}
+    keys = [
+        [event, command, key] for (event, command), entry in ours.items() if (event, command) in theirs for key in entry if key not in theirs[(event, command)]
+    ]
+    record = {
+        "created": created,
+        "keys": [key for key in ("version", "hooks") if key not in before],
+        "events": [event for event in template["hooks"] if not isinstance(hooks, dict) or event not in hooks],
+        "hooks": sorted([list(pair) for pair in set(ours) - set(theirs)]),
+        "hook_keys": sorted(keys),
+    }
     return record, {"hooks": sorted([list(pair) for pair in set(ours) & set(theirs)])}
 
 
@@ -74,8 +78,7 @@ def unmerge(dest: dict, recorded: dict, template: dict, warn) -> dict:
         odd = [entry for entry in hooks[event] if not isinstance(entry, dict)]
         if odd:
             warn(f"{len(odd)} entry(ies) of hooks.{event} are not objects; left as they are")
-        hooks[event] = [entry for entry in hooks[event]
-                        if not (isinstance(entry, dict) and (event, entry.get("command")) in ours)]
+        hooks[event] = [entry for entry in hooks[event] if not (isinstance(entry, dict) and (event, entry.get("command")) in ours)]
         if not hooks[event] and event in recorded.get("events", []):
             del hooks[event]
     if "hooks" in recorded.get("keys", []) and hooks in ({}, None):
@@ -94,8 +97,9 @@ def fail_open_without_jq(template: dict) -> None:
     for entry in closed:
         entry["failClosed"] = False
     if closed:
-        print(f"  WARNING: jq is not on PATH: {len(closed)} Cursor guards registered failClosed: false (they would "
-              "block every call); install jq and re-run install.sh")
+        print(
+            f"  WARNING: jq is not on PATH: {len(closed)} Cursor guards registered failClosed: false (they would block every call); install jq and re-run install.sh"
+        )
 
 
 def main() -> int:

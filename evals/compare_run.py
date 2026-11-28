@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic checks for crew-evals-compare helpers; no Elasticsearch required."""
-import importlib.util
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / ".agent/tools/evals"))  # where the tool's bootstrap lives
-SPEC = importlib.util.spec_from_file_location("evals_compare", ROOT / ".agent/tools/evals/crew-evals-compare.py")
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from crew.evals import crew_evals_compare as MODULE
 
 
 def main():

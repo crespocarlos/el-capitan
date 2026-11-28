@@ -18,13 +18,14 @@ import time
 from pathlib import Path
 
 import pytest
+from cli_runner import launcher
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / ".agent" / "tools"
-FINDINGS = TOOLS / "review" / "crew-review-findings.py"
-TASK = TOOLS / "task" / "crew-task.py"
-LS = TOOLS / "task" / "crew-ls.py"
+TOOLS = ROOT / "src" / "crew"
+FINDINGS = TOOLS / "review" / "crew_review_findings.py"
+TASK = TOOLS / "task" / "crew_task.py"
+LS = TOOLS / "task" / "crew_ls.py"
 HOOK = ROOT / ".claude" / "hooks" / "capture-reply.sh"
 USAGE_HOOK = ROOT / ".claude" / "hooks" / "cursor-usage.sh"
 PERSONA_REPLY = "### Findings: none\n\nAssessment: approve — nothing in this lane.\n"
@@ -40,8 +41,8 @@ def world(tmp: Path) -> tuple[Path, Path]:
     """A HOME with the crew tools on its bin path and one IMPLEMENTING task with a gates file."""
     home = tmp / "home"
     (home / ".agent" / "bin").mkdir(parents=True)
-    for tool in (FINDINGS, TASK):
-        (home / ".agent" / "bin" / tool.name).symlink_to(tool)
+    for name in ("crew-review-findings.py", "crew-task.py"):
+        (home / ".agent" / "bin" / name).symlink_to(launcher(name))
     task = home / ".agent" / "tasks" / "T"
     task.mkdir(parents=True)
     (task / "SPEC.md").write_text("# T\n\n## Status\nIMPLEMENTING\n", encoding="utf-8")

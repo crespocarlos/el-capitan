@@ -13,7 +13,7 @@ hook_input
 log="$HOME/.agent/state/cursor-usage.log"
 tool="$HOME/.agent/bin/crew-task.py"
 if [ "$HOOK_EVENT" = stop ] && [ -x "$tool" ]; then
-  line=$(printf '%s' "$HOOK_INPUT" | python3 "$tool" usage stop 2>/dev/null) || line="usage: failed (exit $?)"
+  line=$(printf '%s' "$HOOK_INPUT" | "$tool" usage stop 2>/dev/null) || line="usage: failed (exit $?)"
   case "$line" in
     'usage: no task for this workspace'*) ;;
     *) { mkdir -p "${log%/*}" && printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line" >>"$log"; } 2>/dev/null ;;

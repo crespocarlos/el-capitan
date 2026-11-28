@@ -146,14 +146,14 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
-'''  # noqa: E501
+'''
 
 INSTALL_SH_BEFORE = '''# Link agents, skills and rules into every Claude config dir, and render the read-only agents' tools.
 while IFS= read -r dir; do
   link_config_dir "$dir"
 done < <(python3 "$SCRIPT_DIR/.claude/install_blocks.py" config-dirs)
 render_readonly_agents
-'''  # noqa: E501
+'''
 
 INSTALL_SH_AFTER = '''# Link agents, skills and rules into every Claude config dir, and render the read-only agents' tools.
 while IFS= read -r dir; do
@@ -162,7 +162,7 @@ done < <(python3 "$SCRIPT_DIR/.claude/install_blocks.py" config-dirs)
 render_readonly_agents
 # Sessions on a second config dir (such as ~/.claude-work) get the same MCP servers as ~/.claude.
 run python3 "$SCRIPT_DIR/.claude/install_blocks.py" mirror-mcp
-'''  # noqa: E501
+'''
 
 case(id="design-mcp-mirror-config-dirs", lens="architecture", hand_seeded=True,
      source="hand-seeded from task D01FEE1F (spec abandoned and deleted; its drafts are in the session record of "
@@ -449,7 +449,7 @@ if [ -f "$approved" ]; then
     && [ "$(jq -r '.review_dir // empty' "$approved")" = "$armed_review" ] && hook_allow
 fi
 hook_deny "Review-address gate: the verdict table for ${armed_review:-this review} has no approval yet. Reply with the fixes to apply (all / none / numbers)."
-'''  # noqa: E501
+'''
 
 APPROVAL = '''#!/usr/bin/env bash
 # UserPromptSubmit: record the approval half of the review-address gate. Only a user turn reaches this hook, so the
@@ -546,7 +546,7 @@ def slug_from_url(url: str | None) -> str | None:
     tail = url.strip().rstrip("/").removesuffix(".git")
     parts = tail.replace(":", "/").split("/")
     return "/".join(parts[-2:]) if len(parts) >= 2 else None
-'''  # noqa: E501
+'''
 
 DOCTOR_WORKTREES = '''"""Doctor: each task's recorded worktree exists, is on the task's branch, and has the task's repository as origin."""
 from __future__ import annotations
@@ -588,7 +588,7 @@ def check_worktrees(tasks: Path = TASKS) -> list[tuple[str, str]]:
         if _slug(origin) != _slug(meta.get("repo_remote_url", "")):
             rows.append(("WARN", f"{name}: {tree} has origin {origin or '(none)'}, not the task's repository"))
     return rows
-'''  # noqa: E501
+'''
 
 case(id="design-private-git-helper", lens="architecture", hand_seeded=True,
      source="hand-seeded from task D2673565 SPEC.md (Centralize git access in one library: private git helpers and "

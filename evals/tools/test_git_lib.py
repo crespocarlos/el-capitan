@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermetic checks for `.agent/tools/lib/git.py`: every helper's success and failure path.
+"""Hermetic checks for `src/crew/lib/git.py`: every helper's success and failure path.
 
 Each helper is exercised against a throwaway repository, so a caller's real state is never touched:
 a bare `origin` and `upstream` on disk stand in for the network, and `gh` is replaced by a stub, so
@@ -13,15 +13,14 @@ from __future__ import annotations
 import importlib.util
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 ROOT =Path(__file__).resolve().parents[2]
-GIT_MODULE = ROOT / ".agent" / "tools" / "lib" / "git.py"
-DEFAULT_BRANCH_SH = ROOT / ".agent" / "tools" / "task" / "crew-default-branch.sh"
+GIT_MODULE = ROOT / "src" / "crew" / "lib" / "git.py"
+DEFAULT_BRANCH_SH = ROOT / "src" / "crew" / "task" / "crew-default-branch.sh"
 
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.invalid",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e.invalid"}
@@ -33,8 +32,6 @@ def check(name: str, condition: bool, detail: object = "") -> None:
 
 def load_module():
     """The library imported by path, so the stub can be installed on the module it calls."""
-    if str(GIT_MODULE.parents[1]) not in sys.path:
-        sys.path.insert(0, str(GIT_MODULE.parents[1]))
     spec = importlib.util.spec_from_file_location("crew_git_lib", GIT_MODULE)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

@@ -10,7 +10,8 @@ return next((path for path, name in worktrees() if name == branch), None)
 ```python
 if tree is not None:
     os.chdir(tree)
-with ... : code = mark_done(r.task, url, False)
+with ...:
+    code = mark_done(r.task, url, False)
 ```
 When `tree` is `None`, `mark_done` runs in the payload `cwd`. That is the folder the change was meant to stop depending on. It gives a spurious pass or fail against an unrelated HEAD and prints no warning. Fix: when no worktree resolves, skip the gate and emit a line such as `record-pr: cannot locate worktree for <branch>; run mark-done from it`. Do not run the gate in the wrong folder.
 

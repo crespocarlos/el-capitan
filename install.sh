@@ -29,20 +29,14 @@ fi
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then EXTRA_CONFIG_DIRS+=("$CLAUDE_CONFIG_DIR"); fi
 
 # Every dependency is checked before anything is written: the guard hooks fail closed, so a missing
-# interpreter would turn a finished install into a blocked shell.
+# tool would turn a finished install into a blocked shell. uv provides the interpreter (CPython 3.12+).
 preflight() {
   local dep missing=""
-  # Uninstalling needs only the interpreter that reverses the settings merges.
-  [ "$UNINSTALL" -eq 1 ] && command -v python3 >/dev/null 2>&1 && return 0
-  for dep in python3 git gh jq; do
+  for dep in git gh jq uv; do
     command -v "$dep" >/dev/null 2>&1 || missing="$missing $dep"
   done
   if [ -n "$missing" ]; then
-    echo "error: el-capitan needs python3 (3.9 or newer), git, gh and jq; missing:$missing. Nothing was installed." >&2
-    exit 1
-  fi
-  if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then
-    echo "error: el-capitan needs python3 3.9 or newer; found $(python3 -V 2>&1). Nothing was installed." >&2
+    echo "error: el-capitan needs git, gh, jq and uv; missing:$missing. Nothing was installed." >&2
     exit 1
   fi
 }
@@ -52,9 +46,9 @@ preflight
 # the installer from there, because every link it writes points into the checkout.
 source_file="${BASH_SOURCE[0]:-}"
 if [ -z "$source_file" ] || [ ! -f "$source_file" ] \
-  || [ ! -d "$(dirname "$source_file")/.agent/tools" ]; then
+  || [ ! -d "$(dirname "$source_file")/src/crew" ]; then
   checkout="${EL_CAPITAN_HOME:-$HOME/el-capitan}"
-  if [ -f "$checkout/install.sh" ] && [ -f "$checkout/.agent/tools/tools.json" ]; then
+  if [ -f "$checkout/install.sh" ] && [ -f "$checkout/src/crew/tools.json" ]; then
     echo "Using the existing checkout at $checkout (not updated; run git -C $checkout pull to upgrade)"
   elif [ "$UNINSTALL" -eq 1 ]; then
     echo "error: no el-capitan checkout at $checkout to uninstall from; run its install.sh --uninstall. Nothing was changed." >&2
@@ -78,6 +72,20 @@ COMPLETED=0
 # `set -e` stops at the first failing step; say so, so a stopped run never reads as a finished one.
 trap 'status=$?; if [ "$COMPLETED" -eq 0 ] && [ "$status" -ne 0 ]; then echo "Install INCOMPLETE (exit $status) — fix the error above and re-run install.sh." >&2; fi' EXIT
 
+# el-capitan's environment: ~/.agent/venv, built from pyproject.toml and uv.lock on a uv-managed CPython 3.12+.
+# Every Python step below runs on it; ~/.agent/bin links the catalog's commands to its launchers. The package is
+# installed as a copy (not editable), so switching or deleting this checkout never breaks the tools.
+VENV="$HOME/.agent/venv"
+if [ "$UNINSTALL" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
+  if ! UV_PROJECT_ENVIRONMENT="$VENV" uv sync --project "$SCRIPT_DIR" --frozen --no-dev --managed-python --no-editable \
+    --reinstall-package el-capitan --quiet; then
+    echo "error: could not build $VENV (uv sync --frozen); see the lines above." >&2
+    exit 1
+  fi
+fi
+PY="$VENV/bin/python"
+[ -x "$PY" ] || PY=$(uv python find '>=3.12') || { echo "error: no Python 3.12+ (uv python install 3.12)" >&2; exit 1; }
+
 # Wrapper: print action in dry-run, execute otherwise.
 run() {
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -96,7 +104,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
   dry=()
   [ "$DRY_RUN" -eq 1 ] && dry=(--dry-run)
   status=0
-  python3 "$SCRIPT_DIR/.claude/uninstall.py" "$HOME" "$SCRIPT_DIR" "${dry[@]}" || status=$?
+  "$PY" "$SCRIPT_DIR/.claude/uninstall.py" "$HOME" "$SCRIPT_DIR" "${dry[@]}" || status=$?
   for backup in "$HOME"/.claude/*.bak.* "$HOME"/.cursor/hooks.json.bak.*; do
     if [ -e "$backup" ]; then echo "  Kept a backup install made: $backup"; fi
   done
@@ -137,47 +145,21 @@ link_dir_files() {
   done <<< "$listing"
 }
 
-# A duplicate basename anywhere in the tool tree aborts before a link is written, for the same
-# reason: the installed surface is flat. Scanned from the tree rather than the catalog so the check
-# still fires when a copy of this installer runs against a tree whose catalog is absent or stale.
-duplicate_tool_basenames() {
-  local listing duplicates name first second
-  listing=$(find "$SCRIPT_DIR/.agent/tools" -type f \( -name '*.py' -o -name '*.sh' \) \
-    ! -path '*/__pycache__/*' | sort)
-  [[ -n "$listing" ]] || return 0
-  duplicates=$(printf '%s\n' "$listing" | awk -F/ '
-    { name = $NF; if (name in seen) print name "\t" seen[name] "\t" $0; else seen[name] = $0 }')
-  [[ -z "$duplicates" ]] && return 0
-  while IFS=$'\t' read -r name first second; do
-    echo "error: duplicate command $name in $first and $second" >&2
-  done <<< "$duplicates"
-  return 1
-}
-
-# The catalog's `kind: command` entries as `dir<TAB>name` lines: the whole of what ~/.agent/bin
-# receives. Read from the manifest through Python so the JSON is parsed once, by one parser.
+# The catalog's `kind: command` entries as `target<TAB>name` lines: the whole of what ~/.agent/bin
+# receives. A Python command's target is its launcher in the venv (pyproject.toml `[project.scripts]`),
+# a shell command's its file in the checkout.
 catalog_commands() {
-  python3 - "$SCRIPT_DIR/.agent/tools/tools.json" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1]) as handle:
-    data = json.load(handle)
-for section in ("tools", "scripts"):
-    for entry in data.get(section, []):
-        if entry.get("kind") == "command":
-            print(f"{entry['dir']}\t{entry['name']}")
-PY
+  jq -r --arg venv "$VENV/bin" --arg tree "$SCRIPT_DIR/src/crew" '(.tools + .scripts)[] | select(.kind == "command")
+    | (if (.name | endswith(".py")) then "\($venv)/\(.name)" else "\($tree)/\(.dir)/\(.name)" end) + "\t" + .name' \
+    "$SCRIPT_DIR/src/crew/tools.json"
 }
 
 # Link only what the catalog declares as a command. A module is imported and an asset is read, so
-# neither belongs on the command surface. The old directory walk linked every file at depth two,
-# which shipped `cli.py`, `files.py`, `git.py`, and the `memory_*`/`review_*` modules to
-# ~/.agent/bin as commands that cannot run.
+# neither belongs on the command surface.
 link_catalog_commands() {
-  local dest="$1" listing directory name
-  if [[ ! -f "$SCRIPT_DIR/.agent/tools/tools.json" ]]; then
-    echo "error: missing tool catalog $SCRIPT_DIR/.agent/tools/tools.json" >&2
+  local dest="$1" listing target name
+  if [[ ! -f "$SCRIPT_DIR/src/crew/tools.json" ]]; then
+    echo "error: missing tool catalog $SCRIPT_DIR/src/crew/tools.json" >&2
     return 1
   fi
   listing=$(catalog_commands) || return 1
@@ -186,26 +168,24 @@ link_catalog_commands() {
     return 1
   fi
   run mkdir -p "$dest"
-  while IFS=$'\t' read -r directory name; do
-    run ln -sf "$SCRIPT_DIR/.agent/tools/$directory/$name" "$dest/$name"
+  while IFS=$'\t' read -r target name; do
+    run ln -sf "$target" "$dest/$name"
   done <<< "$listing"
 }
 
-# Remove links this installer created into the tool tree whose basename is no longer a cataloged
-# command. Those links are not broken — their targets still exist — so `prune_broken_symlinks`
-# leaves them behind, and the modules and catalog files the old walk linked would stay on the
-# command surface forever. Only links whose target is inside this repo's tool tree are touched, so a
-# user's own file in the same directory is safe.
+# Remove links this installer created into the tool tree or the venv whose basename is no longer a
+# cataloged command: their targets still exist, so `prune_broken_symlinks` leaves them behind. Only
+# those links are touched, so a user's own file in the same directory is safe.
 prune_retired_tool_links() {
   local dir="$1" commands link target name
   [[ -d "$dir" ]] || return 0
-  [[ -f "$SCRIPT_DIR/.agent/tools/tools.json" ]] || return 0
+  [[ -f "$SCRIPT_DIR/src/crew/tools.json" ]] || return 0
   commands=$(catalog_commands | cut -f2) || return 1
   shopt -s nullglob
   for link in "$dir"/*; do
     [[ -L "$link" ]] || continue
     target=$(readlink "$link")
-    [[ "$target" == "$SCRIPT_DIR/.agent/tools/"* ]] || continue
+    [[ "$target" == "$SCRIPT_DIR/src/crew/"* || "$target" == "$VENV/bin/"* ]] || continue
     name=$(basename "$link")
     if grep -qxF "$name" <<< "$commands"; then
       continue
@@ -247,13 +227,13 @@ run mkdir -p ~/.agent/tasks ~/.agent/journal ~/.agent/bin
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "  [dry-run] create the install directories and record them in ~/.agent/install-manifest.json"
 else
-  python3 "$SCRIPT_DIR/.claude/install_blocks.py" prepare "$HOME" "$SCRIPT_DIR" "${EXTRA_CONFIG_DIRS[@]}"
+  "$PY" "$SCRIPT_DIR/.claude/install_blocks.py" prepare "$HOME" "$SCRIPT_DIR" "${EXTRA_CONFIG_DIRS[@]}"
 fi
 # The Claude config dirs, ~/.claude first: the recorded ones and those this run names.
 CONFIG_DIRS=()
 while IFS= read -r config_dir; do
   [ -n "$config_dir" ] && CONFIG_DIRS+=("$config_dir")
-done < <(python3 "$SCRIPT_DIR/.claude/install_blocks.py" config-dirs "$HOME" "${EXTRA_CONFIG_DIRS[@]}")
+done < <("$PY" "$SCRIPT_DIR/.claude/install_blocks.py" config-dirs "$HOME" "${EXTRA_CONFIG_DIRS[@]}")
 if [ "${#CONFIG_DIRS[@]}" -eq 0 ]; then
   echo "error: could not list the Claude config dirs (install_blocks.py config-dirs)" >&2
   exit 1
@@ -338,7 +318,7 @@ prune_broken_symlinks ~/.cursor/rules
 # Agents are linked one by one, except a templated agent (`tools:` ends in `# {{mcp_servers}}`) that already has
 # a rendered copy: a re-install never swaps that copy for a link. Without a copy the link is the fallback, and
 # its source line is a valid list of the class's native tools.
-TEMPLATED=$(python3 "$SCRIPT_DIR/.claude/install_blocks.py" templated-agents "$HOME" "$SCRIPT_DIR" 2>/dev/null) || TEMPLATED=""
+TEMPLATED=$("$PY" "$SCRIPT_DIR/.claude/install_blocks.py" templated-agents "$HOME" "$SCRIPT_DIR" 2>/dev/null) || TEMPLATED=""
 run mkdir -p ~/.cursor/agents
 for agent in "$SCRIPT_DIR"/.cursor/agents/*.md; do
   name=$(basename "$agent")
@@ -361,7 +341,7 @@ prune_broken_symlinks ~/.cursor/agents
 # failure is one line and the install goes on: an agent without a copy keeps its valid source link.
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "  [dry-run] render the read-only agents into ~/.cursor/agents from the mcp section of ~/.agent/config.json"
-elif ! rendered=$(python3 "$SCRIPT_DIR/.claude/install_blocks.py" render-agents "$HOME" "$SCRIPT_DIR" 2>&1); then
+elif ! rendered=$("$PY" "$SCRIPT_DIR/.claude/install_blocks.py" render-agents "$HOME" "$SCRIPT_DIR" 2>&1); then
   echo "  WARNING: render-agents failed ($(printf '%s' "$rendered" | tail -n 1)); read-only agents keep their source tools: line"
 else
   printf '%s\n' "$rendered"
@@ -444,7 +424,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "  [dry-run] upsert memory adapters and global rule imports"
 else
   mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.agent"
-  python3 "$SCRIPT_DIR/.claude/install_blocks.py" upsert "$HOME" "$SCRIPT_DIR"
+  "$PY" "$SCRIPT_DIR/.claude/install_blocks.py" upsert "$HOME" "$SCRIPT_DIR"
 fi
 
 # Claude Code hooks (settings + hook scripts)
@@ -465,7 +445,7 @@ if [ -f "$SCRIPT_DIR/.claude/settings.template.json" ]; then
     fi
     memory_flag=()
     check_status=0
-    left=$(python3 "$SCRIPT_DIR/.agent/tools/memory/crew-mem.py" import-claude --check --config-dir "$config_dir" 2>&1) || check_status=$?
+    left=$("$VENV/bin/crew-mem.py" import-claude --check --config-dir "$config_dir" 2>&1) || check_status=$?
     pending=$(grep -c '^not imported:' <<< "$left" || true)
     review=$(grep -c '^review ' <<< "$left" || true)
     if [ "$check_status" -eq 0 ]; then
@@ -482,9 +462,9 @@ if [ -f "$SCRIPT_DIR/.claude/settings.template.json" ]; then
     else
       echo "  auto-memory left on in $config_dir: could not check its Claude memory entries: ${left%%$'\n'*}" >&2
     fi
-    if ! python3 "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST" --manifest "$HOME" "${memory_flag[@]}"; then
+    if ! "$PY" "$SCRIPT_DIR/.claude/merge_claude_settings.py" "$SETTINGS_SRC" "$SETTINGS_DEST" --manifest "$HOME" "${memory_flag[@]}"; then
       echo "  ERROR: settings.json merge failed — hooks may not be registered" >&2
-      echo "  Run manually: python3 $SCRIPT_DIR/.claude/merge_claude_settings.py $SETTINGS_SRC $SETTINGS_DEST --manifest $HOME" >&2
+      echo "  Run manually: $PY $SCRIPT_DIR/.claude/merge_claude_settings.py $SETTINGS_SRC $SETTINGS_DEST --manifest $HOME" >&2
       FAILED=1
     fi
   done
@@ -508,7 +488,7 @@ done
 prune_broken_symlinks ~/.claude/hooks
 if [ "$DRY_RUN" -eq 0 ]; then
   mkdir -p "$HOME/.cursor"
-  if ! python3 "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json" --manifest "$HOME"; then
+  if ! "$PY" "$SCRIPT_DIR/.claude/merge_cursor_hooks.py" "$SCRIPT_DIR/.cursor/hooks.template.json" "$HOME/.cursor/hooks.json" --manifest "$HOME"; then
     echo "  ERROR: ~/.cursor/hooks.json merge failed — Cursor guards are not registered" >&2
     FAILED=1
   fi
@@ -539,15 +519,11 @@ for f in _SPEC_TEMPLATE.md _BUG_SPEC_TEMPLATE.md _JOURNAL_TEMPLATE.md _MEMORY_TE
   run ln -sf "$SCRIPT_DIR/.agent/$f" ~/.agent/"$f"
 done
 # ~/.agent/bin
-if ! duplicate_tool_basenames; then
-  echo "  ERROR: tool tree has a duplicate basename; ~/.agent/bin was not updated." >&2
-  exit 1
-fi
 link_catalog_commands ~/.agent/bin
 prune_retired_tool_links ~/.agent/bin
 prune_broken_symlinks ~/.agent/bin
 if [ "$DRY_RUN" -eq 0 ] && [ ! -d "$HOME/.agent/memory/.git" ]; then
-  CREW_MEMORY_DIR="$HOME/.agent/memory" python3 "$SCRIPT_DIR/.agent/tools/memory/crew-mem.py" init
+  CREW_MEMORY_DIR="$HOME/.agent/memory" "$VENV/bin/crew-mem.py" init
 fi
 
 echo ""

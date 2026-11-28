@@ -26,9 +26,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / ".claude" / "hooks"
-INBOX = ROOT / ".agent" / "tools" / "memory" / "crew-inbox.py"
-for directory in (ROOT / ".agent" / "tools" / "memory", ROOT / ".agent" / "tools" / "task"):
-    sys.path.insert(0, str(directory))
+INBOX = ROOT / "src" / "crew" / "memory" / "crew_inbox.py"
 # Both harness shapes, with quotes and non-ASCII in the command and the session id.
 TELEMETRY = (
     {"session_id": "claude-✓", "hook_event_name": "PostToolUse", "tool_input": {"command": 'echo "quotes" é→✓'}},
@@ -136,7 +134,7 @@ def test_add_cite_and_journal_round_trip(tmp: Path) -> None:
     env = {"CREW_MEMORY_DIR": str(tmp / "memory"), "CREW_JOURNAL_DIR": str(tmp / "journal"), "HOME": str(tmp)}
 
     def mem(*arguments: str, stdin: str = "") -> subprocess.CompletedProcess:
-        return cli(ROOT / ".agent" / "tools" / "memory" / "crew-mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
+        return cli(ROOT / "src" / "crew" / "memory" / "crew_mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
 
     check("init prepares the store", mem("init").returncode == 0)
     added = mem("add", "--type", "procedure", "--scope", "global", "--title", "Run the hook suite first",
@@ -218,17 +216,17 @@ REFUSED = (
 def test_import_refuses_an_archive_whole(case: str, members: dict[str, str], blocker: str | None, caps: dict[str, int],
                                          tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Every member is checked before anything is written; a write that fails partway leaves nothing behind."""
-    import memory_bootstrap  # noqa: F401
 
-    import memory_transfer
     from cli_runner import run as cli
+
+    from crew.memory import memory_transfer
 
     for name, value in caps.items():
         monkeypatch.setattr(memory_transfer, name, value)
     env = {"CREW_MEMORY_DIR": str(tmp / "memory"), "CREW_JOURNAL_DIR": str(tmp / "journal"), "HOME": str(tmp)}
 
     def mem(*arguments: str, stdin: str = "") -> subprocess.CompletedProcess:
-        return cli(ROOT / ".agent" / "tools" / "memory" / "crew-mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
+        return cli(ROOT / "src" / "crew" / "memory" / "crew_mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
 
     mem("init")
     (tmp / "memory" / "global" / "orig.md").write_text(unit_text("procedure-orig"), encoding="utf-8")
@@ -248,11 +246,8 @@ def test_import_refuses_an_archive_whole(case: str, members: dict[str, str], blo
 
 
 def test_mutate_restores_when_the_index_cannot_parse_a_write(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import memory_bootstrap  # noqa: F401
 
-    import memory_maintenance
-    import memory_store
-
+    from crew.memory import memory_maintenance, memory_store
     monkeypatch.setenv("CREW_MEMORY_DIR", str(tmp / "memory"))
     monkeypatch.setenv("HOME", str(tmp))
     memory_maintenance.init_store()
@@ -268,10 +263,8 @@ def test_mutate_restores_when_the_index_cannot_parse_a_write(tmp: Path, monkeypa
 
 
 def test_primary_remote() -> None:
-    import memory_bootstrap  # noqa: F401
 
-    import task_repo_facts
-
+    from crew.task import task_repo_facts
     check("a checkout with neither upstream nor origin reports its first remote",
           task_repo_facts.primary_remote(["fork", "mirror"]) == "fork")
     check("upstream wins over origin, whatever the order", task_repo_facts.primary_remote(["origin", "upstream"]) == "upstream")
@@ -279,11 +272,9 @@ def test_primary_remote() -> None:
 
 @pytest.mark.parametrize("case,url,expected", KEYS)
 def test_repo_key(case: str, url: str | None, expected: str, tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import memory_bootstrap  # noqa: F401
 
-    import memory_paths
-    import task_repo_facts
-
+    from crew.memory import memory_paths
+    from crew.task import task_repo_facts
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     checkout = tmp / "checkout"
     checkout.mkdir()
@@ -367,7 +358,7 @@ def test_import_claude(tmp: Path) -> None:
     env = {"CREW_MEMORY_DIR": str(tmp / "memory"), "HOME": str(tmp / "home"), "CLAUDE_CONFIG_DIR": None}
 
     def mem(*arguments: str, stdin: str = "") -> subprocess.CompletedProcess:
-        return cli(ROOT / ".agent" / "tools" / "memory" / "crew-mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
+        return cli(ROOT / "src" / "crew" / "memory" / "crew_mem.py", *arguments, env=env, cwd=tmp, stdin=stdin)
 
     mem("init")
     stored = mem("add", "--type", "project", "--scope", "cebola-fit", "--title", "Stored", stdin="Stored before the import.\n")

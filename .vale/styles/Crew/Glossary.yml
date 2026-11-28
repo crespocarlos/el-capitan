@@ -1,5 +1,5 @@
 extends: substitution
-message: "'%[2]s' is off-glossary; the glossary term in .agent/tools/AGENTS.md is '%[1]s'."
+message: "'%[2]s' is off-glossary; the glossary term in src/crew/AGENTS.md is '%[1]s'."
 level: error
 ignorecase: true
 swap:

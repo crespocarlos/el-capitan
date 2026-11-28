@@ -3,17 +3,17 @@
 .agent/PROFILE.md
 .agent/vectorstore/
 
-# Python bytecode, in every package (the tools, tui/, evals/)
+# Python bytecode and the dev environment (`uv sync`)
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.venv/
 
 # Per-run local state: task specs, review scratch, and anything else a crew command writes.
-# Everything under .agent/ except the templates and the tool tree is runtime state, so ignore
-# the directory wholesale and re-include what belongs in the repo. A named list was how two
+# Everything under .agent/ except the templates is runtime state, so ignore the directory
+# wholesale and re-include what belongs in the repo. A named list was how two
 # task artifacts got committed and later swept away by a `git add -A`.
 .agent/*
-!.agent/tools/
 !.agent/_SPEC_TEMPLATE.md
 !.agent/_BUG_SPEC_TEMPLATE.md
 !.agent/_MEMORY_TEMPLATE.md

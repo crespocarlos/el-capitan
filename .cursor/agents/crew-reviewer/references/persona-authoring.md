@@ -48,5 +48,5 @@ Primary-kinds table in `context-tiers.md`, and `check_layers` in `crew-review-fi
 
 ## Frontmatter keys per harness
 
-Which harness reads which key, `model:`, and backgrounding: `.agent/tools/AGENTS.md` → Authoring
+Which harness reads which key, `model:`, and backgrounding: `src/crew/AGENTS.md` → Authoring
 agent and skill files.

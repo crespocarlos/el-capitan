@@ -22,7 +22,7 @@ Fix: after the loop, report any `BUDGETED_AGENTS` name with no file, for example
 
 4. [nit · 3] **`.agent/tools/maintenance/lint_prompts.py:36`** — the message does not say what was found
 ```python
-f"say the budget once: \"stop calling tools at {calls}\""
+f'say the budget once: "stop calling tools at {calls}"'
 ```
 This one message covers three cases: the phrase is absent, it appears twice, or it states a different number. An author who wrote "stop calling tools at 6" against `tool_budget: 8` is told only to say it once. The cost is a guessing step in a lint meant to be self-explanatory.
 Fix: report the values found, for example `f"stated budgets {found}; expected exactly one \"stop calling tools at {calls}\""`.

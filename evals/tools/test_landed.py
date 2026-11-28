@@ -21,12 +21,11 @@ from pathlib import Path
 import pytest
 from cli_runner import run as cli
 
-ROOT = Path(__file__).resolve().parents[2]
-TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
-sys.path.insert(0, str(TASK_TOOLS))
-sys.path.insert(0, str(TASK_TOOLS.parent))
+from crew.task import ls_data
 
-import ls_data  # noqa: E402
+ROOT = Path(__file__).resolve().parents[2]
+TASK_TOOLS = ROOT / "src" / "crew" / "task"
+
 
 URL = "https://github.com/acme/widgets/pull/51"
 SHA = "a" * 40
@@ -205,7 +204,7 @@ def test_crew_ls_all_with_a_fake_gh(tmp: Path) -> None:
     env = {**os.environ, "PATH": f"{fake_gh(tmp / 'gh-bin', merged_into('feat/parent'), log)}{os.pathsep}{os.environ['PATH']}"}
     # The merge commit is not in this scratch repository, so reachability cannot confirm it: unknown or no,
     # never yes. The flag line is the point of this case.
-    run = lambda *extra: subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks), *extra],
+    run = lambda *extra: subprocess.run([sys.executable, str(TASK_TOOLS / "crew_ls.py"), "--tasks-dir", str(tasks), *extra],
                                         capture_output=True, text=True, env=env, cwd=tmp)
     table = run("--all")
     check("crew ls --all prints a landed line for a DONE task", "stacked  landed:" in table.stdout, table)
@@ -247,11 +246,11 @@ def test_crew_ls_all_reads_the_landing_bases_of_its_repository(tmp: Path) -> Non
     (repo / "AGENTS.md").write_text("landing_bases: ^\\d+\\.x$\n", encoding="utf-8")
     copy_task(task_with_pr(tmp / "src"), tasks / "22222222-2222-2222-2222-222222222222", "backport", "fix/x")
     env = {**os.environ, "PATH": f"{fake_gh(tmp / 'bin', merged_into('9.x'))}{os.pathsep}{os.environ['PATH']}"}
-    shown = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks), "--all"],
+    shown = subprocess.run([sys.executable, str(TASK_TOOLS / "crew_ls.py"), "--tasks-dir", str(tasks), "--all"],
                            capture_output=True, text=True, env=env, cwd=repo)
     check("crew ls --all prints `landed: yes (backport to 9.x)`", "backport  landed: yes (backport to 9.x)" in shown.stdout, shown)
     check("a backport is not flagged as a non-default base", "not main" not in shown.stdout, shown.stdout)
-    data = json.loads(subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks), "--all", "--json"],
+    data = json.loads(subprocess.run([sys.executable, str(TASK_TOOLS / "crew_ls.py"), "--tasks-dir", str(tasks), "--all", "--json"],
                                      capture_output=True, text=True, env=env, cwd=repo).stdout)["items"]
     check("--json carries landed yes and the note", data[0].get("landed") == "yes" and data[0].get("note") == "backport to 9.x", data)
 
@@ -360,7 +359,7 @@ def test_the_watch_command(tmp: Path) -> None:
 
     tasks = make_tasks(tmp)
     before = digest(tasks)
-    command = [sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--tasks-dir", str(tasks)]
+    command = [sys.executable, str(TASK_TOOLS / "crew_ls.py"), "--tasks-dir", str(tasks)]
     # A temp HOME: the real ~/.agent/config.json is not this test's input, and a key it rejects ends the child at once.
     env = {**os.environ, "HOME": str(tmp)}
     child = subprocess.Popen([*command, "--watch", "--interval", "0.05"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
@@ -384,7 +383,7 @@ def test_the_watch_command(tmp: Path) -> None:
     check("watching is read-only", digest(tasks) == before)
     plain = subprocess.run(command, capture_output=True, text=True, env=env)
     check("without --watch nothing is cleared", "\x1b[2J" not in plain.stdout and "building" in plain.stdout, plain.stdout)
-    missing = subprocess.run([sys.executable, str(TASK_TOOLS / "crew-ls.py"), "--cost", "--tasks-dir", str(tmp / "nowhere")],
+    missing = subprocess.run([sys.executable, str(TASK_TOOLS / "crew_ls.py"), "--cost", "--tasks-dir", str(tmp / "nowhere")],
                              capture_output=True, text=True, env=env)
     check("--cost with no tasks directory prints the error on stderr, exit 2",
           missing.returncode == 2 and missing.stdout == "" and "no tasks directory" in missing.stderr, missing)
@@ -438,7 +437,7 @@ def listing_home(tmp: Path) -> tuple[Path, Path]:
 def test_crew_ls_repo_and_status_filters(tmp: Path, arguments: tuple, shown: set, folded: bool, scope: str) -> None:
     """The current repo by default (a task with no repository is in every one), named under the table; `--status` unfolds stale work."""
     tasks, repo = listing_home(tmp)
-    table = cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), *arguments, cwd=repo).stdout
+    table = cli(TASK_TOOLS / "crew_ls.py", "--tasks-dir", str(tasks), *arguments, cwd=repo).stdout
     rows = {line.split()[1] for line in table.splitlines() if line.split()[:1] in (["IMPLEMENTING"], ["DRAFTING"])}
     check("the filters keep the expected rows, and only unfiltered state folds the stale task into one line",
           rows == shown and ("stale: 1 IMPLEMENTING" in table) == folded and "REPO" in table.splitlines()[0]
@@ -450,7 +449,7 @@ def test_crew_ls_age_comes_from_progress(tmp: Path) -> None:
     tasks, repo = listing_home(tmp)
 
     def ls(*arguments: str) -> subprocess.CompletedProcess:
-        return cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), *arguments, cwd=repo)
+        return cli(TASK_TOOLS / "crew_ls.py", "--tasks-dir", str(tasks), *arguments, cwd=repo)
 
     records = {r["slug"]: r for r in json.loads(ls("--json").stdout)["items"]}
     check("activity and stale follow PROGRESS; the repo is recorded",
@@ -489,8 +488,7 @@ END = "METRIC: agent_end agent=x agent_id={} tokens=99000 input={} output=1000 c
 def test_task_usage_totals(lines: tuple, usage: dict, text: str) -> None:
     """One measure: new (input + output + cache_write) and cache reads summed over each agent's latest `agent_end`;
     a stage with only `tokens_reported` adds that final context as `new`, approximate."""
-    import task_progress
-
+    from crew.task import task_progress
     entries = [task_progress.parse_entry(f"[2026-11-27T10:0{i}:00Z] {line}") for i, line in enumerate(lines)]
     found = task_progress.task_usage_totals(entries)
     check("the totals and their text", (found, task_progress.usage_text(found)) == (usage, text), found)
@@ -511,7 +509,7 @@ def test_crew_ls_report(tmp: Path) -> None:
                                                          for d, tool, failed in ((1, "Bash", True), (1, "Read", False), (90, "Bash", True))))
 
     def report(*arguments: str) -> subprocess.CompletedProcess:
-        return cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), "--report", *arguments,
+        return cli(TASK_TOOLS / "crew_ls.py", "--tasks-dir", str(tasks), "--report", *arguments,
                    env={"CREW_MEMORY_DIR": str(memory), "HOME": str(tmp)}, cwd=tmp)
 
     data = json.loads(report("--json").stdout)
@@ -525,7 +523,7 @@ def test_crew_ls_report(tmp: Path) -> None:
           == (1, 0, {"blocking": {"fixed": 2}, "nit": {"deferred": 1}}), narrowed)
     text = report()
     check("the text report renders one line per section", text.returncode == 0 and len(text.stdout.splitlines()) >= 7, text)
-    listed = cli(TASK_TOOLS / "crew-ls.py", "--tasks-dir", str(tasks), "--repo", "all", env={"HOME": str(tmp)}, cwd=tmp).stdout
+    listed = cli(TASK_TOOLS / "crew_ls.py", "--tasks-dir", str(tasks), "--repo", "all", env={"HOME": str(tmp)}, cwd=tmp).stdout
     check("the report's tokens state their own scope: the window over every task, the DONE one the tasks view hides",
           data["tokens"] == {"new": 4007, "cache_read": 3, "approximate": True}
           and "tokens (last 30 days, all tasks): new ~4k, cache reads 3" in text.stdout

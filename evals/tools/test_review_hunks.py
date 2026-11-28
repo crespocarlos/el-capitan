@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-hunks.py"
+TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_review_hunks.py"
 
 SIMPLE = """diff --git a/src/a.ts b/src/a.ts
 index 1111111..2222222 100644

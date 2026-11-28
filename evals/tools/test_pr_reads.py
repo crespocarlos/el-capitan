@@ -22,7 +22,7 @@ import pytest
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "review" / "crew-pr-actions.py"
+TOOL = ROOT / "src" / "crew" / "review" / "crew_pr_actions.py"
 
 PATCH = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-one\n+two\n"
 VIEW = {"number": 42, "title": "Wrap the reads", "headRefName": "refactor/gh-reads",
@@ -97,7 +97,7 @@ class Sandbox:
         self.bindir.mkdir()
         asset = self.path / ".agent" / "bin" / "pr-review-threads.graphql"
         asset.parent.mkdir(parents=True)
-        asset.write_text((ROOT / ".agent" / "tools" / "review" /
+        asset.write_text((ROOT / "src" / "crew" / "review" /
                           "pr-review-threads.graphql").read_text())
 
     def stub(self, body, code=0, stderr=""):

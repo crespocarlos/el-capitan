@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """The installed command surface: install links, `--help`, machine-readable output, bounds, exit codes.
 
-- `install.sh` links the catalog's commands and nothing else, and refuses a basename that two
-  directories both provide (a second `ln -sf` would silently replace the first);
+- `install.sh` links the catalog's commands and nothing else;
 - every command's `--help` succeeds and fits one screen (40 lines), and the subcommand helps show what
   they own; one in-process loop asks every Python entry point, so no interpreter starts per command;
 - every command the catalog marks machine-readable prints valid JSON with nothing human before it;
 - every command that prints a collection advertises its bound and prints a marker naming the cut;
-- every non-standard exit code is a named `EXIT_*` constant with a row in `.agent/tools/AGENTS.md`.
+- every non-standard exit code is a named `EXIT_*` constant with a row in `src/crew/AGENTS.md`.
 Catalog kinds and command names are `crew-lint` rules (`catalog-kind-*`, `command-name`).
 """
 from __future__ import annotations
@@ -16,9 +15,7 @@ import ast
 import json
 import os
 import re
-import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -27,15 +24,15 @@ from cli_runner import run as cli
 # Install runs, each allowed 120 s: more than the suite's 60 s per test.
 pytestmark = pytest.mark.timeout(300)
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / ".agent" / "tools"
+TOOLS = ROOT / "src" / "crew"
 INSTALL = ROOT / "install.sh"
 SOURCE_ONLY = {"task-env.sh", "crew-diff.sh"}
 HELP_LINE_CEILING = 40
 TOOLS_DOC = (TOOLS / "TOOLS.md").read_text()
 # (case, module, parser function, text the --help must show, text it must not)
 HELP_TEXTS = (
-    ("crew-task.py worktree --help lists every action, check included", "task_worktrees", "pref_main", ("pref", "record", "check <TREE>"), ()),
-    ("crew-verify.py report-check --help describes the report check, not the task listing", "task_verify_report", "main", ("builder",),
+    ("crew-task.py worktree --help lists every action, check included", "crew.task.task_worktrees", "pref_main", ("pref", "record", "check <TREE>"), ()),
+    ("crew-verify.py report-check --help describes the report check, not the task listing", "crew.task.task_verify_report", "main", ("builder",),
      ("Rendering task state",)),
 )
 SAMPLE_DIFF = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,3 @@\n one\n-two\n+two\n+three\n"
@@ -70,29 +67,20 @@ def scratch_repo(path: Path) -> Path:
     return path
 
 
-def dry_run(home: str, script: Path = INSTALL) -> subprocess.CompletedProcess:
+def dry_run(home: str) -> subprocess.CompletedProcess:
     env = {key: value for key, value in os.environ.items() if key not in ("CREW_MEMORY_DIR", "CREW_JOURNAL_DIR", "CREW_TASK_DIR")}
-    return subprocess.run(["bash", str(script), "--dry-run"], capture_output=True, text=True, env={**env, "HOME": home})
+    return subprocess.run(["bash", str(INSTALL), "--dry-run"], capture_output=True, text=True, env={**env, "HOME": home})
 
 
 def install_links(tmp: Path) -> None:
-    """The dry-run link set is exactly the catalog's commands, each once; a duplicated basename is refused."""
+    """The dry-run link set is exactly the catalog's commands, each once: venv launchers and shell files."""
     result = dry_run(str(tmp / "home"))
-    linked = [Path(target).name for target in re.findall(r"ln -sf (\S+) ", result.stdout) if "/.agent/tools/" in target]
+    linked = [Path(target).name for target in re.findall(r"ln -sf (\S+) ", result.stdout)
+              if "/src/crew/" in target or "/.agent/venv/bin/" in target]
     names = {entry["name"] for entry in catalog() if entry.get("kind") == "command"}
     check("install --dry-run links every command, nothing else, each once",
           result.returncode == 0 and set(linked) == names and len(linked) == len(set(linked)),
           (result.stderr[-300:], sorted(set(linked) ^ names)))
-    source = tmp / "dup-src"
-    for package in ("task", "review"):
-        (source / ".agent" / "tools" / package).mkdir(parents=True)
-        shutil.copy(TOOLS / "task" / "crew-progress.py", source / ".agent" / "tools" / package / "crew-progress.py")
-    shutil.copy(INSTALL, source / "install.sh")
-    for name in ("rules", ".claude", ".cursor"):
-        (source / name).symlink_to(ROOT / name)
-    refused = dry_run(str(tmp / "dup-home"), source / "install.sh")
-    check("a basename in two tool directories is refused, naming both", refused.returncode != 0 and re.search(
-        r"error: duplicate command crew-progress.py in .*tools/review/crew-progress.py and .*tools/task/crew-progress.py", refused.stderr), refused.stderr[-300:])
 
 
 def help_text(module: str, function: str) -> str:
@@ -100,9 +88,6 @@ def help_text(module: str, function: str) -> str:
     import importlib
     import io
 
-    for path in (str(TOOLS / "task"), str(TOOLS)):
-        if path not in sys.path:
-            sys.path.insert(0, path)
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer), contextlib.suppress(SystemExit):
         getattr(importlib.import_module(module), function)(["--help"])

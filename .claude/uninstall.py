@@ -10,15 +10,17 @@ script. A link whose script a remaining registration still runs is kept. The lin
 install layout (`install_blocks.LINKS`) and removed when they point into the recorded checkout, by
 real path; each recorded Claude config dir loses its settings entries, blocks and `agents`/`skills`
 links into ~/.cursor; the rendered agent copies the manifest records (`rendered_agents`) go with the links;
-the directories install created go when empty. Exit 0 when nothing of the install is left,
+the directories install created go when empty, and ~/.agent/venv goes once nothing else is left. Exit 0 when nothing of the install is left,
 1 when links remain (each is reported), 2 when the run refused before changing anything.
 ~/.agent data stays.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -27,12 +29,11 @@ import merge_claude_settings
 import merge_cursor_hooks
 from install_blocks import MANIFEST, commands_in, hook_scripts, inside, layout_links, target_of, write_json
 
-TEMPLATES = {"claude_settings": Path(".claude/settings.template.json"),
-             "cursor_hooks": Path(".cursor/hooks.template.json")}
+TEMPLATES = {"claude_settings": Path(".claude/settings.template.json"), "cursor_hooks": Path(".cursor/hooks.template.json")}
 SHOWN = 5
 # A dangling link whose target ends in a path the install layout links from: an install from a checkout
 # that was moved or deleted. A user's own dangling link names some other path.
-STRAY = re.compile(r"/(\.agent/tools/|\.agent/_\w+\.md$|\.cursor/(agents|skills)/|rules/[^/]+\.mdc$|\.claude/hooks/)")
+STRAY = re.compile(r"/(src/crew/|\.agent/_\w+\.md$|\.cursor/(agents|skills)/|rules/[^/]+\.mdc$|\.claude/hooks/)")
 
 
 class Refused(Exception):
@@ -41,21 +42,20 @@ class Refused(Exception):
 
 def tilde(path: Path, home: Path) -> str:
     text = str(path)
-    return "~" + text[len(str(home)):] if text.startswith(str(home) + os.sep) else text
+    return "~" + text[len(str(home)) :] if text.startswith(str(home) + os.sep) else text
 
 
 def checkout_of(path: str) -> str | None:
     """The el-capitan checkout an existing path lies in (a directory holding install.sh and the tool catalog)."""
     for parent in Path(path).parents:
-        if (parent / "install.sh").is_file() and (parent / ".agent" / "tools" / "tools.json").is_file():
+        if (parent / "install.sh").is_file() and (parent / "src" / "crew" / "tools.json").is_file():
             return str(parent)
     return None
 
 
 def settings_files(home: Path) -> dict[str, Path]:
     """Each settings file install merges into, by manifest section: every Claude config dir's, then Cursor's."""
-    found = {install_blocks.settings_section(home, directory): directory / "settings.json"
-             for directory in install_blocks.config_dirs(home)}
+    found = {install_blocks.settings_section(home, directory): directory / "settings.json" for directory in install_blocks.config_dirs(home)}
     return {**found, "cursor_hooks": home / ".cursor" / "hooks.json"}
 
 
@@ -74,8 +74,7 @@ def config_links(home: Path) -> list[Path]:
             if link.is_symlink():
                 found += [link] if target_of(link) == os.path.join(cursor, name) else []
             elif link.is_dir():
-                found += [entry for entry in sorted(link.iterdir()) if entry.is_symlink()
-                          and points_at(entry, os.path.join(cursor, name))]
+                found += [entry for entry in sorted(link.iterdir()) if entry.is_symlink() and points_at(entry, os.path.join(cursor, name))]
     return found
 
 
@@ -138,8 +137,7 @@ def installed_hook(home: Path, command: str, roots: set[str]) -> bool:
     return False
 
 
-def resolve_legacy(home: Path, section: str, recorded: dict, template: dict, since: object,
-                   roots: set[str]) -> tuple[dict, list[str]]:
+def resolve_legacy(home: Path, section: str, recorded: dict, template: dict, since: object, roots: set[str]) -> tuple[dict, list[str]]:
     """`recorded` plus the `legacy` entries the user did not have; with no evidence, the rules to review.
 
     `legacy` holds the template entries an install from before the manifest may have added. The oldest
@@ -158,24 +156,23 @@ def resolve_legacy(home: Path, section: str, recorded: dict, template: dict, sin
         snapshot = None
     if not isinstance(snapshot, dict):
         ours = [pair for pair in legacy.get("hooks", []) if installed_hook(home, pair[1], roots)]
-        listed = ([rule for rules in legacy.get("rules", {}).values() for rule in rules]
-                  + [pair[1] for pair in legacy.get("hooks", []) if pair not in ours])
+        listed = [rule for rules in legacy.get("rules", {}).values() for rule in rules] + [pair[1] for pair in legacy.get("hooks", []) if pair not in ours]
         extra = {"hooks": ours, "events": list(template.get("hooks", {}))} if ours else {}
         return install_blocks.union(recorded, extra), listed
     rules, hooks = entry_ids(section, snapshot)
     old_hooks = snapshot.get("hooks") if isinstance(snapshot.get("hooks"), dict) else {}
     old_lists = snapshot.get("permissions") if isinstance(snapshot.get("permissions"), dict) else {}
-    extra = {"rules": {name: [r for r in rs if r not in rules] for name, rs in legacy.get("rules", {}).items()},
-             "hooks": [pair for pair in legacy.get("hooks", []) if tuple(pair) not in hooks],
-             "events": [event for event in template.get("hooks", {}) if event not in old_hooks],
-             "lists": [name for name in template.get("permissions", {}) if name not in old_lists],
-             "keys": [key for key in (*template, *merge_claude_settings.AUTO_MEMORY_OFF, "version")
-                      if key not in snapshot]}
+    extra = {
+        "rules": {name: [r for r in rs if r not in rules] for name, rs in legacy.get("rules", {}).items()},
+        "hooks": [pair for pair in legacy.get("hooks", []) if tuple(pair) not in hooks],
+        "events": [event for event in template.get("hooks", {}) if event not in old_hooks],
+        "lists": [name for name in template.get("permissions", {}) if name not in old_lists],
+        "keys": [key for key in (*template, *merge_claude_settings.AUTO_MEMORY_OFF, "version") if key not in snapshot],
+    }
     return install_blocks.union(recorded, extra), []
 
 
-def plan_settings(home: Path, checkout: Path, manifest: dict | None, current: dict,
-                  roots: set[str]) -> tuple[dict, list[str]]:
+def plan_settings(home: Path, checkout: Path, manifest: dict | None, current: dict, roots: set[str]) -> tuple[dict, list[str]]:
     """The settings documents after removing the recorded entries, and the lines that say what was kept or retired."""
     after, notes = {}, []
     for section, data in current.items():
@@ -190,24 +187,27 @@ def plan_settings(home: Path, checkout: Path, manifest: dict | None, current: di
         recorded = (manifest or {}).get(section)
         if manifest is None:
             rules = {r for rs in template.get("permissions", {}).values() for r in rs}
-            kept = (sorted(set(commands_in(left)) & set(commands_in(template)))
-                    + sorted(entry_ids(section, left)[0] & rules))
+            kept = sorted(set(commands_in(left)) & set(commands_in(template))) + sorted(entry_ids(section, left)[0] & rules)
             if kept:
-                notes.append(f"  kept {len(kept)} entries of {name} that match the template (no install record: "
-                             f"installed before it existed); review by hand: {capped(kept)}")
+                notes.append(
+                    f"  kept {len(kept)} entries of {name} that match the template (no install record: installed before it existed); review by hand: {capped(kept)}"
+                )
         elif recorded:
             recorded, review = resolve_legacy(home, section, recorded, template, manifest.get("legacy"), roots)
             if review:
-                notes.append(f"  kept {len(review)} entries of {name} added by an install before the manifest, "
-                             f"review by hand (no backup to compare with): {capped(review)}")
-            retired = sorted({r for rs in recorded.get("rules", {}).values() for r in rs} & entry_ids(section, left)[0]
-                             - {r for rs in template.get("permissions", {}).values() for r in rs})
+                notes.append(
+                    f"  kept {len(review)} entries of {name} added by an install before the manifest, review by hand (no backup to compare with): {capped(review)}"
+                )
+            retired = sorted(
+                {r for rs in recorded.get("rules", {}).values() for r in rs}
+                & entry_ids(section, left)[0] - {r for rs in template.get("permissions", {}).values() for r in rs}
+            )
             if retired:
-                notes.append(f"  removed {len(retired)} rule(s) of {name} that install added and the current "
-                             f"template no longer has: {capped(retired)}")
+                notes.append(f"  removed {len(retired)} rule(s) of {name} that install added and the current template no longer has: {capped(retired)}")
 
             def warn(text: str, name: str = name) -> None:
                 print(f"  warning: {name}: {text}")
+
             merger = merge_claude_settings if section.startswith("claude_settings") else merge_cursor_hooks
             left = merger.unmerge(left, recorded, template, warn)
         after[section] = left
@@ -229,10 +229,13 @@ def still_run(home: Path, after: dict) -> dict[Path, list[str]]:
 def uninstall(home: Path, checkout: Path, dry_run: bool) -> int:
     manifest = install_blocks.load_manifest(home)
     # This checkout and every one install recorded: a link into any of them is the install's.
-    roots = {os.path.realpath(checkout), str(checkout), *(manifest or {}).get("checkouts", [])}
+    venv = home / ".agent" / "venv"
+    roots = {os.path.realpath(checkout), str(checkout), os.path.realpath(venv), *(manifest or {}).get("checkouts", [])}
     links, others = owned_links(home, roots)
     in_config = set(config_links(home))
-    if others and all(link.parent == home / ".claude" or link in in_config for link in links):
+    # The venv's launchers belong to whichever checkout installed last; they never show which one.
+    launchers = {link for link in links if inside(target_of(link), {os.path.realpath(venv)})}
+    if others and all(link.parent == home / ".claude" or link in in_config | launchers for link in links):
         other = max(others, key=others.get)
         raise Refused(f"installed from {other}; run {other}/install.sh --uninstall")
     current = read_settings(home)
@@ -282,26 +285,29 @@ def uninstall(home: Path, checkout: Path, dry_run: bool) -> int:
     return report_leftovers(home, roots, kept, others, dry_run)
 
 
-def report_leftovers(home: Path, roots: set[str], kept: dict[Path, list[str]], others: dict[str, int],
-                     dry_run: bool) -> int:
+def report_leftovers(home: Path, roots: set[str], kept: dict[Path, list[str]], others: dict[str, int], dry_run: bool) -> int:
     """Say which links remain and why; exit 1 while any does, else drop the manifest and exit 0."""
     if kept:
         names = capped([f"{tilde(link, home)} (runs {', '.join(scripts)})" for link, scripts in kept.items()])
-        print(f"  kept {len(kept)} hook link(s) a remaining registration still runs: {names}; "
-              "remove those registrations, then run install.sh --uninstall again")
+        print(
+            f"  kept {len(kept)} hook link(s) a remaining registration still runs: {names}; remove those registrations, then run install.sh --uninstall again"
+        )
     for other, count in sorted(others.items()):
         print(f"  {count} link(s) point into another checkout, {other}; run {other}/install.sh --uninstall")
-    stray = [link for link in layout_links(home) if not os.path.exists(link) and STRAY.search(os.readlink(link))
-             and not inside(target_of(link), roots)]
+    stray = [link for link in layout_links(home) if not os.path.exists(link) and STRAY.search(os.readlink(link)) and not inside(target_of(link), roots)]
     if stray:
         names = ", ".join(f"{tilde(link, home)} -> {os.readlink(link)}" for link in stray[:SHOWN])
         print(f"  {len(stray)} dangling link(s) into a checkout that no longer exists (moved?): {names}")
     if dry_run:
         return 0
     left = len(owned_links(home, roots)[0]) + sum(others.values()) + len(stray)
+    venv = home / ".agent" / "venv"
     if left:
         print(f"  {left} link(s) left; not fully uninstalled")
+        if venv.is_dir():
+            print("  kept ~/.agent/venv: the links left above still run its commands")
         return 1
+    shutil.rmtree(venv, ignore_errors=True)
     (home / MANIFEST).unlink(missing_ok=True)
     return 0
 

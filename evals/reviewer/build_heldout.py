@@ -410,7 +410,7 @@ def record_cost(owner: Path | None, review_dir: Path, mapped: bool) -> str:
     if result.returncode != 0:
         print(f"warning: cost metric not recorded: {result.stderr.strip()}", file=sys.stderr)
     return payload
-'''  # noqa: E501
+'''
 
 RECORDS_AFTER = r'''"""Review records: deferred and dropped findings beside the report, and the review's cost line (excerpt)."""
 from __future__ import annotations
@@ -444,7 +444,7 @@ def record_cost(owner: Path | None, review_dir: Path, mapped: bool) -> str:
     except (OSError, ValueError) as error:
         print(f"warning: cost metric not recorded: {error}", file=sys.stderr)
     return payload
-'''  # noqa: E501
+'''
 
 TASK_BOOTSTRAP = r'''"""Make `.agent/tools` and its package directories importable, found from this file's real path.
 
@@ -754,13 +754,13 @@ description: "Work through findings from the most recent crew review inline. Tri
 SKILL_MODES_BEFORE = r'''- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): no files to edit — findings are
   conceptual. Evaluate inline → present acceptance table → synthesize revised idea if approved. 3
   turns.
-'''  # noqa: E501
+'''
 
 SKILL_MODES_AFTER = r'''- **Idea mode** (`## Review: Idea` or `## Review: Spec` in context): the artifact is a plan, not code.
   Findings are conceptual: evaluate inline → present acceptance table → synthesize the revision if
   approved. The revision is an edit to the spec file when the artifact is one, and emitted text when
   it is pasted. 3 turns.
-'''  # noqa: E501
+'''
 
 SKILL_MIDDLE = r'''
 Never mix modes. If the review heading contains "Idea" or "Spec" (case-insensitive), use idea mode
@@ -887,7 +887,7 @@ repository reads and artifact writes are unavailable, and the `claude -p` fallba
 only stdout. Dispatch prompts must embed the immutable evidence (a path to a diff file is not
 evidence) needed for the assigned lens: diff, contract, relevant file excerpts, and explorer
 findings. Never rely on a persona writing its own artifact.
-'''  # noqa: E501
+'''
 
 DISPATCH_AFTER_BODY = r'''Reviewer personas may run read-only: Cursor Ask mode, or a Claude Code read-only subagent, where
 artifact writes are unavailable, and the `claude -p` fallback likewise returns only stdout. Dispatch
@@ -912,7 +912,7 @@ Use it when embedding would push the orchestrator's own output past what the har
 one measured five-persona review was 640 KB, roughly 160k tokens of duplicate output. A package
 delivered by path is still the audit artifact: `<persona>.in.md` and `<persona>.out.md` stay the pair
 `persist --strict` requires, and the recorded package remains the one the persona read.
-'''  # noqa: E501
+'''
 
 DISPATCH_TAIL = r'''
 **PR mode:** the package is the only repository evidence a persona may use. Every code excerpt must

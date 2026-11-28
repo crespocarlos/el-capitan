@@ -1,18 +1,16 @@
 """Run a `crew-*.py` entry point in this process, the way its shell invocation would, without a new interpreter.
 
-`run(path, *args, env=..., cwd=...)` loads the script by path (its directory first on `sys.path`, as
-Python does for a script), sets `sys.argv`, the environment overrides (`None` unsets) and the cwd for the
-call, captures stdout and stderr, and turns `SystemExit` into the exit code (an uncaught error into a
-traceback on stderr and exit 1, as the interpreter would). The streams are UTF-8 text over bytes, so a
-command that reads `sys.stdin.buffer` or writes `sys.stdout.buffer` works as it does from a shell. The
-script is executed afresh for each HOME it runs under; the modules it imports are shared, so they must
-read HOME and the environment at call time, never at import. It returns a `subprocess.CompletedProcess`,
-so a test can switch between this and `subprocess.run` freely. Not thread-safe.
+`run(path, *args, env=..., cwd=...)` imports the entry module at `path` (under `src/`), sets `sys.argv`, the
+environment overrides (`None` unsets) and the cwd for the call, captures stdout and stderr, and turns
+`SystemExit` into the exit code (an uncaught error into a traceback on stderr and exit 1). The streams are
+UTF-8 text over bytes, as from a shell. The entry module is reloaded for each HOME it runs under; the modules
+it imports are shared, so they read HOME at call time, never at import. It returns a
+`subprocess.CompletedProcess`, so a test can switch between this and `subprocess.run` freely. Not thread-safe.
 """
 from __future__ import annotations
 
 import contextlib
-import importlib.util
+import importlib
 import io
 import os
 import subprocess
@@ -22,23 +20,23 @@ from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
 
-_LOADED: dict[tuple[Path, str | None], ModuleType] = {}
+SRC = Path(__file__).resolve().parents[2] / "src"
+_HOMES: dict[str, str | None] = {}
 
 
 def load(path: Path) -> ModuleType:
-    """The entry script, executed under the current environment once per (path, HOME)."""
-    path = Path(path).resolve()
-    key = (path, os.environ.get("HOME"))
-    if key not in _LOADED:
-        if str(path.parent) not in sys.path:
-            sys.path.insert(0, str(path.parent))
-        spec = importlib.util.spec_from_file_location(path.stem.replace("-", "_"), path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"cannot load {path}")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        _LOADED[key] = module
-    return _LOADED[key]
+    """The entry module at `path` (a catalog name: `-` reads `_`), reloaded when HOME changed since its last load."""
+    name = ".".join(Path(path).resolve().relative_to(SRC).with_suffix("").parts).replace("-", "_")
+    module = importlib.import_module(name)
+    if _HOMES.setdefault(name, os.environ.get("HOME")) != os.environ.get("HOME"):
+        _HOMES[name] = os.environ.get("HOME")
+        module = importlib.reload(module)
+    return module
+
+
+def launcher(name: str) -> Path:
+    """The dev environment's launcher of an installed command (`crew-task.py`): what ~/.agent/bin links to."""
+    return Path(sys.executable).with_name(name)
 
 
 @contextlib.contextmanager

@@ -14,11 +14,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from cli_runner import launcher
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / ".agent" / "tools"
-TASK = TOOLS / "task" / "crew-task.py"
+TOOLS = ROOT / "src" / "crew"
+TASK = TOOLS / "task" / "crew_task.py"
 HOOK = ROOT / ".claude" / "hooks" / "capture-reply.sh"
 GATES = {"schema_version": 1, "gates": [{"name": "test", "exit": 0}]}
 REPORT = ("## Implementation Report\n\n**Tasks:** 1/1 passed\n**Harness:** claude-code\n\n### Quality gates\n"
@@ -30,7 +31,7 @@ def world(tmp: Path) -> tuple[Path, Path]:
     """A HOME with crew-review-findings.py on its bin path and one IMPLEMENTING task with a gates file."""
     home = tmp / "home"
     (home / ".agent" / "bin").mkdir(parents=True)
-    (home / ".agent" / "bin" / "crew-review-findings.py").symlink_to(TOOLS / "review" / "crew-review-findings.py")
+    (home / ".agent" / "bin" / "crew-review-findings.py").symlink_to(launcher("crew-review-findings.py"))
     task_dir = home / ".agent" / "tasks" / "built"
     task_dir.mkdir(parents=True)
     (task_dir / "SPEC.md").write_text("# Built\n\n## Status\nIMPLEMENTING\n", encoding="utf-8")
