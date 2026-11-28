@@ -275,10 +275,12 @@ def append_metric(task_dir: Path, payload: str) -> None:
 
     if not payload.strip():
         raise ValueError("empty payload")
-    problem = validate(payload.split())
+    words = payload.split()
+    problem = validate(words)
     if problem:
         raise ValueError(problem)
-    append_entry(task_dir, "METRIC", payload.strip())
+    session = os.environ.get("CLAUDE_CODE_SESSION_ID", "")  # the orchestrator's transcript, for the TUI's live tokens
+    append_entry(task_dir, "METRIC", " ".join(words + ([f"session={session}"] if words[0] == "stage_start" and session else [])))
 
 
 def append_blocked(task_dir: Path, reason: str) -> None:
