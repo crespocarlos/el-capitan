@@ -51,7 +51,7 @@ review`, `crew commit`, `crew open pr`) or let the pipeline guide you.
 | Router | `rules/crew-router.mdc` | Maps `crew <command>` to the right handler; the README command table is generated from it |
 | Orchestrator | `rules/crew-orchestrator.mdc` | Pipeline state machine, session awareness |
 | Crew agents | `.cursor/agents/crew-*.md` | Orchestrate multi-persona workflows (spec, review, build) |
-| Runtime | `.claude/hooks/`, `.agent/tools/` | Guards, telemetry, and the commands the prompts call |
+| Runtime | `.claude/hooks/`, `src/crew/` | Guards, telemetry, and the commands the prompts call |
 
 ### `build`: build anything
 
@@ -178,14 +178,14 @@ removes only it.
 
 The always-loaded set (`personal.mdc`, the router, the orchestrator, `agent-output.mdc`,
 `memory-capture.mdc`, `AGENTS.md`, `.claude/CLAUDE.md`) is kept small on purpose.
-`python3 .agent/tools/maintenance/crew-lint.py --budget` prints its estimated tokens (chars / 4) per
+`uv run crew-lint.py --budget` prints its estimated tokens (chars / 4) per
 file and fails when the total exceeds `MAX_ALWAYS_RULE_TOKENS` in `lint_prompts.py`. For Claude Code,
 `typescript.mdc` and the `prompt-authoring` skill each get a one-line `Read ... before ...` pointer in
 the managed block of `~/.claude/CLAUDE.md`, so neither is charged to every request. Orchestrator
 agents and skill files load per command, and memory is retrieved on demand.
 
 Dispatched agents get repository guidance ranked for their kind and capped
-(`.agent/tools/task/task_guidance_kinds.py`). The prompt names every section the cap dropped, with its file.
+(`src/crew/task/task_guidance_kinds.py`). The prompt names every section the cap dropped, with its file.
 `crew-review-findings.py dispatch-bytes <dir>` prints the bytes each prepared dispatch carries, and
 `crew-review-findings.py cache-report --task-dir <task>` prints one review run's cache counts per persona.
 
@@ -229,5 +229,5 @@ find ~/.cursor/agents ~/.cursor/skills -maxdepth 2 -name '*.md' ! -type l
 ```
 
 `crew-router.mdc` is the one routing table; `.claude/CLAUDE.md` delegates to it. After changing a
-routing row, run `python3 .agent/tools/maintenance/crew-lint.py --write-readme` so the README command
+routing row, run `uv run crew-lint.py --write-readme` so the README command
 table follows; `crew-lint` fails while it is stale.

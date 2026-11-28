@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-"""The crew TUI (`tui/`): its view model over seeded task directories, `--once` without Textual, one pilot smoke,
-and one status move run for real against a temp task.
-
-A file of its own because `tui/` sits outside `.agent/tools` and no other suite loads it. The pilot
-smoke runs when Textual is importable (`evals/test.sh` adds the pin in `tui/requirements.txt`).
+"""The crew TUI (`crew.tui`): its view model over seeded task directories, `--once` without Textual, one pilot
+smoke (Textual comes with the `tui` dependency group), and one status move run for real against a temp task.
 """
 from __future__ import annotations
 
@@ -16,14 +13,14 @@ import time
 from pathlib import Path
 
 import pytest
-from cli_runner import load
 from task_fixture import record_status
 
+from crew.task import crew_task
+from crew.tui import tui_model
+from crew.tui.tui_model import CREW_TASK, SHIPPED_NOTE, STALE_NOTE, Filters, collect, landed_for, moves, parse_filter
+
 ROOT = Path(__file__).resolve().parents[2]
-ENTRY = ROOT / "tui" / "crew_tui.py"
-load(ENTRY)
-import tui_model  # noqa: E402
-from tui_model import CREW_TASK, SHIPPED_NOTE, STALE_NOTE, Filters, collect, landed_for, moves, parse_filter  # noqa: E402
+SRC = ROOT / "src"
 
 NOW = time.time()
 HOUR = 3600
@@ -209,7 +206,7 @@ def test_live_reading_is_bounded_and_cached(home: Path) -> None:
     15 minutes is not, and a `subagents` dir unchanged past 6 hours is not listed at all. A config dir reached twice
     (a symlink) counts each transcript once. The cache carries a matching file's offset, so a refresh reads only the
     lines added since, and drops a file once it is quiet past 15 minutes."""
-    from task_live import running_agents
+    from crew.task.task_live import running_agents
 
     tasks = home / ".agent" / "tasks"
     other = transcript(home, "x1", str(home / "elsewhere"), 30, minutes_ago=2)
@@ -243,7 +240,7 @@ def test_live_agent_end_in_the_same_second_as_the_last_message(home: Path, later
                                                                 running: bool) -> None:
     """`agent_end` is stamped to the second and the transcript to the millisecond: a last message in the very second
     the hook stamped is finished; one in the next second is a resumed agent, running."""
-    from task_live import running_agents
+    from crew.task.task_live import running_agents
 
     tasks = home / ".agent" / "tasks"
     path = transcript(home, "s1", str(tasks / "T1"), 2, minutes_ago=0.5)
@@ -303,15 +300,15 @@ def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[t
     with no PR; ABANDONED is not closable. Every move is a subcommand crew-task.py has."""
     found = moves(state, tmp, prs, "feat/x")
     wanted = [[arg.format(t=tmp) for arg in args] for args in expected]
-    assert [move.argv(move.default or "why")[1:] for move in found] == wanted
-    choices = load(CREW_TASK).make_parser()._subparsers._group_actions[0].choices
+    assert [move.argv(move.default or "why")[3:] for move in found] == wanted
+    choices = crew_task.make_parser()._subparsers._group_actions[0].choices
     assert all(move.args[0] in choices for move in found)
 
 
 def test_a_move_runs_crew_task_for_real(home: Path) -> None:
     """The app's default runner on a temp task: APPROVED to IMPLEMENTING in SPEC.md through crew-task.py, the spec's
     `## Branch:` recorded and, run outside any checkout of the task, no `worktree`."""
-    from tui_app import run_command
+    from crew.tui.tui_app import run_command
 
     task = home / ".agent" / "tasks" / "T2"
     start = moves("APPROVED", task, [], "feat/gadgets")[0]
@@ -325,7 +322,7 @@ def test_a_move_runs_crew_task_for_real(home: Path) -> None:
 def test_a_tampered_task_offers_only_restore_moves(home: Path) -> None:
     """A Status written outside crew-task shows as TAMPERED in STATE, and the only moves are restore-status and its
     `--accept` with a note; the restore move, run for real, writes the recorded status back."""
-    from tui_app import run_command
+    from crew.tui.tui_app import run_command
 
     spec = home / ".agent" / "tasks" / "T2" / "SPEC.md"
     spec.write_text(spec.read_text().replace("## Status\nAPPROVED", "## Status\nIMPLEMENTING"))
@@ -368,8 +365,8 @@ def test_parse_filter(text: str, base: Filters | None, expected: object) -> None
 @pytest.mark.timeout(300)  # a nested run allowed 60 s
 def test_once_prints_every_view_without_textual(home: Path) -> None:
     """`-S` leaves site-packages off the path, so Textual cannot be imported even where it is installed."""
-    argv = [sys.executable, "-S", str(ENTRY), "--once", "--repo", "all", "--tasks-dir", str(home / ".agent" / "tasks")]
-    done = subprocess.run(argv, capture_output=True, text=True, env={**os.environ, "TERM": "dumb"}, cwd=home,
+    argv = [sys.executable, "-S", "-m", "crew.tui.crew_tui", "--once", "--repo", "all", "--tasks-dir", str(home / ".agent" / "tasks")]
+    done = subprocess.run(argv, capture_output=True, text=True, env={**os.environ, "TERM": "dumb", "PYTHONPATH": str(SRC)}, cwd=home,
                           timeout=60)
     assert done.returncode == 0, done.stderr
     assert all(f"== {name} ==" in done.stdout for name in ("tasks", "workers", "report")) and "running" in done.stdout
@@ -382,7 +379,7 @@ def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
     """At COLUMNS=120 every table line fits; when NOTE alone can absorb the excess, every TASK is printed in full and
     the cut NOTE ends with `…`; an ON-HOLD task's STATE is `ON-HOLD` and `was APPROVED` starts its NOTE; REPO drops
     the owner every row shares. `fitted` cuts TASK only once NOTE is down to its header's width."""
-    from task_report import fitted
+    from crew.task.task_report import fitted
 
     tasks = home / ".agent" / "tasks"
     progress = tasks / "T2" / "PROGRESS.md"
@@ -395,7 +392,7 @@ def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
     (held / "PROGRESS.md").write_text(f"[{stamp(1)}] TRANSITION: APPROVED → ON-HOLD\n")
 
     def table(columns: str) -> list[str]:
-        argv = [sys.executable, "-S", str(ENTRY), "--once", "--repo", "all", "--tasks-dir", str(tasks)]
+        argv = [sys.executable, "-m", "crew.tui.crew_tui", "--once", "--repo", "all", "--tasks-dir", str(tasks)]
         done = subprocess.run(argv, capture_output=True, text=True, cwd=home, timeout=60,
                               env={**os.environ, "TERM": "dumb", "COLUMNS": columns})
         assert done.returncode == 0, done.stderr
@@ -419,7 +416,7 @@ def test_app_switches_views_filters_moves_and_never_writes(home: Path) -> None:
     """Textual is in the `evals/test.sh` environment, so a missing one fails here rather than skipping.
     `s` on the one APPROVED task: cancel runs nothing; confirm runs the exact argv and shows the refusal;
     `blocked` asks for its reason first."""
-    from tui_app import CrewApp
+    from crew.tui.tui_app import CrewApp
 
     tasks = home / ".agent" / "tasks"
     before = {path: path.stat().st_mtime for path in tasks.rglob("*")}
@@ -456,8 +453,8 @@ def test_app_switches_views_filters_moves_and_never_writes(home: Path) -> None:
         return seen, landed, cell, [cancelled, notes]
 
     seen, landed, cell, (cancelled, notes) = asyncio.run(drive())
-    start = [str(CREW_TASK), "mark-implementing", str(tasks / "T2"), "--branch", "feat/gadgets"]
-    assert cancelled == [] and ran == [start, [str(CREW_TASK), "blocked", str(tasks / "T2"), "no keys"]]
+    start = [*CREW_TASK, "mark-implementing", str(tasks / "T2"), "--branch", "feat/gadgets"]
+    assert cancelled == [] and ran == [start, [*CREW_TASK, "blocked", str(tasks / "T2"), "no keys"]]
     assert "not DRAFTING; nothing written" in notes and "exit 1" in notes, notes
     assert opened == [ISSUE, PR.format(9)], "o opens the selected task's issue and O its PR"
     assert cell == f"[link={ISSUE}]#12[/link]", "the issue cell is a terminal link"

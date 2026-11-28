@@ -2,8 +2,7 @@ Assessment: request-changes — `persist --strict` now enforces a packaging rule
 
 1. [blocking · 3] **`.agent/tools/review-findings.py:94`** — strict persist retroactively fails review dirs packaged before this change
 ```python
-violations = package_violations(args.review_dir, args.personas, args.mode,
-                                owner / "SPEC.md", hunks_path)
+violations = package_violations(args.review_dir, args.personas, args.mode, owner / "SPEC.md", hunks_path)
 if violations:
     raise ValueError("; ".join(violations))
 ```

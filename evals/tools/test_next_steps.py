@@ -12,20 +12,14 @@ load-and-resolve path `review_render.footer` takes.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-for _path in (ROOT / ".agent" / "tools", ROOT / ".agent" / "tools" / "task",
-              ROOT / ".agent" / "tools" / "maintenance"):
-    if str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
 
-from lint_references import routing_commands  # noqa: E402
+from crew.lib.next_steps import known_stages, load_table, resolve, sentence  # noqa: E402
+from crew.maintenance.lint_references import routing_commands  # noqa: E402
 
-from lib.next_steps import known_stages, load_table, resolve, sentence  # noqa: E402
-
-TABLE = ROOT / ".agent" / "tools" / "task" / "next-steps.json"
+TABLE = ROOT / "src" / "crew" / "task" / "next-steps.json"
 ROUTER = ROOT / "rules" / "crew-router.mdc"
 
 

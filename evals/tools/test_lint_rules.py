@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """crew-lint's rules, each made to fire on a seeded violation and stay quiet on its fix.
 
-That the real tree reports nothing is CI's own `crew-lint.py --budget` step. One temp copy of `.agent/tools` carries every seeded Python and
+That the real tree reports nothing is CI's own `crew-lint.py --budget` step. One temp copy of `src/crew` carries every seeded Python and
 removed-form violation at once, each in its own file, and must report each rule at its path; small
 fixture roots hold one agent, rule, catalog or handoff shape each. Every reported rule is registered
 and `--list-rules` prints them all. Lint runs in this process. Generic Python style is Ruff's.
@@ -16,49 +16,42 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from cli_runner import load
 from cli_runner import run as cli
 
-ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / ".agent" / "tools"
-LINT_PATH = TOOLS / "maintenance" / "crew-lint.py"
-LINT = load(LINT_PATH)
-import lint_prompts as LINT_PROMPTS  # noqa: E402
-from lint_prompts import (  # noqa: E402
-    AGENT_CLASSES,
-    MCP_PLACEHOLDER,
-    PROBE_AGENT_TOOLS,
-    READONLY_AGENT_TOOLS,
-    RESOLVER_AGENT_TOOLS,
-    parse_frontmatter,
-)
-from lint_references import lint_handoff  # noqa: E402
-from lint_writing import lint_local_state_tracked  # noqa: E402
+from crew.maintenance import crew_lint as LINT
+from crew.maintenance import lint_prompts as LINT_PROMPTS
+from crew.maintenance.lint_prompts import MCP_PLACEHOLDER, PROBE_AGENT_TOOLS, READONLY_AGENT_TOOLS, RESOLVER_AGENT_TOOLS
+from crew.maintenance.lint_references import lint_handoff
+from crew.maintenance.lint_writing import lint_local_state_tracked
 
-# (case, rule, file under .agent/tools, text appended to it: a new file starts empty)
+ROOT = Path(__file__).resolve().parents[2]
+TOOLS = ROOT / "src" / "crew"
+LINT_PATH = TOOLS / "maintenance" / "crew_lint.py"
+
+# (case, rule, file under src/crew, text appended to it: a new file starts empty)
 SEEDED = (
     ("git-argv", "direct-git", "task/task_seeded_git.py", "ARGV = [\"git\", \"status\"]\n"),
     ("long-module", "module-size", "task/task_seeded_long.py", "X = 1\n" * 401),
-    ("long-tui-module", "module-size", "../../tui/tui_seeded_long.py", "X = 1\n" * 401),
-    ("long-tui-docstring", "docstring-length", "../../tui/tui_seeded_doc.py", '"""One.\n\n2\n3\n4\n5\n6\n7\n"""\n'),
+
     ("second-atomic-write", "single-owner", "task/task_seeded_atomic.py", "def atomic_write() -> None:\n    pass\n"),
     ("systemexit-message", "no-systemexit-str", "task/task_seeded_exit.py", "raise SystemExit(f'bad: {1}')\n"),
-    ("task-imports-review", "package-direction", "task/task_seeded_import.py", "import review_pr_reads\n"),
-    ("lib-imports-task", "package-direction", "lib/seeded.py", "def later() -> None:\n    from task_progress import read_text\n"),
-    ("memory-imports-maintenance", "package-direction", "memory/memory_seeded.py", "from lint_files import rel\n"),
+    ("task-imports-review", "package-direction", "task/task_seeded_import.py", "from crew.review import review_pr_reads\n"),
+    ("lib-imports-task", "package-direction", "lib/seeded.py", "def later() -> None:\n    from crew.task.task_progress import read_text\n"),
+    ("memory-imports-maintenance", "package-direction", "memory/memory_seeded.py", "from crew.maintenance.lint_files import rel\n"),
     ("second-read-json", "single-owner", "review/review_seeded_json.py", "def read_json_object() -> None:\n    pass\n"),
     ("progress-append", "single-owner", "task/task_seeded_progress.py", "from pathlib import Path\n\nPath('t', 'PROGRESS.md').open('a').write('x')\n"),
     ("slug-regex", "single-owner", "task/task_seeded_slug.py", "import re\n\nSLUG = re.compile(r'[:/]([^/:]+)/([^/]+?)(?:\\.git)?$')\n"),
+    ("fence-regex", "single-owner", "review/review_seeded_fence.py", "import re\n\nFENCE = re.compile(r'^```json\\n')\n"),
     ("removed-verify-form", "removed-command-form", "task/task_seeded_verify.py", "USAGE = 'crew-progress.py verify --repo .'\n"),
     ("removed-mark-flag", "removed-command-form", "TOOLS.md", "\nRun `crew-ls.py --mark-done \"$TASK_DIR\"`.\n"),
     ("removed-wrapped-form", "removed-command-form", "TOOLS.md", "\napplied by `crew-ls.py --reconcile\n--apply`.\n"),
     ("removed-flag-form", "removed-command-form", "TOOLS.md", "\nRun `crew-verify.py --wait out.json --since 1`.\n"),
     ("removed-form-in-eval-task", "removed-command-form", "../../evals/tasks.json", '{"d": "run `crew-ls.py --mark-done x`"}\n'),
-    ("removed-form-in-workflow", "removed-command-form", "../../.github/workflows/seeded.yml", "run: python3 .agent/tools/task/crew-next.py --stages\n"),
+    ("removed-form-in-workflow", "removed-command-form", "../../.github/workflows/seeded.yml", "run: crew-next.py --stages\n"),
     ("long-docstring", "docstring-length", "task/task_seeded_doc.py", '"""One.\n\n2\n3\n4\n5\n6\n7\n"""\n'),
     ("narrated-comment", "no-incident-narration", "task/task_seeded_story.py", "X = 1  # this used to crash\n"),
     ("measured-docstring", "no-incident-narration", "review/review_seeded_story.py", '"""A reader: measured over 9 runs, 3 of 9 failed."""\n'),
-    ("bootstrap-drift", "bootstrap-identical", "task/task_bootstrap.py", "EXTRA = 1\n"),
+
     ("sibling-run", "no-sibling-subprocess", "task/task_seeded_sibling.py", "import subprocess\n\nsubprocess.run(['python3', 'crew-ls.py'])\n"),
     ("sibling-path", "no-sibling-subprocess", "review/review_seeded_sibling.py",
      "import subprocess\nfrom pathlib import Path\n\nTOOL = Path(__file__).with_name('crew-pr-actions.py')\nsubprocess.run([TOOL, 'pr'])\n"),
@@ -109,8 +102,8 @@ FIXTURES = (
     ("a declared MCP id in agent prose", dict([agent("lens-a", READONLY, "Use mcp__sourcerer__sourcerer_code_search.\n")]), {}),
     ("an unknown MCP id in rule prose", {"rules/fixture.mdc": "---\ndescription: \"Fixture rule\"\nalwaysApply: false\n---\nUse mcp__retired-server__old_tool.\n"},
      {"mcp-tool-unknown": 1}),
-    ("a malformed mcp_servers catalog", {".agent/tools/tools.json": json.dumps({**CATALOG, "mcp_servers": "sourcerer"})}, {"invalid-tool-catalog": 1}),
-    ("a catalog with no native_tools list", {".agent/tools/tools.json": json.dumps({k: v for k, v in CATALOG.items() if k != "native_tools"})},
+    ("a malformed mcp_servers catalog", {"src/crew/tools.json": json.dumps({**CATALOG, "mcp_servers": "sourcerer"})}, {"invalid-tool-catalog": 1}),
+    ("a catalog with no native_tools list", {"src/crew/tools.json": json.dumps({k: v for k, v in CATALOG.items() if k != "native_tools"})},
      {"invalid-tool-catalog": 1}),
     ("a read-only agent without the flag", dict([agent("lens-a", READONLY.replace("readonly: true\n", ""))]), {"missing-readonly": 1}),
     ("readonly: false is not a declaration", dict([agent("lens-a", READONLY.replace("true", "false"))]), {"missing-readonly": 1}),
@@ -133,15 +126,15 @@ FIXTURES = (
                                                     "Stop calling tools at 6 and write the review.\n")]), {"persona-turn-budget": 1}),
     ("a broken frontmatter is its own finding, not a missing flag",
      {".cursor/agents/reviewer-broken.md": "---\nname: reviewer-broken\ndescription: \"Fixture agent.\"\nBody.\n"}, {"invalid-agent-frontmatter": 1}),
-    ("an unprefixed command", {".agent/tools/task/task-progress.py": "#!/usr/bin/env python3\n", ".agent/tools/tools.json": json.dumps({**CATALOG, "tools": [
+    ("an unprefixed command", {"src/crew/task/task-progress.py": "#!/usr/bin/env python3\n", "src/crew/tools.json": json.dumps({**CATALOG, "tools": [
         {"name": "task-progress.py", "dir": "task", "kind": "command", "category": "task", "owner": "crew-orchestrator", "help": "argparse", "smoke": "--help"}]})},
      {"command-name": 1}),
     ("removed forms in both hook registries and three removed paths",
      {".claude/settings.json": '{"hooks": {"SessionEnd": [{"command": "bash ~/.claude/hooks/session-event.sh end"}]}}\n',
       ".cursor/hooks.template.json": '{"hooks": {"stop": [{"command": "crew-prune.py --tasks-dir x"}]}}\n',
-      ".agent/tools/TOOLS.md": "Run `bash .claude/hooks/fixtures/run.sh` and `python3 evals/tools/test_hooks_contract.py`.\n"},
+      "src/crew/TOOLS.md": "Run `bash .claude/hooks/fixtures/run.sh` and `python3 evals/tools/test_hooks_contract.py`.\n"},
      {"removed-command-form": 4}),
-    ("a removed flag after another command is not the command's", {".agent/tools/TOOLS.md": "Run crew-verify.py and git log --since 1d.\n"}, {}),
+    ("a removed flag after another command is not the command's", {"src/crew/TOOLS.md": "Run crew-verify.py and git log --since 1d.\n"}, {}),
     ("narration in a prompt; a participle 'used to' is not", {RULE: RULE_HEAD + "This used to crash. The token used to sign requests lives in the vault.\n"},
      {"no-incident-narration": 1}),
     ("a nested fence closes only at its own length", {RULE: RULE_HEAD + "````\n```lang\nThis used to crash.\n````\n\nThis used to crash.\n"},
@@ -157,7 +150,7 @@ FIXTURES = (
     ("text after the pointer sentence is still scanned",
      {SKILL.format(n): POINTER + " " + PASSAGE for n in "ab"}, {"duplicate-passages": 1}),
     ("a glossary missing a term",
-     {".agent/tools/AGENTS.md": "## Glossary\n\n| Term | Meaning |\n| --- | --- |\n"
+     {"src/crew/AGENTS.md": "## Glossary\n\n| Term | Meaning |\n| --- | --- |\n"
       + "".join(f"| {term} | x |\n" for term in ("persona", "worker", "gate"))}, {"glossary-terms": 1}),
     ("Elastic ids outside the opt-in heading and the Kibana-scoped skills; 5601 only as a port",
      {SKILL.format("a"): "Check the ES|QL query. PR #5601 at foo.ts:5601; serve on localhost:5601.\n\n## Docs (opt-in: Elastic)\n\n"
@@ -177,7 +170,7 @@ FIXTURES = (
      {"evals/tools/test_loop.py": "import os\nwhile True:\n    chunk = os.read(child.stdout.fileno(), 9)\n    drawn += chunk\n"
       "while 'ready' not in line:\n    line = proc.stdout.readline()\n"}, {"pipe-read-eof": 2}),
     ("a pipe read loop that leaves on another name",
-     {"tui/loop.py": "import os\nwhile True:\n    chunk = os.read(child.stdout.fileno(), 9)\n    if not ready:\n        break\n"},
+     {"src/crew/tui/loop.py": "import os\nwhile True:\n    chunk = os.read(child.stdout.fileno(), 9)\n    if not ready:\n        break\n"},
      {"pipe-read-eof": 1}),
     ("pipe read loops that stop at end of file, and a loop that reads no pipe",
      {"evals/tools/test_loop.py": "import os\nwhile n < 2:\n    chunk = os.read(child.stdout.fileno(), 9)\n    if not chunk:\n"
@@ -240,19 +233,20 @@ def registered() -> set[str]:
 def test_seeded_violations_are_reported_at_their_files(tmp: Path, registered: set[str]) -> None:
     """Every seed in one copy of the tool tree: each must be reported by its rule, at its file."""
     root = tmp / "seeded"
-    shutil.copytree(TOOLS, root / ".agent" / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(TOOLS, root / "src" / "crew", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy(TOOLS.parents[1] / "pyproject.toml", root)
     (root / "rules").mkdir()
     expected = collections.Counter()
     for _, rule, target, text in SEEDED:
-        path = (root / ".agent" / "tools" / target).resolve()
+        path = (root / "src" / "crew" / target).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text((path.read_text() if path.exists() else "") + text)
         expected[(rule, path.relative_to(root.resolve()).as_posix())] += 1
     found = LINT.lint(root.resolve(), False)
     for case, rule, target, _ in SEEDED:
-        rel = (root / ".agent" / "tools" / target).resolve().relative_to(root.resolve()).as_posix()
+        rel = (root / "src" / "crew" / target).resolve().relative_to(root.resolve()).as_posix()
         at = [item for item in found if item[2] == rule and (item[0] == rel or rel in item[3])]
-        check(f"seeded {case} reports {rule} at its file", len(at) >= expected[(rule, rel)] or (rule == "bootstrap-identical" and any(item[2] == rule for item in found)),
+        check(f"seeded {case} reports {rule} at its file", len(at) >= expected[(rule, rel)],
               [item for item in found if item[2] == rule])
     unknown = {item[2] for item in found} - registered
     check("every reported rule is registered", not unknown, unknown)
@@ -260,21 +254,11 @@ def test_seeded_violations_are_reported_at_their_files(tmp: Path, registered: se
 
 @pytest.mark.parametrize("case,files,expected", FIXTURES, ids=[case for case, _, _ in FIXTURES])
 def test_fixture(case: str, files: dict[str, str], expected: dict[str, int], tmp: Path) -> None:
-    root = write(tmp, {".agent/tools/tools.json": json.dumps(CATALOG), **files})
+    root = write(tmp, {"src/crew/tools.json": json.dumps(CATALOG), **files})
     (root / "rules").mkdir(exist_ok=True)
     counts = collections.Counter(rule for _, _, rule, _ in LINT.lint(root, False))
     assert {rule: counts[rule] for rule in FIXTURE_RULES} == {rule: expected.get(rule, 0) for rule in FIXTURE_RULES}, dict(counts)
 
-
-@pytest.mark.parametrize("path", sorted((ROOT / ".cursor" / "agents").glob("*.md")), ids=lambda path: path.stem)
-def test_agent_carries_its_class_list(path: Path) -> None:
-    """Every shipped agent carries exactly its class's native tools plus the MCP placeholder, or inherits with no line."""
-    frontmatter, _, error = parse_frontmatter(path.read_text())
-    assert not error, error
-    fields = {key.strip(): value.strip() for key, value in (line.split(":", 1) for line in frontmatter.splitlines() if ":" in line)}
-    native = AGENT_CLASSES.get(path.stem, (True, READONLY_AGENT_TOOLS))[1]
-    wanted = ", ".join(native) + MCP_PLACEHOLDER if native else None
-    assert fields.get("tools") == wanted and "disallowedTools" not in fields, (sorted(fields), fields.get("tools"))
 
 
 @pytest.mark.parametrize("case,files,rule", HANDOFFS, ids=[case for case, _, _ in HANDOFFS])
@@ -287,7 +271,7 @@ def test_handoff(case: str, files: dict[str, str], rule: str | None, tmp: Path) 
 def test_findings_are_located(tmp: Path) -> None:
     located = lint_handoff(write(tmp / "located", {"rules/crew-router.mdc": ROUTER, SKILL.format("crew-commit"): NEXT.format("frobnicate")}),
                            tmp / "located" / "rules" / "crew-router.mdc")
-    write(tmp / "fixture-0", {".agent/tools/tools.json": json.dumps(CATALOG), **dict([agent("lens-a", "tools: Read\n")])})
+    write(tmp / "fixture-0", {"src/crew/tools.json": json.dumps(CATALOG), **dict([agent("lens-a", "tools: Read\n")])})
     (tmp / "fixture-0" / "rules").mkdir()
     printed = cli(LINT_PATH, "--root", str(tmp / "fixture-0"))
     check("the text report prints `path:line: rule: message` and exits 1",
@@ -299,7 +283,7 @@ def test_findings_are_located(tmp: Path) -> None:
 
 def test_tracked_state(tmp: Path) -> None:
     """Per-run state under `.agent/` is reported when tracked; tools and templates are not."""
-    scratch = write(tmp / "state", {".agent/tools/keep.py": "x\n", ".agent/_SPEC_TEMPLATE.md": "t\n", ".agent/tasks/abc/SPEC.md": "leaked\n",
+    scratch = write(tmp / "state", {"src/crew/keep.py": "x\n", ".agent/_SPEC_TEMPLATE.md": "t\n", ".agent/tasks/abc/SPEC.md": "leaked\n",
                                      ".agent/reviews/note.md": "leaked\n"})
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.invalid", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e.invalid"}
     subprocess.run(["git", "init", "-q", str(scratch)], check=True, env=env)
@@ -320,7 +304,7 @@ DOCS_ROUTER = ("# Router\n\n| Trigger | Crew member |\n|---|---|\n| `crew commit
 DOCS_README = "".join(f"<!-- generated:{name} (crew-lint.py --write-readme) -->\n<!-- /generated:{name} -->\n" for name in ("commands", "standalone", "counts"))
 DOCS_ROOT = {
     "rules/crew-router.mdc": DOCS_ROUTER, "README.md": DOCS_README, "VERSION": "0.1.0\n", ".release-please-manifest.json": '{".": "0.1.0"}\n',
-    ".agent/tools/tools.json": json.dumps({**CATALOG, "tools": [command_entry("crew-doctor.py", routes={"crew doctor": "Install health."})]}),
+    "src/crew/tools.json": json.dumps({**CATALOG, "tools": [command_entry("crew-doctor.py", routes={"crew doctor": "Install health."})]}),
     SKILL.format("crew-commit"): "---\nname: crew-commit\ndescription: \"Commit the staged work. Trigger: 'crew commit'.\"\n---\n",
     SKILL.format("crew-idp"): "---\nname: crew-idp\ndescription: \"Use when review season comes round: draft the review answers. Trigger: 'crew idp'.\"\n---\n",
     "release-please-config.json": '{"bootstrap-sha": "cf843d2", "packages": {}}\n',
@@ -335,7 +319,7 @@ DOCS = (
      {"rules/crew-router.mdc": DOCS_ROUTER + "| `crew log` | crew-log |\n", SKILL.format("crew-log"): "---\nname: crew-log\ndescription: \"Log it.\"\n---\n"},
      {"readme-commands-current": 1, "readme-counts-current": 1}),
     ("an unrouted skill changes only the counts", {SKILL.format("extra"): "---\nname: extra\ndescription: \"x\"\n---\n"}, {"readme-counts-current": 1}),
-    ("a tool row with no routes summary", {".agent/tools/tools.json": json.dumps({**CATALOG, "tools": [command_entry("crew-doctor.py")]})},
+    ("a tool row with no routes summary", {"src/crew/tools.json": json.dumps({**CATALOG, "tools": [command_entry("crew-doctor.py")]})},
      {"readme-commands-current": 2}),
     ("no generated markers", {"README.md": "# Readme\n"}, {"readme-commands-current": 2, "readme-counts-current": 1}),
     ("VERSION differs from the release-please manifest, and a release file is missing", {"VERSION": "0.2.0\n", "SECURITY.md": None}, {"release-files": 2}),
@@ -371,10 +355,10 @@ PRUNE_CATALOG = {**CATALOG, "tools": [command_entry(name) for name in ("crew-cal
                  "modules": [{"name": "helper_module.py", "dir": "task", "kind": "module", "category": "task", "owner": "repository",
                               "help": "imported", "smoke": "imported"}]}
 PRUNE_ROOT = {
-    ".agent/tools/tools.json": json.dumps(PRUNE_CATALOG), ".agent/tools/task/helper_module.py": '"""Imported, never invoked."""\n',
-    **{f".agent/tools/task/{name}": f'#!/usr/bin/env python3\n"""{name} does a thing."""\n' for name in ("crew-called.py", "crew-tested.py", "crew-orphan.py")},
+    "src/crew/tools.json": json.dumps(PRUNE_CATALOG), "src/crew/task/helper_module.py": '"""Imported, never invoked."""\n',
+    **{f"src/crew/task/{name}": f'#!/usr/bin/env python3\n"""{name} does a thing."""\n' for name in ("crew-called.py", "crew-tested.py", "crew-orphan.py")},
     "rules/crew-router.mdc": "# Router\n\nThe pipeline runs `~/.agent/bin/crew-called.py`.\n", "install.sh": "#!/usr/bin/env bash\nln -sf a b\n",
-    ".agent/tools/TOOLS.md": "`crew-called.py`, `crew-tested.py`, and `crew-orphan.py` are all documented.\n", "README.md": "Run `crew-orphan.py`.\n",
+    "src/crew/TOOLS.md": "`crew-called.py`, `crew-tested.py`, and `crew-orphan.py` are all documented.\n", "README.md": "Run `crew-orphan.py`.\n",
     "evals/tools/test_something.py": '"""A test."""\nTOOL = "crew-tested.py"\n',
 }
 # (case, files changed, crew-orphan.py's verdict, exit code): a catalog page, README, docstring or comment describes; it does not call.
@@ -382,9 +366,9 @@ DEAD_CODE = (
     ("the catalog page and the README are not callers", {}, "uncalled", 1),
     ("an installer reference is a caller", {"install.sh": "#!/usr/bin/env bash\nln -sf crew-orphan.py b\n"}, "called", 0),
     ("a docstring, a comment and a tool-tree doc are not callers",
-     {".agent/tools/task/helper_module.py": '"""Wraps crew-orphan.py."""\n# crew-orphan.py is described here\nVALUE = 1\n',
-      ".agent/tools/AGENTS.md": "Run `crew-orphan.py` to see.\n"}, "uncalled", 1),
-    ("a string in code is a caller", {".agent/tools/task/helper_module.py": 'COMMAND = "crew-orphan.py"\n'}, "called", 0),
+     {"src/crew/task/helper_module.py": '"""Wraps crew-orphan.py."""\n# crew-orphan.py is described here\nVALUE = 1\n',
+      "src/crew/AGENTS.md": "Run `crew-orphan.py` to see.\n"}, "uncalled", 1),
+    ("a string in code is a caller", {"src/crew/task/helper_module.py": 'COMMAND = "crew-orphan.py"\n'}, "called", 0),
 )
 
 

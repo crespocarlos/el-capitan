@@ -10,8 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-MEM = ROOT.parent.parent / '.agent' / 'tools' / 'memory' / 'crew-mem.py'
-PATH_AT_START = sys.path[:]
+
 
 def command(memory_dir, *arguments, journal_dir=None, input=None):
     env = {
@@ -20,7 +19,7 @@ def command(memory_dir, *arguments, journal_dir=None, input=None):
     }
     if journal_dir:
         env['CREW_JOURNAL_DIR'] = str(journal_dir)
-    result = subprocess.run([sys.executable, str(MEM), *arguments], text=True,
+    result = subprocess.run([sys.executable, '-m', 'crew.memory.crew_mem', *arguments], text=True,
         capture_output=True, env=env, input=input)
     return result
 
@@ -32,15 +31,9 @@ def run(memory_dir, *arguments, journal_dir=None):
 
 def store_error_checks(temporary):
     """A missing store is reported as one line with exit 2, and the store error never shadows the builtin MemoryError."""
-    tools = MEM.parent.parent
-    saved = sys.path[:]
-    sys.path[:0] = [str(tools), str(tools / 'memory')]
-    try:
-        import builtins
+    import builtins
 
-        import memory_paths
-    finally:
-        sys.path[:] = saved
+    from crew.memory import memory_paths
     missing = command(temporary / 'no-store', 'search', 'anything')
     return (hasattr(memory_paths, 'MemoryStoreError')
             and getattr(memory_paths, 'MemoryError', builtins.MemoryError) is builtins.MemoryError
@@ -313,7 +306,6 @@ Body.
                 and "it's mine" in (store / 'global' / 'procedure_cite-single.md').read_text()
             ),
             'store_error_is_reported_without_shadowing_builtin': store_error_checks(Path(temporary)),
-            'store_error_check_restores_sys_path': sys.path == PATH_AT_START,
             'cite_counts_used_outcome': (
                 'uses: 1' in (store / 'global' / 'procedure_cite-uses.md').read_text()
             ),

@@ -18,9 +18,9 @@ from cli_runner import run as cli
 from task_fixture import record_status
 
 ROOT = Path(__file__).resolve().parents[2]
-FINDINGS = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
-ASSEMBLE = ROOT / ".agent" / "tools" / "review" / "crew-assemble-packages.py"
-TASK = ROOT / ".agent" / "tools" / "task" / "crew-task.py"
+FINDINGS = ROOT / "src" / "crew" / "review" / "crew_review_findings.py"
+ASSEMBLE = ROOT / "src" / "crew" / "review" / "crew_assemble_packages.py"
+TASK = ROOT / "src" / "crew" / "task" / "crew_task.py"
 
 # `GH_MOVE` set: the second `pr view` reports another head, as a push during `prepare` would.
 GH_STUB = r'''
@@ -173,7 +173,7 @@ def test_review_prepare_pr_fetches_every_head_file_in_one_gh_call(tmp: Path, mon
     moved = cli(FINDINGS, "prepare", "--mode", "pr", "--pr", "7", "--repo", "acme/widgets",
                 env={**env, "GH_MOVE": "1"}, cwd=tmp)
     assert moved.returncode == 2 and "the PR moved" in moved.stderr
-    resolver = cli(ROOT / ".agent" / "tools" / "review" / "crew-pr-actions.py", "head", "--pr", "7", "--repo",
+    resolver = cli(ROOT / "src" / "crew" / "review" / "crew_pr_actions.py", "head", "--pr", "7", "--repo",
                    "acme/widgets", "--out", str(tmp / "resolver"), env=env, cwd=tmp)
     assert resolver.returncode == 0 and (tmp / "resolver" / "files" / "index.json").is_file(), resolver.stderr
 

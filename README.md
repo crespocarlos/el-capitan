@@ -18,8 +18,9 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/crespocarlos/el-capitan/
 ```
 
 Run this way, it clones to `${EL_CAPITAN_HOME:-~/el-capitan}` and re-runs from there; an existing
-checkout there is reused as it is. Before writing anything it checks for `python3` 3.9 or newer,
-`git`, `gh` and `jq`, and refuses with one line when one is missing.
+checkout there is reused as it is. Before writing anything it checks for `git`, `gh`, `jq` and
+[`uv`](https://docs.astral.sh/uv/), and refuses with one line when one is missing; uv then builds
+`~/.agent/venv` on a uv-managed CPython 3.12+ from `pyproject.toml` and `uv.lock`.
 
 Then open any repository in Cursor or Claude Code and type, in the AI chat (not the terminal):
 
@@ -91,10 +92,9 @@ IMPLEMENTING and `closed: stale` otherwise, on a DRAFTING, APPROVED, IMPLEMENTIN
 PR to mark done with; never on ABANDONED; LANDED then reads `closed`) and `blocked`
 with a reason. Each move shows the exact command in a confirm dialog, which is your approval for a gate,
 then runs it and shows its output and exit code; a refusal shows the reason. The dashboard never writes a
-file itself and never calls a model. It needs Textual, pinned in
-`tui/requirements.txt` and never installed: from the repository root, run
-`uv run --no-project --with-requirements tui/requirements.txt python3 tui/crew_tui.py`.
-`python3 tui/crew_tui.py --once` prints the same views without Textual, and `crew ls --watch` is
+file itself and never calls a model. It needs Textual, the `tui` dependency group of `pyproject.toml`, never
+installed: from the repository root, run `uv run --group tui python -m crew.tui.crew_tui`.
+`uv run python -m crew.tui.crew_tui --once` prints the same views without Textual, and `crew ls --watch` is
 the view with no dependency at all.
 
 The TUI, `crew ls` and `crew report` list the same repositories. Without `--repo` they read the
@@ -116,7 +116,7 @@ feature list.
 | Each config dir's `settings.json`: the task directory | Your `~/.agent/tasks`, written as an absolute path, in `permissions.additionalDirectories`, and an `Edit(~/.agent/tasks/**)` allow rule (it covers Write and MultiEdit too), so crew agents, background builders included, write task files without a prompt, `SPEC.md` included. The `check-task-spec-owner.sh` guard still refuses another task's spec, any Edit, MultiEdit or Write that changes a spec's `## Status` value (use `crew-task.py mark-approved`, `mark-implementing` or `mark-done`), and writes to `.task-id`, `PROGRESS.md` and review evidence. Bash gets a tripwire, `guard/task-files.sh`: a redirect, `tee`, `dd`, `truncate`, `ln`, `rm`, an in-place edit (`sed`, `perl`, `ruby`, `awk`) or a Python snippet whose literal target is one of those files is refused, and so is any `cp`/`mv`/`rsync` into a task directory. The gates also stamp each status move in PROGRESS.md, and a `## Status` that differs from the stamped one shows as `TAMPERED` in `crew ls` and blocks every gate until you run `crew-task.py restore-status <TASK_DIR>`, or, in your own terminal, `--accept <note>` to keep the spec's value (`guard/owner-only.sh` refuses `--accept` from an agent). These catch accidental and literal writes and make a deliberate bypass visible; they are not a lock. An agent with a shell running as you can still forge local files (a path in a variable, `eval`, a script written now and run later), so the real gate is the harness's permission prompt on the gate commands plus your review of the PR ([docs/hooks.md](docs/hooks.md), "Status integrity"). The `SPEC.md` `ask` rules an earlier install added are removed on the next install; an `ask` rule you added yourself stays. Uninstall removes only the entries install added; your own directories stay |
 | Each config dir's `settings.json`: `autoMemoryEnabled` | `false`, so crew memory is the one memory store; written only once that dir's Claude auto-memory entries are imported ([Memory](docs/memory.md#claude-code-auto-memory)). A value you set is kept |
 | `~/.codex/AGENTS.md` | A managed instruction block, the same content as the Claude Code one |
-| `~/.agent/bin/` | One symlink per command in `.agent/tools/tools.json` |
+| `~/.agent/bin/` | One symlink per command in `src/crew/tools.json` |
 | `~/.agent/install-manifest.json` | What install added to your settings files and the read-only agents it rendered, so uninstall removes exactly that |
 | `~/.agent/config.json` `mcp` | Your docs and code-search MCP server names (`{"docs": [...], "code_search": [...]}`); install adds them to the read-only agents' tool allowlists |
 | `~/.agent/memory/`, `~/.agent/tasks/`, `~/.agent/journal/` | Your data: memory units, task state, journal. Created once, never overwritten |
@@ -148,9 +148,9 @@ and the settings backups stay; delete them yourself if you want them gone.
 
 | Requirement | Version |
 |---|---|
-| Platform | macOS and Linux, both tested in CI (Python 3.9 and 3.12); Windows is not supported |
+| Platform | macOS and Linux, both tested in CI; Windows is not supported |
 | Cursor or Claude Code | The current release of either |
-| Python | 3.9 or newer |
+| [`uv`](https://docs.astral.sh/uv/) | Any recent version: it provides CPython 3.12+ and the pinned dependencies |
 | Git, [`gh`](https://cli.github.com) (signed in), `jq` | Any recent version |
 | [`shfmt`](https://github.com/mvdan/sh) | Optional: a real bash parser for the guards |
 | [`uv`](https://docs.astral.sh/uv/) | Optional: runs the pinned test and lint tools when you work on el-capitan itself |

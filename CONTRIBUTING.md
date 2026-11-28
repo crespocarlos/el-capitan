@@ -15,17 +15,19 @@ guide for anyone editing it, person or agent; this page is the short version.
 
 ## The checks
 
-CI (`.github/workflows/validate.yml`) runs these: the tests on macOS and Linux (Python 3.9 and
-3.12), the lint steps on Linux. Run them before you open a pull request:
+CI (`.github/workflows/validate.yml`) runs these: the tests on macOS and Linux, the lint steps on
+Linux, all on the uv-managed Python that `pyproject.toml` and `uv.lock` pin. Run them before you open
+a pull request:
 
 ```bash
 # tests job (macOS and Linux)
 bash evals/test.sh -n auto                                   # every test, with pytest-xdist
 bash .claude/hooks/fixtures/install.sh                       # install, upgrade and uninstall in a throwaway HOME
-python3 evals/memory/run.py                                  # memory evaluation
+uv run python evals/memory/run.py                            # memory evaluation
 # lint job (Linux)
-python3 .agent/tools/maintenance/crew-lint.py --budget       # repository rules and the prompt budget
-bash evals/ruff.sh check .                                   # Python lint
+uv run crew-lint.py --budget                                 # repository rules and the prompt budget
+bash evals/ruff.sh check . && bash evals/ruff.sh format --check .   # Python lint and layout
+uv run basedpyright                                          # types, against .basedpyright/baseline.json
 uvx codespell==2.4.1 <paths in validate.yml>                 # spelling
 uvx --from vale==3.12.0.0 vale <paths in validate.yml>       # prose rules for prompts and docs
 uvx zizmor==1.33.1 --offline .github/workflows               # workflow security
@@ -34,7 +36,7 @@ uvx --from actionlint-py==1.7.12.25 actionlint               # workflow syntax
 
 `crew-lint.py --list-rules` prints every repository rule. Two of them keep the README honest: the
 command tables and the counts are generated, so after changing a routing row, a skill, an agent or
-the catalog run `python3 .agent/tools/maintenance/crew-lint.py --write-readme` and commit the result.
+the catalog run `uv run crew-lint.py --write-readme` and commit the result.
 
 ## Tests
 
@@ -47,7 +49,7 @@ literals, and never pin prose. A guard change adds an allow and a deny case to
 
 - A rule, agent, skill or reference file is a prompt: read the `prompt-authoring` skill
   (`.cursor/skills/prompt-authoring/SKILL.md`) before editing one.
-- A new command goes in `.agent/tools/tools.json` and `.agent/tools/TOOLS.md`; a command a `crew`
+- A new command goes in `src/crew/tools.json` and `src/crew/TOOLS.md`; a command a `crew`
   verb routes to also needs a routing row in `rules/crew-router.mdc` and a `routes` summary in the
   catalog.
 - A renamed or removed command, flag or verb is removed outright, with every caller and doc moved in

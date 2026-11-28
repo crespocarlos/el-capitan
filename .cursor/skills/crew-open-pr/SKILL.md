@@ -63,7 +63,7 @@ TARGET_REPO="${UPSTREAM_REPO:-$ORIGIN_REPO}"
 
 **Stack gate.** `BASE` is the default branch (the value resolved above)
 unless SPEC.md `## Base:` names a parent branch; do not ask whether the branch stacks. A base that fully matches (whole branch name) a `landing_bases` pattern from the repo's
-`AGENTS.md` (release branches such as `9.x`; format in `.agent/tools/AGENTS.md`) is a normal base:
+`AGENTS.md` (release branches such as `9.x`; format in `src/crew/AGENTS.md`) is a normal base:
 no stack message, no question, and say "Base is X (landing base)" once. With no `landing_bases` the
 default branch only is normal. For any other base, print exactly this one line and ask once:
 

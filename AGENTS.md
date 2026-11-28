@@ -11,7 +11,7 @@ None. Skip the bootstrap step in any worktree; there is nothing to install or bu
 
 Hermetic suites, also run in CI (`.github/workflows/validate.yml`). Verification of a change means
 those plus the **Acceptance criteria** in SPEC.md. Which suites cover what, and which need a full
-permission run: `.agent/tools/AGENTS.md`.
+permission run: `src/crew/AGENTS.md`.
 
 ## Layout
 
@@ -20,14 +20,14 @@ permission run: `.agent/tools/AGENTS.md`.
 | `rules/` | Always-loaded rules; `crew-router.mdc` is the routing source of truth |
 | `.cursor/agents/`, `.cursor/skills/` | Canonical agent and skill sources — edit only here |
 | `.claude/` | `CLAUDE.md`, guard hooks, and the `.cursor/skills` link; no agents link (install renders them) |
-| `.agent/tools/` | Every command and module; catalog in `tools.json`, prose in `TOOLS.md` |
+| `src/crew/` | Every command and module; catalog in `tools.json`, prose in `TOOLS.md` |
 | `.agent/_*TEMPLATE.md` | Spec and journal templates, symlinked from skill `references/` |
 | `evals/` | Hermetic suites, one file per tool or family |
 | `tui/` | Dashboard over `crew ls` data (Textual, a dev dependency); `s` runs a confirmed `crew-task.py` move, nothing else writes; not catalogued or installed |
 | `install.sh` | Links `~/.cursor/`, `~/.claude/`, `~/.agent/bin/` from the catalog |
 
 Tool-tree layout, module naming, exit codes, output contracts, and the glossary:
-`.agent/tools/AGENTS.md`.
+`src/crew/AGENTS.md`.
 
 ## Editing
 
@@ -37,7 +37,7 @@ anchor into a silent no-op; shell heredocs are for scratch artifacts and task-di
 
 - **Prompt files** — load the `prompt-authoring` skill first.
   Frontmatter, the tool-id registry, the size ceiling, and the `references/` rule:
-  `.agent/tools/AGENTS.md` → Authoring agent and skill files. `crew-lint` enforces all of it.
+  `src/crew/AGENTS.md` → Authoring agent and skill files. `crew-lint` enforces all of it.
 - **Prompt growth** — a change that adds rule or prompt text names what it replaces, or justifies the
   net growth in its PR body; `crew-lint --budget` prints the byte delta since the merge base with
   `origin/main`, and fails a file above 90% of its ceiling.
@@ -51,4 +51,4 @@ anchor into a silent no-op; shell heredocs are for scratch artifacts and task-di
   [persona authoring](.cursor/agents/crew-reviewer/references/persona-authoring.md).
 
 The pipeline improves itself through its own `crew` commands. Persistent memory (`crew-mem.py`):
-`.agent/tools/AGENTS.md`.
+`src/crew/AGENTS.md`.

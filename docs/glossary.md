@@ -2,7 +2,7 @@
 
 Terms used in the README, these docs, and what the agents say to you. The terms the prompts
 themselves must use, one per concept, are defined once in the glossary of
-[`.agent/tools/AGENTS.md`](../.agent/tools/AGENTS.md); this page explains the same vocabulary to a
+[`src/crew/AGENTS.md`](../src/crew/AGENTS.md); this page explains the same vocabulary to a
 person.
 
 | Term | Meaning |

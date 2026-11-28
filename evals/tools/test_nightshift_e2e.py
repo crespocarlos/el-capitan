@@ -20,7 +20,7 @@ from pathlib import Path
 
 from cli_runner import run as cli
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-nightshift-e2e.py"
+TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_nightshift_e2e.py"
 KEY = "elastic__kibana__12345"
 TESTED_HEAD = "0123456789ab"  # arbitrary: the tool must pass `meta.headSha` through unchanged
 
@@ -341,8 +341,6 @@ def test_doctor_reports_ports_and_config_duplicate_notes(tmp: Path) -> None:
 
 
 def load_module():
-    if str(TOOL.parent) not in sys.path:
-        sys.path.insert(0, str(TOOL.parent))  # the package directory, where its bootstrap lives
     spec = importlib.util.spec_from_file_location("nightshift_e2e", TOOL)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

@@ -17,7 +17,7 @@ import pytest
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
+TOOL = ROOT / "src" / "crew" / "review" / "crew_review_findings.py"
 
 
 def local_commit() -> str:

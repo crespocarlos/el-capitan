@@ -9,6 +9,7 @@ rule, when the snippet does not parse or holds a write this cannot resolve: a wr
 `exec`, `eval`, `getattr`, `__import__`, or a write function imported or aliased by another name.
 Run as `python3 -I`, so nothing from the working directory is imported.
 """
+
 from __future__ import annotations
 
 import ast
@@ -20,8 +21,7 @@ OPAQUE_CALLS = {"exec", "eval", "getattr", "__import__", "os.open", "os.write", 
 OPAQUE_NAMES = {"subprocess", "exec", "eval", "getattr", "__import__"}
 # A write function imported bare from these modules is called under a name this parser does not follow.
 OPAQUE_MODULES = {"subprocess", "fileinput", "shutil", "os", "io", "codecs"}
-WRITE_NAMES = {"open", "copy", "copy2", "copyfile", "copytree", "move", "replace", "rename", "write", "system",
-               "popen", "input", "FileInput", "*"}
+WRITE_NAMES = {"open", "copy", "copy2", "copyfile", "copytree", "move", "replace", "rename", "write", "system", "popen", "input", "FileInput", "*"}
 
 
 class Unresolved(Exception):
@@ -102,8 +102,9 @@ def imports_a_write(node: ast.AST) -> bool:
 def opaque(tree: ast.AST) -> bool:
     """A construct that can write without a call this parser reads."""
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and (called(node) in OPAQUE_CALLS or (
-                called(node).startswith("fileinput.") and any(item.arg == "inplace" for item in node.keywords))):
+        if isinstance(node, ast.Call) and (
+            called(node) in OPAQUE_CALLS or (called(node).startswith("fileinput.") and any(item.arg == "inplace" for item in node.keywords))
+        ):
             return True
         if isinstance(node, ast.Name) and node.id in OPAQUE_NAMES or imports_a_write(node):
             return True
@@ -125,9 +126,7 @@ def targets(source: str) -> list[str]:
         receiver = node.func.value if isinstance(node.func, ast.Attribute) else None
         if name in ("open", "io.open", "codecs.open") and writes(node, 1, known):
             found.append(resolved(argument(node, 0, "file"), known))
-        elif method == "open" and isinstance(receiver, ast.Call) and writes(node, 0, known):
-            found.append(resolved(receiver, known))
-        elif method in ("write_text", "write_bytes") and receiver is not None:
+        elif method == "open" and isinstance(receiver, ast.Call) and writes(node, 0, known) or method in ("write_text", "write_bytes") and receiver is not None:
             found.append(resolved(receiver, known))
         elif name.startswith("shutil.copy") or name in ("shutil.move", "os.replace", "os.rename"):
             found.append(resolved(argument(node, 1, "dst"), known))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every cataloged command runs the way an installed one does: through a symlink, from elsewhere.
 
-`install.sh` links each `kind: command` entry of `.agent/tools/tools.json` into `~/.agent/bin`, and
+`install.sh` links each `kind: command` entry of `src/crew/tools.json` into `~/.agent/bin`, and
 callers run the link from whatever repository they are in. Each command therefore runs here through
 a symlink in a temporary bin directory, from a cwd outside this repository, with a throwaway HOME,
 with a read-only invocation from `READS` (`--help` is checked by `test_command_names.py`). A command
@@ -19,11 +19,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from cli_runner import launcher
 
 # An install, then every command through its link (each run allowed 120 s): more than the suite's 60 s.
 pytestmark = pytest.mark.timeout(300)
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / ".agent" / "tools"
+TOOLS = ROOT / "src" / "crew"
 SOURCE_ONLY = {"task-env.sh", "crew-diff.sh"}
 GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
@@ -99,7 +100,8 @@ def workspace(tmp: Path) -> dict[str, str]:
 def link_commands(entries: list[dict], bin_dir: Path) -> None:
     bin_dir.mkdir()
     for entry in entries:
-        (bin_dir / entry["name"]).symlink_to(TOOLS / entry["dir"] / entry["name"])
+        python = entry["name"].endswith(".py")
+        (bin_dir / entry["name"]).symlink_to(launcher(entry["name"]) if python else TOOLS / entry["dir"] / entry["name"])
 
 
 def invoke(link: Path, args: list[str], cwd: str, env: dict) -> subprocess.CompletedProcess:

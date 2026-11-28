@@ -58,7 +58,7 @@ if [ ! -x "$tool" ]; then
   say "capture-reply: $tool missing; re-run install.sh"
   finish
 fi
-out=$(printf '%s' "$HOOK_INPUT" | python3 "$tool" capture 2>/dev/null)
+out=$(printf '%s' "$HOOK_INPUT" | "$tool" capture 2>/dev/null)
 rc=$?
 while IFS= read -r line; do
   case "$line" in

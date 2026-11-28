@@ -126,4 +126,4 @@ for verifying findings against the authoritative repository before consolidation
 commands and nothing else: no summary of the work, no reassurance, no second sentence. A PR review's
 trailer names a person's action instead ([output
 formats](~/.cursor/agents/crew-reviewer/references/output-formats.md)). Authoring rule, for editing
-this repository's prompts: the shape `crew-lint` enforces is in `.agent/tools/AGENTS.md`.
+this repository's prompts: the shape `crew-lint` enforces is in `src/crew/AGENTS.md`.

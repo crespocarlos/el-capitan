@@ -32,7 +32,7 @@ if [ ! -x "$tool" ]; then
   printf 'record-pr: %s missing; re-run install.sh\n' "$tool" >&2
   exit 0
 fi
-out=$(printf '%s' "$HOOK_INPUT" | python3 "$tool" record-pr 2>&1) || true
+out=$(printf '%s' "$HOOK_INPUT" | "$tool" record-pr 2>&1) || true
 [ -n "$out" ] || exit 0
 if [ "$HOOK_EVENT" = PostToolUse ]; then
   jq -n --arg text "$out" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $text}}'

@@ -9,16 +9,14 @@ import importlib.util
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+from cli_runner import launcher
+from cli_runner import run as cli
 
-TOOL = Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
-# The tool is loaded by path below; its package directory holds the bootstrap it imports first.
-sys.path[:0] = [str(TOOL.parent), str(TOOL.parents[3] / "evals" / "tools")]
-from cli_runner import run as cli  # noqa: E402
+TOOL = Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_review_findings.py"
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
@@ -581,7 +579,7 @@ def test_canonical_personas_rejects_comma_string_without_split(tmp: Path) -> Non
         assert "comma-separated personas" in str(error)
     else:
         raise AssertionError("string input with commas must raise when split_commas=False")
-    assert module.canonical_personas("adversarial code-quality".split(), split_commas=False) == [
+    assert module.canonical_personas(["adversarial", "code-quality"], split_commas=False) == [
         "adversarial", "code-quality"]
 
 
@@ -1091,7 +1089,7 @@ Handoff to adversarial: src/reader.py:40 — a partial write leaves the cache fi
 def test_persist_accepts_the_read_beyond_and_handoff_lines(tmp: Path) -> None:
     """The reviewer contract puts `Read beyond the package:` after the Assessment line and a `Handoff to <lens>:`
     line after the findings; neither is a finding, and a reply holding both still saves and persists."""
-    from review_vocabulary import LABEL_LINE, LABELED_FINDING
+    from crew.review.review_vocabulary import LABEL_LINE, LABELED_FINDING
 
     review_dir, report = provenance_review(tmp, ("architecture",))
     assert save_out(review_dir, "architecture", CONTRACT_REPLY).returncode == 0
@@ -1182,9 +1180,9 @@ def capture_hook(tmp: Path, prompt: str, agent: str, reply: str, handback: bool 
     `reply` after the text `Handed back.` (the payload's `last_assistant_message`), or, without `handback`, says
     `reply` as its final text, which `last_assistant_message` then carries, as Claude Code documents."""
     home = tmp / "home"
-    if not (home / ".agent" / "bin" / TOOL.name).exists():
+    if not (home / ".agent" / "bin" / "crew-review-findings.py").exists():
         (home / ".agent" / "bin").mkdir(parents=True, exist_ok=True)
-        (home / ".agent" / "bin" / TOOL.name).symlink_to(TOOL)
+        (home / ".agent" / "bin" / "crew-review-findings.py").symlink_to(launcher("crew-review-findings.py"))
     content = [{"type": "text", "text": "Reviewing." if handback else reply}]
     if handback:
         content.append({"type": "tool_use", "name": "SubagentHandback", "input": {"message": reply}})
@@ -1712,9 +1710,7 @@ def test_a_score_move_recorded_as_an_outcome_needs_its_evidence(tmp: Path) -> No
 
 def test_review_dir_prefers_a_writable_task_and_falls_back_to_a_named_temp_path(tmp: Path) -> None:
     """The task directory when writable (not in PR mode); else a temp path naming the repo, the reason on stderr."""
-    sys.path.insert(0, str(TOOL.parent))
-    import review_workspace
-
+    from crew.review import review_workspace
     task = tmp / "task"
     task.mkdir()
     (task / ".task-id").write_text(json.dumps({"slug": "probe"}))

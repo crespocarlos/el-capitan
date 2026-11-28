@@ -23,6 +23,7 @@ another tool's fields, an unknown tool, or an edit that does not apply exactly o
 target, `d` a copy destination), `cwd`, `path` triples on stdin (the literal targets a shell command writes), one
 `deny <message>` line for the first protected one (`shell_verdict`), nothing otherwise.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -44,7 +45,7 @@ BORN = ("", "DRAFTING")
 
 def reader() -> ModuleType:
     """`task_status`, loaded by path from the checkout this hook links into (it imports only the stdlib)."""
-    source = Path(__file__).resolve().parents[3] / ".agent" / "tools" / "task" / "task_status.py"
+    source = Path(__file__).resolve().parents[3] / "src" / "crew" / "task" / "task_status.py"
     spec = importlib.util.spec_from_file_location("task_status", source)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {source}")
@@ -108,8 +109,7 @@ def written(tool: str, fields: dict, disk: str) -> tuple[str | None, str]:
 def evidence(names: list[str]) -> bool:
     """`<task>/.task-id`, `<task>/PROGRESS.md` (its gate-stamped transitions are the recorded status), or
     `<task>/review/**/<name>` or `<task>/spec-agents/**/<name>` with an evidence suffix (lowercased names)."""
-    return names[1:] in ([".task-id"], ["progress.md"]) or (
-        len(names) > 2 and names[1] in ("review", "spec-agents") and names[-1].endswith(EVIDENCE))
+    return names[1:] in ([".task-id"], ["progress.md"]) or (len(names) > 2 and names[1] in ("review", "spec-agents") and names[-1].endswith(EVIDENCE))
 
 
 def spec_verdict(path: str, tool: str, fields: dict) -> str:
@@ -122,18 +122,14 @@ def spec_verdict(path: str, tool: str, fields: dict) -> str:
             disk = handle.read()
     after, reason = written(tool, fields, disk)
     if after is None:
-        return (f"deny Task spec guard: cannot tell what this write does to the Status of {path}: {reason}. "
-                "Write the edit exactly as the file holds it.")
+        return f"deny Task spec guard: cannot tell what this write does to the Status of {path}: {reason}. Write the edit exactly as the file holds it."
     if len(HEADING.findall(status.spec_text(after))) > 1:
         return f"deny Task spec guard: this leaves more than one '## Status' heading in {path}; a spec has exactly one."
     before, now = status.status_of(disk), status.status_of(after)
     if not exists and now not in BORN:
-        return (f"deny Task spec guard: a new spec starts as DRAFTING, not '{now}' ({path}). "
-                f"The status moves only through {MOVES}.")
+        return f"deny Task spec guard: a new spec starts as DRAFTING, not '{now}' ({path}). The status moves only through {MOVES}."
     if exists and before != now:
-        return (f"deny Task spec guard: this changes the Status of {path} "
-                f"from '{before or 'none'}' to '{now or 'none'}'. "
-                f"The status moves only through {MOVES}; edit the rest of the spec freely.")
+        return f"deny Task spec guard: this changes the Status of {path} from '{before or 'none'}' to '{now or 'none'}'. The status moves only through {MOVES}; edit the rest of the spec freely."
     return f"ok {path}"
 
 
@@ -153,8 +149,7 @@ def verdict(payload: dict, tasks_root: str) -> str:
     if names[1:] != ["spec.md"]:
         return "skip"
     if parts[1] != "SPEC.md":
-        return (f"deny Task spec guard: write the task spec as SPEC.md, not {parts[1]} "
-                "(on a case-insensitive disk it is the same file).")
+        return f"deny Task spec guard: write the task spec as SPEC.md, not {parts[1]} (on a case-insensitive disk it is the same file)."
     tool = payload.get("tool_name") if isinstance(payload.get("tool_name"), str) else ""
     return spec_verdict(path, tool, fields)
 
@@ -180,8 +175,7 @@ def shell_verdict(kind: str, path: str, cwd: str, tasks_root: str) -> str:
         return ""
     names = [part.lower() for part in os.path.relpath(full, root).split(os.sep)]
     if kind == "d":
-        return (f"deny Task file guard: this shell command copies or moves into {full}, inside a task directory that "
-                "only crew tools write.")
+        return f"deny Task file guard: this shell command copies or moves into {full}, inside a task directory that only crew tools write."
     if kind == "r" and len(names) == 1:
         return f"deny Task file guard: this shell command removes the task directory {full}."
     if kind == "r" and (names[1:] == ["spec.md"] or evidence(names)):
@@ -191,8 +185,7 @@ def shell_verdict(kind: str, path: str, cwd: str, tasks_root: str) -> str:
     if names[1:] in (["spec.md"], [".task-id"]) and not os.path.exists(full) and first:
         return ""
     if names[1:] == ["spec.md"]:
-        return (f"deny Task file guard: this shell command writes {full}. Edit the spec with the Edit tool; the "
-                f"Status moves only through {MOVES}.")
+        return f"deny Task file guard: this shell command writes {full}. Edit the spec with the Edit tool; the Status moves only through {MOVES}."
     if evidence(names):
         return f"deny Task file guard: this shell command writes {full}, evidence that only crew tools write."
     return ""

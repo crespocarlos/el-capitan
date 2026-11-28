@@ -520,7 +520,7 @@ def lint_native_tool_ids(root: Path, native: set[str]) -> Findings:
             if tool.strip() and tool.strip() not in native:
                 findings.append((rel(root, path), 1, "tool-id-unknown", f"{tool.strip()} is not a native tool"))
     return findings
-'''  # noqa: E501
+'''
 
 case(id="lint-budget-allowlist", lens="code-quality",
      source="task 1D001C12, review 20261127163032, code-quality finding 3",
@@ -574,7 +574,7 @@ def test_a_silent_dispatch_is_resumed_once(path: str, rule: str) -> None:
 def test_handoff(case: str, files: dict[str, str], rule: str | None, tmp: Path) -> None:
     root = write(tmp, {"rules/crew-router.mdc": ROUTER, **files})
     assert rules_of(lint_handoffs(root)) == ([rule] if rule else []), case
-'''  # noqa: E501
+'''
 
 case(id="test-pins-prose", lens="code-quality",
      source="task 1D001C12, review 20261127163032, code-quality finding 4",
@@ -715,7 +715,7 @@ def record(payload: dict, tasks_dir: Path, read: Reader = gh_read) -> list[str]:
         return place(found, tasks_dir)
     finally:
         os.chdir(saved)
-'''  # noqa: E501
+'''
 
 GIT_LIB = '''"""Git reads used by the task tools (excerpt)."""
 from __future__ import annotations
@@ -786,7 +786,7 @@ def prepare(task_dir: Path, title: str, body_file: Path) -> Ship | str:
         return f"{name(task)}: {tree} is on {actual}, not the task's branch {branch or '(none recorded)'}"
     remote, base, target, head_ref = where_to(task, tree)
     return Ship(task, tree, branch, remote, base, target, head_ref, title, body_file)
-'''  # noqa: E501
+'''
 
 TASK_ID = '''{
   "uuid": "6F0C1D2E-0000-4000-8000-000000000001",
@@ -953,7 +953,7 @@ DOCTOR_CHECK_BEFORE = '''def check_mcp(home: Path, wanted: dict[str, list[str]] 
         lines += [claude_capability(f"Claude Code {tilde(directory, home)}: {label} ({', '.join(sorted(names))})",
                                     names, user, reach) for label, names in capabilities]
     return lines
-'''  # noqa: E501
+'''
 
 DOCTOR_CHECK_AFTER = '''NONE_IN_DIR = "Claude Code {}: no configured MCP server is reachable from this config dir"
 

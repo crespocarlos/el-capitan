@@ -18,7 +18,7 @@ err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 # The branch-PR lookups share one 3-second budget so a session never waits on GitHub; the rest wait
 # for the next session (a cached answer is kept 24 hours).
-out=$(python3 "$tool" reconcile --apply --pr-budget 3 2>"$err")
+out=$("$tool" reconcile --apply --pr-budget 3 2>"$err")
 rc=$?
 if [ "$rc" -ne 0 ]; then
   printf 'spec-status: reconcile failed (exit %s: %s)\n' "$rc" "$(head -n 1 "$err")"
@@ -61,7 +61,7 @@ anchor_refresh >/dev/null
 # a named decision.
 inbox_tool="$HOME/.agent/bin/crew-inbox.py"
 if [ -x "$inbox_tool" ]; then
-  pending=$(python3 "$inbox_tool" 2>/dev/null | head -1)
+  pending=$("$inbox_tool" 2>/dev/null | head -1)
   case "$pending" in
     "inbox: empty"|"") ;;
     *) printf '%s; run crew-mem.py import-inbox <file>\n' "$pending" ;;

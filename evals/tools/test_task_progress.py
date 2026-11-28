@@ -8,23 +8,20 @@ owner/repo parser is the one in `lib.git`; its accepted and refused URL shapes a
 from __future__ import annotations
 
 import re
-import sys
 import time
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from crew.lib.clock import parse_stamp, utc_stamp
+from crew.lib.git import slug_from_url
+from crew.task import task_progress
+
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ROOT / ".agent" / "tools"
-sys.path.insert(0, str(TOOLS / "task"))
-sys.path.insert(0, str(TOOLS))
+TOOLS = ROOT / "src" / "crew"
 
-import task_progress  # noqa: E402
-
-from lib.clock import parse_stamp, utc_stamp  # noqa: E402
-from lib.git import slug_from_url  # noqa: E402
 
 UTC_LINE = re.compile(r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\] ")
 SLUGS = {
@@ -61,13 +58,13 @@ def task(base: Path, name: str, text: str = "") -> Path:
 
 
 def test_stamps() -> None:
-    moment = datetime(2026, 3, 4, 5, 6, 7, tzinfo=timezone.utc)
+    moment = datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)
     check("utc_stamp is YYYY-MM-DDTHH:MM:SSZ", utc_stamp(moment) == "2026-03-04T05:06:07Z", utc_stamp(moment))
     check("utc_stamp round-trips through parse_stamp", parse_stamp(utc_stamp(moment)) == moment)
     check("a legacy local stamp parses as the local time in UTC",
-          parse_stamp("2026-03-04 05:06:07") == datetime(2026, 3, 4, 5, 6, 7).astimezone(timezone.utc))
+          parse_stamp("2026-03-04 05:06:07") == datetime(2026, 3, 4, 5, 6, 7).astimezone(UTC))
     check("a legacy minute stamp `YYYY-MM-DD HH:MM` parses as local time",
-          parse_stamp("2026-03-04 05:06") == datetime(2026, 3, 4, 5, 6).astimezone(timezone.utc))
+          parse_stamp("2026-03-04 05:06") == datetime(2026, 3, 4, 5, 6).astimezone(UTC))
     check("an offset ISO stamp parses", parse_stamp("2026-03-04T05:06:07+00:00") == moment)
     check("garbage is None", parse_stamp("yesterday") is None and parse_stamp("") is None)
 
@@ -91,10 +88,10 @@ def test_mixed_stamps(tmp: Path, sao_paulo: None) -> None:
     minute = task(tmp, "minute", "[2026-01-01 10:00] BLOCKED: written by hand in the documented minute form\n")
     found = task_progress.read_entries(minute)
     check("a minute-form line is a BLOCKED entry at its local time in UTC",
-          [(e.kind, e.at) for e in found] == [("BLOCKED", datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc))], found)
+          [(e.kind, e.at) for e in found] == [("BLOCKED", datetime(2026, 1, 1, 13, 0, tzinfo=UTC))], found)
     check("a minute-form BLOCKED line is visible", task_progress.blocked_reason(minute) != "")
     check("the legacy local line is converted to UTC",
-          entries[0].at == datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc), entries[0].at)
+          entries[0].at == datetime(2026, 1, 1, 13, 0, tzinfo=UTC), entries[0].at)
     check("ordering by time puts the legacy line after the earlier UTC line",
           [e.kind for e in sorted(entries[:2], key=lambda e: e.at)] == ["METRIC", "TRANSITION"])
     check("a line with no stamp keeps its text and no time",

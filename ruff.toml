@@ -1,14 +1,20 @@
-# Ruff is the Python linter for every package (.agent/tools, evals, .claude, tui). The version is pinned
-# here once (`required-version`); `evals/ruff.sh` reads it, locally (uvx) and in CI (pipx).
-# Repository-specific rules (module cap, bootstrap imports, single owner) are crew-lint's.
+# Ruff is the Python linter and formatter for every package (src/crew, evals, .claude). The version is pinned
+# here once (`required-version`); `evals/ruff.sh` reads it, locally and in CI (uvx).
+# Repository-specific rules (module cap, package edges, single owner) are crew-lint's.
 required-version = "==0.17.4"
-target-version = "py39"
-line-length = 120
-src = [".agent/tools", "evals", "tui"]
+target-version = "py312"
+# Run by the system python3 (macOS: 3.9), never the venv: the fail-closed spec guard
+# (`check-task-spec-owner.sh:32`, `task-files.sh`) loads these with `python3 -I`, and `agents-refresh.sh` runs install_blocks.
+per-file-target-version = { "src/crew/task/task_status.py" = "py39", ".claude/hooks/lib/*.py" = "py39", ".claude/*.py" = "py39" }
+line-length = 160
+src = ["src", "evals"]
 
 [lint]
-# ANN20x: return annotations (today's rule); PLR0915 approximates the 50-line function limit by statements.
-select = ["E", "F", "W", "I", "ANN201", "ANN202", "ANN205", "ANN206", "PLR0915", "C901", "B", "UP", "TID251", "RUF100"]
+# ANN: argument and return annotations; PLR0915 approximates the 50-line function limit by statements.
+select = ["E", "F", "W", "I", "ANN001", "ANN201", "ANN202", "ANN205", "ANN206", "PLR0915", "C901", "B", "UP", "RUF100",
+          "S", "SIM", "RET", "PERF", "PTH"]
+# The tools run git, gh and the hooks by name with an argv list, never through a shell.
+ignore = ["S603", "S607"]
 
 [lint.pylint]
 max-statements = 50
@@ -16,65 +22,110 @@ max-statements = 50
 [lint.mccabe]
 max-complexity = 15
 
-[lint.flake8-tidy-imports.banned-api]
-# Generic module names collide on sys.path; a module is named <package>_<thing>.
-"store".msg = "name the module <package>_store"
-"units".msg = "name the module <package>_units"
-"recall".msg = "name the module <package>_recall"
-"maintenance".msg = "name the module <package>_maintenance"
-"findings".msg = "name the module <package>_findings"
-"layers".msg = "name the module <package>_layers"
-"personas".msg = "name the module <package>_personas"
-"report".msg = "name the module <package>_report"
-# Import paths change only in the five identical <package>_bootstrap.py files ("Imports" in .agent/tools/AGENTS.md).
-"sys.path".msg = "import <package>_bootstrap instead; only the bootstraps (and tests that load a module by path) set sys.path"
-
 [lint.isort]
-# The bootstrap sets the import path, so it is its own section, right after the standard library.
-section-order = ["future", "standard-library", "bootstrap", "third-party", "first-party", "local-folder"]
+known-first-party = ["crew"]
+split-on-trailing-comma = false
 
-[lint.isort.sections]
-bootstrap = ["task_bootstrap", "review_bootstrap", "memory_bootstrap", "evals_bootstrap", "maintenance_bootstrap", "tui_bootstrap"]
-
-# Baseline: existing violations per file, regenerated as packages are cleaned. Remove an entry when
-# its file is fixed; never add one for new code. TID251 is not a violation: it marks the files that may
-# set sys.path (the five bootstraps and the tests that load a module by path), each listed by name.
+# Baseline: existing violations per file. Remove an entry when its file is clean; never add one for new code.
 [lint.per-file-ignores]
-".agent/tools/evals/crew-evals-inspect.py" = ["B904"]
-".agent/tools/evals/evals_bootstrap.py" = ["TID251"]
-".agent/tools/lib/git.py" = ["UP022"]
-".agent/tools/maintenance/lint_prompts.py" = ["E501"]
-".agent/tools/maintenance/lint_references.py" = ["C901"]
-".agent/tools/maintenance/maintenance_bootstrap.py" = ["TID251"]
-".agent/tools/memory/memory_bootstrap.py" = ["TID251"]
-".agent/tools/memory/memory_frontmatter.py" = ["ANN202"]
-".agent/tools/memory/memory_maintenance.py" = ["ANN202"]
-".agent/tools/review/review_bootstrap.py" = ["TID251"]
-".agent/tools/task/crew-ls.py" = ["E501"]
-".agent/tools/task/task_bootstrap.py" = ["TID251"]
-".agent/tools/task/task_report.py" = ["E731"]
-".agent/tools/task/task_verify.py" = ["E501"]
-".agent/tools/task/task_verify_sources.py" = ["E741"]
-".claude/merge_claude_settings.py" = ["ANN201"]
-"tui/tui_bootstrap.py" = ["TID251"]
-"evals/compare_run.py" = ["ANN201", "TID251"]
-"evals/memory/run.py" = ["ANN201", "E501", "E702", "PLR0915", "TID251"]
-"evals/reviewer/test_review_findings.py" = ["ANN201", "E501", "TID251"]
-"evals/run.py" = ["E501"]
-"evals/tools/cli_runner.py" = ["TID251"]
-"evals/tools/test_assemble_packages.py" = ["ANN201", "E501", "TID251"]
-"evals/tools/test_command_names.py" = ["E501", "TID251"]
-"evals/tools/test_confidence.py" = ["ANN201", "F841", "TID251"]
-"evals/tools/test_git_lib.py" = ["ANN201", "TID251"]
-"evals/tools/test_hook_cases.py" = ["E501"]
-"evals/tools/test_landed.py" = ["ANN201", "E501", "E731", "TID251"]
-"evals/tools/test_lifecycle.py" = ["E501", "TID251"]
+"evals/**" = ["S101"]  # a test asserts
+".claude/hooks/lib/spec_guard.py" = ["B905", "E501", "PTH109", "PTH110", "PTH111", "PTH118", "PTH123", "PTH206"]
+".claude/install_blocks.py" = ["PTH100", "PTH101", "PTH105", "PTH108", "PTH110", "PTH111", "PTH115", "PTH117", "PTH118", "PTH120"]
+".claude/merge_claude_settings.py" = ["ANN001", "ANN201", "PTH110", "PTH111", "PTH123"]
+".claude/merge_cursor_hooks.py" = ["ANN001", "E501", "PTH110", "PTH123"]
+".claude/uninstall.py" = ["E501", "PTH110", "PTH115", "PTH117", "PTH118", "PTH119", "PTH120"]
+"evals/compare_run.py" = ["ANN201", "S108"]
+"evals/memory/run.py" = ["ANN001", "ANN201", "E501", "E702", "PLR0915", "RET504"]
+"evals/reviewer/build_heldout.py" = ["S105"]
+"evals/reviewer/live.py" = ["PTH111"]
+"evals/reviewer/score.py" = ["B905", "PERF401"]
+"evals/reviewer/test_review_findings.py" = ["ANN201", "PTH109"]
+"evals/reviewer/test_reviewer_eval.py" = ["ANN001"]
+"evals/tools/cli_runner.py" = ["PTH109"]
+"evals/tools/hook_cases.py" = ["S108"]
+"evals/tools/test_assemble_packages.py" = ["ANN201", "B905", "S324"]
+"evals/tools/test_capture_all_agents.py" = ["B905", "PERF401"]
+"evals/tools/test_confidence.py" = ["ANN201", "F841"]
+"evals/tools/test_git_lib.py" = ["ANN001", "ANN201"]
+"evals/tools/test_hook_cases.py" = ["ANN001", "E501", "PERF401", "PTH110", "PTH118", "PTH208", "S108"]
+"evals/tools/test_install_blocks.py" = ["PTH115"]
+"evals/tools/test_installed_commands.py" = ["SIM108"]
+"evals/tools/test_landed.py" = ["ANN201", "E501", "E731"]
+"evals/tools/test_lifecycle.py" = ["E501", "SIM115"]
 "evals/tools/test_lint_rules.py" = ["E501"]
-"evals/tools/test_memory.py" = ["E501", "TID251"]
-"evals/tools/test_next_steps.py" = ["TID251"]
-"evals/tools/test_nightshift_e2e.py" = ["ANN201", "TID251"]
-"evals/tools/test_pr_reads.py" = ["ANN201"]
-"evals/tools/test_prompt_sizes.py" = ["TID251"]
-"evals/tools/test_review_cost_metric.py" = ["TID251"]
-"evals/tools/test_task_progress.py" = ["TID251"]
-"evals/tools/test_task_verify.py" = ["E501", "TID251"]
+"evals/tools/test_nightshift_e2e.py" = ["ANN201"]
+"evals/tools/test_pr_reads.py" = ["ANN001", "ANN201"]
+"evals/tools/test_prepare.py" = ["ANN001"]
+"evals/tools/test_ship.py" = ["B905"]
+"evals/tools/test_task_progress.py" = ["S108"]
+"evals/tools/test_task_verify.py" = ["E501"]
+"evals/tools/test_tui_model.py" = ["B905"]
+"evals/tools/test_upgrade.py" = ["PERF401", "PTH115"]
+"src/crew/evals/crew_evals_inspect.py" = ["B904", "S310"]
+"src/crew/evals/evals_diagnose.py" = ["ANN001", "B905"]
+"src/crew/evals/evals_query.py" = ["S310"]
+"src/crew/evals/evals_report.py" = ["ANN001"]
+"src/crew/evals/evals_sources.py" = ["RET503"]
+"src/crew/lib/files.py" = ["PTH105", "PTH108", "PTH110"]
+"src/crew/lib/git.py" = ["UP022"]
+"src/crew/maintenance/doctor_checks.py" = ["E501", "PTH115"]
+"src/crew/maintenance/doctor_mcp.py" = ["PTH111"]
+"src/crew/maintenance/lint_catalog.py" = ["E501"]
+"src/crew/maintenance/lint_dead_code.py" = ["PERF401"]
+"src/crew/maintenance/lint_docs.py" = ["E501"]
+"src/crew/maintenance/lint_prompts.py" = ["E501"]
+"src/crew/maintenance/lint_python.py" = ["PERF401"]
+"src/crew/maintenance/lint_references.py" = ["C901"]
+"src/crew/maintenance/lint_writing.py" = ["SIM105"]
+"src/crew/memory/crew_mem.py" = ["ANN001", "E501"]
+"src/crew/memory/memory_add.py" = ["S324", "S608"]
+"src/crew/memory/memory_claude.py" = ["PTH100"]
+"src/crew/memory/memory_frontmatter.py" = ["ANN001", "ANN202"]
+"src/crew/memory/memory_inbox.py" = ["E501"]
+"src/crew/memory/memory_maintenance.py" = ["PERF401"]
+"src/crew/memory/memory_search.py" = ["S608"]
+"src/crew/memory/memory_store.py" = ["ANN001"]
+"src/crew/review/assemble_build.py" = ["B905"]
+"src/crew/review/assemble_inputs.py" = ["E501"]
+"src/crew/review/nightshift/client.py" = ["S310"]
+"src/crew/review/review_capture.py" = ["ANN001", "SIM102", "SIM118"]
+"src/crew/review/review_cli.py" = ["ANN001"]
+"src/crew/review/review_consolidate.py" = ["ANN001"]
+"src/crew/review/review_coverage.py" = ["E501"]
+"src/crew/review/review_dispatch_stats.py" = ["ANN001", "B905"]
+"src/crew/review/review_findings.py" = ["E501"]
+"src/crew/review/review_layers.py" = ["PERF401"]
+"src/crew/review/review_models.py" = ["ANN001", "E501", "PERF403", "S324", "SIM102"]
+"src/crew/review/review_pr_plan.py" = ["E501"]
+"src/crew/review/review_prepare.py" = ["ANN001"]
+"src/crew/review/review_records.py" = ["ANN001"]
+"src/crew/review/review_render.py" = ["ANN001", "PERF401"]
+"src/crew/review/review_report.py" = ["ANN001", "B905"]
+"src/crew/review/review_transcript.py" = ["ANN001"]
+"src/crew/review/review_vocabulary.py" = ["ANN001"]
+"src/crew/review/review_workspace.py" = ["E501", "S324"]
+"src/crew/task/crew_task.py" = ["ANN001"]
+"src/crew/task/ls_data.py" = ["B905"]
+"src/crew/task/ls_report.py" = ["PERF401"]
+"src/crew/task/task_cost.py" = ["E501"]
+"src/crew/task/task_gates.py" = ["E501"]
+"src/crew/task/task_gc.py" = ["ANN001", "PTH118"]
+"src/crew/task/task_live.py" = ["PTH111"]
+"src/crew/task/task_prepare.py" = ["ANN001", "E501"]
+"src/crew/task/task_prepare_spec.py" = ["ANN001"]
+"src/crew/task/task_record_pr.py" = ["E501", "PTH109", "SIM108"]
+"src/crew/task/task_report.py" = ["ANN001", "B905", "E501", "E731"]
+"src/crew/task/task_resolve.py" = ["SIM102"]
+"src/crew/task/task_ship.py" = ["E501", "SIM105"]
+"src/crew/task/task_ship_checks.py" = ["B905"]
+"src/crew/task/task_state.py" = ["ANN001", "E501"]
+"src/crew/task/task_usage.py" = ["ANN001", "PTH109"]
+"src/crew/task/task_verify_env.py" = ["PERF401"]
+"src/crew/task/task_verify_report.py" = ["PERF401"]
+"src/crew/task/task_verify_sources.py" = ["E501", "E741"]
+"src/crew/tui/tui_app.py" = ["B905"]
+"src/crew/tui/tui_model.py" = ["B905", "E501"]
+
+[format]
+skip-magic-trailing-comma = true
+exclude = ["evals/**"]  # the tests keep their layout until the test-reduction phases rewrite them

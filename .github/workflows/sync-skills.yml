@@ -7,7 +7,7 @@ on:
       - ".cursor/skills/**"
       - ".cursor/agents/**"
       - ".cursor/rules/**"
-      - ".agent/tools/**"
+      - "src/crew/**"
   pull_request:
     branches: [main]
     paths:

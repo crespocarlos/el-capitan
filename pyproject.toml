@@ -1,0 +1,50 @@
+# The `crew` package (src/crew): install.sh builds ~/.agent/venv from this file and uv.lock
+# (`uv sync --frozen`), and ~/.agent/bin links each catalog command to its launcher below.
+[project]
+name = "el-capitan"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["pyyaml==6.0.3"]
+
+[project.scripts]
+"crew-agent-context.py" = "crew.task.crew_agent_context:main"
+"crew-lint.py" = "crew.maintenance.crew_lint:main"
+"crew-doctor.py" = "crew.maintenance.crew_doctor:main"
+"crew-ls.py" = "crew.task.crew_ls:main"
+"crew-pr-actions.py" = "crew.review.crew_pr_actions:main"
+"crew-review-findings.py" = "crew.review.crew_review_findings:main"
+"crew-review-hunks.py" = "crew.review.crew_review_hunks:main"
+"crew-assemble-packages.py" = "crew.review.crew_assemble_packages:main"
+"crew-nightshift-e2e.py" = "crew.review.crew_nightshift_e2e:main"
+"crew-evals-compare.py" = "crew.evals.crew_evals_compare:main"
+"crew-evals-inspect.py" = "crew.evals.crew_evals_inspect:main"
+"crew-metric.py" = "crew.task.crew_metric:main"
+"crew-progress.py" = "crew.task.crew_progress:main"
+"crew-task.py" = "crew.task.crew_task:main"
+"crew-verify.py" = "crew.task.crew_verify:main"
+"crew-mem.py" = "crew.memory.crew_mem:main"
+"crew-inbox.py" = "crew.memory.crew_inbox:main"
+"crew-resolve-task-dir.py" = "crew.task.crew_resolve_task_dir:main"
+"crew-task-context.py" = "crew.task.crew_task_context:main"
+"crew-worktree.py" = "crew.task.crew_worktree:main"
+"crew-repo-info.py" = "crew.task.crew_repo_info:main"
+
+[dependency-groups]
+tui = ["textual==8.2.8"]
+dev = [{ include-group = "tui" }, "pytest==8.4.2", "pytest-xdist==3.8.0", "pytest-timeout==2.4.0", "basedpyright==1.40.2"]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "crew"
+
+# Type checking: `uv run basedpyright` (pyright with a baseline file); `.basedpyright/baseline.json` holds
+# today's errors, and a fixed one leaves it on the next run, so the baseline only shrinks.
+[tool.basedpyright]
+include = ["src"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"

@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 from cli_runner import run as cli
 
-TOOL =Path(__file__).resolve().parents[2] / ".agent" / "tools" / "review" / "crew-review-findings.py"
+TOOL =Path(__file__).resolve().parents[2] / "src" / "crew" / "review" / "crew_review_findings.py"
 
 
 def run(*args: str) -> subprocess.CompletedProcess:

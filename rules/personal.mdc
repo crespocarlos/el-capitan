@@ -84,7 +84,7 @@ then this file. Hard constraints always apply.
 - **GitHub access** — use `gh` or the repository's approved tool for PR, issue, and metadata reads,
   and `crew-pr-actions.py` for review threads. In Cursor's sandbox `gh` needs network elevation from
   the start (`api.github.com` is not allowlisted; never suggest `gh auth refresh` on its keyring
-  message); report auth and scope failures. Details: `.agent/tools/TOOLS.md` → Sandboxed network.
+  message); report auth and scope failures. Details: `src/crew/TOOLS.md` → Sandboxed network.
 
 ## Testing
 

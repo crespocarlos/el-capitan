@@ -370,7 +370,7 @@ def world() -> Iterator[tuple[dict, dict[str, Path], list[dict]]]:
         env.pop(key)
     try:
         places: dict[str, Path] = {**fixture(home), "home": home, "tmp": tmp, "tasks": home / ".agent" / "tasks"}
-        review = subprocess.run([sys.executable, str(ROOT / ".agent/tools/review/crew-review-findings.py"), "review-dir", "--repo", "boundary-probe"],
+        review = subprocess.run([sys.executable, str(ROOT / "src/crew/review/crew_review_findings.py"), "review-dir", "--repo", "boundary-probe"],
                                 capture_output=True, text=True, env=env)
         places["review"] = Path(review.stdout.strip())
         assert review.returncode == 0 and review.stdout.strip() and places["review"].is_absolute(), \

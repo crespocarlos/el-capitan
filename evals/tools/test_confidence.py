@@ -11,14 +11,13 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 from cli_runner import run as cli
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
+TOOL = ROOT / "src" / "crew" / "review" / "crew_review_findings.py"
 
 BANDS = {5: "confirmed", 4: "strong", 3: "likely", 2: "uncertain", 1: "suspicion"}
 
@@ -234,12 +233,9 @@ def run_outcome(review_dir: Path, *extra: str) -> subprocess.CompletedProcess:
 
 def test_the_report_line_carries_the_score_beside_the_label(tmp: Path) -> None:
     """`[attention · 4]`, in the label column, not a sentence further down."""
-    for path in (str(TOOL.parent), str(TOOL.parent.parent)):
-        if path not in sys.path:
-            sys.path.insert(0, path)
-    from review_models import Finding
-    from review_render import label_with_score, score_suffix
-    from review_vocabulary import ABSENT
+    from crew.review.review_models import Finding
+    from crew.review.review_render import label_with_score, score_suffix
+    from crew.review.review_vocabulary import ABSENT
 
     scored = Finding(title="Guard missing", label="attention", file="a.ts", line=3, confidence=4)
     assert label_with_score(scored) == "[attention · 4]"

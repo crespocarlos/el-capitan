@@ -159,7 +159,7 @@ adversarial persona was not rewritten and has no held-out cases. The table gives
 holds for six personas. It fails for architecture on one run, `task-review-import-cycle` run-2, which
 is recorded as tainted and so counts as a miss. The reply itself catches the case.
 
-The tainted call reads `.agent/tools/TOOLS.md` under a path whose last component has the run's
+The tainted call reads `src/crew/TOOLS.md` under a path whose last component has the run's
 scratch name. Every other Read in the run was recorded relative to the root, so the root check
 matched the model's working-directory form. The persona then read the same file again by its
 in-root path. Together these point to a first read under a mistyped copy of the random scratch

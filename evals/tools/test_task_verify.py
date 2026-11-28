@@ -21,10 +21,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-TASK_TOOLS = ROOT / ".agent" / "tools" / "task"
-CLI = TASK_TOOLS / "crew-verify.py"
-sys.path.insert(0, str(TASK_TOOLS))
-sys.path.insert(0, str(TASK_TOOLS.parent))
+TASK_TOOLS = ROOT / "src" / "crew" / "task"
+CLI = TASK_TOOLS / "crew_verify.py"
 from cli_runner import run as run_cli  # noqa: E402
 
 WORKFLOW = """name: CI
@@ -148,7 +146,7 @@ def test_caching(tmp: Path) -> None:
     git(root, "commit", "-q", "-am", "change env")
     _, _, data = verify(root, home)
     check("a changed env misses the cache", data["gates"][1]["env"]["LEVEL"] == "2" and data["gates"][1]["cached"] is False, data["gates"])
-    keys = __import__("task_verify_env")
+    from crew.task import task_verify_env as keys
     base = keys.cache_key("t", "cmd", {"A": "1"}, "v22.0.0")
     check("the key covers tree, command, env and node version",
           len({base, keys.cache_key("u", "cmd", {"A": "1"}, "v22.0.0"), keys.cache_key("t", "cmd2", {"A": "1"}, "v22.0.0"),
@@ -446,8 +444,8 @@ PUBLISH_COMMANDS = ("npm publish", "pnpm publish", "yarn publish", "yarn npm pub
 
 def test_workflow_reading(tmp: Path) -> None:
     """Which workflows and steps become gates: CI triggers only, never a publish, never a gated job; setup lines dropped."""
-    from task_verify_env import is_partial
-    from task_verify_sources import block_gates, prose_commands, workflow_gates
+    from crew.task.task_verify_env import is_partial
+    from crew.task.task_verify_sources import block_gates, prose_commands, workflow_gates
 
     for trigger, mirrored in TRIGGERS.items():
         gates, skipped = workflow_gates({"a.yml": wf(trigger)})
@@ -481,8 +479,8 @@ def test_workflow_reading(tmp: Path) -> None:
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "release workflow")
     _, out, _ = verify(root, home, "--list")
-    check("--list names the workflows and the parser before any gate, never lists a publish, and names the release workflow",
-          "workflows: .github/workflows/ci.yml" in out and "workflow parser: " in out and ": npm publish" not in out
+    check("--list names the workflows before any gate, never lists a publish, and names the release workflow",
+          "workflows: .github/workflows/ci.yml" in out and ": npm publish" not in out
           and "unit-tests: sh check.sh" in out and ".github/workflows/release.yml: workflow not mirrored (on: push)" in out, out)
 
 
@@ -538,26 +536,13 @@ def test_non_ci_workflows_are_not_partial(tmp: Path) -> None:
     check("a skipped step inside the CI workflow still makes the run partial", code == 3 and data.get("partial") is True)
 
 
-FAKE_YQ = """#!/bin/sh
-if [ "$1" = --version ]; then echo "$YQ_VERSION"; exit 0; fi
-printf '{"on":{"push":null},"env":{"PYTHON":3.10,"BIG":12345678901234567890,"NODE":22},"jobs":{"j":{"timeout-minutes":5,"steps":[{"run":"echo hi","continue-on-error":true}]}}}'
-"""
+def test_workflow_scalars_stay_as_written() -> None:
+    """`on` stays a key and every scalar a string as written (`3.10` stays `3.10`); unreadable YAML is no workflow."""
+    from crew.task.task_verify_sources import workflow
 
-
-def test_parser_chain(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """mikefarah yq reads the workflow when installed (scalars as strings); otherwise the stdlib reader does."""
-    from lib.workflow_yaml import load
-
-    (tmp / "yq").write_text(FAKE_YQ, encoding="utf-8")
-    (tmp / "yq").chmod(0o755)
-    monkeypatch.setenv("PATH", f"{tmp}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setenv("YQ_VERSION", "yq (https://github.com/mikefarah/yq/) version v4.44.1")
-    doc, parser = load("on: push\n")
-    check("mikefarah yq is the parser when installed, its scalars kept as written (3.10 stays 3.10), null as ''", parser == "yq" and doc == {
-        "on": {"push": ""}, "env": {"PYTHON": "3.10", "BIG": "12345678901234567890", "NODE": "22"},
-        "jobs": {"j": {"timeout-minutes": "5", "steps": [{"run": "echo hi", "continue-on-error": "true"}]}}}, (parser, doc))
-    monkeypatch.setenv("YQ_VERSION", "yq 3.2.3")
-    check("another yq is not used: the stdlib reader is the fallback", load("on: push\n") == ({"on": "push"}, "stdlib"))
+    doc = workflow("on:\n  push:\nenv:\n  PYTHON: 3.10\njobs:\n  j:\n    timeout-minutes: 5\n    continue-on-error: true\n")
+    assert doc == {"on": {"push": ""}, "env": {"PYTHON": "3.10"}, "jobs": {"j": {"timeout-minutes": "5", "continue-on-error": "true"}}}
+    assert workflow("jobs: [") == {}
 
 
 REPORT = """## Implementation Report
@@ -634,8 +619,7 @@ def test_report_check(case: str, text: str, extra: tuple[str, ...], gates: dict 
 
 
 def test_report_parsers_on_an_old_report(tmp: Path) -> None:
-    import task_verify_report as rc
-
+    from crew.task import task_verify_report as rc
     check("every parser returns empty for an old report or plain prose", rc.sections(OLD_REPORT).get("Unverified claims") is None
           and rc.unverified_claims(OLD_REPORT) == [] and rc.report_data(OLD_REPORT) is None and rc.gate_exits(OLD_REPORT) == {}
           and rc.unverified_claims("just prose\n") == [] and rc.problems("x", None, True) == [] and rc.capped(OLD_REPORT, 5) == [])

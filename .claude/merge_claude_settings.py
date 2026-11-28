@@ -34,6 +34,7 @@ than a missing file: the guard fails closed, so a deleted script would deny
 every command it used to inspect. The list and the match live in
 `hooks_retirement.py`, shared with the Cursor merger.
 """
+
 from __future__ import annotations
 
 import json
@@ -88,7 +89,7 @@ def rule_command(rule):
     """
     if not isinstance(rule, str) or not rule.startswith("Bash(") or not rule.endswith(")"):
         return None
-    body = rule[len("Bash("):-1]
+    body = rule[len("Bash(") : -1]
     return body[:-2] if body.endswith(" *") else body.rstrip(":*")
 
 
@@ -125,7 +126,7 @@ def superseded(existing, incoming):
         return False
     if not old[1].endswith("/**") or new[1].endswith("/**"):
         return False
-    shared = old[1][:-len("/**")]
+    shared = old[1][: -len("/**")]
     return new[1].startswith(shared + "/")
 
 
@@ -148,8 +149,7 @@ def merge_permissions(dest, src):
         # A rule the user already holds in another spelling keeps the user's spelling, and is not added twice.
         incoming = [rule for rule in template if same_rule(rule) not in held]
         owned = {rule_command(rule) for rule in template} - {None}
-        existing = [rule for rule in dest_perm.get(name, [])
-                    if rule_command(rule) not in owned or same_rule(rule) in spelled]
+        existing = [rule for rule in dest_perm.get(name, []) if rule_command(rule) not in owned or same_rule(rule) in spelled]
         narrowed = [rule for rule in existing if any(superseded(rule, new) for new in incoming)]
         if narrowed:
             existing = [rule for rule in existing if rule not in narrowed]
@@ -247,8 +247,7 @@ def hook_ids(hooks):
 def held_rules(data):
     """Every rule string in any permission list of a settings document."""
     permissions = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
-    return {rule for rules in permissions.values() if isinstance(rules, list)
-            for rule in rules if isinstance(rule, str)}
+    return {rule for rules in permissions.values() if isinstance(rules, list) for rule in rules if isinstance(rule, str)}
 
 
 def added(before, src, created):
@@ -262,19 +261,24 @@ def added(before, src, created):
     held = {same_rule(rule) for rule in held_rules(before)}
     template_rules = src.get("permissions", {})
     hooks, theirs, ours = before.get("hooks"), hook_dicts(before.get("hooks")), hook_dicts(src.get("hooks", {}))
-    keys = [[event, command, key] for (event, command), hook in ours.items()
-            if (event, command) in theirs for key in hook if key not in theirs[(event, command)]]
-    record = {"created": created,
-              "keys": [key for key in src if key not in before],
-              "lists": [name for name in template_rules if name not in permissions],
-              "events": [event for event in src.get("hooks", {}) if not isinstance(hooks, dict) or event not in hooks],
-              "rules": {name: [r for r in rules if same_rule(r) not in held] for name, rules in template_rules.items()
-                        if any(same_rule(r) not in held for r in rules)},
-              "hooks": sorted([list(pair) for pair in set(ours) - set(theirs)]),
-              "hook_keys": sorted(keys)}
-    present = {"rules": {name: [r for r in rules if same_rule(r) in held] for name, rules in template_rules.items()
-                         if any(same_rule(r) in held for r in rules)},
-               "hooks": sorted([list(pair) for pair in set(ours) & set(theirs)])}
+    keys = [
+        [event, command, key] for (event, command), hook in ours.items() if (event, command) in theirs for key in hook if key not in theirs[(event, command)]
+    ]
+    record = {
+        "created": created,
+        "keys": [key for key in src if key not in before],
+        "lists": [name for name in template_rules if name not in permissions],
+        "events": [event for event in src.get("hooks", {}) if not isinstance(hooks, dict) or event not in hooks],
+        "rules": {
+            name: [r for r in rules if same_rule(r) not in held] for name, rules in template_rules.items() if any(same_rule(r) not in held for r in rules)
+        },
+        "hooks": sorted([list(pair) for pair in set(ours) - set(theirs)]),
+        "hook_keys": sorted(keys),
+    }
+    present = {
+        "rules": {name: [r for r in rules if same_rule(r) in held] for name, rules in template_rules.items() if any(same_rule(r) in held for r in rules)},
+        "hooks": sorted([list(pair) for pair in set(ours) & set(theirs)]),
+    }
     return record, present
 
 
@@ -402,8 +406,7 @@ def merge_hooks(dest: dict, src: dict) -> None:
             del dest_hooks[event_type]
 
 
-def write_merged(dest: dict, src: dict, dest_path: str, original: str, manifest_home: str | None,
-                 recorded: tuple[dict, dict]) -> None:
+def write_merged(dest: dict, src: dict, dest_path: str, original: str, manifest_home: str | None, recorded: tuple[dict, dict]) -> None:
     """Back up and write the merged file, then record in the install manifest what the merge added."""
     try:
         # Before anything is written: an unreadable manifest stops the merge with the file unchanged.

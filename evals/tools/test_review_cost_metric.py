@@ -13,13 +13,12 @@ import contextlib
 import io
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from cli_runner import run as cli
 
 ROOT =Path(__file__).resolve().parents[2]
-TOOL = ROOT / ".agent" / "tools" / "review" / "crew-review-findings.py"
+TOOL = ROOT / "src" / "crew" / "review" / "crew_review_findings.py"
 PERSONAS = ("adversarial", "architecture")
 
 
@@ -118,9 +117,7 @@ def test_a_task_directory_is_recognised_by_its_id_alone(tmp: Path) -> None:
 
 def test_a_failing_metric_writer_does_not_fail_the_persistence(tmp: Path) -> None:
     """The review is written before telemetry; a metric failure is reported, never raised."""
-    sys.path[:0] = [str(ROOT / ".agent" / "tools" / "review")]
-    import review_records
-
+    from crew.review import review_records
     def failing_writer(owner: Path, payload: str) -> None:
         raise OSError("PROGRESS.md is not writable")
 
@@ -137,8 +134,8 @@ def test_a_failing_metric_writer_does_not_fail_the_persistence(tmp: Path) -> Non
     assert "warning: cost metric not recorded" in stderr.getvalue(), stderr.getvalue()
 
 
-METRIC_CLI = ROOT / ".agent" / "tools" / "task" / "crew-metric.py"
-LS_CLI = ROOT / ".agent" / "tools" / "task" / "crew-ls.py"
+METRIC_CLI = ROOT / "src" / "crew" / "task" / "crew_metric.py"
+LS_CLI = ROOT / "src" / "crew" / "task" / "crew_ls.py"
 
 
 def metric(owner: Path, *words: str) -> subprocess.CompletedProcess:

@@ -11,7 +11,8 @@ Fix: resolve the tree from the task. Prefer the `.task-id` `worktree` path if it
 ```python
 if tree is not None:
     os.chdir(tree)
-with ... : code = mark_done(r.task, url, False)
+with ...:
+    code = mark_done(r.task, url, False)
 ```
 When `branch_tree` returns `None`, or swallows a `GitError` at line 14, `mark_done` still runs in the session folder. The gate's "latest review covers HEAD" check then compares against an unrelated checkout. This is the exact failure the change was meant to prevent, and it gives no warning. A wrong-repo pass could mark the task DONE. A wrong-repo fail leaves it stuck with a misleading message.
 Fix: when no tree is resolved, skip the gate. Emit `record-pr: cannot find the worktree for <branch>; run: MARK_DONE…` and leave the task's state unchanged.

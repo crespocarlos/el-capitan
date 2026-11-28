@@ -9,6 +9,11 @@ fresh_dir() { mkdir "$scratch/$1" && printf '%s' "$scratch/$1"; }
 home=$(fresh_dir home)
 # A config dir from the caller's environment would be installed into: only the rows below name one.
 unset CREW_MEMORY_DIR CREW_JOURNAL_DIR CREW_TASK_DIR CLAUDE_CONFIG_DIR CLAUDE_CODE_DISABLE_AUTO_MEMORY
+# Every throwaway HOME builds its venv offline, from this uv cache and interpreter (one sync warms them).
+UV_CACHE_DIR=$(uv cache dir) UV_PYTHON_INSTALL_DIR=$(uv python dir)
+export UV_CACHE_DIR UV_PYTHON_INSTALL_DIR
+UV_PROJECT_ENVIRONMENT="$scratch/warm" uv sync --project "$root" --frozen --no-dev --managed-python --quiet
+export UV_OFFLINE=1
 
 # Legacy layout: real ~/.claude/agents|skills directories holding a user file plus a stale
 # managed copy, and the older ~/.cursor/rules symlink form pointing at $root/rules.
@@ -438,14 +443,8 @@ if grep -q 'import-claude' "$mem/out"; then exit 1; fi
 bare=$(fresh_dir bare)
 bash_bin=$(command -v bash)
 script=$(cat "$root/install.sh")
-mkdir -p "$bare/cwd" "$bare/nogh" "$bare/oldpy"
+mkdir -p "$bare/cwd" "$bare/nogh"
 for tool in python3 git jq dirname basename cat mkdir; do ln -s "$(command -v "$tool")" "$bare/nogh/$tool"; done
-for tool in git gh jq dirname basename cat mkdir; do
-  path=$(command -v "$tool" || true)
-  if [ -n "$path" ]; then ln -s "$path" "$bare/oldpy/$tool"; fi
-done
-printf '#!/bin/sh\n[ "$1" = -V ] && echo "Python 3.8.10" && exit 0\nexit 1\n' > "$bare/oldpy/python3"
-chmod +x "$bare/oldpy/python3"
 # macOS's system python3 writes its bytecode cache under ~/Library/Caches on any run; that is the
 # interpreter, not the installer.
 snapshot() { (cd "$1" && find . ! -path './Library*' | sort); }
@@ -460,9 +459,8 @@ refuses() {  # $1 fake HOME, $2 PATH, $3 expected text, then the command after `
   test "$before" = "$(snapshot "$fake")"                  # nothing written
   test -z "$(ls -A "$bare/cwd")"
 }
-refuses "$bare/h1" "$bare/nogh" 'missing: gh' -c "$script"
-refuses "$bare/h2" "$bare/nogh" 'missing: gh' "$root/install.sh"
-refuses "$bare/h3" "$bare/oldpy" '3.9 or newer' -c "$script"
+refuses "$bare/h1" "$bare/nogh" 'missing: gh uv' -c "$script"
+refuses "$bare/h2" "$bare/nogh" 'missing: gh uv' "$root/install.sh"
 mkdir -p "$bare/h4/el-capitan" && touch "$bare/h4/el-capitan/notes.txt"
 refuses "$bare/h4" "$PATH" 'not an el-capitan checkout' -c "$script"
 (cd "$bare/cwd" && HOME="$bare/h5" EL_CAPITAN_REPO_URL="file://$bare/missing" "$bash_bin" -c "$script" >/dev/null 2>&1) && exit 1
@@ -484,7 +482,10 @@ git -C "$bare/src" add -A
 git -C "$bare/src" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -qm tree --no-verify
 (cd "$bare/cwd" && HOME="$bare/h6" EL_CAPITAN_REPO_URL="file://$bare/src" "$bash_bin" -c "$script" > "$bare/out")
 test -f "$bare/h6/el-capitan/install.sh"
-case "$(readlink "$bare/h6/.agent/bin/crew-mem.py")" in "$bare/h6/el-capitan/"*) ;; *) exit 1 ;; esac
+# The launchers run on the venv's uv-managed CPython 3.12+, which holds its own copy of the clone's package.
+case "$(readlink "$bare/h6/.agent/bin/crew-mem.py")" in "$bare/h6/.agent/venv/bin/"*) ;; *) exit 1 ;; esac
+"$bare/h6/.agent/bin/crew-mem.py" --help >/dev/null
+"$bare/h6/.agent/venv/bin/python" -c 'import sys, crew; assert sys.version_info >= (3, 12) and "/h6/.agent/venv/" in crew.__file__'
 grep -q '^Done. Installed:' "$bare/out"
 test -z "$(ls -A "$bare/cwd")"
 # A second curl-mode run reuses the checkout instead of cloning over it, and says it was not updated.
