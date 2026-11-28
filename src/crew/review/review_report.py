@@ -15,6 +15,7 @@ from pathlib import Path
 
 from crew.lib.files import atomic_write
 from crew.lib.git import GitError, rev_parse
+from crew.lib.runs import append_run
 from crew.review import review_pr_plan as comments
 from crew.review import review_records as records
 from crew.review.review_coverage import check_assessments, check_personas_present, check_probe, strict_gates
@@ -319,6 +320,7 @@ def persist(args: argparse.Namespace) -> int:
     # A PR review's `comments.md` is its deliverable. Reporting it as absent in the JSON — rather than
     # only on stderr — is what stops Step 8 from describing a review whose findings never reach the PR.
     missing_comments = args.mode == "pr" and not drafted
+    append_run(str(args.review_dir), "end", outcome=verdict_word(report) or "done", report=written[0])
     print(
         json.dumps(
             {

@@ -14,6 +14,16 @@ for _name in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CO
     os.environ.pop(_name, None)
 
 
+@pytest.fixture(autouse=True)
+def runs_ledger(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The runs ledger reviews and resolves append to, kept out of the real `~/.agent/state` for every test."""
+    from crew.lib import runs
+
+    path = tmp_path_factory.mktemp("state") / "runs.jsonl"
+    monkeypatch.setattr(runs, "ledger", lambda: path)
+    return path
+
+
 @pytest.fixture
 def tmp(tmp_path: Path) -> Path:
     return tmp_path

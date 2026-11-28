@@ -76,17 +76,26 @@ Not a pipeline stage; run it when you need it.
 
 ### Dashboard (optional)
 
-A terminal dashboard of tasks, running workers and locks, and the report. Each task shows
-its GitHub issue and PRs (terminal links), its progress (checked over total criteria) and its activity
+A terminal dashboard in three tabs. `1 Ongoing` lists every open task, BLOCKED and TAMPERED ones first (`! `);
+`enter` or `→` expands a task into one row per phase of its spec (a `### Phase …` heading naming its branch in
+backticks, with that branch's PR and the phase's criteria) or per PR, and `o` opens the selected row's PR.
+`2 Tasks · PRs · Issues` is a read-only summary (`PgUp`/`PgDn` scroll a screen at a time) of every task, DONE included, with its
+issue and one cell per PR (`#52 ✓merged landed`, `#56 ●open CI✗`). `3 Runs` shows open stages, worker locks,
+live agents and the standalone `crew review PR` and `crew resolve PR` runs of `~/.agent/state/runs.jsonl`; `c`
+shows the cost report. GitHub is read in one `gh api graphql` call every 6 minutes and on `R`, cached in
+`~/.agent/state/tui-github.json`; LANDED is computed for every merged PR in that repository's own clone (a task's worktree or the current
+directory; `landed? (repo not local)` without one), and the header says how fresh the facts are and the last read's
+error (offline or a partial read keeps the last ones). Each task shows its progress (checked over total criteria) and its activity
 (`running <stage>`, `stuck <stage>` for a stage open past 6 hours, or days idle such as `idle 3d`). TOKENS is
 what the task's agents used: **new** tokens (input, output and cache writes, summed over every call), such as `259k`,
 or `~259k` when only the orchestrator's reported figure exists; a line under the table totals new tokens and cache
 reads over the tasks shown. While agents run, LIVE shows what they have used so far (`92k`, `2 · 180k`), and the
 header their total, read every 1.5 s from the new lines of their transcripts under `~/.claude` or
 `$CLAUDE_CONFIG_DIR`; the orchestrator's own session counts too, from the `stage_start` that recorded it. A task is DONE once a PR
-for it is open: `crew open pr` records the PR and marks it, and the merge comes later. `t`, `w` and
-`p` switch views, `r` refreshes, `g` reads `landed` from GitHub, and `o` and `O` open the selected
-task's issue and PR in the browser; the cursor stays on its task across refreshes. `s` lists the `crew-task.py`
+for it is open: `crew open pr` records the PR and marks it, and the merge comes later. `1` `2` `3` switch tabs,
+`r` refreshes, `/` filters (`esc` clears), `o` `O` open the PR and issue, `y` `Y` copy the PR URL and task path,
+`p` toggles the detail pane (100 columns and wider), `?` shows the key panel and `ctrl+p` opens the palette; the footer
+shows the keys the selected row takes, and the cursor stays on its row across refreshes. On an Ongoing task row, `s` lists the `crew-task.py`
 moves the selected task's state allows (`DRAFTING → APPROVED [a] Approve`), and why an unavailable one is:
 approve (`mark-approved`), start (`mark-implementing`), mark done (`mark-done` with the newest recorded
 PR), close as done (`mark-done --force` with a note, by default `none (committed to main)` for
@@ -94,8 +103,8 @@ IMPLEMENTING and `closed: stale` otherwise, on a DRAFTING, APPROVED, IMPLEMENTIN
 PR to mark done with; never on ABANDONED; LANDED then reads `closed`) and `blocked`
 with a reason. The dialog takes a move's text inline and shows the exact command; `enter` is your approval for a
 gate, `esc` cancels. The move runs in the background, its row marked `⋯`, and `L` shows each command's output
-and exit code; a refusal shows the reason. The dashboard never writes a
-file itself and never calls a model. It needs Textual, the `tui` dependency group of `pyproject.toml`, never
+and exit code; a refusal shows the reason. The dashboard writes only its GitHub cache
+and never calls a model. It needs Textual, the `tui` dependency group of `pyproject.toml`, never
 installed: from the repository root, run `uv run --group tui python -m crew.tui.crew_tui`.
 `uv run python -m crew.tui.crew_tui --once` prints the same views without Textual, and `crew ls --watch` is
 the view with no dependency at all.

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""The crew TUI (`crew.tui`): its view model over seeded task directories, `--once` without Textual, two pilot
-tests (Textual comes with the `tui` dependency group), and one status move run for real against a temp task.
+"""The crew TUI (`crew.tui`): its view model over seeded task directories, the GitHub facts from one stubbed
+`gh` call, the runs ledger, `--once` without Textual, pilot tests and per-tab snapshots (Textual and the snapshot
+plugin come with the `tui` dependency group), and one status move run for real against a temp task.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,10 +20,15 @@ from typing import TYPE_CHECKING
 import pytest
 from task_fixture import record_status
 
+from crew.lib.runs import append_run, open_run, read_runs
 from crew.task import crew_task
+from crew.task.task_gc import old_lines
 from crew.task.task_progress import append_metric
-from crew.tui import tui_model
-from crew.tui.tui_model import CREW_TASK, SHIPPED_NOTE, STALE_NOTE, Caches, Filters, collect, landed_for, live_tick, moves, parse_filter
+from crew.tui import tui_model, tui_views
+from crew.tui.tui_github import Facts, fetch, landed, pr_cell, query
+from crew.tui.tui_model import Caches, Filters, collect, live_tick, parse_filter
+from crew.tui.tui_moves import CREW_TASK, SHIPPED_NOTE, STALE_NOTE, moves
+from crew.tui.tui_views import expanded
 
 if TYPE_CHECKING:
     from textual.app import App
@@ -95,54 +102,180 @@ def home(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp
 
 
-def views(home: Path, filters: Filters, landed: dict[str, str] | None = None) -> dict:
+def views(home: Path, filters: Filters, facts: Facts | None = None) -> dict:
     trees = [home / name for name in ("fresh", "old", "broken", "bare")]
-    return collect(home / ".agent" / "tasks", filters, landed, trees=trees, here=lambda: {}, now=NOW)[0]
+    return collect(home / ".agent" / "tasks", filters, facts, trees=trees, here=lambda: {}, now=NOW)[0]
 
 
-def reader(argv: list[str]) -> tuple[int, str]:
-    """A stub for the `gh` read: every PR merged into the default branch."""
-    record = ({"state": "MERGED", "baseRefName": "main", "mergeCommit": {"oid": "abc"}} if argv[0] == "view"
-              else {"defaultBranchRef": {"name": "main"}})
-    return 0, json.dumps(record)
+def pr_item(number: int, state: str, head: str, ci: str = "SUCCESS", review: str | None = None) -> dict:
+    """A PR as the GraphQL query returns it, into `main`."""
+    return {"number": number, "state": state, "isDraft": False, "reviewDecision": review, "updatedAt": "2026-11-27T10:00:00Z",
+            "mergedAt": "2026-11-27T10:00:00Z" if state == "MERGED" else None, "title": f"change {number}", "headRefName": head,
+            "baseRefName": "main", "mergeCommit": {"oid": "abc"} if state == "MERGED" else None,
+            "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": ci}}}]}}
+
+
+SEEDED = {ISSUE: {"state": "OPEN", "title": "widgets break"}, PR.format(9): pr_item(9, "OPEN", "feat/run", "FAILURE", "APPROVED"),
+          PR.format(7): pr_item(7, "MERGED", "fix/a"), PR.format(8): pr_item(8, "MERGED", "fix/b")}
+
+
+def github(items: dict[str, dict], calls: list[str]) -> Callable[[str], tuple[int, str]]:
+    """A stub for `gh api graphql`: answers the query for `items`' URLs with them, each repository's default `main`."""
+    def run(text: str) -> tuple[int, str]:
+        calls.append(text)
+        data: dict = {}
+        for (repo, alias), url in query(list(items))[1].items():
+            data.setdefault(repo, {"defaultBranchRef": {"name": "main"}})[alias] = items[url]
+        return 0, json.dumps({"data": data})
+    return run
+
+
+def facts_of(items: dict[str, dict]) -> Facts:
+    return fetch(list(items), Facts(), github(items, []), now=NOW)
 
 
 @pytest.mark.parametrize("config,filters,slugs", [
-    (None, Filters(), ["running", "idle", "blocked"]),
-    (None, Filters(repo="widgets", done=True), ["running", "idle", "shipped"]),
+    (None, Filters(), ["blocked", "running", "idle"]),  # BLOCKED needs you: pinned first
+    (None, Filters(repo="widgets"), ["running", "idle"]),
     ("acme/gadgets", Filters(), ["blocked"]),  # ls.repo is the scope when no repo is given
-    ("acme/gadgets", Filters(repo="all"), ["running", "idle", "blocked"]),  # --repo wins
-    ("acme/gadgets", Filters(repo="here"), ["running", "idle", "blocked"]),  # here: the cwd's, none outside a repo
+    ("acme/gadgets", Filters(repo="all"), ["blocked", "running", "idle"]),  # --repo wins
+    ("acme/gadgets", Filters(repo="here"), ["blocked", "running", "idle"]),  # here: the cwd's, none outside a repo
+    (None, Filters(text=("idle",)), ["idle"]),  # a filter word
 ])
-def test_tasks_view_order_and_done_rows(home: Path, config: str | None, filters: Filters, slugs: list[str]) -> None:
+def test_ongoing_order_and_scope(home: Path, config: str | None, filters: Filters, slugs: list[str]) -> None:
+    """Ongoing never shows DONE; the summary shows every task, DONE included, newest first."""
     if config:
         (home / ".agent" / "config.json").write_text(json.dumps({"ls": {"repo": config}}))
-    assert [row[1] for row in views(home, filters)["tasks"].rows] == slugs
+    found = views(home, filters)
+    assert [row[1] for row in found["ongoing"].rows] == slugs
+    assert found["ongoing"].rows[0][0] == ("! APPROVED" if slugs[0] == "blocked" else "IMPLEMENTING")
+    newest = [slug for slug in ("blocked", "running", "shipped", "idle") if slug in slugs or (slug == "shipped" and "running" in slugs)]
+    assert [row[0] for row in found["summary"].rows] == newest
 
 
 @pytest.mark.parametrize("slug,cells,links", [
-    ("running", ("#12", "#9", "1/2", "running implement", "-", "259k", "-", ""), {"ISSUE": ISSUE, "PR": PR.format(9)}),
-    ("blocked", ("-", "-", "-", "stuck review", "-", "-", "-", "BLOCKED: waiting for keys"), {}),
-    ("idle", ("-", "-", "-", "running implement", "-", "~259k", "-", "stale"), {}),
-    ("shipped", ("-", "2 PRs", "-", "idle 2d", "-", "1.1M", "?", ""), {"PR": PR.format(8)}),
+    ("running", ("#12 ●open", "#9 ●open CI✗ approved", "1/2", "running implement", "-", "259k", ""), {"ISSUE": ISSUE, "PR": PR.format(9)}),
+    ("blocked", ("-", "-", "-", "stuck review", "-", "-", "BLOCKED: waiting for keys"), {}),
+    ("idle", ("-", "-", "-", "running implement", "-", "~259k", "stale"), {}),
 ])
-def test_task_cells(home: Path, slug: str, cells: tuple, links: dict) -> None:
-    """ISSUE, PR, PROGRESS, ACTIVITY (an open stage, a live lock, a stage past 6 h, the last entry), LIVE, TOKENS
-    (agents' new tokens, none, a `tokens_reported` as `~`, millions), LANDED, NOTE."""
-    view = views(home, Filters(done=True))["tasks"]
+def test_ongoing_cells(home: Path, slug: str, cells: tuple, links: dict) -> None:
+    """ISSUE and PR with their GitHub state, PROGRESS, ACTIVITY (an open stage, a live lock, a stage past 6 h), LIVE,
+    TOKENS (agents' new tokens, none, a `tokens_reported` as `~`), NOTE."""
+    view = views(home, Filters(), facts_of(SEEDED))["ongoing"]
     index = [row[1] for row in view.rows].index(slug)
-    assert view.header[3:] == ("ISSUE", "PR", "PROGRESS", "ACTIVITY", "LIVE", "TOKENS", "LANDED", "NOTE")
+    assert view.header[3:] == ("ISSUE", "PR", "PROGRESS", "ACTIVITY", "LIVE", "TOKENS", "NOTE")
     assert (view.rows[index][3:], view.links[index]) == (cells, links)
 
 
-@pytest.mark.parametrize("filters,total", [
-    (Filters(), "tokens: new ~518k, cache reads 401k across 3 tasks shown"),
-    (Filters(done=True), "tokens: new ~1.6M, cache reads 404k across 4 tasks shown"),
-    (Filters(repo="gadgets"), "tokens: new -, cache reads - across 1 tasks shown"),
-])
-def test_the_total_line_sums_the_rows_shown(home: Path, filters: Filters, total: str) -> None:
-    """The total follows the filters: DONE rows and another repository change it."""
-    assert total in views(home, filters)["tasks"].notes
+def test_summary_rows_and_pr_children(home: Path) -> None:
+    """One row per task, newest first, one compact cell per PR (newest first); several PRs expand into child rows,
+    each selectable with its own PR link; before the first GitHub read every cell waits with `…`."""
+    view = views(home, Filters(), facts_of(SEEDED))["summary"]
+    shipped = [row[0] for row in view.rows].index("shipped")
+    assert view.rows[shipped][2:] == ("DONE", "-", "#8 ✓merged landed  #7 ✓merged landed")
+    opened = expanded(view, {view.keys[shipped]})
+    assert opened.rows[shipped][0] == "▾ shipped" and opened.rows[shipped + 1:shipped + 3] == [
+        ("  └ change 8", "fix/b", "", "", "#8 ✓merged landed"), ("  └ change 7", "fix/a", "", "", "#7 ✓merged landed")]
+    assert opened.links[shipped + 1] == {"PR": PR.format(8)} and opened.moves[shipped + 1] == []
+    assert views(home, Filters())["summary"].rows[shipped][4] == "#8 …  #7 …"
+
+
+PROGRAM = """# program
+
+## Status
+IMPLEMENTING
+
+## Acceptance criteria
+### Phase 1: hotfixes (`fix/one`)
+- [x] a
+- [x] b
+
+### Phase 2: views (`feat/two`)
+- [x] c
+- [ ] d
+
+### Phase 3: later `x` work (`feat/three`)
+- [ ] e
+
+## Tasks
+- [ ] T1
+"""
+
+
+def test_phases_map_to_prs_by_branch(home: Path) -> None:
+    """A spec's `### Phase …` headings with a branch in backticks: each phase's PR is the task's PR whose head is that
+    branch, its criteria counted in its section; the task row shows the phase in progress."""
+    task = home / ".agent" / "tasks" / "T6"
+    task.mkdir()
+    (task / "SPEC.md").write_text(PROGRAM)
+    (task / ".task-id").write_text(json.dumps({"slug": "program", "repo_remote_url": "git@github.com:acme/widgets.git"}))
+    (task / "PROGRESS.md").write_text(f"[{stamp(1)}] PR: {PR.format(20)}\n[{stamp(1)}] PR: {PR.format(21)}\n")
+    record_status(task, "IMPLEMENTING")
+    items = {**SEEDED, PR.format(20): pr_item(20, "MERGED", "fix/one"), PR.format(21): pr_item(21, "OPEN", "feat/two", "PENDING")}
+    view = views(home, Filters(), facts_of(items))["ongoing"]
+    row = [r[1] for r in view.rows].index("program")
+    assert view.rows[row][4] == "phase 2/3"
+    assert [(c.cells[1], c.cells[2], c.cells[4], c.cells[5], c.url) for c in view.children[view.keys[row]]] == [
+        ("  └ Phase 1: hotfixes", "fix/one", "#20 ✓merged landed", "2/2", PR.format(20)),
+        ("  └ Phase 2: views", "feat/two", "#21 ●open CI…", "1/2", PR.format(21)),
+        ("  └ Phase 3: later `x` work", "feat/three", "-", "0/1", "")]
+    assert "  └ Phase 3: later `x` work" in "\n".join(tui_model.render(view)), "the branch is the last backtick span"
+
+
+def test_github_facts_one_batched_call_partial_and_offline(home: Path) -> None:
+    """N PRs and an issue across two repositories are one `gh` call. A partial read (one repository null, GraphQL's
+    error, exit 1) keeps that repository's cached facts and shows the error; a failed read keeps every fact; with no
+    facts the cells show `…` before the first read and `?` offline."""
+    other = "https://github.com/acme/gadgets/pull/3"
+    items = {**SEEDED, other: pr_item(3, "OPEN", "x")}
+    calls: list[str] = []
+    facts = fetch(list(items), Facts(), github(items, calls), now=NOW)
+    assert len(calls) == 1 and calls[0].count("repository(") == 2 and calls[0].count("pullRequest(") == 4
+    answer = json.loads(github(items, [])(calls[0])[1])
+    answer["data"]["r0"], answer["errors"] = None, [{"message": "Could not resolve to a Repository"}]
+    partial = fetch(list(items), facts, lambda text: (1, json.dumps(answer)), now=NOW + 60)
+    assert partial.prs == facts.prs and (partial.fetched_at, partial.error) == (NOW + 60, "Could not resolve to a Repository")
+    assert tui_model.freshness(partial, NOW + 60) == "GitHub 0m ago (Could not resolve to a Repository)"
+    offline = fetch(list(items), facts, lambda text: (1, "error connecting to api.github.com"))
+    assert (offline.prs, offline.fetched_at, offline.error) == (facts.prs, NOW, "error connecting to api.github.com")
+    assert tui_model.freshness(offline, NOW + 7200) == "GitHub 2h ago (error connecting to api.github.com)"
+    assert [pr_cell(other, f) for f in (Facts(), Facts(error="offline"))] == ["#3 …", "#3 ?"]
+
+
+def test_landed_reads_each_repository_clone(home: Path) -> None:
+    """Launched from a third directory, a PR merged into a landing base is landed when its own repository's clone
+    names that base, and `landed? (repo not local)` with no clone; an empty defaultBranchRef takes the base."""
+    clones = {}
+    for name in ("widgets", "gadgets"):
+        repo = home / "clones" / name
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", f"git@github.com:acme/{name}.git"], check=True)
+        (repo / "AGENTS.md").write_text("landing_bases: release\n")
+        clones[f"acme/{name}"] = repo
+    items = {f"https://github.com/acme/{name}/pull/1": {**pr_item(1, "MERGED", "x"), "baseRefName": "release"} for name in ("widgets", "gadgets", "other")}
+    facts = fetch(list(items), Facts(), github(items, []), now=NOW, clones=clones)
+    assert [pr_cell(url, facts) for url in items] == ["#1 ✓merged landed", "#1 ✓merged landed", "#1 ✓merged landed? (repo not local)"]
+    assert landed({"number": 1, "state": "MERGED", "base": "release"}, PR.format(1), "", None) == "yes"
+
+
+def test_runs_ledger_shows_standalone_runs_and_gc_prunes_it(runs_ledger: Path) -> None:
+    """Standalone runs show in Runs, newest first, a review inside a task does not; two resolves of one PR are two
+    rows, the end line finding its own run; a run with no end past 6 h says so; gc prunes lines by their stamp."""
+    resolve = "resolve acme/widgets#6"
+    append_run("/r/crew-review-w/review/1", "start", kind="review", mode="pr", target="acme/widgets#5", task="")
+    append_run("/t/T1/review/2", "start", kind="review", mode="self", target="widgets", task="/t/T1")
+    append_run(f"{resolve}@2026-11-27T00:00:00Z", "start", kind="resolve", target="acme/widgets#6")
+    append_run(open_run(resolve), "end", outcome="done")
+    append_run(f"{resolve}@2026-11-28T00:00:00Z", "start", kind="resolve", target="acme/widgets#6")
+    lines = [json.loads(line) for line in runs_ledger.read_text().splitlines()]
+    lines[0]["at"] = stamp(8)
+    runs_ledger.write_text("".join(json.dumps(line, separators=(",", ":")) + "\n" for line in lines))
+    view = tui_views.runs_view([], tui_views.Snapshot({}, [], NOW, runs=read_runs()))
+    assert [row[:3] for row in view.rows] == [("resolve pr", "acme/widgets#6", "running"), ("resolve pr", "acme/widgets#6", "done"),
+                                              ("review pr", "acme/widgets#5", "no end recorded")]
+    assert view.links[2] == {"PR": "https://github.com/acme/widgets/pull/5"} and view.count == 3
+    kept, dropped = old_lines(runs_ledger, NOW - 7 * HOUR)
+    assert len(dropped) == 1 and len(kept) == 4
 
 
 CALL = {"input_tokens": 1000, "output_tokens": 1000, "cache_read_input_tokens": 50000, "cache_creation_input_tokens": 0}
@@ -176,13 +309,13 @@ def test_live_tokens_of_running_agents(home: Path) -> None:
     tasks = home / ".agent" / "tasks"
     transcript(home, "b1", str(tasks / "T1"), 46)
     before = views(home, Filters())
-    running = before["tasks"].rows[0]
+    running = before["ongoing"].rows[1]
     assert running[1] == "running" and running[6:9] == ("running implement", "92k", "259k"), running
-    assert ("agent", "running", "agent-b1", "1m", "new 92k, cache reads 2.3M") in before["workers"].rows
+    assert ("agent", "running", "agent-b1", "1m", "new 92k, cache reads 2.3M") in before["runs"].rows
     transcript(home, "b2", str(tasks / "T1"), 44, session="s2")
     after = views(home, Filters())
-    assert after["tasks"].rows[0][6:9] == ("running implement", "2 · 180k", "259k")
-    assert before["tasks"].notes == after["tasks"].notes, "live figures never reach the total"
+    assert after["ongoing"].rows[1][6:9] == ("running implement", "2 · 180k", "259k")
+    assert before["ongoing"].notes == after["ongoing"].notes, "live figures never reach the total"
 
 
 def test_the_fast_tick_reads_appended_lines_and_the_orchestrator_session(home: Path,
@@ -208,7 +341,7 @@ def test_the_fast_tick_reads_appended_lines_and_the_orchestrator_session(home: P
     said(main, "before the stage", 90)
     said(main, "x1", 30)
     found, watch = collect(tasks, Filters(), trees=[], here=lambda: {}, now=NOW)
-    assert list(watch.sessions) == [tasks / "T1"] and "session" not in str(found["workers"].rows), "nor in NOTE"
+    assert list(watch.sessions) == [tasks / "T1"] and "session" not in str(found["runs"].rows), "nor in NOTE"
     caches = Caches()
     assert live_tick(watch, caches, [home / ".claude"], NOW) == ({str(tasks / "T1"): "2 · 8k"}, "2 · 8k")
     said(agent, "m9", 0)
@@ -233,7 +366,7 @@ def test_live_running_agent_rules(home: Path, case: str, minutes_ago: float, sai
     if case == "unreadable":
         path.chmod(0)
     try:
-        cells = [row for row in views(home, Filters())["tasks"].rows if row[1] == "blocked"][0][6:8]
+        cells = [row for row in views(home, Filters())["ongoing"].rows if row[1] == "blocked"][0][6:8]
     finally:
         path.chmod(0o644)
     assert cells == (("running review", "10k") if shown else ("stuck review", "-")), cells
@@ -303,22 +436,16 @@ def test_live_config_dirs_count_each_real_dir_once(home: Path, monkeypatch: pyte
     assert tui_model.config_dirs(home) == [home / ".claude", home / "other"]
 
 
-def test_the_explicit_landed_read(home: Path) -> None:
-    landed = landed_for(home / ".agent" / "tasks", Filters(done=True), reader)
-    shipped = [row for row in views(home, Filters(done=True), landed)["tasks"].rows if row[1] == "shipped"]
-    assert shipped[0][9] == "yes"
-
-
-def test_workers_view_lists_running_stages_and_locks(home: Path) -> None:
-    rows = views(home, Filters())["workers"].rows
+def test_runs_view_lists_running_stages_and_locks(home: Path) -> None:
+    rows = views(home, Filters())["runs"].rows
     assert [row[:3] + row[4:] for row in rows] == [
         ("stage", "running", "implement", "workers=2"),
         ("stage", "blocked", "review", "stale: no stage_end"),
-        ("lock", "T9", str(home / "old"), "stale: the guard ignores it"),
-        ("lock", "idle", str(home / "fresh"), "live"),
+        ("lock", "T9", "~/old", "stale: the guard ignores it"),
+        ("lock", "idle", "~/fresh", "live"),
     ]
     hook = (ROOT / ".claude" / "hooks" / "guard" / "shell.sh").read_text()
-    assert f"\nSTALE_SECONDS={tui_model.LOCK_STALE_SECONDS}\n" in hook, "the lock threshold follows guard/shell.sh"
+    assert f"\nSTALE_SECONDS={tui_views.LOCK_STALE_SECONDS}\n" in hook, "the lock threshold follows guard/shell.sh"
 
 
 def test_locks_come_from_each_task_repository(home: Path) -> None:
@@ -328,8 +455,10 @@ def test_locks_come_from_each_task_repository(home: Path) -> None:
     (repo / ".crew-worker.lock").write_text(f"task=T1\nstarted={int(NOW - 60)}\n")
     meta = home / ".agent" / "tasks" / "T1" / ".task-id"
     meta.write_text(json.dumps({**json.loads(meta.read_text()), "worktree": str(repo)}))
-    rows = collect(home / ".agent" / "tasks", Filters(), here=lambda: {}, now=NOW)[0]["workers"].rows
-    assert [(row[1], Path(row[2]).resolve(), row[4]) for row in rows if row[0] == "lock"] == [
+    found, watch = collect(home / ".agent" / "tasks", Filters(), here=lambda: {}, now=NOW)
+    rows = found["runs"].rows
+    assert watch.clones == {"acme/widgets": repo}, "a task's recorded worktree is its repository's clone"
+    assert [(row[1], Path(row[2].replace("~", str(home))).resolve(), row[4]) for row in rows if row[0] == "lock"] == [
         ("running", repo.resolve(), "live")]
 
 
@@ -362,7 +491,7 @@ def test_moves_per_state(tmp: Path, state: str, prs: list[str], expected: list[t
 def test_a_move_runs_crew_task_for_real(home: Path) -> None:
     """The app's default runner on a temp task: APPROVED to IMPLEMENTING in SPEC.md through crew-task.py, the spec's
     `## Branch:` recorded and, run outside any checkout of the task, no `worktree`."""
-    from crew.tui.tui_app import run_command
+    from crew.tui.tui_widgets import run_command
 
     task = home / ".agent" / "tasks" / "T2"
     start = moves("APPROVED", task, [], "feat/gadgets")[0]
@@ -376,13 +505,13 @@ def test_a_move_runs_crew_task_for_real(home: Path) -> None:
 def test_a_tampered_task_offers_only_restore_moves(home: Path) -> None:
     """A Status written outside crew-task shows as TAMPERED in STATE, and the only moves are restore-status and its
     `--accept` with a note; the restore move, run for real, writes the recorded status back."""
-    from crew.tui.tui_app import run_command
+    from crew.tui.tui_widgets import run_command
 
     spec = home / ".agent" / "tasks" / "T2" / "SPEC.md"
     spec.write_text(spec.read_text().replace("## Status\nAPPROVED", "## Status\nIMPLEMENTING"))
-    view = views(home, Filters(repo="all"))["tasks"]
+    view = views(home, Filters(repo="all"))["ongoing"]
     row = next(i for i, cells in enumerate(view.rows) if cells[1].startswith("blocked"))
-    assert view.rows[row][0] == "TAMPERED (spec says IMPLEMENTING, crew-task recorded APPROVED)", view.rows[row]
+    assert view.rows[row][0] == "! TAMPERED (spec says IMPLEMENTING, crew-task recorded APPROVED)", view.rows[row]
     assert [(move.args[0], *move.args[2:], move.ask) for move in view.moves[row]] == [
         ("restore-status", ""), ("restore-status", "--accept", "note")], view.moves[row]
     code, _, err = run_command(view.moves[row][0].argv())
@@ -395,7 +524,7 @@ def test_no_start_move_without_a_spec_branch(home: Path, spec_line: str) -> None
     unavailable, saying to start it from its checkout (only `blocked` and close as done run)."""
     spec = home / ".agent" / "tasks" / "T2" / "SPEC.md"
     spec.write_text(spec.read_text().replace("## Branch: feat/gadgets\n\n", spec_line))
-    view = views(home, Filters(repo="all"))["tasks"]
+    view = views(home, Filters(repo="all"))["ongoing"]
     row = next(i for i, cells in enumerate(view.rows) if cells[1].startswith("blocked"))
     found = [(move.args[0], *move.args[2:3]) for move in view.moves[row] if not move.why]
     assert found == [("blocked",), ("mark-done", "--force")], view.moves[row]
@@ -403,8 +532,8 @@ def test_no_start_move_without_a_spec_branch(home: Path, spec_line: str) -> None
 
 
 @pytest.mark.parametrize("text,base,expected", [
-    ("repo:acme/w status:implementing status:done done", None, Filters("acme/w", ("IMPLEMENTING", "DONE"), True)),
-    ("status:approved", Filters("all", ("DONE",), True, 7), Filters("all", ("APPROVED",), True, 7)),
+    ("repo:acme/w status:implementing status:done Widgets", None, Filters("acme/w", ("IMPLEMENTING", "DONE"), ("widgets",))),
+    ("status:approved", Filters("all", ("DONE",), ("x",), 7), Filters("all", ("APPROVED",), (), 7)),
     ("status:bogus", None, ValueError),
     ("colour:red", None, ValueError),
 ])
@@ -423,7 +552,8 @@ def test_once_prints_every_view_without_textual(home: Path) -> None:
     done = subprocess.run(argv, capture_output=True, text=True, env={**os.environ, "TERM": "dumb", "PYTHONPATH": str(SRC)}, cwd=home,
                           timeout=60)
     assert done.returncode == 0, done.stderr
-    assert all(f"== {name} ==" in done.stdout for name in ("tasks", "workers", "report")) and "running" in done.stdout
+    titles = ("1 Ongoing", "2 Tasks · PRs · Issues", "3 Runs", "cost")
+    assert all(f"== {name} ==" in done.stdout for name in titles) and "running" in done.stdout
     assert " #12 " in done.stdout and "[link" not in done.stdout, "--once prints the issue as plain text"
     assert " TOKENS " in done.stdout and "tokens: new ~518k, cache reads 401k across 3 tasks shown" in done.stdout
 
@@ -467,47 +597,66 @@ def test_once_fits_120_columns_keeping_the_task_readable(home: Path) -> None:
 
 
 async def settle(app: App, pilot: Pilot) -> None:
-    """Wait for the reads and moves in flight, then for the screen to catch up."""
-    await app.workers.wait_for_complete()
-    await pilot.pause()
+    """Wait for the reads and moves in flight, those they start included (a GitHub read starts a local one), then for
+    the screen to catch up."""
+    for _ in range(20):
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        if all(worker.is_finished for worker in app.workers):
+            return
 
 
-def test_app_rows_keep_their_place_and_never_write(home: Path) -> None:
-    """Textual is in the `evals/test.sh` environment, so a missing one fails here rather than skipping.
-    A refresh that reorders the rows keeps the cursor on its task and updates a changed cell in place; `o` and `O`
-    open the selected task's links; views switch, DONE rows and the filter apply, `g` reads GitHub in a worker."""
+def test_app_rows_keep_their_place_tabs_and_children(home: Path) -> None:
+    """Textual is in the `evals/test.sh` environment, so a missing one fails here rather than skipping. One GitHub
+    read after the first local read. A refresh that reorders the rows keeps the cursor on its task and updates a
+    changed cell in place; `o` and `O` open the selected task's PR and issue; the tabs carry counts and switch with
+    1 2 3; `/` filters; in the summary `enter` expands a task into PR rows, `o` on a child opens its PR, `s` there does
+    nothing, `←` folds back to the task. Nothing under the tasks dir is written."""
     from crew.tui.tui_app import CrewApp
+    from crew.tui.tui_widgets import Lines
 
     tasks = home / ".agent" / "tasks"
     before = {path: path.stat().st_mtime for path in tasks.rglob("*")}
     opened: list[str] = []
+    calls: list[str] = []
 
     async def drive() -> list:
-        app = CrewApp(tasks, Filters(repo="all"), interval=60, reader=reader, opener=opened.append)
-        async with app.run_test() as pilot:
+        app = CrewApp(tasks, Filters(repo="all"), interval=60, gh=github(SEEDED, calls), opener=opened.append, clock=lambda: NOW)
+        async with app.run_test(size=(160, 48)) as pilot:
             await settle(app, pilot)
             table = app.query_one("#table")
-            assert str(table.get_cell_at((0, 3))) == f"[link={ISSUE}]#12[/link]", "the issue cell is a terminal link"
-            await pilot.press("down", "down")  # T2, the third row
-            view = app.views["tasks"]
+            assert str(table.get_cell_at((1, 3))) == f"[link={ISSUE}]#12 [#FEA62B]●open[/][/link]", "the issue cell is a terminal link"
+            await pilot.press("down", "down")  # T3, the third row
+            view = app.views["ongoing"]
             flipped = replace(view, rows=view.rows[::-1], links=view.links[::-1], moves=view.moves[::-1], keys=view.keys[::-1])
             flipped.rows[0] = (*flipped.rows[0][:7], "5k", *flipped.rows[0][8:])
-            app.loaded({**app.views, "tasks": flipped}, app.watched)
+            app.loaded({**app.views, "ongoing": flipped}, app.watched)
             await pilot.pause()
             seen = [([row.key.value for row in table.ordered_rows], table.cursor_row, str(table.get_cell(view.keys[2], "LIVE")))]
-            await pilot.press("down", "down", "o", "O")
-            for keys in (["w"], ["p"], ["t", "a"], ["g"], ["slash", *"status:approved", "enter"]):
+            await pilot.press("down", "o", "O")
+            labels = [str(tab.label) for tab in app.query("Tab")]
+            for keys in (["2"], ["3"], ["c"], ["escape", "1", "slash", *"status:approved", "enter"]):
                 await pilot.press(*keys)
                 await settle(app, pilot)
-                seen.append((app.view_name, table.row_count))
-        return [*seen, app.landed]
+                seen.append((app.view_name, table.row_count, isinstance(app.screen, Lines)))
+            await pilot.press("escape", "2", "down", "down", "enter")
+            await settle(app, pilot)
+            rows = table.row_count
+            await pilot.press("down", "o", "s")
+            await pilot.pause()
+            child = (app.screen is app.default_screen, app.selected_key())
+            await pilot.press("left")
+            await pilot.pause()
+            folded = (app.selected_key(), table.row_count)
+        return [*seen, labels, rows, child, *folded]
 
     seen = asyncio.run(drive())
-    assert seen[0] == ([str(tasks / name) for name in ("T2", "T3", "T1")], 0, "5k"), "the cursor stays on T2, now first"
-    assert opened == [ISSUE, PR.format(9)], "o opens the selected task's issue and O its PR"
-    assert [name for name, _ in seen[1:6]] == ["workers", "report", "tasks", "tasks", "tasks"]
-    assert [count for _, count in seen[3:6]] == [4, 4, 1], "DONE rows on, then the filter"
-    assert seen[6] == {str(tasks / "T4"): "yes"}, "g reads the DONE rows' PRs in a worker, then reloads"
+    assert seen[0] == ([str(tasks / name) for name in ("T3", "T1", "T2")], 0, "5k"), "the cursor stays on T3, now first"
+    assert opened == [PR.format(9), ISSUE, PR.format(8)], "o opens the PR, O the issue; o on a child its own PR"
+    assert seen[1:5] == [("summary", 4, False), ("runs", 2, False), ("runs", 2, True), ("ongoing", 1, False)]
+    assert seen[5] == ["1 Ongoing (3)", "2 Tasks · PRs · Issues (4)", "3 Runs (2)"]
+    assert seen[6:] == [6, (True, f"{tasks / 'T4'}::0"), str(tasks / "T4"), 4], "enter expands, s on a child is nothing, ← folds"
+    assert len(calls) == 1, "one GitHub read for every PR and issue"
     assert {path: path.stat().st_mtime for path in tasks.rglob("*")} == before
 
 
@@ -518,7 +667,8 @@ def test_a_move_runs_in_a_worker_while_input_still_works(home: Path) -> None:
     reason inline, an empty one refused."""
     from textual.widgets import OptionList
 
-    from crew.tui.tui_app import PENDING, CrewApp, Log, Status
+    from crew.tui.tui_app import CrewApp
+    from crew.tui.tui_widgets import PENDING, Lines, Status
 
     tasks = home / ".agent" / "tasks"
     gate, ran = threading.Event(), []
@@ -529,10 +679,10 @@ def test_a_move_runs_in_a_worker_while_input_still_works(home: Path) -> None:
         return 1, "", "error: blocked is APPROVED, not DRAFTING; nothing written"
 
     async def drive() -> list:
-        app = CrewApp(tasks, Filters(repo="all"), interval=60, reader=reader, runner=runner)
+        app = CrewApp(tasks, Filters(repo="all"), interval=60, gh=github(SEEDED, []), runner=runner)
         async with app.run_test() as pilot:
             await settle(app, pilot)
-            await pilot.press("down", "down", "s")
+            await pilot.press("s")
             seen = [str(app.screen.query_one(OptionList).get_option_at_index(0).prompt),
                     str(app.screen.query_one("#command").render())]
             await pilot.press("escape")
@@ -540,14 +690,14 @@ def test_a_move_runs_in_a_worker_while_input_still_works(home: Path) -> None:
             await pilot.press("s", "enter")
             await pilot.pause()
             seen.append(str(app.query_one("#table").get_row(str(tasks / "T2"))[0]))
-            await pilot.press("s", "w")  # refused while the move runs; the view still switches
+            await pilot.press("s", "3")  # refused while the move runs; the view still switches
             seen.append((isinstance(app.screen, Status), app.view_name))
-            await pilot.press("t")
+            await pilot.press("1")
             gate.set()
             await settle(app, pilot)
             seen.append((app.pending, str(app.query_one("#notes").render())))
             await pilot.press("L")
-            seen.append(isinstance(app.screen, Log))
+            seen.append(isinstance(app.screen, Lines))
             await pilot.press("escape", "s", "b", "enter", *"no keys", "enter")
             await settle(app, pilot)
         return [*seen, app.command_log]
@@ -555,8 +705,24 @@ def test_a_move_runs_in_a_worker_while_input_still_works(home: Path) -> None:
     option, command, cancelled, state, (again, view), (pending, notes), logged, lines = asyncio.run(drive())
     assert option == "APPROVED → IMPLEMENTING [i] Start on feat/gadgets"
     assert "mark-implementing ~/.agent/tasks/T2 --branch feat/gadgets\nenter runs this · esc cancels" in command, command
-    assert cancelled == [] and state == f"{PENDING}APPROVED" and (again, view) == (False, "workers")
+    assert cancelled == [] and state == f"{PENDING}[#FEA62B]! [/]APPROVED" and (again, view) == (False, "runs")
     assert pending == set() and "exit" not in notes and logged
     start = [*CREW_TASK, "mark-implementing", str(tasks / "T2"), "--branch", "feat/gadgets"]
     assert ran == [start, [*CREW_TASK, "blocked", str(tasks / "T2"), "no keys"]]
     assert "error: blocked is APPROVED, not DRAFTING; nothing written" in lines and lines.count("exit 1") == 2, lines
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 48)])
+@pytest.mark.parametrize("tab", ["1", "2", "3"])
+def test_snapshot_per_tab(home: Path, snap_compare: Callable[..., bool], tab: str, size: tuple[int, int]) -> None:
+    """Each tab at 80×24 and 160×48 (the detail pane shows only at 100 columns or more), GitHub facts from the stub."""
+    from crew.tui.tui_app import CrewApp
+
+    async def ready(pilot: Pilot) -> None:
+        await settle(pilot.app, pilot)
+        await pilot.press(tab)
+        await pilot.pause()
+
+    append_run("resolve acme/widgets#6", "start", kind="resolve", target="acme/widgets#6")
+    app = CrewApp(home / ".agent" / "tasks", Filters(repo="all"), interval=600, gh=github(SEEDED, []), clock=lambda: NOW)
+    assert snap_compare(app, terminal_size=size, run_before=ready)
