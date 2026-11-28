@@ -42,8 +42,8 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 
 | Directory | Commands | Modules (imported, not run) | Assets (read, not linked) | Purpose |
 | --- | --- | --- | --- | --- |
-| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_record.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py`, `task_guidance.py`, `task_prepare.py`, `task_prepare_spec.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
-| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `review_prepare.py`, `review_head.py`, `review_hunks.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
+| `task/` | `crew-agent-context.py`, `crew-default-branch.sh`, `crew-ls.py`, `crew-metric.py`, `crew-progress.py`, `crew-repo-info.py`, `crew-resolve-task-dir.py`, `crew-task.py`, `crew-task-context.py`, `crew-verify.py`, `crew-worktree.py`, `task-env.sh` | `task_bootstrap.py`, `task_status.py`, `task_state.py`, `task_record.py`, `task_progress.py`, `task_gates.py`, `task_resolve.py`, `task_report.py`, `ls_data.py`, `ls_report.py`, `task_gc.py`, `task_lock.py`, `task_artifacts.py`, `task_repo_facts.py`, `task_worktrees.py`, `task_worktree_cli.py`, `task_verify.py`, `task_verify_env.py`, `task_verify_report.py`, `task_verify_sources.py`, `task_guidance.py`, `task_guidance_kinds.py`, `task_prepare.py`, `task_prepare_spec.py` | `transitions.json`, `next-steps.json` | Guidance context, task state, review location, status migration, resolution, gates, worktrees, repository facts, next-step routing |
+| `review/` | `crew-assemble-packages.py`, `crew-diff.sh`, `crew-nightshift-e2e.py`, `crew-pr-actions.py`, `crew-review-findings.py`, `crew-review-hunks.py` | `review_bootstrap.py`, `review_vocabulary.py`, `review_models.py`, `review_parse.py`, `review_findings.py`, `review_coverage.py`, `review_layers.py`, `review_consolidate.py`, `review_render.py`, `review_report.py`, `review_records.py`, `review_workspace.py`, `review_pr_reads.py`, `review_pr_plan.py`, `review_cli.py`, `review_prepare.py`, `review_dispatch_stats.py`, `review_head.py`, `review_hunks.py`, `assemble_inputs.py`, `assemble_build.py` | `pr-review-threads.graphql` | Hunks and layer maps, findings, packages, PR threads, on-demand e2e runs |
 | `review/nightshift/` | — | `client.py`, `location.py`, `checks.py`, `doctor.py`, `commands.py` | — | The nightshift HTTP client, the preflight probes, and the run operations |
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py`, `evals_bootstrap.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_bootstrap.py`, `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
@@ -154,6 +154,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `task_verify_report.py`: `crew-verify.py report-check` of a builder's REPORT.md
 - `task_verify_sources.py`: where gates come from: CI workflows, the gates block, prose checks
 - `task_guidance.py`: repository guidance per path (`crew-agent-context.py`), and `crew-mem.py context` in process
+- `task_guidance_kinds.py`: guidance ranked per agent kind (reviewer lens, builder, explorer, resolver), sections naming the agent's paths first, under one cap per kind, with a note naming each section the cap dropped; the one place those defaults live
 - `task_prepare.py`: `crew-task.py prepare-implement`, crew implement's setup before the builder in one call
 - `task_prepare_spec.py`: `crew-task.py prepare-spec`, crew spec's setup before the explorer in one call
 
@@ -176,6 +177,7 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 - `review_pr_plan.py`: the write half: the `gh` mutation plan, `comments` and `check-map`
 - `review_cli.py`: the `crew-review-findings.py` subcommand definitions
 - `review_prepare.py`: `prepare`, a review's setup in one call for every mode
+- `review_dispatch_stats.py`: `dispatch-bytes` (bytes, guidance and shared prefix per prepared dispatch prompt) and `cache-report` (one review run's cache counts per persona above the first persona's, and its wall time)
 - `review_head.py`: a PR's changed files at its head SHA, one GraphQL call per 100 paths, under `head/files/`
 - `review_hunks.py`: the hunk artifacts `crew-review-hunks.py` and `prepare` write
 - `assemble_inputs.py`: what each reviewer package reads: config, personas, header, prior round
@@ -658,6 +660,10 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
   once). Summed `cache_read` counts the cached context once per call, so it never enters the
   headline. The named directory must sit under `~/.agent/tasks` and hold `SPEC.md`. Each entry carries
   `agent_id`, and only an agent's latest entry counts, so a resumed agent's stops are not added up.
+  `started=` is the dispatch (the transcript's first timestamp; Cursor: the stop less `duration_ms`), and
+  `first_input`, `first_cache_read`, `first_cache_write` are the first call's counts;
+  `crew-review-findings.py cache-report` prints them per persona of one review run, each first cache
+  read above the first persona's own, and the run's wall time.
   `task_progress.agent_ends` is the one attribution both views use: an entry belongs to the stage of
   the `stage_start` before it (else `other`). A transcript with no usage field records nothing.
 - **One token measure.** `task_progress.task_usage_totals` is what `crew ls --cost`, `crew ls --json`,

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -74,7 +75,7 @@ def cursor_transcript(path: Path, prompt: str, replies: list[str]) -> Path:
 
 def claude_transcript(path: Path, prompt: str, reply: str) -> Path:
     usage = {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
-    lines = [{"type": "user", "message": {"role": "user", "content": prompt}},
+    lines = [{"type": "user", "timestamp": "2026-11-28T10:00:00.500Z", "message": {"role": "user", "content": prompt}},
              {"type": "assistant", "message": {"id": "m1", "role": "assistant", "model": "m-1", "usage": usage,
                                                "content": [{"type": "text", "text": reply}]}}]
     path.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
@@ -148,9 +149,11 @@ def test_each_agent_kind_lands_where_its_orchestrator_reads_it(tmp: Path, harnes
     assert (directory / f"{name}.expect").exists() and not (directory / f"{name}.unanswered").exists()
     assert "capture-reply: saved" in state(home, "capture-reply.log")
     ends = [entry for entry in progress(task).splitlines() if "agent_end" in entry]
-    expected = ("tokens=unknown duration_ms=61000 tool_calls=7 messages=9 harness=cursor" if harness == "cursor"
-                else "tokens=150 input=100 output=50 cache_read=0 cache_write=0 harness=claude-code")
-    assert len(ends) == 1 and ends[0].endswith(f"agent={kind} persona={name} agent_id=s1 {expected}"), ends
+    expected = (r"tokens=unknown duration_ms=61000 tool_calls=7 messages=9 started=\S+Z harness=cursor"
+                if harness == "cursor" else "tokens=150 input=100 output=50 cache_read=0 cache_write=0 "
+                "started=2026-11-28T10:00:00Z first_input=100 first_cache_read=0 first_cache_write=0 "
+                "harness=claude-code")
+    assert len(ends) == 1 and re.search(f"agent={kind} persona={name} agent_id=s1 {expected}$", ends[0]), ends
 
 
 def test_a_cursor_builder_report_is_saved_from_its_transcript(tmp: Path) -> None:

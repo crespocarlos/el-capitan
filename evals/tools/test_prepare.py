@@ -67,7 +67,8 @@ def repository(tmp: Path) -> Path:
     git(repo, "config", "user.email", "t@example.com")
     git(repo, "config", "user.name", "t")
     git(repo, "remote", "add", "origin", str(origin))
-    (repo / "AGENTS.md").write_text("# Guide\n\nKeep it small.\n")
+    (repo / "AGENTS.md").write_text("# Guide\n\nKeep it small.\n\n## Tests\nrun pytest\n\n"
+                                    "## Persistent memory\nrecall\n")
     (repo / "src").mkdir()
     (repo / "src" / "a.py").write_text("a\nb\n")
     (repo / ".cursor" / "agents").mkdir(parents=True)
@@ -205,6 +206,9 @@ def test_prepare_implement_cuts_the_branch_and_writes_the_builder_prompts(tmp: P
     assert prompts == ["builder.1-6.md", "builder.7-9.md"], prompts
     first = (task / "dispatch" / "builder.1-6.md").read_text()
     assert first.startswith(f"crew-task: {task.resolve()}\nTASK_RANGE: 1-6\n")
+    guidance = first[first.index("## Project guidance"):first.index("## Tasks")]
+    assert "run pytest" in guidance and "recall" in guidance, "under the cap, nothing is dropped"
+    assert "Guidance collected for: ." in guidance, "no task names a path: the root's guidance, said so"
     second = (task / "dispatch" / "builder.7-9.md").read_text()
     assert "TASK_RANGE: 7-9 final" in second and "T7: step 7" in second and "T8: step 8" in second
     other = cli(TASK, "prepare-implement", str(task), "--branch", "feat/other", env=env, cwd=repo)

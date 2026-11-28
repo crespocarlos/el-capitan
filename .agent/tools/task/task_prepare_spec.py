@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 from task_guidance import collect, memory_context
+from task_guidance_kinds import render
 from task_prepare import StepFailed
 
 from lib.clock import utc_now, utc_stamp
@@ -31,9 +32,9 @@ def add_prepare_spec_parser(commands) -> None:
     parser.add_argument("--tasks-dir", type=Path, default=None, help="default ~/.agent/tasks")
 
 
-def guidance_text(record: dict) -> str:
-    """Each guidance file once, under its path."""
-    return "\n\n".join(f"### {path}\n\n{text.strip()}" for path, text in record["files"].items()) or "none"
+def guidance_text(record: dict, paths: list[str]) -> str:
+    """Each guidance file once, ranked for the explorer and capped (`task_guidance_kinds`), or "none"."""
+    return render("explorer", record["files"], paths)[0].rstrip() or "none"
 
 
 def explorer_prompt(marker: str, task_dir: Path, repo: str, paths: list[str], guidance: str, recalled: str) -> str:
@@ -79,7 +80,7 @@ def run_steps(args: argparse.Namespace) -> tuple[Path, str]:
         step = "explorer"
         spec_run = task_dir / "spec-agents" / utc_now().strftime("%Y%m%dT%H%M%SZ")
         spec_run.mkdir(parents=True)
-        guidance = guidance_text(collect(root, [root / p for p in args.paths] or [root]))
+        guidance = guidance_text(collect(root, [root / p for p in args.paths] or [root]), args.paths)
         text = explorer_prompt(write_expect(spec_run, EXPLORER), task_dir, root.name, args.paths, guidance,
                                recalled or "none")
         target = spec_run / f"{EXPLORER}.prompt.md"

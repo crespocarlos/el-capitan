@@ -94,8 +94,8 @@ Write the worker lock right before the first dispatch, never before Step 4's boo
 read `~/.cursor/agents/crew-builder.md` or `~/.claude/agents/crew-builder.md` and follow its protocol
 directly), per [dispatch reliability](references/worker-dispatch.md#dispatch-reliability). The prompt
 is a `$TASK_DIR/dispatch/builder*.md` file, unchanged: `crew-task:` and `TASK_RANGE` lines,
-`TASK_DIR`, the literal `WORK_DIR`, `RECALLED_PATTERNS` and the open tasks. The worker reads
-crew-builder itself, so never paste rules into the prompt. Several files are batches, dispatched in
+`TASK_DIR`, the literal `WORK_DIR`, `RECALLED_PATTERNS`, guidance and the open tasks; paste none of
+crew-builder's rules into it. Several files are batches, dispatched in
 order: [worker dispatch](references/worker-dispatch.md), "Batching for large specs", which also holds
 the blocked line, cost line and message routing.
 

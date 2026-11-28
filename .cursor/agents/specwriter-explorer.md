@@ -24,9 +24,9 @@ lookup; `maxTurns` adds one turn for the report.
 
 ## What to find
 
-**0. Project context** — Use the `## Project guidance` section in the dispatch prompt (output of
-`crew-agent-context.py`, repository root to nearest folder). Nearer files override farther ones; surface
-any conflict. Do not search for `AGENTS.md`/`CLAUDE.md` yourself. If the section is missing, say so
+**0. Project context** — Use the prompt's `## Project guidance` (root to nearest, capped;
+a note names dropped sections). Nearer files override farther ones; surface any conflict. Read that
+file for a dropped section you need; search for no other guidance file. If the section is missing, say so
 in your output. Extract: bootstrap command, test commands, deploy/validate commands, validation
 commands (pre-commit checks), forbidden patterns, and project-specific conventions. Include a `##
 Project context` section in your output. Flag the validation commands clearly: the spec writer copies

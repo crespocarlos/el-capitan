@@ -82,16 +82,16 @@ def test_prompt_tier_elides_what_the_diff_already_quotes(tmp: Path) -> None:
     assert "\n1: # Prompt\n" in tier
 
 
-def test_guidance_narrowing_is_opt_in_and_keeps_pre_heading_text(tmp: Path) -> None:
-    guidance = {"/repo/AGENTS.md": "# Kibana\n\npreamble stays\n\n## Code Style Guidelines\ncss\n\n## Data model\ndata\n"}
-    wide = build(tmp / "wide", guidance=guidance)
-    assert "## Data model" in read(wide, "code-quality")
-    narrow = build(tmp / "narrow", {"guidance_keep": {"code-quality": ["Code Style"]}}, guidance)
-    text = read(narrow, "code-quality")
-    assert "preamble stays" in text and "## Code Style Guidelines" in text
-    assert "## Data model" not in text
-    # A persona with no entry keeps everything: disappearing guidance is worse than costly guidance.
-    assert "## Data model" in read(narrow, "architecture")
+def test_guidance_is_ranked_per_lens_and_the_package_names_what_the_cap_dropped(tmp: Path) -> None:
+    data = "\n".join(f"data rule {n}" for n in range(2000))
+    guidance = {"/repo/AGENTS.md": f"# Kibana\n\npreamble stays\n\n## Code Style Guidelines\ncss\n\n## Data model\n{data}\n"}
+    lens = build(tmp / "lens", guidance=guidance)
+    text = read(lens, "code-quality")
+    assert "preamble stays" in text and "## Code Style Guidelines" in text and "data rule 1999" not in text
+    assert "Dropped at the 16000-byte cap: AGENTS.md: Data model (cut). Read that file" in text, "named in the package"
+    assert "AGENTS.md: Code Style Guidelines. Read that file" in read(lens, "architecture"), "its own topic first"
+    explicit = build(tmp / "explicit", {"guidance_keep": {"code-quality": ["Data"]}}, guidance)
+    assert "data rule 1999" in read(explicit, "code-quality"), "an assemble.json keep-list overrides the default"
 
 
 def test_a_wildcard_keeps_every_section(tmp: Path) -> None:

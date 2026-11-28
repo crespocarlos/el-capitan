@@ -2,8 +2,8 @@
 """Normalize review findings, persist review reports, and append outcome records.
 
 Subcommands: `normalize`, `persist`, `select`, `coverage`, `spec-context`, `check-packages`, `outcome`, `outcomes`,
-`review-dir`, `prepare` (a review's setup in one call), `save-out`, `expect`, `capture`, `consolidate`. Entry point
-only: logic in `review_findings`, `review_cli`, `review_coverage`, `review_layers`, `review_report`, `review_prepare`.
+`review-dir`, `prepare` (a review's setup in one call), `save-out`, `expect`, `capture`, `consolidate`,
+`dispatch-bytes`, `cache-report`. Entry point only: logic in the `review_*` modules.
 Contract (fields, fingerprints, evidence gates, `--files`, `--head`): `.agent/tools/TOOLS.md`.
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ from review_coverage import (
     spec_for,
     spec_sections,
 )
+from review_dispatch_stats import add_stats_parsers, cache_report, dispatch_bytes
 from review_findings import check_findings, normalize, read_findings
 from review_layers import (
     check_coverage,
@@ -118,6 +119,7 @@ def main() -> int:
     add_capture_parsers(commands)
     add_consolidate_parser(commands)
     add_prepare_parser(commands)
+    add_stats_parsers(commands)
     args = parser.parse_args()
     handlers = {"normalize": normalize, "persist": persist, "select": select,
                 "outcome": outcome, "outcomes": check_outcomes, "coverage": coverage,
@@ -125,6 +127,7 @@ def main() -> int:
                 "check-packages": check_packages, "review-dir": review_dir_command,
                 "prior-review": prior_review, "save-out": save_out, "expect": expect, "capture": capture,
                 "consolidate": consolidate, "prepare": prepare,
+                "dispatch-bytes": dispatch_bytes, "cache-report": cache_report,
                 "comments": comments, "check-map": check_map}
     try:
         return handlers[args.command](args)

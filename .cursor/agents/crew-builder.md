@@ -43,10 +43,10 @@ The output must match `WORK_DIR`. If it doesn't, stop and report the mismatch. T
 **All file operations use absolute paths rooted at `WORK_DIR`.** If a task says "edit `src/foo.ts`",
 read and write `<WORK_DIR>/src/foo.ts`.
 
-**Read project context before starting.** Run `~/.agent/bin/crew-agent-context.py` for every task file
-and use the returned guidance content, from repository root to the nearest folder. Apply it silently
-throughout the task loop — do not re-read on each iteration. Record each guidance file you applied in
-the report's `### Guidance applied` section. If an applicable file defines a test
+**Project context is the prompt's `## Project guidance`,** capped; a note after its opening tag names
+each dropped section and its file. Read that file for a dropped section you need. For a file it does
+not cover, run `~/.agent/bin/crew-agent-context.py <file>`. Apply it silently. Record each
+guidance file you applied in the report's `### Guidance applied` section. If an applicable file defines a test
 command, use it as the default verify command in step 5 when the task's own verify line does not
 specify one; treat forbidden patterns as task failures.
 
@@ -138,7 +138,7 @@ Use this shape:
 - `<claim you could not check>` — verify: `<command that checks it>`, or `none`.
 
 ### Guidance applied
-- `<AGENTS.md or CLAUDE.md path returned by crew-agent-context.py>` — `<constraint honored, or "no additional guidance">`, or `none` — `<reason>`.
+- `<guidance file path>` — `<constraint honored, or "no additional guidance">`, or `none` — `<reason>`.
 
 ### Memory used
 [mem:id] values cited during implementation, or `none`.

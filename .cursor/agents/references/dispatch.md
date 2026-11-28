@@ -102,8 +102,6 @@ the raw bytes and a provenance record beside them:
 - Fewer agents than lenses (one fork playing every lens, or two personas answered by one agent id)
   is a degraded review: pass `--degraded` when you played the lens yourself. The review then opens
   with `Degraded: 1 agent, N lenses` and its verdict is capped at `WARN`; `BLOCK` stays `BLOCK`.
-- A review directory without records (created before `save-out`) still persists; its report says
-  `provenance: absent (legacy)`. Tamper evidence applies to new reviews only.
 
 Every dispatch prompt therefore states the required shape and requires a flat numbered list of
 findings, each beginning with its
@@ -112,11 +110,8 @@ verdict; only the `### Findings: none` line is.
 
 When the package has a hunk index, each `[blocking]` and `[attention]` finding also names the hunk
 ids that cause it after its anchor (`src/a.ts:42 (h7)`). A Reading map orders those ids; without
-one, the package still supplies a compact hunk-to-file reference.
-
-The compact reference comes from `hunks.index.md` (ids, files, line ranges, size flags), never from
-`hunks.md`, whose per-hunk bodies re-quote a diff the package already carries. `hunks.md` is for the
-layer-mapping pass, which sees the index only and no diff. The dispatch prompt states this.
+one, the package still supplies a compact hunk-to-file reference from `hunks.index.md`, never
+`hunks.md`, whose bodies re-quote the diff.
 
 A persona that judges the artifact outside its lane (no prompt files, no user-facing surface) emits
 the `### Findings: none` line plus one sentence of reason. It does not end with a bare statement of disinterest,

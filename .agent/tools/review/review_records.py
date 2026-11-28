@@ -7,6 +7,7 @@ Dedupe keys on title and anchor, not the rendered label, so a raised score never
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -84,15 +85,13 @@ def measured_personas(review_dir: Path) -> list[str]:
 
 def shared_prefix(review_dir: Path, personas: list[str]) -> int:
     """The longest byte prefix common to every `<persona>.in.md`, or 0 with fewer than two."""
-    texts = [(review_dir / f"{persona}.in.md").read_bytes()
-             for persona in personas if (review_dir / f"{persona}.in.md").is_file()]
-    if len(texts) < 2:
-        return 0
-    limit = min(len(text) for text in texts)
-    index = 0
-    while index < limit and all(text[index] == texts[0][index] for text in texts[1:]):
-        index += 1
-    return index
+    return common_prefix([(review_dir / f"{persona}.in.md").read_bytes()
+                          for persona in personas if (review_dir / f"{persona}.in.md").is_file()])
+
+
+def common_prefix(texts: list[bytes]) -> int:
+    """The length of the longest byte prefix common to every text, or 0 with fewer than two."""
+    return len(os.path.commonprefix(texts)) if len(texts) >= 2 else 0
 
 
 def cost_line(review_dir: Path, personas: list[str], mapped: bool) -> str:
