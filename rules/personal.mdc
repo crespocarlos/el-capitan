@@ -46,7 +46,7 @@ then this file. Hard constraints always apply.
   cleanup or redesign.
 - **Optimize the feedback loop** — use the smallest evidence that can change the next action; batch
   independent work; stop when the acceptance check passes.
-- **Use subagents selectively** — complex exploration or parallel independent work only.
+- **Use subagents selectively** — only for complex exploration or parallel work.
 - **Preserve conversational state** — treat short follow-ups as continuations.
 - **Be direct** — answer or act first, with no preamble, narration, recap, praise, or closing offer.
   Reports list what changed, what was verified, and what is unresolved. Format: `agent-output.mdc`.
@@ -75,23 +75,25 @@ then this file. Hard constraints always apply.
   keep error handling in the layer that owns it.
 - **Preserve compatibility** — changes to persisted data, APIs, routes, or configuration need a
   migration or versioning path.
+- **Edit files with the edit tool**, not a `python -c` snippet the edit log misses.
+  Quote `===`: zsh runs it.
 - **Essential comments only** — comment why a non-obvious choice or invariant exists, in one line.
   Don't narrate code or leave commented-out code.
 - **Bulk edits need a verified backup** — confirm each backup exists and is non-empty, stop on the
   first failure, and commit or stash pending edits first.
 - **Storage questions enumerate every store** — list every hook registration and store directory
-  before answering, and state the scope you searched.
+  first; state the scope searched.
 - **GitHub access** — use `gh` or the repository's approved tool for PR, issue, and metadata reads,
   and `crew-pr-actions.py` for review threads. In Cursor's sandbox `gh` needs network elevation from
-  the start (`api.github.com` is not allowlisted; never suggest `gh auth refresh` on its keyring
-  message); report auth and scope failures. Details: `src/crew/TOOLS.md` → Sandboxed network.
+  the start (never suggest `gh auth refresh` on its keyring message). Details: `src/crew/TOOLS.md` →
+  Sandboxed network.
 
 ## Testing
 
 Test what can regress — new behavior, a fixed bug, or a changed contract — with the lowest-layer test
 that runs in normal CI, through public interfaces. Never weaken a test to make it pass. Prompt
-changes are checked with `crew-lint` and the prompt-quality review. The full policy, read before
-planning tests: `~/.cursor/agents/references/testing-policy.md`.
+changes are checked with `crew-lint` and the prompt-quality review. Full policy, read before planning
+tests: `~/.cursor/agents/references/testing-policy.md`.
 
 ## Scoped rules and skills
 

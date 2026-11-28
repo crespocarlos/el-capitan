@@ -20,4 +20,4 @@ person.
 | **Finding** | One reported issue, with a severity label, a `file:line` anchor, evidence, and a verdict. |
 | **Unit** | One typed Markdown file in `~/.agent/memory`: a durable lesson, a procedure, a project fact, or an observation. |
 | **Inbox** | `~/.agent/memory/.inbox/`: drafted memory units waiting for your approval. Nothing in it is recalled until it is imported. |
-| **Guard** | A hook that can block a command or a write: the destructive-git, credentials, write-boundary and worker-tree checks, among others. See [hooks](hooks.md). |
+| **Guard** | A hook that can block a command or a write: the shell guard (credentials, worker-tree, owner-only and other rules) and the file guard for task specs. See [hooks](hooks.md). |

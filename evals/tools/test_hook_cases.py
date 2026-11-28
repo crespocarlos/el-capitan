@@ -2,12 +2,12 @@
 """Every hook's contract, table-driven, in both harness payload shapes and under both bashes.
 
 A shell command is sent as Claude's `PreToolUse` (`tool_input.command`) and as Cursor's
-`beforeShellExecution` (top-level `command`) to each script under `.claude/hooks/guard/`; a file write
-as `PreToolUse` and Cursor's `preToolUse` to each `Write|Edit` hook. Each runs under the `bash` on PATH
-and under `/bin/bash` (bash 3.2 on macOS). The verdict is the join of the hooks: deny when any denies,
-allow when every one is silent. A deny names its off switches and the hook that must be among the
-deniers; an allow fails on any output at all, so an internal error fails the allow corpus as surely as
-a wrong denial. Every shell row also runs through both parsers of `hook_segments`: with `shfmt` on
+`beforeShellExecution` (top-level `command`) to the shell guard, `guard/shell.sh`; a file write as
+`PreToolUse` and Cursor's `preToolUse` to the file guard. Each runs under the `bash` on PATH and under
+`/bin/bash` (bash 3.2 on macOS). A deny names its off switches, and the rule they name must be the row's;
+a demoted rule (`DEMOTED`) denies only in Cursor's shape, so its row expects an allow from Claude's. An
+allow fails on any output at all, so an internal error fails the allow corpus as surely as a wrong
+denial. `gitleaks` is a stub on PATH that finds the AKIA key. Every shell row also runs through both parsers of `hook_segments`: with `shfmt` on
 PATH and with PATH stripped of it (the awk fallback), and both must give the expected verdict, so they
 agree except on the rows `PARSERS_DIFFER` lists with a reason. Then every hook, the silent ones
 included, must survive unreadable input and a missing `jq` with exit 0 and at most one stderr line,
@@ -49,8 +49,18 @@ from hook_cases import (
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOKS = ROOT / ".claude" / "hooks"
-GUARDS = sorted((HOOKS / "guard").glob("*.sh"))
-FILE_HOOKS = [HOOKS / "check-write-boundary.sh", HOOKS / "check-task-spec-owner.sh"]
+GUARDS = [HOOKS / "guard" / "shell.sh"]
+FILE_HOOKS = [HOOKS / "check-task-spec-owner.sh"]
+# The rules Claude Code holds with permission rules: they deny only in Cursor's shape (docs/hooks.md).
+DEMOTED = {"local-pr-ref", "pr-repo", "source-edit", "status"}
+DENIER = re.compile(r"EL_CAPITAN_GUARD_([A-Z_]+)=off for this guard")
+# Exit 3 (gitleaks' --exit-code) when the scanned text, or the commits on no remote, hold the fixture's AKIA key.
+GITLEAKS = """#!/bin/sh
+if [ "$1" = stdin ]; then grep -q AKIA && exit 3; exit 0; fi
+for repo; do :; done
+git -C "$repo" log -p HEAD --not --remotes | grep -q AKIA && exit 3
+exit 0
+"""
 # A hook run may take up to 120 s on a loaded runner (`run`), so these tests get more than the suite's 60 s.
 pytestmark = pytest.mark.timeout(300)
 GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
@@ -88,6 +98,7 @@ def fixture(home: Path) -> dict[str, Path]:
     trees["ctrlleak"] = repository(home / "ctrlleak", {})
     (trees["ctrlleak"] / "\x1f").mkdir()
     stage(trees["ctrlleak"], "\x1f/leak.txt", SECRET + "\n")
+    trees["pushleak"] = repository(home / "pushleak", {"leak.txt": SECRET + "\n"})
     trees["leaky"] = repository(home / "leaky", {"config.txt": "a=1\n"})
     (trees["leaky"] / "leak.txt").write_text(SECRET + "\n", encoding="utf-8")
     (trees["leaky"] / "config.txt").write_text(SECRET + "\n", encoding="utf-8")
@@ -112,10 +123,6 @@ def fixture(home: Path) -> dict[str, Path]:
     (tasks / "DDD-status" / ".task-id").write_text(json.dumps({"slug": "status-guard"}), encoding="utf-8")
     (tasks / "DDD-status" / "SPEC.md").write_text(STATUS_SPEC, encoding="utf-8")
     (home / "linked-task").symlink_to(tasks / "DDD-status")
-    # The config dirs an install recorded: a background job's scratch directory under one of them is writable.
-    # An entry outside `$HOME/.claude*` (here a plain directory of the home) counts for nothing.
-    manifest = {"config_dirs": [str(home / ".claude"), str(home / ".claude-work"), str(home / "elsewhere")]}
-    (home / ".agent" / "install-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return trees
 
 
@@ -138,20 +145,23 @@ def run(bash: str, hook: Path, stdin: str, env: dict, cwd: Path) -> subprocess.C
 
 
 def run_guard(bash: str, guard: Path, row: dict, env: dict) -> str:
-    """`deny`, `allow`, or `error: ...` for one hook run in one shape; a deny names its off switches."""
+    """`deny <rule>`, `allow`, or `error: ...` for one hook run in one shape; a deny names its off switches."""
     done = run(bash, guard, json.dumps(row["payload"]), env, row["cwd"])
     out, err = done.stdout.strip(), done.stderr.strip()
     claude = row["payload"].get("hook_event_name") == "PreToolUse"
     verdict = classify(claude, done.returncode, out, err, row.get("loose", False))
-    switch = "EL_CAPITAN_GUARD_" + guard.stem.upper().replace("-", "_") + "=off"
-    if verdict == "deny" and not (switch in out + err and "EL_CAPITAN_GUARDS=off" in out + err):
-        return f"error: {guard.name} denies without naming {switch} and EL_CAPITAN_GUARDS=off"
-    says, never = MESSAGES.get(guard.stem, ((), ()))
-    if verdict == "deny" and row["by"] == guard.stem and (any(text not in out + err for text in says) or any(text in out + err for text in never)):
-        return f"error: {guard.name} denial must say {says} and never {never}: {(out + err)[:300]!r}"
-    if verdict != "unknown":
+    if verdict == "unknown":
+        return f"error: {guard.name} exit {done.returncode} stdout={out[:200]!r} stderr={err[:300]!r}"
+    found = DENIER.search(out + err)
+    if verdict == "allow":
         return verdict
-    return f"error: {guard.name} exit {done.returncode} stdout={out[:200]!r} stderr={err[:300]!r}"
+    if not found or "EL_CAPITAN_GUARDS=off" not in out + err:
+        return f"error: {guard.name} denies without naming its rule's switch and EL_CAPITAN_GUARDS=off: {(out + err)[:300]!r}"
+    rule = found.group(1).lower().replace("_", "-")
+    says, never = MESSAGES.get(rule, ((), ()))
+    if rule == row["by"] and (any(text not in out + err for text in says) or any(text in out + err for text in never)):
+        return f"error: {rule} denial must say {says} and never {never}: {(out + err)[:300]!r}"
+    return f"deny {rule}"
 
 
 def shapes(command: str, cwd: Path) -> list[dict]:
@@ -171,7 +181,7 @@ def path_without(home: Path, *tools: str) -> str:
     """PATH with `tools` removed: a directory that holds one of them is replaced by a copy of its links
     without it, and every other directory stays as it is (built once, before any thread runs)."""
     entries = []
-    for directory in filter(os.path.isdir, os.environ.get("PATH", "").split(os.pathsep) + ["/usr/bin", "/bin"]):
+    for directory in filter(os.path.isdir, [str(home / "gitleaks-bin"), *os.environ.get("PATH", "").split(os.pathsep), "/usr/bin", "/bin"]):
         if not any(os.path.exists(os.path.join(directory, tool)) for tool in tools):
             entries.append(directory)
             continue
@@ -199,11 +209,16 @@ def expand(text: str, places: dict[str, Path]) -> str:
     return text
 
 
+def shaped(by: str | None, payload: dict) -> str | None:
+    """The rule a row expects in this payload's shape: a demoted rule is silent in Claude Code's."""
+    return None if by in DEMOTED and payload["hook_event_name"] == "PreToolUse" else by
+
+
 def rows_for(kind: str, table: list, places: dict[str, Path], env: dict, guards: list) -> list[dict]:
     rows = []
     for command, tree, by in table:
         for payload in shapes(expand(command, places), places[tree]):
-            rows.append({"label": f"{kind} {command[:70]!r} in {tree}", "payload": payload, "cwd": places[tree], "by": by, "env": env,
+            rows.append({"label": f"{kind} {command[:70]!r} in {tree}", "payload": payload, "cwd": places[tree], "by": shaped(by, payload), "env": env,
                          "guards": guards, "command": expand(command, places)})
     return rows
 
@@ -213,10 +228,9 @@ def cases(home: Path, places: dict[str, Path]) -> list[dict]:
     rows = rows_for("deny", DENY, places, {}, GUARDS)
     rows += rows_for("allow", [(command, tree, None) for command, tree in ALLOW], places, {}, GUARDS)
     for command, tree, by, awk_by, _ in PARSERS_DIFFER:
-        rows += [{**row, "awk_by": awk_by} for row in rows_for("parsers differ", [(command, tree, by)], places, {}, GUARDS)]
-    credentials = [guard for guard in GUARDS if guard.stem == "credentials"]
+        rows += [{**row, "awk_by": shaped(awk_by, row["payload"])} for row in rows_for("parsers differ", [(command, tree, by)], places, {}, GUARDS)]
     for command, tree, tool, env, by in MISSING:
-        found = rows_for(f"no-{tool} {env}", [(command, tree, by)], places, env, credentials)
+        found = rows_for(f"no-{tool} {env}", [(command, tree, by)], places, env, GUARDS)
         rows += [{**row, "loose": True, "missing": (tool,)} for row in found]
     for command, tree, env, by in ENV:
         rows += rows_for(f"env {env}", [(command, tree, by)], places, env, GUARDS)
@@ -225,19 +239,15 @@ def cases(home: Path, places: dict[str, Path]) -> list[dict]:
                  for payload in (claude, cursor)]
     for fields, tree, by in FILES:
         filled = {key: expand(value, places) if isinstance(value, str) else value for key, value in fields.items()}
-        rows += [{"label": f"file {fields}", "payload": payload, "cwd": places[tree], "by": by, "env": {}, "guards": FILE_HOOKS, "shell": False}
-                 for payload in file_shapes(filled, places[tree])]
-    # A deny row asks only the guard that must deny (on both parsers); the allow rows run every guard.
-    def asked(row: dict) -> list:
-        expected = {row["by"], row.get("awk_by", row["by"])}
-        return row["guards"] if None in expected else [g for g in row["guards"] if g.stem in expected]
-    return [{**row, "guards": asked(row)} for row in rows]
+        rows += [{"label": f"file {fields}", "payload": payload, "cwd": places[tree], "by": shaped(by, payload), "env": {}, "guards": FILE_HOOKS,
+                  "shell": False} for payload in file_shapes(filled, places[tree])]
+    return rows
 
 
 def failure(row: dict, verdicts: dict[str, str], parser: str) -> str:
     where = f"{row['label']} [{row['payload'].get('hook_event_name')}, {parser}]"
     errors = [v for v in verdicts.values() if v.startswith("error")]
-    deniers = sorted(name for name, v in verdicts.items() if v == "deny")
+    deniers = sorted(v.split()[1] for v in verdicts.values() if v.startswith("deny "))
     by = row.get("awk_by", row["by"]) if parser == "awk" else row["by"]
     if errors:
         return f"{where}: {errors[0]}"
@@ -255,7 +265,7 @@ def unreadable(job: tuple[str, Path, str, str], env: dict, places: dict[str, Pat
     run_env = {**env, "PATH": places[label.replace(" ", "-")]} if label in ("no jq", "no awk") else env
     done = run(bash, hook, stdin, run_env, places["nogit"])
     lines = len(done.stderr.strip().splitlines())
-    quiet = done.stdout.strip() in (("", "{}") if hook.stem == "credentials" and label != "no jq" else ("",))
+    quiet = done.stdout.strip() == ""
     ok = done.returncode == 0 and (lines == 1 and quiet if blocking else lines <= 1)
     if label == "no awk":  # a hook that needs awk says so in one line; one that does not judges as usual (2 is a deny)
         ok = done.returncode in (0, 2) and lines <= 1 and "not found" not in done.stderr
@@ -275,22 +285,6 @@ def unclassified() -> list[str]:
     known = {path.name for path in FILE_HOOKS} | set(SILENT)
     present = {path.name for path in HOOKS.glob("*.sh")}
     return [f"unclassified hook: {name}" for name in sorted(present - known)] + [f"missing hook: {name}" for name in sorted(known - present)]
-
-
-def shell_choice(env: dict) -> list[str]:
-    """The zsh rule follows the executing shell: Cursor's event always means zsh, Claude's follows `$SHELL`
-    (bash reads `=` as text), and with no SHELL at all it still decides rather than aborting under `set -u`."""
-    guard, found = HOOKS / "guard" / "zsh-equals.sh", []
-    cursor = json.dumps({"hook_event_name": "beforeShellExecution", "command": "echo ====="})
-    claude = json.dumps({"hook_event_name": "PreToolUse", "tool_input": {"command": "echo ====="}})
-    bash_claude = run("bash", guard, claude, {**env, "SHELL": "/bin/bash"}, ROOT)
-    if (bash_claude.returncode, bash_claude.stdout, bash_claude.stderr) != (0, "", ""):
-        found.append(f"SHELL=/bin/bash, Claude: expected a silent allow, got {bash_claude}")
-    bare = {key: value for key, value in env.items() if key != "SHELL"}
-    unset_cursor, unset_claude = run("bash", guard, cursor, bare, ROOT), run("bash", guard, claude, bare, ROOT)
-    if not (unset_cursor.returncode == 0 and '"deny"' in unset_cursor.stdout):
-        found.append(f"unset SHELL, Cursor: expected the JSON deny, got {unset_cursor}")
-    return found + ([] if unset_claude.returncode in (0, 2) else [f"unset SHELL, Claude: exit {unset_claude.returncode}"])
 
 
 def bashes() -> list[str]:
@@ -365,7 +359,11 @@ def world() -> Iterator[tuple[dict, dict[str, Path], list[dict]]]:
     home = fixture_home()
     tmp = home / "tmp"
     tmp.mkdir()
-    env = {**os.environ, **GIT_ID, "HOME": str(home), "SHELL": "/bin/zsh", "TMPDIR": str(tmp), "GIT_CEILING_DIRECTORIES": str(home.parent)}
+    (home / "gitleaks-bin").mkdir()
+    (home / "gitleaks-bin" / "gitleaks").write_text(GITLEAKS, encoding="utf-8")
+    (home / "gitleaks-bin" / "gitleaks").chmod(0o755)
+    env = {**os.environ, **GIT_ID, "HOME": str(home), "SHELL": "/bin/zsh", "TMPDIR": str(tmp), "GIT_CEILING_DIRECTORIES": str(home.parent),
+           "PATH": f"{home / 'gitleaks-bin'}{os.pathsep}{os.environ.get('PATH', '')}"}
     for key in [k for k in env if k.startswith(("CREW_", "EL_CAPITAN_"))]:
         env.pop(key)
     try:
@@ -399,11 +397,6 @@ def test_every_hook_is_classified() -> None:
     assert not unclassified(), unclassified()
 
 
-def test_the_zsh_rule_follows_the_executing_shell(world: tuple) -> None:
-    env, _, _ = world
-    assert not shell_choice(env), shell_choice(env)
-
-
 SLICES = 8
 
 
@@ -419,6 +412,15 @@ def test_cases(part: int, world: tuple) -> None:
     assert not failed, "\n".join(failed)
 
 
+def test_an_unreadable_index_skips_the_commit_scan(world: tuple) -> None:
+    """A commit in a repository whose index git cannot read is not scanned: one stderr line, no denial, in both shapes
+    (the push scan runs before anything is published)."""
+    env, places, _ = world
+    for payload in shapes("git commit -m x", places["corrupt"]):
+        done = run("bash", GUARDS[0], json.dumps(payload), env, places["corrupt"])
+        assert done.returncode == 0 and "cannot read the git index" in done.stderr and '"deny"' not in done.stdout, done
+
+
 def test_a_broken_shfmt_falls_back_to_awk(world: tuple) -> None:
     """A shfmt that prints invalid JSON makes jq fail, and awk then reads the command: the same records
     and the same deny. The real shfmt path, for its part, runs: on every listed difference its records differ."""
@@ -429,9 +431,8 @@ def test_a_broken_shfmt_falls_back_to_awk(world: tuple) -> None:
     (stub / "shfmt").write_text("#!/bin/sh\ncat >/dev/null\necho '{'\n", encoding="utf-8")
     (stub / "shfmt").chmod(0o755)
     row = {"command": "git reset --hard", "cwd": places["clean"], "env": {"PATH": f"{stub}{os.pathsep}{path_without(home, 'shfmt')}"},
-           "payload": shapes("git reset --hard", places["clean"])[0], "by": "destructive-git"}
-    guard = HOOKS / "guard" / "destructive-git.sh"
-    assert run_guard("bash", guard, row, {**env, **row["env"]}) == "deny"
+           "payload": shapes("git reset --hard", places["clean"])[1], "by": "destructive-git"}
+    assert run_guard("bash", GUARDS[0], row, {**env, **row["env"]}) == "deny destructive-git"
     assert records("bash", row, env, home, "shfmt") == records("bash", row, env, home, "awk")
     if "shfmt" in parsers():
         for command, tree, *_ in PARSERS_DIFFER:
@@ -444,12 +445,12 @@ def test_a_deep_pipeline_is_denied_quickly(world: tuple) -> None:
     if "shfmt" not in parsers():
         pytest.skip("shfmt is not installed; the awk path alone has no JSON to grow")
     env, places, _ = world
-    payload = shapes("true | " * 3900 + "git reset --hard", places["clean"])[0]
+    payload = shapes("true | " * 3900 + "git reset --hard", places["clean"])[1]
     start = time.monotonic()
-    done = run("bash", HOOKS / "guard" / "destructive-git.sh", json.dumps(payload), env, places["clean"])
+    done = run("bash", GUARDS[0], json.dumps(payload), env, places["clean"])
     elapsed = time.monotonic() - start
     # The unbounded path took 25 s here; 15 s leaves room for a loaded CI runner.
-    assert done.returncode == 2 and elapsed < 15, f"exit {done.returncode} after {elapsed:.1f}s: {done.stderr[:300]}"
+    assert '"deny"' in done.stdout and elapsed < 15, f"{done.stdout[:200]} after {elapsed:.1f}s: {done.stderr[:300]}"
 
 
 @pytest.mark.parametrize("label, extra, ago, calls", NOTIFY, ids=[row[0] for row in NOTIFY])
@@ -478,22 +479,14 @@ def test_idle_notification_is_quiet(label: str, extra: dict, ago: int | None, ca
     assert not calls or stamp.read_text(encoding="utf-8").strip().isdigit()
 
 
-def test_a_status_denial_names_crew_task(world: tuple) -> None:
-    """The Status guard's one line tells the agent which commands move a status."""
-    env, places, _ = world
-    fields = {"file_path": str(places["tasks"] / "DDD-status" / "SPEC.md"), "old_string": "DRAFTING", "new_string": "APPROVED"}
-    done = run("bash", HOOKS / "check-task-spec-owner.sh", json.dumps(file_shapes(fields, places["clean"])[0]), env, places["clean"])
-    assert done.returncode == 2 and "crew-task.py mark-approved | mark-implementing | mark-done" in done.stderr, done
-
-
-def test_the_task_file_tripwire_answers_cursor(world: tuple) -> None:
-    """Cursor's `beforeShellExecution` payload (the command at the top level): a redirect onto a task SPEC.md gets the
+def test_the_shell_guard_answers_cursor(world: tuple) -> None:
+    """Cursor's `beforeShellExecution` payload (the command at the top level): an `rm` of a task SPEC.md gets the
     JSON deny, a `crew-task.py` call gets `{}` (an empty decision: the entry is `failClosed: true`, and Cursor reads
     silence from such a hook as a crash). The table rows run in this shape too; this names it."""
     env, places, _ = world
-    guard = HOOKS / "guard" / "task-files.sh"
+    guard = GUARDS[0]
     spec = places["tasks"] / "DDD-status" / "SPEC.md"
-    denied = run("bash", guard, json.dumps(shapes(f"echo x > {spec}", places["clean"])[1]), env, places["clean"])
+    denied = run("bash", guard, json.dumps(shapes(f"rm {spec}", places["clean"])[1]), env, places["clean"])
     allowed = run("bash", guard, json.dumps(shapes(f"~/.agent/bin/crew-task.py mark-approved {spec.parent}", places["clean"])[1]),
                   env, places["clean"])
     assert denied.returncode == 0 and json.loads(denied.stdout)["permission"] == "deny", denied
@@ -502,7 +495,7 @@ def test_the_task_file_tripwire_answers_cursor(world: tuple) -> None:
 
 def test_every_cursor_security_guard_fails_closed_and_answers() -> None:
     """In Cursor a hook that crashes, times out or prints invalid JSON fails open unless `failClosed: true`: every
-    security guard has it, the advisory zsh-equals and every observer do not, and each fail-closed guard answers a
+    security guard has it, every observer does not, and each fail-closed guard answers a
     Cursor event it has no objection to with `{}` rather than silence (which Cursor reads as a crash)."""
     template = json.loads((ROOT / ".cursor" / "hooks.template.json").read_text(encoding="utf-8"))["hooks"]
 
@@ -510,8 +503,7 @@ def test_every_cursor_security_guard_fails_closed_and_answers() -> None:
         return entry["command"].split('"')[1].split("/.claude/hooks/", 1)[1]
 
     closed = {script(entry) for entries in template.values() for entry in entries if entry.get("failClosed") is True}
-    guards = {f"guard/{path.name}" for path in GUARDS} - {"guard/zsh-equals.sh"}
-    assert closed == guards | {"check-write-boundary.sh", "check-task-spec-owner.sh"}, closed
+    assert closed == {"guard/shell.sh", "check-task-spec-owner.sh"}, closed
     for event in ("beforeShellExecution", "preToolUse"):
         for entry in template[event]:
             if script(entry) not in closed:
@@ -645,25 +637,9 @@ def test_the_cursor_copy_runs_once(world: tuple) -> None:
 def test_an_inherited_input_flag_changes_nothing(world: tuple) -> None:
     """`HOOK_INPUT_READ` exported by the harness is reset when lib/hook.sh is sourced, so the payload is still read."""
     env, places, _ = world
-    payload = json.dumps(shapes("git reset --hard", places["clean"])[0])
-    done = run("bash", HOOKS / "guard" / "destructive-git.sh", payload, {**env, "HOOK_INPUT_READ": "1"}, places["clean"])
-    assert done.returncode == 2 and "Destructive git" in done.stderr, done
-
-
-def test_only_a_task_spec_needs_the_status_reader(world: tuple) -> None:
-    """With `task_status` missing, a write elsewhere is still allowed and a task spec edit is refused (fail closed)."""
-    env, places, _ = world
-    copy = places["home"] / "no-reader" / ".claude" / "hooks"
-    if not copy.exists():
-        shutil.copytree(HOOKS, copy, symlinks=True)
-    hook = copy / "check-task-spec-owner.sh"
-    elsewhere = run("bash", hook, json.dumps(file_shapes({"file_path": str(places["clean"] / "new.md"), "content": "x"},
-                                                         places["clean"])[0]), env, places["clean"])
-    spec = run("bash", hook, json.dumps(file_shapes({"file_path": str(places["tasks"] / "DDD-status" / "SPEC.md"),
-                                                     "old_string": "- [ ] T1: a", "new_string": "- [x] T1: a"},
-                                                    places["clean"])[0]), env, places["clean"])
-    assert (elsewhere.returncode, elsewhere.stdout, elsewhere.stderr) == (0, "", ""), elsewhere
-    assert spec.returncode == 2 and "no verdict" in spec.stderr, spec
+    payload = json.dumps(shapes("crew-task.py restore-status /x --accept ok", places["clean"])[0])
+    done = run("bash", GUARDS[0], payload, {**env, "HOOK_INPUT_READ": "1"}, places["clean"])
+    assert done.returncode == 2 and "Owner only" in done.stderr, done
 
 
 def test_every_hook_survives_bad_input(world: tuple) -> None:

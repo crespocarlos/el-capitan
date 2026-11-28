@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
-"""The task-directory half of `check-task-spec-owner.sh`: one Write, Edit or MultiEdit payload on stdin.
+"""The task-directory rules of `check-task-spec-owner.sh`: one Write, Edit, MultiEdit or Delete payload on stdin.
 
-Usage: python3 -I spec_guard.py <tasks root>. Prints one line:
-  skip            the target is not a file this guard protects (outside the tasks root, or a task file
-                  other than SPEC.md and the evidence files below);
-  ok <path>       a task SPEC.md (the resolved path) whose Status the write leaves alone, or a new one
-                  born DRAFTING or with no Status; the shell guard goes on to its slug check;
-  deny <message>  refused.
-Any other outcome (a crash, no output) is a denial in the caller: this guard fails closed.
+Usage: python3 -I spec_guard.py <tasks root> [--demoted]. Prints one line:
+  skip                   no objection;
+  deny <rule> <message>  refused by `rule` (its off switch is `EL_CAPITAN_GUARD_<RULE>`).
 
-The path is decided first, with realpath and case-insensitive names, so `..`, `//`, a symlinked task
-directory and `spec.md` all reach the check, and a write anywhere else never loads the Status reader.
-For a task SPEC.md the reader is `task_status` (loaded by path): `spec_text` gives the universal-newline
-text `read_status` sees, on both the file and what the write would leave, and `status_of` reads it. A
-write that leaves more than one `## Status` heading is refused. The tool decides which fields are read
-(Write: `content`; Edit: `old_string`, `new_string`, `replace_all`; MultiEdit: `edits`); a payload with
-another tool's fields, an unknown tool, or an edit that does not apply exactly once is refused.
-`.task-id`, PROGRESS.md and a review's or spec run's (`spec-agents/`) `*.expect`, `*.provenance.json`, `*.out.md`,
-`*.prev.md` and `*.unanswered` are written only by crew tools.
+Rules, decided on the resolved path first (realpath, names compared case-insensitively), so a write anywhere else
+never loads the Status reader:
+  spec-owner  a task SPEC.md whose title neither equals nor extends the slug its `.task-id` records, over an existing
+              spec whose Status is past DRAFTING: a reused directory that would overwrite a finished task's spec. While
+              a spec is DRAFTING its title is the author's to change; `mark-approved` records the approved title's slug;
+  task-files  Cursor's Delete of a task SPEC.md, PROGRESS.md, `.task-id` or review evidence.
+With `--demoted` (a harness with no ask rule for it, docs/hooks.md), also:
+  status      an Edit, MultiEdit or Write that changes the `## Status` value of an existing task SPEC.md as
+              `task_status` reads it, leaves a second `## Status` heading, or cannot be applied exactly; a new SPEC.md
+              whose Status is anything but empty or DRAFTING.
 
-`spec_guard.py --shell <tasks root>` is the path half of `guard/task-files.sh`: NUL-separated `kind` (`w` a write
-target, `d` a copy destination), `cwd`, `path` triples on stdin (the literal targets a shell command writes), one
-`deny <message>` line for the first protected one (`shell_verdict`), nothing otherwise.
+`spec_guard.py --shell <tasks root>`: NUL-separated `cwd`, `path` pairs on stdin (what an `rm`, `unlink` or
+`find -delete` removes), one `deny <message>` line for the first task record, task directory, tasks root or directory
+above it, nothing otherwise.
 """
 
 from __future__ import annotations
@@ -107,102 +104,101 @@ def written(tool: str, fields: dict, disk: str) -> tuple[str | None, str]:
 
 
 def evidence(names: list[str]) -> bool:
-    """`<task>/.task-id`, `<task>/PROGRESS.md` (its gate-stamped transitions are the recorded status), or
-    `<task>/review/**/<name>` or `<task>/spec-agents/**/<name>` with an evidence suffix (lowercased names)."""
+    """`<task>/.task-id`, `<task>/PROGRESS.md`, or `<task>/review/**/<name>` or `<task>/spec-agents/**/<name>` with an
+    evidence suffix (lowercased names)."""
     return names[1:] in ([".task-id"], ["progress.md"]) or (len(names) > 2 and names[1] in ("review", "spec-agents") and names[-1].endswith(EVIDENCE))
 
 
-def spec_verdict(path: str, tool: str, fields: dict) -> str:
-    """The verdict for a write to the task SPEC.md at `path`, read with the canonical reader."""
+def owner_verdict(path: str, fields: dict, status: ModuleType, before: str | None) -> str:
+    """spec-owner: the title this write gives the spec (its first line, `# Spec: ...`) against the recorded slug; a spec
+    not there yet (`before` None) has nothing to lose."""
+    text = next((fields[key] for key in ("content", "new_string") if isinstance(fields.get(key), str) and fields[key]), "")
+    first = text.split("\n", 1)[0]
+    if before in (None, "DRAFTING") or not first.startswith("# "):
+        return "skip"
+    try:
+        owner = status.title_slug(json.loads(Path(path).with_name(".task-id").read_text(encoding="utf-8")).get("slug") or "")
+    except (OSError, ValueError, AttributeError):
+        return "skip"
+    claim = status.title_slug(re.sub(r"^# +(Spec: *)?", "", first))
+    if not owner or claim == owner or claim.startswith(owner + "-") or owner.rstrip("-") == claim:
+        return "skip"
+    return (
+        f"deny spec-owner Task spec guard: {Path(path).parent} belongs to '{owner}', and the spec being written is titled '{claim}'. "
+        "Writing it here overwrites another task's spec, and task directories are outside version control. "
+        "Generate a new task directory (Step 1 of the specwriter protocol) instead of reusing this one."
+    )
+
+
+def status_verdict(path: str, tool: str, fields: dict, status: ModuleType, disk: str, exists: bool) -> str:
+    """status: what the write does to the spec's `## Status`, read with the canonical reader."""
+    after, reason = written(tool, fields, disk)
+    if after is None:
+        return f"deny status Task spec guard: cannot tell what this write does to the Status of {path}: {reason}. Write the edit exactly as the file holds it."
+    if len(HEADING.findall(status.spec_text(after))) > 1:
+        return f"deny status Task spec guard: this leaves more than one '## Status' heading in {path}; a spec has exactly one."
+    before, now = status.status_of(disk), status.status_of(after)
+    if not exists and now not in BORN:
+        return f"deny status Task spec guard: a new spec starts as DRAFTING, not '{now}' ({path}). The status moves only through {MOVES}."
+    if exists and before != now:
+        return f"deny status Task spec guard: this changes the Status of {path} from '{before or 'none'}' to '{now or 'none'}'. The status moves only through {MOVES}; edit the rest of the spec freely."
+    return "skip"
+
+
+def verdict(payload: dict, tasks_root: str, demoted: bool) -> str:
+    """Decide on the path first; only a task SPEC.md loads the Status reader."""
+    fields = fields_of(payload)
+    path = target(fields, payload)
+    root = os.path.realpath(tasks_root)
+    if not path or not path.startswith(root + os.sep):
+        return "skip"
+    names = [part.lower() for part in os.path.relpath(path, root).split(os.sep)]
+    tool = payload.get("tool_name") if isinstance(payload.get("tool_name"), str) else ""
+    if tool == "Delete":
+        record = names[1:] == ["spec.md"] or evidence(names)
+        return f"deny task-files Task spec guard: {path} is a task record; only crew tools remove it." if record else "skip"
+    if names[1:] != ["spec.md"]:
+        return "skip"
     status = reader()
     exists = os.path.exists(path)
     disk = ""
     if exists:
         with open(path, encoding="utf-8", newline="") as handle:
             disk = handle.read()
-    after, reason = written(tool, fields, disk)
-    if after is None:
-        return f"deny Task spec guard: cannot tell what this write does to the Status of {path}: {reason}. Write the edit exactly as the file holds it."
-    if len(HEADING.findall(status.spec_text(after))) > 1:
-        return f"deny Task spec guard: this leaves more than one '## Status' heading in {path}; a spec has exactly one."
-    before, now = status.status_of(disk), status.status_of(after)
-    if not exists and now not in BORN:
-        return f"deny Task spec guard: a new spec starts as DRAFTING, not '{now}' ({path}). The status moves only through {MOVES}."
-    if exists and before != now:
-        return f"deny Task spec guard: this changes the Status of {path} from '{before or 'none'}' to '{now or 'none'}'. The status moves only through {MOVES}; edit the rest of the spec freely."
-    return f"ok {path}"
+    found = status_verdict(path, tool, fields, status, disk, exists) if demoted else "skip"
+    return found if found != "skip" else owner_verdict(path, fields, status, status.status_of(disk) if exists else None)
 
 
-def verdict(payload: dict, tasks_root: str) -> str:
-    """Decide on the path first; only an existing or new task SPEC.md loads the Status reader."""
-    fields = fields_of(payload)
-    path = target(fields, payload)
-    root = os.path.realpath(tasks_root)
-    if not path or not path.startswith(root + os.sep):
-        return "skip"
-    parts = os.path.relpath(path, root).split(os.sep)
-    names = [part.lower() for part in parts]
-    if payload.get("tool_name") == "Delete" and (names[1:] == ["spec.md"] or evidence(names)):
-        return f"deny Task spec guard: {path} is a task record; only crew tools remove it."
-    if evidence(names):
-        return f"deny Task spec guard: {path} is task or review evidence that only crew tools write."
-    if names[1:] != ["spec.md"]:
-        return "skip"
-    if parts[1] != "SPEC.md":
-        return f"deny Task spec guard: write the task spec as SPEC.md, not {parts[1]} (on a case-insensitive disk it is the same file)."
-    tool = payload.get("tool_name") if isinstance(payload.get("tool_name"), str) else ""
-    return spec_verdict(path, tool, fields)
-
-
-def shell_verdict(kind: str, path: str, cwd: str, tasks_root: str) -> str:
-    """`guard/task-files.sh`: "" or `deny <message>` for one literal path a shell command writes, run in `cwd`.
-
-    The path is decided as for a file write, `$HOME` and `${HOME}` read as the hook's HOME. An existing task SPEC.md
-    or `.task-id`, PROGRESS.md and any review evidence file are refused; a SPEC.md or `.task-id` not there yet passes
-    only as a task's first write, in a directory with neither a PROGRESS.md nor a `.task-id`. A `cp`/`mv`/`rsync`
-    destination (`kind` "d") anywhere inside a task directory is refused, so a whole task folder is never copied over
-    another. A removal (`kind` "r": `rm`, `unlink`, `find -delete`) of a protected file, a task directory, the tasks
-    root or a directory above it is refused.
-    """
+def removal(path: str, cwd: str, tasks_root: str) -> str:
+    """`deny <message>` when removing `path` (run in `cwd`, `$HOME` and `${HOME}` read as the hook's HOME) removes a
+    task record, a task directory, the tasks root or a directory above it, or names a variable the guard cannot read
+    while it runs inside the tasks root; "" otherwise."""
     home = os.environ.get("HOME", "")
     for spelled in ("${HOME}", "$HOME"):
         path = path.replace(spelled, home) if home else path
     full = os.path.realpath(os.path.join(cwd, os.path.expanduser(path)))
     root = os.path.realpath(tasks_root)
-    if kind == "r" and (full == root or root.startswith(full.rstrip(os.sep) + os.sep)):
+    if "$" in path and (os.path.realpath(cwd) + os.sep).startswith(root + os.sep):
+        return f"deny Task file guard: this shell command removes {path}, a path the guard cannot resolve, inside {root}. Name the path."
+    if full == root or root.startswith(full.rstrip(os.sep) + os.sep):
         return f"deny Task file guard: this shell command removes {full}, which holds every task's records."
     if not full.startswith(root + os.sep):
         return ""
     names = [part.lower() for part in os.path.relpath(full, root).split(os.sep)]
-    if kind == "d":
-        return f"deny Task file guard: this shell command copies or moves into {full}, inside a task directory that only crew tools write."
-    if kind == "r" and len(names) == 1:
-        return f"deny Task file guard: this shell command removes the task directory {full}."
-    if kind == "r" and (names[1:] == ["spec.md"] or evidence(names)):
+    if len(names) == 1 or names[1:] == ["spec.md"] or evidence(names):
         return f"deny Task file guard: this shell command removes {full}, a task record only crew tools change."
-    task = os.path.join(root, os.path.relpath(full, root).split(os.sep)[0])
-    first = not any(os.path.exists(os.path.join(task, name)) for name in ("PROGRESS.md", ".task-id"))
-    if names[1:] in (["spec.md"], [".task-id"]) and not os.path.exists(full) and first:
-        return ""
-    if names[1:] == ["spec.md"]:
-        return f"deny Task file guard: this shell command writes {full}. Edit the spec with the Edit tool; the Status moves only through {MOVES}."
-    if evidence(names):
-        return f"deny Task file guard: this shell command writes {full}, evidence that only crew tools write."
     return ""
 
 
 def main() -> int:
     if sys.argv[1:2] == ["--shell"]:
-        # NUL-separated `kind`, `cwd`, `path` triples on stdin; the first refusal is printed, else nothing.
         fields = sys.stdin.read().split("\0")
-        for kind, cwd, path in zip(fields[0::3], fields[1::3], fields[2::3]):
-            found = shell_verdict(kind, path, cwd, sys.argv[2])
-            if found:
-                print(found)
-                break
+        found = next((line for cwd, path in zip(fields[0::2], fields[1::2]) if (line := removal(path, cwd, sys.argv[2]))), "")
+        if found:
+            print(found)
         return 0
     payload = json.loads(sys.stdin.read() or "{}")
-    print(verdict(payload if isinstance(payload, dict) else {}, sys.argv[1]))
+    print(verdict(payload if isinstance(payload, dict) else {}, sys.argv[1], "--demoted" in sys.argv[2:]))
     return 0
 
 

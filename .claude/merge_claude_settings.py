@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Merge el-capitan hooks into an existing ~/.claude/settings.json (idempotent).
 
-Usage: merge_claude_settings.py <src_template.json> <dest_settings.json> [--manifest <home>] [--auto-memory-off]
+Usage: merge_claude_settings.py <src_template.json> <dest_settings.json> [--manifest <home>] [--auto-memory-off] [--sandbox]
 
 The source is `.claude/settings.template.json`; the checkout's own `.claude/settings.json` is its project
 settings and carries no hooks.
 
 `autoMemoryEnabled: false` (`AUTO_MEMORY_OFF`, not in the template) is merged only with `--auto-memory-off`,
 which install passes once the dir's Claude memory entries are in crew memory; a value the destination holds
-is never changed, and uninstall removes the key only while it is still false.
+is never changed, and uninstall removes the key only while it is still false. `--sandbox` (install's opt-in) merges
+`SANDBOX` the same way: Claude Code's sandbox for Bash and its child processes.
 
 With `--manifest`, what the merge added (rules, hooks and keys the destination lacked) is recorded in
 `<home>/.agent/install-manifest.json`, under the destination's config dir (`install_blocks.settings_section`);
@@ -49,6 +50,7 @@ from install_blocks import write_json
 # Written by install, not carried in the template: install turns auto-memory off in a config dir only once
 # that dir's Claude memory entries are imported, and a template key would turn it off before any migration.
 AUTO_MEMORY_OFF = {"autoMemoryEnabled": False}
+SANDBOX = {"sandbox": {"enabled": True}}
 
 
 def template_commands(entries):
@@ -309,7 +311,7 @@ def unmerge(dest, recorded, src, warn):
         if key in ("hooks", "permissions"):
             if dest.get(key) in ({}, None):
                 dest.pop(key, None)
-        elif key in dest and dest[key] == {**AUTO_MEMORY_OFF, **src}.get(key):
+        elif key in dest and dest[key] == {**AUTO_MEMORY_OFF, **SANDBOX, **src}.get(key):
             del dest[key]
     return dest
 
@@ -353,13 +355,13 @@ def expand_dirs(src, home):
     return {**src, "permissions": {**permissions, "additionalDirectories": expanded}}
 
 
-def read_template(src_path: str, auto_memory_off: bool) -> dict:
-    """The template, plus `AUTO_MEMORY_OFF` when install found no Claude memory entry left to import, with its
+def read_template(src_path: str, opt_in: dict) -> dict:
+    """The template, plus the `opt_in` keys (`AUTO_MEMORY_OFF` once no Claude memory entry is left to import, `SANDBOX`), with its
     directories expanded under $HOME (`expand_dirs`)."""
     with open(src_path, encoding="utf-8") as f:
         src = json.load(f)
-    if auto_memory_off and isinstance(src, dict):
-        src = {**AUTO_MEMORY_OFF, **src}
+    if isinstance(src, dict):
+        src = {**opt_in, **src}
     return expand_dirs(src, os.path.expanduser("~"))
 
 
@@ -367,16 +369,17 @@ class MergeError(Exception):
     """A merge that cannot proceed; its message is the one stderr line, and the exit is 2."""
 
 
-def parse_arguments(argv: list[str]) -> tuple[str, str, str | None, bool]:
-    """(src, dest, manifest home or None, auto-memory-off) from the command line, or MergeError with the usage."""
-    auto_memory_off = "--auto-memory-off" in argv
-    arguments = [argument for argument in argv if argument != "--auto-memory-off"]
+def parse_arguments(argv: list[str]) -> tuple[str, str, str | None, dict]:
+    """(src, dest, manifest home or None, the opt-in keys) from the command line, or MergeError with the usage."""
+    flags = {"--auto-memory-off": AUTO_MEMORY_OFF, "--sandbox": SANDBOX}
+    opt_in = {key: value for flag, keys in flags.items() if flag in argv for key, value in keys.items()}
+    arguments = [argument for argument in argv if argument not in flags]
     manifest_home = None
     if arguments[2:3] == ["--manifest"] and len(arguments) == 4:
         manifest_home, arguments = arguments[3], arguments[:2]
     if len(arguments) != 2:
-        raise MergeError("usage: merge_claude_settings.py <src> <dest> [--manifest <home>] [--auto-memory-off]")
-    return arguments[0], arguments[1], manifest_home, auto_memory_off
+        raise MergeError("usage: merge_claude_settings.py <src> <dest> [--manifest <home>] [--auto-memory-off] [--sandbox]")
+    return arguments[0], arguments[1], manifest_home, opt_in
 
 
 def read_destination(dest_path: str) -> tuple[dict, str]:
@@ -423,9 +426,9 @@ def write_merged(dest: dict, src: dict, dest_path: str, original: str, manifest_
 
 def merge(argv: list[str]) -> str:
     """Run one merge from its command line; the destination path, or MergeError."""
-    src_path, dest_path, manifest_home, auto_memory_off = parse_arguments(argv)
+    src_path, dest_path, manifest_home, opt_in = parse_arguments(argv)
     try:
-        src = read_template(src_path, auto_memory_off)
+        src = read_template(src_path, opt_in)
     except (OSError, json.JSONDecodeError) as error:
         raise MergeError(f"merge_claude_settings: cannot read template: {error}") from error
     dest, original = read_destination(dest_path)

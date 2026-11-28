@@ -10,6 +10,7 @@ and the PR's branch do not decide it. The messages are the contract hooks and sk
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from crew.task.task_state import (
     unresolved,
     write_status,
 )
-from crew.task.task_status import ACCEPTED, review_file, reviewed_at, typed_tests_problem
+from crew.task.task_status import ACCEPTED, review_file, reviewed_at, title_slug, typed_tests_problem
 from crew.task.task_worktrees import default_names
 
 CLOSABLE = ("DRAFTING", "APPROVED", "IMPLEMENTING", "ON-HOLD")  # the states `mark-done --force` closes; not ABANDONED
@@ -49,11 +50,19 @@ def load_task(task_dir: str | Path, check: bool = True) -> TaskState | None:
     return r
 
 
+def owner() -> bool:
+    """The owner runs this command: stdin is a terminal, which an agent's shell does not give it."""
+    return sys.stdin.isatty()
+
+
 def restore_status(task_dir: str | Path, accept: str | None = None) -> int:
     """Clear a TAMPERED task: write the recorded status back into the spec, or with `accept` (the owner's note, in the
-    owner's own terminal: `guard/owner-only.sh` refuses it from an agent) record the spec's status as a stamped
-    transition. Only a gate-stamped status is restored, or DRAFTING for a task nothing recorded; an untampered task is
-    left as it is."""
+    owner's own terminal: `owner()` refuses it anywhere else, as the shell guard's owner-only rule does) record the
+    spec's status as a stamped transition. Only a gate-stamped status is restored, or DRAFTING for a task nothing
+    recorded; an untampered task is left as it is."""
+    if accept is not None and not owner():
+        print("error: restore-status --accept is the owner's: run it in your own terminal; nothing written", file=sys.stderr)
+        return 2
     r = load_task(task_dir, check=False)
     if r is None:
         return 1
@@ -106,7 +115,16 @@ def mark_approved(task_dir: str | Path) -> int:
     if problem:
         print(f"error: {name(r)}: {problem}; fix the ## Tests block before approving", file=sys.stderr)
         return 1
-    return 0 if set_status(r, "APPROVED", "DRAFTING → APPROVED") else 1
+    if not set_status(r, "APPROVED", "DRAFTING → APPROVED"):
+        return 1
+    # The approved title's slug becomes the task's, so the spec-owner guard accepts a title changed while drafting.
+    title = re.match(r"# +(?:Spec: *)?(.+)", r.text)
+    if title and r.meta.get("slug") not in (None, title_slug(title.group(1))):
+        try:
+            atomic_write(r.task / ".task-id", json.dumps({**r.meta, "slug": title_slug(title.group(1))}, indent=2) + "\n")
+        except OSError as error:
+            print(f"warning: {name(r)}: .task-id slug not updated: {error}", file=sys.stderr)
+    return 0
 
 
 def update_task_branch(r: TaskState, branch: str, worktree: Path | None = None) -> bool:

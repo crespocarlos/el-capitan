@@ -156,9 +156,9 @@ def test_project_settings_register_no_hooks() -> None:
 
 
 def test_settings_merge(tmp: Path) -> None:
-    """The installer retires the SPEC.md ask rules an earlier install recorded and the template dropped, and
-    keeps the user's own rules, an ask rule on the task directory among them."""
-    spec_rules = ["Edit(~/.agent/tasks/*/SPEC.md)", "Write(~/.agent/tasks/*/SPEC.md)"]
+    """The installer retires the Write ask rule an earlier install recorded and the template dropped, adds the
+    template's Edit ask rule on task specs in place of the broader ask rule it narrows, and keeps the user's other rules."""
+    spec_rules = ["Write(~/.agent/tasks/*/SPEC.md)"]
     user = {"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"],
                             "ask": [*spec_rules, "Edit(~/.agent/tasks/**)", "Edit(~/.claude/**)"]},
             "hooks": {}}
@@ -173,9 +173,9 @@ def test_settings_merge(tmp: Path) -> None:
                             capture_output=True, text=True)
     merged = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
     recorded = json.loads((home / ".agent/install-manifest.json").read_text(encoding="utf-8"))[section]
-    check("the merge retires the recorded SPEC.md ask rules, forgets them, and keeps the user's own rules",
-          result.returncode == 0 and merged["ask"] == ["Edit(~/.agent/tasks/**)", "Edit(~/.claude/**)"]
-          and "Bash(my-own *)" in merged["allow"] and "ask" not in recorded.get("rules", {}),
+    check("the merge retires the recorded Write ask rule, forgets it, and keeps the user's own rules",
+          result.returncode == 0 and merged["ask"] == ["Edit(~/.claude/**)", "Edit(~/.agent/tasks/*/SPEC.md)"]
+          and "Bash(my-own *)" in merged["allow"] and recorded["rules"]["ask"] == ["Edit(~/.agent/tasks/*/SPEC.md)"],
           (result.stderr[-200:], merged, recorded))
 
 
@@ -274,12 +274,12 @@ def unmatch(data: dict) -> None:
 
 def drop_guard(data: dict) -> None:
     shell = data["hooks"]["beforeShellExecution"]
-    data["hooks"]["beforeShellExecution"] = [e for e in shell if "credentials" not in e["command"]]
+    data["hooks"]["beforeShellExecution"] = [e for e in shell if "guard/shell.sh" not in e["command"]]
 
 
 def drop_claude_guard(data: dict) -> None:
     for entry in data["hooks"]["PreToolUse"]:
-        entry["hooks"] = [hook for hook in entry["hooks"] if "credentials" not in hook["command"]]
+        entry["hooks"] = [hook for hook in entry["hooks"] if "guard/shell.sh" not in hook["command"]]
 
 
 def tilde_hook(home: Path) -> None:
@@ -293,9 +293,9 @@ def absolute_hook(home: Path) -> None:
 
 
 def fail_open(data: dict) -> None:
-    """The installed Cursor source-edit guard loses `failClosed: true`, as an old install or a hand edit leaves it."""
+    """The installed Cursor shell guard loses `failClosed: true`, as an old install or a hand edit leaves it."""
     for entry in data["hooks"]["beforeShellExecution"]:
-        if "source-edit" in entry["command"]:
+        if "guard/shell.sh" in entry["command"]:
             entry.pop("failClosed")
 
 
@@ -336,10 +336,10 @@ BAD_CONFIG = '{"gc": {"artifact_days": 1}}'
     ("wrong matcher", lambda home: edit_json(home / ".claude/settings.json", unmatch),
      "hooks", "missing or different PreToolUse Bash"),
     ("missing registration", lambda home: edit_json(home / ".cursor/hooks.json", drop_guard),
-     "hooks", "guard/credentials.sh"),
+     "hooks", "guard/shell.sh"),
     ("a Cursor security guard that fails open", lambda home: edit_json(home / ".cursor/hooks.json", fail_open),
      "hooks", "Cursor: security guards without failClosed: true (a crash lets the action through): "
-              'beforeShellExecution: bash "$HOME/.claude/hooks/guard/source-edit.sh"'),
+              'beforeShellExecution: bash "$HOME/.claude/hooks/guard/shell.sh"'),
     ("over-limit state", over_limit, "state", "tasks 0.0 MB (limit 0 MB); crew gc"),
     ("telemetry", telemetry, "state", "crew-task.py gc --only telemetry --apply"),
     ("bad config", lambda home: (home / ".agent/config.json").write_text(BAD_CONFIG), "config", "artifact_days"),
@@ -712,17 +712,17 @@ def test_doctor_cursor_duplicates(installed: Path, tmp: Path) -> None:
     edit_json(home / ".cursor/hooks.json", fail_open)
     opened = found(tmp)
     check("a fail-closed guard whose Cursor entry is fail-open keeps running, so it is flagged",
-          [level for level, _ in opened] == ["WARN"] and "guard/source-edit.sh (" in opened[0][1], opened)
+          [level for level, _ in opened] == ["WARN"] and "guard/shell.sh (" in opened[0][1], opened)
 
     def comment_only(data: dict) -> None:
         for entry in data["hooks"]["beforeShellExecution"]:
-            if "destructive-git" in entry["command"]:
-                entry["command"] = "true # $HOME/.claude/hooks/guard/destructive-git.sh"
+            if "guard/shell.sh" in entry["command"]:
+                entry["command"] = "true # $HOME/.claude/hooks/guard/shell.sh"
 
     edit_json(home / ".cursor/hooks.json", comment_only)
     spoofed = found(tmp)
     check("a guard whose Cursor entry only names it in a comment keeps running, so it is flagged",
-          [level for level, _ in spoofed] == ["WARN"] and "guard/destructive-git.sh (" in spoofed[0][1], spoofed)
+          [level for level, _ in spoofed] == ["WARN"] and "guard/shell.sh (" in spoofed[0][1], spoofed)
 
 
 def claude_memory_entry(home: Path, folder: str) -> None:

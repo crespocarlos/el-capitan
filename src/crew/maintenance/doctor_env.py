@@ -60,7 +60,8 @@ def check_environment(home: Path, root: Path = ROOT) -> list[Line]:
 
 
 def check_tools(sign_in: bool = True) -> list[Line]:
-    """gh, git, jq and uv (required); shfmt (optional), which hook parser runs; gh sign-in."""
+    """gh, git, jq and uv (required); gitleaks (the credentials rule's scanner: without it commits and pushes are
+    denied); shfmt (optional), which hook parser runs; gh sign-in."""
     found = {name: version([name, "--version"]) for name in (*REQUIRED, "shfmt")}
     missing = [name for name in REQUIRED if not found[name]]
     listed = ", ".join(f"{name} {found[name] or 'MISSING'}" for name in REQUIRED)
@@ -68,6 +69,9 @@ def check_tools(sign_in: bool = True) -> list[Line]:
     lines = [Line("FAIL" if missing else "ok", "tools", listed + fix)]
     parser = "shfmt (bash syntax tree)" if found["shfmt"] and found["jq"] else "awk fallback (install shfmt for a real syntax tree)"
     lines.append(Line("note", "tools", f"shfmt {found['shfmt'] or 'absent'}; hook parser: {parser}"))
+    gitleaks = version([shutil.which("gitleaks") or str(Path.home() / ".agent" / "bin" / "gitleaks"), "version"])
+    absent = f"gitleaks absent: the shell guard denies every commit and push{RERUN}"
+    lines.append(Line("ok", "tools", f"gitleaks {gitleaks}") if gitleaks else Line("FAIL", "tools", absent))
     if found["gh"] and sign_in:
         try:
             signed_in = gh("auth", "status", timeout=20).returncode == 0

@@ -147,9 +147,7 @@ def make_parser() -> argparse.ArgumentParser:
     restorer = commands.add_parser("restore-status", help="clear a TAMPERED task: write the gate-stamped status back into SPEC.md")
     restorer.add_argument("task_dir", metavar="TASK_DIR")
     restorer.add_argument(
-        "--accept",
-        metavar="NOTE",
-        help="the owner only, in their own terminal (guard/owner-only.sh refuses it from an agent): keep the spec's status, recorded with this note",
+        "--accept", metavar="NOTE", help="the owner only, in their own terminal (refused in an agent shell): keep the spec's status, recorded with this note"
     )
     restorer.set_defaults(run=restore)
     for name, run, text in (

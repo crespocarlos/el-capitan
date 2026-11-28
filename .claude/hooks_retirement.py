@@ -19,6 +19,9 @@ still registers them would run a script that no longer exists.
 
 `probe.sh` was a temporary harness probe, registered on several events in both harnesses until its
 findings were recorded in `docs/hooks.md` ("Harness facts").
+
+The `guard/` rules and `check-write-boundary.sh` went in the hooks diet: the shell rules are functions of one
+dispatcher, `guard/shell.sh`, and the write boundary was deleted.
 """
 
 import re
@@ -35,6 +38,15 @@ RETIRED_SCRIPTS = (
     "review-address-approval.sh",
     "session-event.sh",
     "probe.sh",
+    "guard/credentials.sh",
+    "guard/destructive-git.sh",
+    "guard/local-pr-ref.sh",
+    "guard/owner-only.sh",
+    "guard/source-edit.sh",
+    "guard/task-files.sh",
+    "guard/worker-tree.sh",
+    "guard/zsh-equals.sh",
+    "check-write-boundary.sh",
 )
 
 # `<hooks dir>/<name>` where the hooks directory is this installer's managed destination, quoted or

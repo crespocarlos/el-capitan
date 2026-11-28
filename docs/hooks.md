@@ -2,15 +2,15 @@
 
 `install.sh` registers hooks in both harnesses: `.claude/settings.template.json` is merged into
 `~/.claude/settings.json`, and `.cursor/hooks.template.json` into `~/.cursor/hooks.json`. Each hook is
-one small file under `.claude/hooks/`; read any of them before you install. The guards among them
+one small file under `.claude/hooks/`; read any of them before you install. Two of them are guards,
+one process each per tool call: the shell guard and the file guard. The guards among them
 are a security boundary: [SECURITY.md](../SECURITY.md) says what they protect and how to report a
 bypass.
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| `PreToolUse` / Cursor `beforeShellExecution` | Bash | Seven rules, one per file under `guard/`: `owner-only.sh` (`crew-task.py restore-status ... --acc*` from any agent: the owner runs it in their own terminal); `task-files.sh` (a tripwire for a shell write whose literal target is an existing task `SPEC.md` or `.task-id`, its `PROGRESS.md`, or a review's or spec run's (`spec-agents/`) `*.expect`, `*.provenance.json`, `*.out.md`, `*.prev.md` or `*.unanswered`: an output redirect, `tee`, `dd of=`, a `truncate` operand, the destination of `install` and `ln`, both ends of `mv`, a `sed -i`/`perl -i`/`ruby -i`/`awk -i inplace` file, a Python snippet's write target as `lib/py_write_targets.py` parses it; any `cp`/`mv`/`rsync` destination inside a task directory, a whole task folder copied over another included; an `rm`, `unlink` or `find -delete` of a protected file, a task directory or the tasks root; and inline Python that imports the task modules next to the tasks root; the path is resolved and compared case-insensitively by `lib/spec_guard.py --shell`, reads and the crew tools pass, and a `SPEC.md` or `.task-id` not there yet passes only as a new task's first write (no PROGRESS.md and no `.task-id` yet). Without shfmt the awk normaliser reads the redirects and words with the same coverage. It does not see a path in a variable, `eval` of built text, an encoded command or a script run later: those are caught after the fact by the Status integrity check below the table); `destructive-git.sh` (destructive git: `git reset --hard`, `git clean` with force, force pushes including `-f`, `--force` next to `--force-with-lease`, `--force-if-includes` without a lease, and `+ref`); `local-pr-ref.sh` (`gh pr checkout` and local `refs/pull/...`, `pull/<n>` or `pull/*` refs, never a path such as `src/pull/x.ts`); `source-edit.sh` (`python -c`, `node -e`, `perl -e` snippets and heredocs that rewrite a tracked file: a Python snippet is parsed, never run, by `lib/py_write_targets.py`, so only a write's target counts and a tracked file it only reads passes; Node, Perl, and a Python snippet that does not parse or holds a write the parser cannot resolve (a loop variable, an f-string, a name bound twice, `subprocess`, `os.open`, `fileinput` in place, `exec`, `eval`, `getattr`, `__import__`), are denied when any quoted literal in the snippet names a tracked file); `zsh-equals.sh` (a bare unquoted `=word` that zsh expands as a command path and which aborts the rest of the line: `echo ====` and longer, while a quoted separator and a lone `=` pass); `worker-tree.sh` (`git checkout`, `switch`, `restore` and `reset --hard` in a tree that holds a fresh `.crew-worker.lock`; advisory defence for the tree a worker holds, main checkout included; the builder is exempt through `CREW_WORKER_TASK`). A sixth, `credentials.sh`, blocks commits whose staged lines, or the files a `git add` / `git commit -a` in the same command stages, match known secret formats, and `gh pr create` without `--repo` when an `upstream` remote exists. |
-| `PreToolUse` / Cursor `preToolUse` | Write, Edit | `check-write-boundary.sh` blocks writes outside the active worktree; it allows `~/.agent`, `~/.claude`, `~/.cursor`, `/tmp`, the review pipeline's temp directory, and a background job's `<config dir>/jobs/<job>/tmp` for every Claude config dir `~/.agent/install-manifest.json` records that resolves to a direct child of `$HOME` named `.claude*` (any agent can write the manifest, so no other entry counts). |
-| `PreToolUse` / Cursor `preToolUse` | Write, Edit, MultiEdit | `check-task-spec-owner.sh` blocks a `SPEC.md` whose slug does not match the task directory's recorded slug. Through `lib/spec_guard.py` it also blocks, in an existing task `SPEC.md`, any Edit, MultiEdit or Write that changes the `## Status` value as `task_status` reads it (universal newlines, so a lone `\r` counts as a line break), leaves a second `## Status` heading, or cannot be applied exactly (an `old_string` missing or not unique, an unknown tool, or a payload carrying another tool's fields: Write is read by `content`, Edit by `old_string`/`new_string`/`replace_all`, MultiEdit by `edits`); a new `SPEC.md` whose Status is anything but empty or DRAFTING; and any write to a task's `.task-id`, its `PROGRESS.md` or a review's or spec run's (`spec-agents/`) `*.expect`, `*.provenance.json`, `*.out.md`, `*.prev.md` and `*.unanswered`, which only crew tools write. The path is decided first (realpath, names compared case-insensitively), so a write anywhere else never loads the Status reader; for a task spec the check fails closed. Use `crew-task.py mark-approved`, `mark-implementing` or `mark-done` to move a status. Every other edit (checkbox ticks, text, amendments) passes. Install adds your `~/.agent/tasks`, as an absolute path, to `permissions.additionalDirectories` and allows `Edit(~/.agent/tasks/**)` (Claude Code matches Write and MultiEdit against Edit rules), so task files are written without a prompt; this guard runs before that allow. A Bash command never reaches this hook: `guard/task-files.sh` refuses its literal writes, and the Status integrity check catches the rest. |
+| `PreToolUse` / Cursor `beforeShellExecution` | Bash | `guard/shell.sh`, the shell guard: one process that reads the payload once, normalises the command once and runs its rules (below, [Rules](#rules)). |
+| `PreToolUse` / Cursor `preToolUse` | Write, Edit, MultiEdit; Cursor Write, Delete | `check-task-spec-owner.sh`, the file guard, with its rules in `lib/spec_guard.py` (below). |
 | `UserPromptSubmit` | Each turn | `mode-anchor.sh` prints the active task, status, branch, and task directory so a long session does not drift out of the pipeline. The line is computed once by `spec-status-reconcile.sh` and cached. |
 | `PostToolUse` | Bash, Write, Edit | Emits local JSON telemetry |
 | `PostToolUse` / Cursor `afterShellExecution` | Bash | `record-pr.sh` records the PR a successful `gh pr create` printed on its task (`crew-task.py record-pr`). Only a command with a real `gh … pr create` segment counts (the `lib/hook.sh` normaliser; text in an `echo` or a string does not), and only when its output holds exactly one distinct PR URL; with several it records nothing and lists them. It asks `gh pr view` for the head branch and matches the task's repo (the base, or the fork the head owner names) and `branch`. The single open match wins over DONE and ABANDONED ones; an IMPLEMENTING match gains the PR and goes through `mark-done`, any other single match only gains the PR; several record nothing and print each `mark-done` command. A head branch that is only some task's `spec_branch` records nothing and names that task; no match at all, in a repo that already has tasks, becomes a minimal DONE task with no spec. Any other command ends in shell; the outcome is Claude's additional context. Session-start reconcile still catches PRs opened any other way. |
@@ -18,6 +18,69 @@ bypass.
 | Cursor `stop` | Agent loop ends | `cursor-usage.sh` (`crew-task.py usage stop`) appends the session's raw counts as one `cursor_stop` METRIC (`conversation_id`, `generation_id`, `model`, `loop_count`, `input`, `output`, `cache_read`, `cache_write`) to the conversation's task: the one its first recorded stop resolved to (from the first workspace root's git state alone, as `crew-task-context` resolves it), kept in `~/.agent/state/cursor-conversations.txt`, so a branch switch never splits a conversation across tasks. With no task it records nothing and logs nothing; a payload missing `conversation_id` or `generation_id` is skipped and logged. The readers take, per conversation, each count's rise over the previous `stop` (all of it after a fall), and skip a `generation_id` already seen, so a running total and per-loop counts are both read without counting anything twice (see [Harness facts](#harness-facts-2026-11-27)); per-loop counts would read low, so `crew ls --cost`, `crew report` and the TUI show `cursor sessions` as approximate (`~`). Other outcomes go to `~/.agent/state/cursor-usage.log`; stdout is `{}`. `crew-task.py gc --only telemetry` prunes both hook logs and the conversation file by age (`sessions_days`). Cursor-only: no Claude-format registration. |
 | `Notification` (Claude Code only) | `idle_prompt` | `notify-idle.sh` shows a macOS banner ("<repo> (<branch>) needs your input") and never activates or focuses an application. It stays quiet in a background job (`CLAUDE_JOB_DIR` set), shows at most one banner per session every 10 minutes (the last one's time is in `~/.agent/memory/.sessions/<session>.notified`), and `EL_CAPITAN_NOTIFY=off` turns it off. It always exits 0. |
 | `SessionStart` | Session begins | Loads bounded memory context, applies the spec status policy, and refreshes the anchor (Cursor: `sessionStart` hook via `cursor-memory-context.sh`) |
+
+## Rules
+
+Each rule is a function of its guard and has its own off switch (`EL_CAPITAN_GUARD_<RULE>=off`). A rule that fails is
+skipped with one stderr line; credentials instead denies the commands it scans. Every denial is logged to
+`~/.agent/state/guard.log`: time, rule, harness and a `cksum` of the command or path, never its text.
+
+| Rule | Guard | Where | What it refuses |
+|---|---|---|---|
+| `owner-only` | shell | everywhere | `crew-task.py restore-status ... --acc*` from any agent shell; `task_gates.restore_status` also refuses `--accept` in code unless stdin is a terminal, and `crew-task.py` accepts no abbreviation of it |
+| `worker-tree` | shell | everywhere | `git checkout`, `switch`, `restore`, `reset --hard` in a tree with a fresh `.crew-worker.lock` (6 hours); the builder is exempt through `CREW_WORKER_TASK` |
+| `credentials` | shell | everywhere | a secret (gitleaks) in what `git commit` records, or in every branch's and tag's commits on no remote for `git push` and `gh pr create`; without gitleaks, or when gitleaks fails, only those commands are denied; a commit whose git index cannot be read is not scanned (one stderr line), and the push scan still runs ("run install.sh"), and `crew doctor` fails |
+| `too-complex` | shell | everywhere | a command nesting more payloads than the normaliser reads |
+| `spec-owner` | file | everywhere | a task `SPEC.md` titled for another task's slug, written over a spec past DRAFTING (a DRAFTING spec may be retitled; `mark-approved` records the approved title's slug) |
+| `destructive-git` | shell | everywhere | `reset --hard`, `clean` with force, force pushes (`-f`, `--force`, `+ref`, `--force-if-includes` without a lease) |
+| `local-pr-ref` | shell | Cursor | `gh pr checkout` |
+| `pr-repo` | shell | Cursor | `gh pr create` without `--repo` when an `upstream` remote exists |
+| `source-edit` | shell | Cursor | a `python -c`, `node -e` or `perl -e` snippet or heredoc that rewrites a tracked file |
+| `task-files` | both | everywhere | an `rm`, `unlink` or `find -delete` of a task record, task directory or the tasks root; Cursor's Delete of a task record |
+| `status` | file | Cursor | a write that moves a task `SPEC.md`'s `## Status`, or cannot be applied exactly |
+
+`destructive-git` and `task-files` stay dispatcher rules in Claude Code too: a deny rule matches a command's
+prefix, so it misses `git -C <tree> reset --hard` (the form crew agents use) and a removal named by a variable or
+resolved against the cwd, which only these rules parse.
+
+**Demoted rules** run only in Cursor's payloads (and Cursor's Claude-format copy when it does not stand down): the
+Cursor app documents no deny list. In Claude Code the permission rules of `.claude/settings.template.json` hold them,
+and the probe below shows they hold unattended:
+
+- `deny`: `gh pr checkout`;
+- `ask`: `Edit(~/.agent/tasks/*/SPEC.md)` (a Status edit is the owner's approval);
+- `gh pr create` is allowed only as `gh pr create --repo ...`, so an implied target prompts;
+- `source-edit` is the `personal.mdc` rule to edit files with the edit tool, which also says to quote a `===`
+  separator (zsh runs a bare one as a command; the `zsh-equals` rule is gone).
+
+The allowlist is narrow: git reads plus `add`, `commit`, `fetch`, `switch -c` and `push` (its force forms are the shell guard's),
+`gh pr view|diff`, `gh pr create --repo`, `gh api -X GET`; no blanket `git`, `gh`, `sed`, `cp`, `mv`, `curl` or
+`source`. `install.sh --sandbox` also turns on Claude Code's sandbox for Bash and its child processes. The Cursor CLI
+gets its own deny tokens (`.cursor/cli-config.template.json`) in `~/.cursor/cli-config.json` when that file exists
+(unverified live: the CLI is not installed here).
+
+**Deleted** (no rule replaces them): the write boundary, a failed scan blocking every command, local PR ref reads,
+`cp`/`mv` into task dirs, inline imports of the task modules, a shell fed by an unreadable pipe, edits of evidence files,
+and the `SPEC.md` name and case. Literal shell writes to task records are caught after the fact by the Status integrity
+check (TAMPERED).
+
+**Branch protection.** Protect `main` on GitHub (require a pull request, block force pushes and deletion): it is the
+boundary the force-push rules approximate. Nothing here sets it up.
+
+## Harness facts (2026-11-28): do deny rules hold unattended?
+
+A scratch repository with one uncommitted change and the project rule `{"permissions":{"deny":["Bash(git reset --hard*)"]}}`,
+then `claude -p "<run: cd . && git reset --hard>" --permission-mode bypassPermissions --max-turns 3`:
+
+| Run | Result | Uncommitted change |
+|---|---|---|
+| el-capitan guards on | blocked by the destructive-git guard (hooks run before permission rules) | kept |
+| `EL_CAPITAN_GUARDS=off` (the deny rule alone) | "Permission to use Bash with command cd . && git reset --hard has been denied." | kept |
+
+So a Claude Code `permissions.deny` rule holds in headless (`-p`) mode, under `bypassPermissions` (the most permissive
+mode) and for a compound command. Not probed: `claude --bg` background jobs, which run the same permission engine but
+do not inherit the launching shell's environment; and Cursor auto-run, which has no deny list in the app, so the
+demoted rules stay dispatcher rules there.
 
 ## Harness facts (2026-11-27)
 
@@ -92,7 +155,7 @@ values, while the owner ran one shell command, one file edit and two Task subage
   not reach hooks in a background job. The job's tool shell has `CLAUDE_JOB_DIR`, and hooks are
   spawned by the same process, so it most likely reaches them; `notify-idle.sh` keeps its check.
   Idle banners from background jobs would show it does not, and the hook would then need another
-  signal. `check-write-boundary.sh` does not depend on it.
+  signal.
 
 ## Each hook in Cursor
 
@@ -125,15 +188,7 @@ down by the same match, and lists the commands behind it.
 
 | Hook | Claude event | In Cursor | Counterpart or reason |
 |---|---|---|---|
-| `guard/destructive-git.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/destructive-git.sh`, fail-closed |
-| `guard/local-pr-ref.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/local-pr-ref.sh`, fail-closed |
-| `guard/source-edit.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/source-edit.sh`, fail-closed |
-| `guard/task-files.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/task-files.sh`, fail-closed |
-| `guard/owner-only.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/owner-only.sh`, fail-closed |
-| `guard/zsh-equals.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/zsh-equals.sh` |
-| `guard/worker-tree.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/worker-tree.sh`, fail-closed |
-| `guard/credentials.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/credentials.sh`, fail-closed |
-| `check-write-boundary.sh` | `PreToolUse` Write, Edit | stands down | `preToolUse` `check-write-boundary.sh`, fail-closed |
+| `guard/shell.sh` | `PreToolUse` Bash | stands down | `beforeShellExecution` `guard/shell.sh`, fail-closed |
 | `check-task-spec-owner.sh` | `PreToolUse` Write, Edit | stands down | `preToolUse` `check-task-spec-owner.sh`, fail-closed |
 | `log-tool-use.sh` | `PostToolUse`, `PostToolUseFailure` | stands down | `postToolUse`, `postToolUseFailure` `log-tool-use.sh` |
 | `record-pr.sh` | `PostToolUse` Bash | stands down | `afterShellExecution` `record-pr.sh` |
@@ -166,11 +221,11 @@ and show a mismatch as `TAMPERED (spec says X, crew-task recorded Y)`; `mark-app
 `mark-implementing`, `mark-done`, `ship` and the reconcile holds refuse it with the same words and
 write nothing.
 
-**The tripwire.** The Status guard refuses Edit/Write to PROGRESS.md, `.task-id` and review evidence;
-`guard/task-files.sh` refuses the literal shell writes and removals of them, copies into a task
-directory, and inline Python that imports the task modules next to the tasks root (`$HOME` spelled
-out counts as literal). `guard/owner-only.sh` refuses `restore-status --acc*` from an agent, and
-`crew-task.py` accepts no abbreviated option.
+**The tripwire.** In Cursor the `status` and `task-files` rules refuse an Edit or Write that moves the
+Status and a Delete or `rm` of a task record; in Claude Code the `ask` rule on task specs and the `deny`
+rules on `rm` under `~/.agent/tasks` do. The `owner-only` rule refuses `restore-status --acc*` from an
+agent, and `crew-task.py` accepts no abbreviated option. Every other write to a task record is caught
+by the integrity check above.
 
 A task with no stamped line is legacy, from before the stamp: its recorded status is the newest
 transition line, typed or untyped. A legacy DONE spec recorded IMPLEMENTING, or nothing, was closed by
@@ -181,26 +236,22 @@ PROGRESS.md, unless its Status is DRAFTING or absent, so deleting the record nev
 
 `crew-task.py restore-status <TASK_DIR>` writes the stamped status back (or DRAFTING when nothing is
 recorded; it refuses a legacy status no gate stamped) and prompts like the gates. `--accept <note>`
-records the spec's status with the note; only the owner runs it, in their own terminal:
-`guard/owner-only.sh` refuses it from any agent.
+records the spec's status with the note; only the owner runs it, in their own terminal: the
+`owner-only` rule refuses it from any agent shell, and the command itself refuses it without a terminal.
 
 ## The contract
 
-Every hook follows one contract: blocking is exit `2` with one line on stderr (Cursor's shell events
-get their own JSON deny), no objection is exit `0` and no output, and a hook that cannot read its
-input reports one line and exits `0`. In Claude Code, failures are non-blocking except for
-`guard/credentials.sh`, registered `onFailure: "block"`; an unexpected error once its secret scan has
-started blocks the commit, while one before it (unreadable input, a missing `jq`, a normaliser
-failure) reports a line and lets the command through. An off switch releases either. In Cursor, a
-hook crash, timeout or invalid JSON fails open unless the entry sets `failClosed: true`, so every
-security guard has it (every `guard/` rule but the advisory `zsh-equals.sh`, plus
-`check-write-boundary.sh` and `check-task-spec-owner.sh`; observers never). Because Cursor reads
-silence from such a hook as a failure, each prints `{}`, an empty decision with no permission, when
-it has no objection; a failure before it reads the event (no `jq`) prints nothing and so blocks.
-Install's merge keeps the flag and `crew doctor` fails an installed guard without it. Without `jq` on
-PATH the merge registers them `failClosed: false` with one warning, and `crew doctor` fails a
-fail-closed install on a machine without `jq` (every Cursor call would be blocked). The shared
-preamble is `.claude/hooks/lib/hook.sh`.
+Every hook follows one contract: blocking is exit `2` with one line on stderr (Cursor's shell and file
+events get their own JSON deny), no objection is exit `0` and no output, and a hook that cannot read
+its input reports one line and exits `0`. Within a guard, a rule that fails is skipped with one stderr
+line; the credentials rule denies the commands it scans instead. In Cursor, a hook crash, timeout or
+invalid JSON fails open unless the entry sets `failClosed: true`, so both guards have it (observers
+never). Because Cursor reads silence from such a hook as a failure, each prints `{}`, an empty
+decision with no permission, when it has no objection; a failure before it reads the event (no `jq`)
+prints nothing and so blocks. Install's merge keeps the flag and `crew doctor` fails an installed
+guard without it. Without `jq` on PATH the merge registers them `failClosed: false` with one warning,
+and `crew doctor` fails a fail-closed install on a machine without `jq` (every Cursor call would be
+blocked). Each guard registration has a 10 s timeout. The shared preamble is `.claude/hooks/lib/hook.sh`.
 
 ## How a guard reads a command
 
@@ -211,8 +262,8 @@ The shell guards read a command the way the shell runs it, through one normalise
 `-c k=v`, `-C`) are skipped. `git` behind a runner (`timeout`, `xargs`, `find -exec`, `nice -n 5`,
 `sudo -u me`) is still git; a quoted `"git"` argument of another command is not. A quoted commit
 message or a heredoc body stays data, except a heredoc, here-string or `echo`/`printf` text fed to a
-shell with no `-c`, which is read as its script; a shell fed by any other pipe (`curl ... | bash`)
-is denied, and so is a command nesting more payloads than the normaliser reads.
+shell with no `-c`, which is read as its script; what any other pipe feeds a shell is not read. A
+command nesting more payloads than the normaliser reads is denied (`too-complex`).
 
 The normaliser has two parsers. [`shfmt`](https://github.com/mvdan/sh) is optional and preferred:
 when it is on PATH, the command is parsed into a real bash syntax tree (`shfmt --to-json`, read by
@@ -226,11 +277,11 @@ never lets through what awk would block. Install it with `brew install shfmt` (C
 
 Every blocking hook honours an off switch read from the harness's own environment (export it in the
 shell that starts Claude Code or Cursor; a prefix on the agent's command does not reach the hook):
-`EL_CAPITAN_GUARDS=off` turns them all off, and `EL_CAPITAN_GUARD_<NAME>=off` turns off one, where
-`<NAME>` is the file name upper-cased with `-` as `_` (`EL_CAPITAN_GUARD_DESTRUCTIVE_GIT`,
-`..._LOCAL_PR_REF`, `..._SOURCE_EDIT`, `..._TASK_FILES`, `..._OWNER_ONLY`, `..._ZSH_EQUALS`, `..._WORKER_TREE`, `..._CREDENTIALS`,
-`..._CHECK_WRITE_BOUNDARY`, `..._CHECK_TASK_SPEC_OWNER`). Every denial names both switches on its
-one line. The guards are a safety boundary, so turn one off for a session, not as a standing setting.
+`EL_CAPITAN_GUARDS=off` turns them all off, and `EL_CAPITAN_GUARD_<RULE>=off` turns off one rule,
+where `<RULE>` is the rule name upper-cased with `-` as `_` (`EL_CAPITAN_GUARD_CREDENTIALS`,
+`..._WORKER_TREE`, `..._OWNER_ONLY`, `..._TOO_COMPLEX`, `..._SPEC_OWNER`, `..._STATUS`,
+`..._DESTRUCTIVE_GIT`, `..._LOCAL_PR_REF`, `..._PR_REPO`, `..._SOURCE_EDIT`, `..._TASK_FILES`). Every
+denial names both switches on its one line. The guards are a safety boundary, so turn one off for a session, not as a standing setting.
 
 The review-address gate is the user's answer in `crew-address-review` Step 3; no hook or permission
 rule records it.

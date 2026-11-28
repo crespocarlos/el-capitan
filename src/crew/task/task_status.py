@@ -182,6 +182,11 @@ def status_of(text: str) -> str:
     return match.group(2).strip() if match else ""
 
 
+def title_slug(title: str) -> str:
+    """A task slug from a spec title: lowercase, each run of other characters one hyphen, trimmed, then cut at 50."""
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50]
+
+
 def read_status(path: Path | str) -> str | None:
     """Return the status value, "" when unset, or None when the file is unreadable."""
     try:

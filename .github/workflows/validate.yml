@@ -78,7 +78,7 @@ jobs:
       # The hook tests run every case through both normaliser paths: shfmt (this pinned binary) and awk.
       - name: shfmt (pinned release binary, checksum checked)
         run: |
-          bash evals/install-shfmt.sh "$RUNNER_TEMP/shfmt-bin"
+          bash scripts/install-bin.sh shfmt "$RUNNER_TEMP/shfmt-bin"
           echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
 
       - name: Tests (the dev group of pyproject.toml, pinned in uv.lock)

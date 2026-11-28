@@ -317,8 +317,8 @@ def test_workers_view_lists_running_stages_and_locks(home: Path) -> None:
         ("lock", "T9", str(home / "old"), "stale: the guard ignores it"),
         ("lock", "idle", str(home / "fresh"), "live"),
     ]
-    hook = (ROOT / ".claude" / "hooks" / "guard" / "worker-tree.sh").read_text()
-    assert f"\nSTALE_SECONDS={tui_model.LOCK_STALE_SECONDS}\n" in hook, "the lock threshold follows worker-tree.sh"
+    hook = (ROOT / ".claude" / "hooks" / "guard" / "shell.sh").read_text()
+    assert f"\nSTALE_SECONDS={tui_model.LOCK_STALE_SECONDS}\n" in hook, "the lock threshold follows guard/shell.sh"
 
 
 def test_locks_come_from_each_task_repository(home: Path) -> None:

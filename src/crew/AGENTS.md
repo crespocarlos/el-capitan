@@ -34,16 +34,14 @@ Hook scripts under `.claude/hooks/` are shell, and the module ceiling does not a
 each one obeys the same contract, and the test that pins it is `evals/tools/test_hook_cases.py`.
 Blocking is exit `2` with one line on stderr (Cursor gets its own JSON deny instead); no objection is
 exit `0` with no output; an input a hook cannot read is one stderr line and exit `0`. A hook never
-mixes the two blocking mechanisms, and only `guard/credentials.sh` fails closed, because only that
-rule's failure is a credential leak. Cursor reads *silence* from a fail-closed hook as a failure, so
-that one rule also prints an allow payload when it has no objection.
+mixes the two blocking mechanisms. Cursor reads *silence* from a fail-closed hook as a failure, so
+both guards print an empty decision when they have no objection.
 
-- **One rule per hook.** A new shell rule is its own file under `guard/`, registered on the Bash
-  matcher in both settings files. It sources `lib/hook.sh` for the input, event, field, and
-  deny/allow helpers rather than repeating the preamble.
-- **Register it in both configs.** `crew-lint.py` fails an unregistered hook, and a file that is
-  never registered is a guard that silently stopped guarding.
-- **Keep each rule file under 60 lines.** Anything longer is two rules.
+- **One guard per event, a function per rule.** A new shell rule is a `rule_<name>` function in
+  `guard/shell.sh`, called through `rule` (its own subshell, off switch and failure handling); a file
+  rule is a verdict in `lib/spec_guard.py`. A rule that a harness's deny rules hold goes in `DEMOTED`.
+- **Register a new hook in both configs.** `crew-lint.py` fails an unregistered hook, and a file that
+  is never registered is a guard that silently stopped guarding.
 - **Pin both directions in the case tables.** `evals/tools/hook_cases.py` is the verdict contract;
   a new rule adds its allow and deny cases there, and a new hook file is classified in it.
 
@@ -82,7 +80,7 @@ command (a command costs always-on router budget). What the hardening work added
   (`task_verify_report.py`) checks a builder report against the result.
 - `crew-task.py` writes task state: `mark-approved|mark-implementing|mark-done` (`task_gates.py`),
   `reconcile [--apply]`, `normalize-status [--apply]`, `blocked`, `lock write|remove` (the
-  `.crew-worker.lock` `guard/worker-tree.sh` reads; the builder is exempt through `CREW_WORKER_TASK`),
+  `.crew-worker.lock` the worker-tree rule reads; the builder is exempt through `CREW_WORKER_TASK`),
   `worktree pref|record` (`task_worktrees.py`) and `worktree check <tree>`
   (`task_worktrees.py`: `ok`, `on-feature-branch` exit 4, `dirty` exit 5), and `gc [--only telemetry]
   [--apply]` (`task_gc.py`: the retention policy of `~/.agent/config.json`). `crew-ls.py` only reads.

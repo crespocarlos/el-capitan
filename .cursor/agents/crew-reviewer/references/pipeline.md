@@ -101,11 +101,8 @@ task's `REVIEW.md`.
 `suggestion` fenced as a GitHub suggestion block; nothing here calls `gh`. Body shape, the re-render
 command, and the excerpt and base-read rules: [evidence and comments](evidence-and-comments.md).
 
-Write scratch JSON, scripts, and packages with the harness's edit or write tool. Cursor permits
-`/tmp`, `~/.agent/tasks/`, and `~/.agent/`; `check-write-boundary.sh` allows `$HOME/.agent/`,
-`$HOME/.claude/`, `$HOME/.cursor/`, and `/tmp`. When the tool rejects a path, produce and consume the
-file in one heredoc command; a heredoc is wrong as a default, because it hides the write from the
-edit log.
+Write scratch JSON, scripts, and packages with the harness's edit or write tool. When the tool
+rejects a path, produce and consume the file in one heredoc command.
 
 `$REVIEW_ROOT` under `~/.agent/tasks/` fails with `Operation not permitted` in a sandboxed shell
 (Cursor; Claude Code writes it directly). Run `mkdir`, `normalize`, and `persist` with the harness's

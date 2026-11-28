@@ -12,9 +12,8 @@ hook_input
 case "$HOOK_INPUT" in *'pr create'*) ;; *) exit 0 ;; esac
 case "$HOOK_INPUT" in *'github.com/'*'/pull/'*) ;; *) exit 0 ;; esac
 command=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.command // .command // ""' 2>/dev/null) || exit 0
-# In a subshell: a command the normaliser refuses prints its own verdict there, which is never `create`.
+# In a subshell, so the normaliser state stays there.
 created=$(
-  HOOK_SHELL_STDIN=allow
   if [ -z "$HOOK_CWD" ] || [ ! -d "$HOOK_CWD" ]; then HOOK_CWD=$PWD; fi
   hook_segments "$command"
   i=0

@@ -4,7 +4,7 @@
 required-version = "==0.17.4"
 target-version = "py312"
 # Run by the system python3 (macOS: 3.9), never the venv: the fail-closed spec guard
-# (`check-task-spec-owner.sh:32`, `task-files.sh`) loads these with `python3 -I`, and `agents-refresh.sh` runs install_blocks.
+# (`check-task-spec-owner.sh`, the shell guard's task-files rule) loads these with `python3 -I`, and `agents-refresh.sh` runs install_blocks.
 per-file-target-version = { "src/crew/task/task_status.py" = "py39", ".claude/hooks/lib/*.py" = "py39", ".claude/*.py" = "py39" }
 line-length = 160
 src = ["src", "evals"]
