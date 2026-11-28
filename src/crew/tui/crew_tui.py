@@ -3,7 +3,7 @@
 
 `--once` prints every view as plain text (ISSUE and PR as `#n`) with no Textual import; without it the
 Textual app runs (the `tui` dependency group), the cells as terminal links. Filters match `crew ls`.
-It never calls a model or writes a file itself: the app's `s` key runs `crew-task.py` after a confirm dialog.
+It never calls a model or writes a file itself: the app's `s` key runs a `crew-task.py` move its dialog confirms.
 GitHub is read only for `--landed` or the app's `g` key.
 """
 
@@ -32,7 +32,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--status", action="append", default=[], metavar="STATE", help="only tasks in STATE (repeatable)")
     parser.add_argument("--all", action="store_true", help="list DONE tasks too")
     parser.add_argument("--since", type=int, default=30, metavar="DAYS", help="the report window in days (30)")
-    parser.add_argument("--interval", type=float, default=5.0, metavar="N", help="seconds between refreshes (5)")
+    parser.add_argument("--interval", type=float, default=12.0, metavar="N", help="seconds between full refreshes (12); LIVE moves every 1.5")
     parser.add_argument("--once", action="store_true", help="print every view as plain text and exit")
     parser.add_argument("--landed", action="store_true", help="with --once: read each DONE task's PR on GitHub")
     return parser
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     filters = Filters(repo=repo, states=states, done=args.all, days=args.since)
     if args.once:
         landed = landed_for(args.tasks_dir, filters) if args.landed else None
-        views = collect(args.tasks_dir, filters, landed)
+        views, _ = collect(args.tasks_dir, filters, landed)
         width = shutil.get_terminal_size((0, 0)).columns  # COLUMNS, else the terminal; 0 (no cut) when piped
         print("\n\n".join("\n".join(render(views[key], width)) for key in VIEWS))
         return 0

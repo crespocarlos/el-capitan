@@ -761,24 +761,6 @@
                     "lineCount": 1
                 }
             }
-        ],
-        "./src/crew/tui/tui_app.py": [
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 16,
-                    "endColumn": 103,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 44,
-                    "endColumn": 102,
-                    "lineCount": 1
-                }
-            }
         ]
     }
 }
