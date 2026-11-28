@@ -1,0 +1,45 @@
+{
+  "id": "codex",
+  "name": "Codex",
+  "live": "unverified: built from the Codex docs only (Claude-shaped hooks, TOML agents, Starlark prefix rules)",
+  "paths": [".codex/", ".agents/skills/"],
+  "events": {
+    "session_start": {"native": "SessionStart"},
+    "prompt_submit": {"native": "UserPromptSubmit"},
+    "pre_shell": {"native": "PreToolUse", "matcher": "Bash"},
+    "pre_write": {"fallback": "none: file edits go through apply_patch, which no hook names"},
+    "post_tool": {"native": "PostToolUse", "matcher": "Bash"},
+    "post_shell": {"native": "PostToolUse", "matcher": "Bash"},
+    "subagent_stop": {"native": "SubagentStop"},
+    "stop": {"native": "Stop"},
+    "idle": {"fallback": "none: no idle event"}
+  },
+  "deny": {
+    "modes": {"*": false},
+    "why": "~/.codex/rules/el-capitan.rules forbids the prefixes below, but no run has shown they hold: the demoted rules stay dispatcher rules"
+  },
+  "prefix_rules": [
+    ["git", "reset", "--hard"],
+    ["git", "clean", "-f"],
+    ["git", "clean", "-fd"],
+    ["git", "clean", "-fdx"],
+    ["git", "clean", "--force"],
+    ["git", "push", "-f"],
+    ["git", "push", "--force"],
+    ["gh", "pr", "checkout"],
+    ["gh", "pr", "co"]
+  ],
+  "always_on": {"fallback": "none: ~/.codex/AGENTS.md carries the memory block only"},
+  "rules": {"fallback": "none: Codex reads ~/.codex/AGENTS.md, not rule files"},
+  "agents": {"value": "~/.codex/agents/<agent>.toml"},
+  "skills": {"value": "~/.agents/skills/<skill>"},
+  "access": {
+    "readonly": "sandbox_mode = \"read-only\"",
+    "probe": "sandbox_mode = \"workspace-write\"",
+    "worker": "sandbox_mode = \"workspace-write\"",
+    "inline": "not rendered: run in the main session"
+  },
+  "sandbox": {"readonly": "read-only", "probe": "workspace-write", "worker": "workspace-write"},
+  "max_turns": {"fallback": "none: no turn cap in an agent file"},
+  "mcp": {"fallback": "the session's MCP servers"}
+}

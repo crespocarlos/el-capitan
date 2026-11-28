@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Every crew agent's reply and usage is captured, in Cursor and in Claude Code.
 
-`capture-reply.sh` reads Cursor's `subagentStop` (a transcript of `role` lines, `subagent_id`, `subagent_type`, the
-counts but no tokens) as it reads Claude Code's `SubagentStop`: each agent kind lands where its orchestrator reads it,
-a marker with no `.expect` saves nothing, the latest reply to a marker is the reply (the earlier one `.prev.md`), a
-reply that answers nothing leaves `.unanswered` and asks once for the reply, the subagent's transcript is found when
-the payload's path misses, a repeated stop changes nothing, and a stale Cursor install drops with a logged line.
-`cursor-usage.sh` records each Cursor `stop`'s raw counts on its conversation's first task; readers count only rises.
+Each payload goes through `crew-hook.py`, as the harness sends it: `capture-reply.sh` reads Cursor's normalised
+`subagentStop` (a transcript of `role` lines, `subagent_id`, `subagent_type`, the counts but no tokens) as it reads
+Claude Code's `SubagentStop`: each agent kind lands where its orchestrator reads it, a marker with no `.expect` saves
+nothing, the latest reply to a marker is the reply (the earlier one `.prev.md`), a reply that answers nothing leaves
+`.unanswered` and asks once for the reply, the subagent's transcript is found when the payload's path misses, a
+repeated stop changes nothing, and Cursor's Claude-format copy does nothing. `usage.sh` records each Cursor `stop`'s
+raw counts on its conversation's first task; readers count only rises.
 """
 from __future__ import annotations
 
@@ -20,14 +21,14 @@ from pathlib import Path
 import pytest
 from cli_runner import launcher
 from cli_runner import run as cli
+from harness_hook import command
+from harness_hook import run as hook
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
 FINDINGS = TOOLS / "review" / "crew_review_findings.py"
 TASK = TOOLS / "task" / "crew_task.py"
 LS = TOOLS / "task" / "crew_ls.py"
-HOOK = ROOT / ".claude" / "hooks" / "capture-reply.sh"
-USAGE_HOOK = ROOT / ".claude" / "hooks" / "cursor-usage.sh"
 PERSONA_REPLY = "### Findings: none\n\nAssessment: approve — nothing in this lane.\n"
 CRITIC_REPLY = "Verdict: pass\n\n1. [Consider] The verify line could name the test file.\n"
 EXPLORER_REPLY = "## Files involved\n- a.py\n\n## Tests\n- test_a.py\n"
@@ -85,8 +86,7 @@ def claude_transcript(path: Path, prompt: str, reply: str) -> Path:
 
 
 def run_hook(home: Path, payload: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
-                          env={**os.environ, "HOME": str(home)})
+    return hook(home, payload)
 
 
 def cursor_stop(home: Path, transcript: Path, agent: str = "s1", kind: str = "generalPurpose",
@@ -278,8 +278,7 @@ def test_the_subagent_transcript_is_found_when_agent_transcript_path_misses(tmp:
     if case.startswith("no transcript"):
         sub.unlink()
         payload["summary"] = PERSONA_REPLY
-    done = subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
-                          env={**os.environ, "HOME": str(home), **env})
+    done = hook(home, payload, env=env)
     summary = case.startswith("no transcript")
     log = state(home, "capture-reply.log")
     assert done.returncode == 0, done
@@ -333,7 +332,7 @@ def test_both_payload_variants_at_once_save_once(tmp: Path) -> None:
     parent, sub = conversation(tmp, prompt, [PERSONA_REPLY])
     with_child = native(str(parent), agent_transcript_path=str(sub))
     without = {key: value for key, value in with_child.items() if key != "child_conversation_id"}
-    runs = [subprocess.Popen(["bash", str(HOOK)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+    runs = [subprocess.Popen(command(home, with_child), stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
                              env={**os.environ, "HOME": str(home)}) for _ in range(2)]
     outs = [run.communicate(json.dumps(payload))[0] for run, payload in zip(runs, (with_child, without))]
     assert outs == ["{}\n", "{}\n"]
@@ -367,8 +366,8 @@ def test_a_stop_that_saves_nothing_logs_names_and_sizes_never_content(tmp: Path)
     done = run_hook(home, native(str(parent), agent_transcript_path=str(tmp / "gone.jsonl")))
     assert (done.returncode, done.stdout) == (0, "{}\n"), done
     log = state(home, "capture-reply.log")
-    assert "no marker; nothing saved (keys=" in log and f"subagent_id=s1 agent_transcript_path={tmp / 'gone.jsonl'} transcript_path={parent}" in log, log
-    assert "parent_conversation_id=- conversation_id=- child_conversation_id=s1" in log, log
+    assert "no marker; nothing saved (keys=" in log and "harness=cursor agent_id=s1 session=-" in log, log
+    assert f"folders={parent.parent / 'subagents'}" in log, log
     assert f"{tmp / 'gone.jsonl'} exists=0" in log, log
     assert re.search(rf"{re.escape(str(sub))} exists=1 bytes=\d+ lines=3", log), log
     assert "SECRET" not in log and "agent_transcript_path" in log
@@ -434,22 +433,19 @@ def test_a_malformed_transcript_is_skipped_and_logged(tmp: Path, body: str) -> N
     assert progress(task) == ""
 
 
-@pytest.mark.parametrize("installed", [True, False], ids=["counterpart registered", "a stale install"])
-def test_the_claude_format_copy_in_cursor_never_processes(tmp: Path, installed: bool) -> None:
-    """Cursor's Claude-format copy stands down for the registered counterpart; with a stale ~/.cursor/hooks.json it
-    drops, logs `re-run install.sh`, and prints nothing. Only the native event saves."""
+def test_the_claude_format_copy_in_cursor_never_processes(tmp: Path) -> None:
+    """Cursor also runs the Claude-format registration: that copy (`cursor_version` in the payload) does nothing while
+    the plugin's hooks are installed, as the plugin's own registration answers the event. Only the native event saves."""
     home, task = world(tmp)
-    if installed:
-        (home / ".cursor").mkdir()
-        (home / ".cursor" / "hooks.json").write_text(
-            (ROOT / ".cursor" / "hooks.template.json").read_text(encoding="utf-8"), encoding="utf-8")
+    plugin = home / ".cursor" / "plugins" / "local" / "el-capitan" / "hooks" / "hooks.json"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text("{}", encoding="utf-8")
     directory = task / "review" / "1"
     transcript = cursor_transcript(tmp / "c.jsonl", marker(directory, "adversarial", home), [PERSONA_REPLY])
     copy = {"hook_event_name": "SubagentStop", "cursor_version": "2.1.0", "agent_transcript_path": str(transcript)}
     stood = run_hook(home, copy)
     assert (stood.returncode, stood.stdout, stood.stderr) == (0, "", "")
-    assert not (directory / "adversarial.out.md").exists()
-    assert ("re-run install.sh" in state(home, "capture-reply.log")) is not installed
+    assert not (directory / "adversarial.out.md").exists() and state(home, "capture-reply.log") == ""
     assert cursor_stop(home, transcript).returncode == 0 and (directory / "adversarial.out.md").exists()
 
 
@@ -477,8 +473,7 @@ def stop_payload(repo: Path, generation: str, counts: tuple[int, int, int, int],
 
 
 def usage_stop(home: Path, payload: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(["bash", str(USAGE_HOOK)], input=json.dumps(payload), capture_output=True, text=True,
-                          env={**os.environ, "HOME": str(home)})
+    return hook(home, payload)
 
 
 @pytest.mark.parametrize("series, new, cache_read", [
@@ -529,7 +524,7 @@ def test_a_stop_missing_an_id_is_skipped_and_logged(tmp: Path, missing: str) -> 
     payload = {key: value for key, value in stop_payload(repo, "g0", (1, 1, 1, 1)).items() if key != missing}
     assert usage_stop(home, payload).stdout == "{}\n"
     assert progress(task) == ""
-    assert "no conversation_id or generation_id in the payload; skipped" in state(home, "cursor-usage.log")
+    assert "no session or generation id in the event; skipped" in state(home, "usage.log")
 
 
 def test_a_cursor_stop_without_a_task_records_nothing_and_logs_nothing(tmp: Path) -> None:
@@ -537,7 +532,7 @@ def test_a_cursor_stop_without_a_task_records_nothing_and_logs_nothing(tmp: Path
     git("checkout", "-q", "-b", "other", cwd=repo)
     done = usage_stop(home, stop_payload(repo, "g0", (1, 1, 1, 1)))
     assert (done.returncode, done.stdout) == (0, "{}\n") and progress(task) == "", done
-    assert state(home, "cursor-usage.log") == "" and state(home, "cursor-conversations.txt") == ""
+    assert state(home, "usage.log") == "" and state(home, "cursor-conversations.txt") == ""
 
 
 def test_gc_telemetry_prunes_the_hook_logs_by_age(tmp: Path) -> None:
@@ -549,13 +544,13 @@ def test_gc_telemetry_prunes_the_hook_logs_by_age(tmp: Path) -> None:
     old = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 40 * 86400))
     new = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     (logs / "capture-reply.log").write_text(f"{old} SubagentStop a\n{new} SubagentStop b\n", encoding="utf-8")
-    (logs / "cursor-usage.log").write_text(f"{new} usage: c\n", encoding="utf-8")
+    (logs / "usage.log").write_text(f"{new} usage: c\n", encoding="utf-8")
     dry = cli(TASK, "gc", "--only", "telemetry", env={"HOME": str(home)})
-    assert "would prune" in dry.stdout and "capture-reply.log" in dry.stdout and "cursor-usage.log" not in dry.stdout
+    assert "would prune" in dry.stdout and "capture-reply.log" in dry.stdout and "usage.log" not in dry.stdout
     done = cli(TASK, "gc", "--only", "telemetry", "--apply", env={"HOME": str(home)})
     assert done.returncode == 0, done
     assert (logs / "capture-reply.log").read_text(encoding="utf-8") == f"{new} SubagentStop b\n"
-    assert (logs / "cursor-usage.log").read_text(encoding="utf-8") == f"{new} usage: c\n"
+    assert (logs / "usage.log").read_text(encoding="utf-8") == f"{new} usage: c\n"
 
 
 def test_the_readers_label_both_harnesses_per_agent_kind(tmp: Path) -> None:

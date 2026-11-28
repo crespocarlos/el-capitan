@@ -14,9 +14,9 @@ import os
 import sys
 from pathlib import Path
 
-from crew.maintenance.doctor_checks import ROOT, Line, check_auto_memory, check_blocks, check_cursor_duplicates, check_hooks, check_links
+from crew.maintenance.doctor_checks import ROOT, Line, check_auto_memory, check_blocks, check_harness_files, check_hooks, check_links
 from crew.maintenance.doctor_env import check_environment, check_state, check_tools
-from crew.maintenance.doctor_mcp import check_mcp, check_rendered_agents
+from crew.maintenance.doctor_mcp import check_mcp
 from crew.task.task_gc import DEFAULTS, ConfigError, Places, load_config
 
 
@@ -37,10 +37,9 @@ def main(argv: list[str] | None = None) -> int:
     lines += [
         *check_links(home),
         *check_hooks(home),
-        *check_cursor_duplicates(home, Path.cwd()),
+        *check_harness_files(home),
         *check_blocks(home),
         *check_auto_memory(home),
-        *check_rendered_agents(home),
         *check_environment(home),
         *check_tools(sign_in=not args.offline),
         *check_state(places, limits),

@@ -46,7 +46,7 @@ anchor into a silent no-op; shell heredocs are for scratch artifacts and task-di
 - **Templates** — edit `.cursor/skills/spec-writing/references/`; `.agent/_*SPEC_TEMPLATE.md` are
   symlinks, so a change affects every future spec.
 - **Guards are hooks, not prose** — a rule that must hold every time lives in `.claude/hooks/`,
-  registered in both hook configs with an allow and a deny case in `evals/tools/hook_cases.py`.
+  named in `.claude/hooks/contract.json` with an allow and a deny case in `evals/tools/hook_cases.py`.
 - **Reviewer personas** — the procedure is
   [persona authoring](.cursor/agents/crew-reviewer/references/persona-authoring.md).
 

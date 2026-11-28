@@ -1,0 +1,16 @@
+{
+  "conversation_id": "{session}",
+  "generation_id": "<string>",
+  "session_id": "<string>",
+  "model": "<string>",
+  "hook_event_name": "preToolUse",
+  "cursor_version": "<string>",
+  "workspace_roots": ["<string>"],
+  "user_email": "<string>",
+  "transcript_path": "<string>",
+  "parent_agent_id": "<string>",
+  "parent_tool_call_id": "<string>",
+  "tool_use_id": "<string>",
+  "tool_name": "{tool}",
+  "tool_input": "{fields}"
+}

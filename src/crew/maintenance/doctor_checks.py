@@ -10,12 +10,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import re
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
+from crew.harness import adapters, claude_code, harness_install
 from crew.lib.files import checkout
 from crew.memory.memory_claude import remaining
 from crew.task.task_gc import shown as tilde
@@ -93,11 +92,11 @@ def config_dirs(home: Path, root: Path = ROOT) -> list[Path]:
         return [home / ".claude"]
 
 
-def config_dir_links(directory: Path, cursor: Path, root: Path) -> tuple[list[str], list[str]]:
+def config_dir_links(directory: Path, source_dir: Path, root: Path) -> tuple[list[str], list[str]]:
     """The `agents`/`skills` entries of one config dir that are missing, and those the user owns (kept by install)."""
     missing, kept = [], []
     for name in ("agents", "skills"):
-        path, source = directory / name, cursor / name
+        path, source = directory / name, source_dir / name
         if path.is_symlink() and os.path.realpath(path) != os.path.realpath(source):
             kept.append(name)
         elif path.is_dir() and not path.is_symlink():
@@ -112,15 +111,15 @@ def config_dir_links(directory: Path, cursor: Path, root: Path) -> tuple[list[st
 
 
 def check_config_links(home: Path, root: Path = ROOT) -> list[Line]:
-    """Each other config dir links `agents` and `skills`, or each crew entry inside a real one, to ~/.cursor.
+    """Each other config dir links `agents` and `skills`, or each crew entry inside a real one, to ~/.claude.
 
     An entry the user owns there (a link elsewhere, or a file of the same name) is kept by install: a WARN.
     """
     lines = []
     for directory in config_dirs(home, root)[1:]:
-        missing, kept = config_dir_links(directory, home / ".cursor", root)
+        missing, kept = config_dir_links(directory, home / ".claude", root)
         if missing:
-            text = f"{tilde(directory, home)}: not linked to ~/.cursor: {capped(missing)}{RERUN}"
+            text = f"{tilde(directory, home)}: not linked to ~/.claude: {capped(missing)}{RERUN}"
             lines.append(Line("FAIL", "links", text))
         if kept:
             text = f"{tilde(directory, home)}: yours, so crew entries are not linked there: {capped(kept)}"
@@ -128,22 +127,14 @@ def check_config_links(home: Path, root: Path = ROOT) -> list[Line]:
     return lines
 
 
-def registrations(path: Path, nested: bool) -> set[tuple[str, str, str]] | None:
-    """(event, matcher, command) of a Claude (`nested`) or Cursor settings file, or None when unreadable.
-
-    Within an event a command counts once, under its first matcher, as the settings merge registers it.
-    """
-    try:
-        hooks = json.loads(path.read_text(encoding="utf-8")).get("hooks", {})
-    except (OSError, ValueError, AttributeError):
-        return None
+def registrations(hooks: object) -> set[tuple[str, str, str]]:
+    """(event, matcher, command) of a Claude-shaped `hooks` object. Within an event a command counts once, under its
+    first matcher, as the settings merge registers it."""
     found: set[tuple[str, str, str]] = set()
     for event, entries in hooks.items() if isinstance(hooks, dict) else []:
         seen: set[str] = set()
         for entry in entries if isinstance(entries, list) else []:
-            if not isinstance(entry, dict):
-                continue
-            inner = entry.get("hooks", []) if nested else [entry]
+            inner = entry.get("hooks", []) if isinstance(entry, dict) else []
             for hook in inner if isinstance(inner, list) else []:
                 command = hook.get("command") if isinstance(hook, dict) else None
                 if isinstance(command, str) and command not in seen:
@@ -153,142 +144,36 @@ def registrations(path: Path, nested: bool) -> set[tuple[str, str, str]] | None:
 
 
 def check_hooks(home: Path, root: Path = ROOT) -> list[Line]:
-    """Each config dir registers every template hook under its event and matcher; every registered script exists."""
+    """Each Claude config dir registers every hook the claude-code adapter renders, under its event and matcher, and no
+    registered script under ~/.claude/hooks is missing (an earlier install's, which install retires)."""
     lines = []
     scripts = install_blocks(root).hook_scripts
-    claude = [
-        (f"Claude Code ({tilde(directory, home)})", root / ".claude" / "settings.template.json", directory / "settings.json", True)
-        for directory in config_dirs(home, root)
-    ]
-    for harness, template, installed, nested in (*claude, ("Cursor", root / ".cursor" / "hooks.template.json", home / ".cursor" / "hooks.json", False)):
-        wanted, have = registrations(template, nested) or set(), registrations(installed, nested)
-        if have is None:
+    wanted = registrations(json.loads(claude_code.render(root, home)[".claude/settings.json"][1])["hooks"])
+    for directory in config_dirs(home, root):
+        installed, harness = directory / "settings.json", f"Claude Code ({tilde(directory, home)})"
+        try:
+            have = registrations(json.loads(installed.read_text(encoding="utf-8")).get("hooks"))
+        except (OSError, ValueError, AttributeError):
             lines.append(Line("FAIL", "hooks", f"{harness}: {tilde(installed, home)} is missing or unreadable{RERUN}"))
             continue
         missing = sorted(f"{event} {matcher or '*'}: {command}" for event, matcher, command in wanted - have)
-        text = f"{harness}: {len(wanted) - len(missing)} of {len(wanted)} registered as the template has them"
+        text = f"{harness}: {len(wanted) - len(missing)} of {len(wanted)} registered as the adapter renders them"
         if missing:
             text += f"; missing or different {capped(missing)}{RERUN}"
         lines.append(Line("FAIL" if missing else "ok", "hooks", text))
         gone = sorted({f"~/{script}" for script in scripts([command for _, _, command in have], home) if not (home / script).exists()})
         if gone:
-            text = f"{harness}: registered hook scripts are missing: {capped(gone)}{RERUN}"
-            lines.append(Line("FAIL", "hooks", text))
-    return lines + check_cursor_fail_closed(home, root)
+            lines.append(Line("FAIL", "hooks", f"{harness}: registered hook scripts are missing: {capped(gone)}{RERUN}"))
+    return lines
 
 
-def fail_closed_commands(path: Path) -> set[tuple[str, str]] | None:
-    """(event, command) of every Cursor hook entry registered `failClosed: true`, or None when unreadable."""
-    try:
-        hooks = json.loads(path.read_text(encoding="utf-8")).get("hooks", {})
-    except (OSError, ValueError, AttributeError):
-        return None
-    return {
-        (event, entry.get("command"))
-        for event, entries in (hooks.items() if isinstance(hooks, dict) else [])
-        for entry in (entries if isinstance(entries, list) else [])
-        if isinstance(entry, dict) and entry.get("failClosed") is True
-    }
-
-
-def check_cursor_fail_closed(home: Path, root: Path = ROOT, jq: str | None = "") -> list[Line]:
-    """Each Cursor security guard the template registers `failClosed: true` is installed that way too: without it a
-    guard that crashes, times out or prints invalid JSON lets the action through. A missing guard is `check_hooks`'s.
-    Without `jq` (`jq`: its path, "" to look it up) a guard cannot answer, so a fail-closed one blocks every Cursor
-    call (FAIL), and install registers them fail-open (WARN)."""
-    wanted = fail_closed_commands(root / ".cursor" / "hooks.template.json") or set()
-    installed = home / ".cursor" / "hooks.json"
-    have = fail_closed_commands(installed)
-    if have is None:
-        return []
-    if not (shutil.which("jq") if jq == "" else jq):
-        if have:
-            return [
-                Line(
-                    "FAIL",
-                    "hooks",
-                    f"Cursor: jq is not on PATH and {len(have)} guards are failClosed: true, so every Cursor call is blocked; install jq{RERUN}",
-                )
-            ]
-        return [Line("WARN", "hooks", f"Cursor: jq is not on PATH, so the guards are registered fail-open; install jq{RERUN}")]
-    registered = {(event, command) for event, _, command in registrations(installed, False) or set()}
-    open_guards = sorted(f"{event}: {command}" for event, command in (wanted & registered) - have)
-    if not open_guards:
-        return [Line("ok", "hooks", f"Cursor: {len(wanted)} security guards fail closed")]
-    return [Line("FAIL", "hooks", f"Cursor: security guards without failClosed: true (a crash lets the action through): {capped(open_guards)}{RERUN}")]
-
-
-HOOK_SCRIPT = re.compile(r"/\.claude/hooks/([\w./-]+\.sh)")
-STAND_DOWN = re.compile(r"^hook_stand_down[ \t]+(\S+)([ \t]+fail-closed)?[ \t]*$", re.M)
-
-
-# A counterpart is `bash "$HOME/.claude/hooks/<script>"`, then only the redirection and `; exit 0` the templates use,
-# under the event `lib/cursor-counterparts.json` names: `hook_stand_down` in lib/hook.sh makes the same match.
-COUNTERPART_COMMAND = 'bash "$HOME/.claude/hooks/{}"'
-COUNTERPART_TAIL = re.compile(r"(\s+2>/dev/null)?(\s*;\s*exit 0)?\s*")
-
-
-def is_counterpart(command: str, script: str) -> bool:
-    head, form = command.lstrip(), COUNTERPART_COMMAND.format(script)
-    return head.startswith(form) and COUNTERPART_TAIL.fullmatch(head[len(form) :]) is not None
-
-
-def stands_down(script: str, home: Path, cursor: set[tuple[str, str]], closed: set[tuple[str, str]]) -> bool:
-    """Whether `script` calls `hook_stand_down` and Cursor registers (`cursor`: event, command) the counterpart it
-    names under its expected event, in `closed` too when the call asks for `fail-closed`: the hook's own test."""
-    hooks = home / ".claude" / "hooks"
-    try:
-        call = STAND_DOWN.search((hooks / script).read_text(encoding="utf-8"))
-        events = json.loads((hooks / "lib" / "cursor-counterparts.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    if not call or not isinstance(events, dict):
-        return False
-    return any(
-        event == events.get(call.group(1)) and is_counterpart(command, call.group(1)) and (not call.group(2) or (event, command) in closed)
-        for event, command in cursor
-    )
-
-
-def toplevel(path: Path) -> Path | None:
-    return next((folder for folder in (path, *path.parents) if (folder / ".git").exists()), None)
-
-
-def by_script(commands: list[str]) -> dict[str, set[str]]:
-    found: dict[str, set[str]] = {}
-    for command in commands:
-        script = HOOK_SCRIPT.search(command)
-        if script:
-            found.setdefault(script.group(1), set()).add(command)
-    return found
-
-
-def check_cursor_duplicates(home: Path, cwd: Path) -> list[Line]:
-    """A script registered in ~/.cursor/hooks.json and in a Claude-format file Cursor also loads (~/.claude's
-    settings.json, the current repository's `.claude/settings.json` and `settings.local.json`), however each spells
-    its command, runs twice in Cursor unless it stands down there (docs/hooks.md, "Each hook in Cursor"). Claude Code
-    runs an identical command that several of its settings files register once, so it has no such duplicate."""
-    installed = home / ".cursor" / "hooks.json"
-    cursor = {(event, command) for event, _, command in registrations(installed, False) or set()}
-    closed = fail_closed_commands(installed) or set()
-    repo = toplevel(cwd)
-    files = [home / ".claude" / "settings.json"]
-    files += [repo / ".claude" / name for name in ("settings.json", "settings.local.json")] if repo else []
-    claude = by_script([command for path in files for _, _, command in registrations(path, True) or set()])
-    native = by_script([command for _, command in cursor])
-    shared = sorted(set(claude) & set(native))
-    twice = [f"{script} ({' | '.join(sorted(claude[script] | native[script]))})" for script in shared if not stands_down(script, home, cursor, closed)]
-    if twice:
-        return [
-            Line(
-                "WARN",
-                "hooks",
-                f"Cursor: {len(twice)} hook scripts run twice, registered in ~/.cursor/hooks.json and in a Claude-format file Cursor loads, with no stand-down: {capped(twice)}",
-            )
-        ]
-    if shared:
-        return [Line("ok", "hooks", f"Cursor: {len(shared)} hook scripts registered in both formats stand down in the Claude-format copy")]
-    return []
+def check_harness_files(home: Path, root: Path = ROOT) -> list[Line]:
+    """The installed files equal what every adapter's `render()` returns now (crew.harness.harness_install diff); the
+    session-start refresh repairs a stale rendered file, a missing one needs install."""
+    problems = harness_install.diff(root, home)
+    if problems:
+        return [Line("FAIL", "harness", f"{len(problems)} installed files differ from render(): {capped(problems)}{RERUN}")]
+    return [Line("ok", "harness", f"every file {', '.join(adapters.IDS)} read matches render()")]
 
 
 def check_auto_memory(home: Path, root: Path = ROOT) -> list[Line]:

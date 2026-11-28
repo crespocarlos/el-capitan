@@ -2,7 +2,7 @@
 Cursor starts (its own `beforeShellExecution` entries plus the Claude-format `PreToolUse` Bash ones it also runs).
 
 Usage: uv run python scripts/dev/bench_hooks.py [--home DIR] [--runs N] [--command CMD]
-DIR holds the installed `.claude/settings.json` and `.cursor/hooks.json` (default: $HOME). Each Claude hook command runs
+DIR holds the installed `.claude/settings.json` and the Cursor plugin's `hooks/hooks.json` (default: $HOME). Each Claude hook command runs
 under `bash -c` with the command's payload on stdin, as the harness runs it. Prints the median CPU and the Cursor count;
 exits 1 above 120 ms or 3 processes (the hooks-diet targets).
 """
@@ -44,7 +44,8 @@ def main() -> int:
     parser.add_argument("--command", default="git status")
     args = parser.parse_args()
     claude = commands(args.home / ".claude" / "settings.json", "PreToolUse", True)
-    cursor = commands(args.home / ".cursor" / "hooks.json", "beforeShellExecution", False) + commands(args.home / ".cursor" / "hooks.json", "preToolUse", False)
+    plugin = args.home / ".cursor" / "plugins" / "local" / "el-capitan" / "hooks" / "hooks.json"
+    cursor = commands(plugin, "beforeShellExecution", False) + commands(plugin, "preToolUse", False)
     cwd = str(Path.cwd())
     payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": args.command}, "cwd": cwd})
     median = statistics.median(cpu_ms(claude, payload, cwd) for _ in range(args.runs))

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "about":"Each hook rule: its canonical event, the script under this directory that runs it (the normalised event on stdin), its fail mode (closed: the harness blocks when crew-hook cannot answer) and its timeout in seconds. Each harness maps the events in harness/<id>.json.",
+  "events": {
+    "session_start": "a session begins; a rule's text becomes context",
+    "prompt_submit": "the user sends a prompt; a rule's text becomes context",
+    "pre_shell": "before a shell command; a rule may deny it",
+    "pre_write": "before a file write, edit or delete; a rule may deny it",
+    "post_tool": "after a tool call, failed or not",
+    "post_shell": "after a shell command, with its output",
+    "subagent_stop": "a subagent ended; a rule may ask it to continue",
+    "stop": "the agent's turn ended; a rule may ask it to continue",
+    "idle": "the harness waits for the user"
+  },
+  "rules": [
+    {"name": "shell-guard", "event": "pre_shell", "run": "guard/shell.sh", "fail": "closed", "timeout": 60},
+    {"name": "file-guard", "event": "pre_write", "run": "check-task-spec-owner.sh", "fail": "closed", "timeout": 10},
+    {"name": "log-tool-use", "event": "post_tool", "run": "log-tool-use.sh", "fail": "open", "timeout": 30},
+    {"name": "record-pr", "event": "post_shell", "run": "record-pr.sh", "fail": "open", "timeout": 30},
+    {"name": "capture-reply", "event": "subagent_stop", "run": "capture-reply.sh", "fail": "open", "timeout": 30},
+    {"name": "memory-capture-prompt", "event": "stop", "run": "memory-capture-prompt.sh", "fail": "open", "timeout": 30},
+    {"name": "usage", "event": "stop", "run": "usage.sh", "fail": "open", "timeout": 30},
+    {"name": "memory-context", "event": "session_start", "run": "memory-context.sh", "fail": "open", "timeout": 30},
+    {"name": "agents-refresh", "event": "session_start", "run": "agents-refresh.sh", "fail": "open", "timeout": 30},
+    {"name": "spec-status", "event": "session_start", "run": "spec-status-reconcile.sh", "fail": "open", "timeout": 30},
+    {"name": "mode-anchor", "event": "prompt_submit", "run": "mode-anchor.sh", "fail": "open", "timeout": 30},
+    {"name": "notify-idle", "event": "idle", "run": "notify-idle.sh", "fail": "open", "timeout": 30}
+  ]
+}

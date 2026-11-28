@@ -18,7 +18,7 @@ DELEGATED = {
     "blocked": "<TASK_DIR> <reason>: one BLOCKED line, shown by crew ls",
     "worktree": "pref|record|check: where the worker runs, and whether a branch may be cut here",
     "report": "save <TASK_DIR> [--range A-B] < reply: a builder's reply saved as REPORT.md, as the hook does",
-    "usage": "stop < payload: a Cursor `stop` payload's token counts on its task (the cursor-usage.sh hook)",
+    "usage": "stop < event: a stop event's token counts on its task (the usage.sh hook rule)",
 }
 
 

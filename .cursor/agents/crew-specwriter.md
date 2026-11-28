@@ -1,6 +1,7 @@
 ---
 name: crew-specwriter
 description: "Draft a SPEC.md, then stop at Gate 1 for approval. Trigger: 'crew spec <issue URL or #X>'; never launch this agent as a subagent."
+access: inline
 ---
 **Workflow**: build | **Stage**: spec
 

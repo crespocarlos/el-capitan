@@ -1,6 +1,7 @@
 ---
 name: crew-reviewer
 description: "Multi-lens review of code, a PR, a spec or an idea. Trigger: 'crew review' (self), 'crew review PR #X' or URL (PR), 'crew review spec' (spec), or 'crew review idea' (idea/proposal/session); never launch this agent as a subagent."
+access: inline
 ---
 
 # Crew reviewer

@@ -74,8 +74,7 @@ SCANNED = (
     "evals/*.md",
     ".github/workflows/*.yml",
     ".claude/settings.json",
-    ".claude/settings.template.json",
-    ".cursor/hooks.template.json",
+    ".claude/hooks/contract.json",
 )
 
 
@@ -158,7 +157,6 @@ def lint_tool_prose(root: Path) -> list[Finding]:
     return found
 
 
-SETTINGS_FILES = (".claude/settings.template.json", ".cursor/hooks.template.json")
 PROGRESS_CALL = re.compile(r"crew-progress\.py\"?\s+\"?\$TASK_DIR\"?\s+\"([^\"]*)\"")
 SHELL_EDITS = (
     (re.compile(r"(?<!`)\bsed\s+-[a-zA-Z]*i"), "sed -i rewrites a file in place; use the edit tool"),
@@ -236,38 +234,49 @@ def lint_local_state_tracked(root: Path) -> Findings:
     return findings
 
 
-def registrations(node: object) -> list[dict]:
-    """Every object with a `command` in a hooks section, in either harness's nesting."""
-    if isinstance(node, dict):
-        return [node] if "command" in node else [found for child in node.values() for found in registrations(child)]
-    return [found for child in node for found in registrations(child)] if isinstance(node, list) else []
+# What only a harness adapter may know: its payload keys, native event names and registration or answer fields. Each
+# is a word no harness-free code needs; `harness/` holds them (crew.harness), tests and docs describe them.
+HARNESS_WORDS = re.compile(
+    r"\b(cursor_version|hook_event_name|tool_input|tool_response|hookSpecificOutput|additionalContext|followup_message|"
+    r"failClosed|loop_limit|agent_transcript_path|last_assistant_message|stop_hook_active|CURSOR_TRANSCRIPT_PATH|"
+    r"beforeShellExecution|afterShellExecution|subagentStop|SubagentStop|PreToolUse|PostToolUse|UserPromptSubmit)\b"
+)
+HARNESS_CODE = ("src/crew/**/*.py", ".claude/**/*.sh", ".claude/*.py", ".claude/hooks/lib/*.py", "install.sh")
+
+
+def lint_harness_knowledge(root: Path) -> Findings:
+    """Harness payload and registration words appear only in `src/crew/harness/`; every other code file reads the
+    normalised event and calls an adapter."""
+    found: Findings = []
+    for pattern in HARNESS_CODE:
+        for path in sorted(root.glob(pattern)):
+            name = rel(root, path)
+            if "harness" in path.relative_to(root).parts or "fixtures" in path.parts or name == "src/crew/maintenance/lint_writing.py":
+                continue
+            text = path.read_text(errors="replace")
+            found += [
+                (name, line_no(text, hit.start()), "harness-knowledge", f"{hit.group(0)} is harness knowledge: read it in crew.harness")
+                for hit in HARNESS_WORDS.finditer(text)
+            ]
+    return sorted(set(found))
 
 
 def lint_hook_registration(root: Path) -> Findings:
-    """Every hook script is named in a settings file, or it never runs; every registration sets a `timeout`.
+    """Every hook script is a rule in `.claude/hooks/contract.json`, or no harness runs it; every rule sets a `timeout`.
 
-    `guard/` and `lib/` are both walked: a rule that moved into `guard/` is still a hook that must be
-    registered, while `lib/` holds sourced files, which a registration never names.
+    `guard/` is walked too, while `lib/` holds sourced files, which the contract never names.
     """
-    findings: Findings = []
-    referenced = ""
-    for config in SETTINGS_FILES:
-        if (root / config).exists():
-            text = (root / config).read_text(errors="replace")
-            referenced += text
-            findings += [
-                (
-                    config,
-                    line_no(text, text.find(json.dumps(entry["command"]))),
-                    "hook-timeout",
-                    "hook registration has no timeout (the harness default is 600 s)",
-                )
-                for entry in registrations(json.loads(text).get("hooks", {}))
-                if "timeout" not in entry
-            ]
-    hooks = sorted((root / ".claude/hooks").glob("*.sh"))
-    hooks += sorted((root / ".claude/hooks/guard").glob("*.sh"))
-    for hook in hooks:
-        if hook.name not in referenced:
-            findings.append((rel(root, hook), 1, "unregistered-hook", "hook is not registered in a settings file"))
+    contract = root / ".claude/hooks/contract.json"
+    if not contract.exists():
+        return []
+    rules = json.loads(contract.read_text(encoding="utf-8"))["rules"]
+    findings: Findings = [
+        (rel(root, contract), 1, "hook-timeout", f"rule {rule.get('name')} has no timeout (the harness default is 600 s)")
+        for rule in rules
+        if not rule.get("timeout")
+    ]
+    named = {rule.get("run") for rule in rules}
+    for hook in sorted([*(root / ".claude/hooks").glob("*.sh"), *(root / ".claude/hooks/guard").glob("*.sh")]):
+        if str(hook.relative_to(root / ".claude/hooks")) not in named:
+            findings.append((rel(root, hook), 1, "unregistered-hook", "hook is not a rule in .claude/hooks/contract.json"))
     return findings

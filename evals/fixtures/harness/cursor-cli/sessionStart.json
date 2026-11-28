@@ -1,0 +1,13 @@
+{
+  "conversation_id": "{session}",
+  "generation_id": "<string>",
+  "session_id": "<string>",
+  "model": "<string>",
+  "hook_event_name": "sessionStart",
+  "cursor_version": "<string>",
+  "workspace_roots": ["{cwd}"],
+  "user_email": "<string>",
+  "transcript_path": "<string>",
+  "is_background_agent": false,
+  "composer_mode": "<string>"
+}

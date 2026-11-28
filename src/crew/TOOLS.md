@@ -24,7 +24,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
   or `asset`. `install.sh` links `kind: command` and nothing else, and `crew-lint.py` fails a command
   whose basename lacks the prefix and a module that carries a command's basename.
 - **One subpackage per responsibility** — `lib/`, `task/`, `review/`, `memory/`, `evals/`,
-  `maintenance/`, `tui/`. `tools.json` and `TOOLS.md` stay at the root of `src/crew/`, because they
+  `maintenance/`, `harness/`, `tui/`. `tools.json` and `TOOLS.md` stay at the root of `src/crew/`, because they
   describe the whole tree rather than belonging to one group.
 - **`lib/` is imported, never installed as a command.** `src/crew/lib/` holds the helpers every
   tool shares, each defined once (crew-lint `single-owner`); its map is below. Import paths:
@@ -44,6 +44,7 @@ each entry records the `dir` it lives in and what it is. `crew-lint.py` validate
 | `evals/` | `crew-evals-compare.py`, `crew-evals-inspect.py` | `evals_query.py`, `evals_report.py`, `evals_rows.py`, `evals_diagnose.py`, `evals_sources.py` | — | Inspect, compare, and diagnose evaluation runs |
 | `memory/` | `crew-mem.py`, `crew-inbox.py` | `memory_paths.py`, `memory_frontmatter.py`, `memory_store.py`, `memory_add.py`, `memory_search.py`, `memory_journal.py`, `memory_inbox.py`, `memory_maintenance.py`, `memory_transfer.py`, `memory_claude.py` | — | Durable units and immutable observations, and the import of Claude Code auto-memory |
 | `maintenance/` | `crew-doctor.py`, `crew-lint.py` | `lint_files.py`, `lint_catalog.py`, `lint_prompts.py`, `lint_references.py`, `lint_python.py`, `lint_writing.py`, `lint_style.py`, `lint_docs.py`, `lint_dead_code.py`, `doctor_checks.py`, `doctor_env.py` | — | Repository validation, the generated README blocks, the caller report, one module per lint family, and the install health check |
+| `harness/` | `crew-hook.py` | `adapters.py`, `claude_code.py`, `cursor.py`, `cursor_cli.py`, `codex.py`, `harness_install.py` | `claude-code.json`, `cursor.json`, `cursor-cli.json`, `codex.json` | The one hook entry point, a manifest and an adapter (`render`, `normalize`, `encode`) per harness, and the writer install and doctor share |
 | `lib/` | — | `files.py`, `git.py`, `git_config.py`, `gh_reads.py`, `reply_marker.py`, `claude_plugins.py`, `cli.py`, `clock.py`, `output.py`, `next_steps.py`, `markdown.py` | — | Shared helpers: one atomic write, JSON and setting read, one git/gh runner and owner/repo parser, one UTC stamp, the CLI and output contracts |
 | `tui/` | — | `crew_tui.py`, `tui_app.py`, `tui_model.py` | — | The dashboard (`uv run --group tui python -m crew.tui.crew_tui`), not installed |
 | root | — | — | `tools.json`, `TOOLS.md` | The catalog |
@@ -81,7 +82,8 @@ task -> memory lib
 review -> task lib
 memory -> lib
 evals -> lib
-maintenance -> task memory lib
+maintenance -> task memory harness lib
+harness -> lib
 tui -> task lib
 lib ->
 ```
@@ -101,22 +103,13 @@ CLAUDE_CONFIG_DIR set (2026-11-27): a `CLAUDE_CONFIG_DIR=~/.claude-work` session
 therefore load every rule twice. `autoMemoryEnabled: false` is written by the settings merge
 (`AUTO_MEMORY_OFF`) once a dir's Claude memory is imported, never carried in the template.
 
-**Rendered agents.** An agent whose frontmatter `tools:` line ends in the YAML comment
-`  # {{mcp_servers}}` is not linked once rendered: `install_blocks.py render-agents` writes it into
-`~/.cursor/agents` (which every config dir's `agents` points to) as a regular file, the comment
-replaced by one `, mcp__<server>__*` per server in `mcp.docs` and `mcp.code_search` of
-`~/.agent/config.json` (removed when none is), and records it as `rendered_agents`, with the checkout
-as `rendered_from`, in the manifest. Only the frontmatter line counts; the placeholder in prose is
-text. A re-install re-renders and never swaps a copy for a link; a render failure prints one line,
-the install goes on, and an agent without a copy keeps its source link, whose line grants exactly the
-class's native tools. Uninstall removes the copies. The SessionStart hook `agents-refresh.sh`
-(`install_blocks.py refresh-agents`) rewrites a recorded copy that differs from its `rendered_from`
-source rendered with the config now, so a `git pull` or a config change reaches the next session. A
-persona edit in a worktree takes effect for that worktree's review only after rendering from it:
-`python3 <worktree>/.claude/install_blocks.py render-agents "$HOME" <worktree>`; the copies then follow
-that worktree until `install.sh` (or the same command from the main checkout) renders from elsewhere.
-The repo ships no project-level agents link under `.claude/`, so a session inside the checkout uses
-the rendered user-level agents too (`sync-skills.yml` checks it).
+**Rendered files.** Every file a harness reads is what its adapter's `render()` returns
+(`src/crew/harness/`), written and recorded (`rendered` in the manifest) by `harness_install apply`. An agent whose
+frontmatter `tools:` line ends in the YAML comment `  # {{mcp_servers}}` is rendered as a regular file, the comment
+replaced by one `, mcp__<server>__*` per server in `mcp.docs` and `mcp.code_search` of `~/.agent/config.json`
+(removed when none is); every other agent is a link. Only the frontmatter line counts. The session-start rule
+`agents-refresh.sh` (`harness_install refresh`) rewrites each recorded file that differs from its render, and
+`crew doctor` names each one that differs (`harness_install diff`). Uninstall removes them all.
 
 ## Module maps
 
@@ -672,50 +665,38 @@ One line per module: what it owns. Entry points (`crew-*.py`) are listed in the 
 
 ## Hooks
 
-`.claude/hooks/` holds the harness hooks; `.claude/settings.template.json` (Claude Code) and
-`.cursor/hooks.template.json` (merged into `~/.cursor/hooks.json`) register them; in Cursor's copy of
-a Claude-format event a hook stands down when its Cursor entry does the work (docs/hooks.md). Every hook follows
-one contract, implemented once in `.claude/hooks/lib/hook.sh`:
+Every registration runs one entry point, `crew-hook.py <harness> <event>` (`harness/crew_hook.py`), so moving a
+rule file never strands an installed registration. The harness's adapter normalises the payload into one event
+(`event`, `harness`, `deny_rules`, `cwd`, `session`, `tool`, `input`, and the fields of a stop), each canonical
+event it serves runs the rules `.claude/hooks/contract.json` names for it from `~/.agent/hooks` (copied there at
+install with the registrations, and stamped with the event's `version`), and the adapter encodes the answer. The rules know no harness (crew-lint `harness-knowledge`); one
+contract, in `.claude/hooks/lib/hook.sh`:
 
-| Outcome | Claude Code | Cursor |
+| Outcome | A rule prints | Claude Code and Codex get | Cursor gets |
+| --- | --- | --- | --- |
+| Deny | `{"deny": MESSAGE}` | exit `2`, the message on stderr | `permission: deny` JSON, exit `0` |
+| No objection | nothing | exit `0`, nothing | `{}` (a `failClosed` registration reads silence as a crash) |
+| Context | text | stdout, or `additionalContext` after a tool call | `additional_context` at session start |
+| Go on | `{"followup": TEXT}` | `decision: block` | `followup_message` |
+
+A Claude allow is never a `permissionDecision: "allow"` payload, which would skip interactive approval.
+**Cannot judge is no objection.** A missing `awk`, a command the normaliser cannot read or an unreadable event exits
+`0` after one stderr line. A rule the contract marks `fail: closed` (the guards) that is missing, fails or times out
+denies, as do rules of another version than `crew-hook.py`; an open one is skipped with one line. An internal error
+of `crew-hook.py` denies an event a closed rule serves and allows the rest. The credentials rule denies the commands
+it scans when it cannot scan them.
+
+| Rule | Event | Purpose |
 | --- | --- | --- |
-| Block | exit `2`, one line on stderr, nothing on stdout | its own JSON deny on stdout, exit `0` |
-| No objection | exit `0`, nothing on either stream — the harness's permission flow decides | exit `0` and nothing, same as Claude |
-| Cannot judge | one line on stderr, exit `0` | one line on stderr, exit `0` |
-
-The two mechanisms are never mixed in one run, and a Claude allow is never a
-`permissionDecision: "allow"` payload, which would skip interactive approval.
-
-One measured exception: Cursor treats *no output* from a hook registered `failClosed: true` as a
-failure and blocks the command, so silence there is a block rather than a decline. Both Cursor
-guards (`guard/shell.sh`, `check-task-spec-owner.sh`) are registered `failClosed: true`, so a crash, a timeout or invalid JSON
-blocks, and each answers Cursor's `beforeShellExecution` and `preToolUse` with `{}` (no permission)
-when it has no objection (`hook_allow`); `crew doctor` fails an installed one without the flag.
-Observers stay silent on both harnesses.
-
-**Cannot judge is no objection.** A missing `awk`, a command the normaliser cannot read or an unexpected event
-exits `0` after one stderr line, and a rule that fails is skipped with one line. The credentials
-rule is the exception: it denies the commands it scans, because a silent gap there is a credential
-leak. In Cursor, a failure before the event is read (no `jq`, unreadable input) prints no JSON, so a
-`failClosed` guard blocks.
-
-| File | Event | Purpose |
-| --- | --- | --- |
-| `guard/shell.sh` | Bash | the shell guard: one process, its rules as functions (`docs/hooks.md`, Rules) |
-| `check-task-spec-owner.sh` | Write, Edit | the file guard: a `SPEC.md` written over another task's; in Cursor, Status moves and record deletes |
-| `mode-anchor.sh` | UserPromptSubmit | the cached pipeline anchor line |
-| `memory-context.sh`, `cursor-memory-context.sh` | SessionStart | bounded memory context |
-| `spec-status-reconcile.sh` | SessionStart | applies the status policy, refreshes the anchor |
-| `log-tool-use.sh`, `notify-idle.sh` | PostToolUse / Notification | local telemetry and the idle notification |
-| `memory-capture-prompt.sh` | Stop | queues one memory review: inbox drafts, no question |
-| `record-pr.sh` | PostToolUse Bash / `afterShellExecution` | `crew-task.py record-pr`: the PR a `gh pr create` printed, recorded on its task (`task_record_pr.py`) |
-| `capture-reply.sh` | SubagentStop / `subagentStop` | `crew-review-findings.py capture`: the reply its `crew-review-out:` marker and `.expect` nonce name (`review_capture.py`), a builder's report, the run's `agent_end` |
-| `cursor-usage.sh` | Cursor `stop` | `crew-task.py usage stop`: the session's raw token counts as `cursor_stop` on the task the workspace resolves to |
-
-The two record-keeping hooks never block and never stay silent about what they did: each prints its
-outcome on stdout (`record-pr.sh` as Claude `additionalContext`), and every other command or subagent
-ends in shell before Python starts. Both are `SILENT` in `hook_cases.py`, which checks their failure
-handling only; their behavior is pinned in `test_lifecycle.py` and `test_review_findings.py`.
+| `guard/shell.sh` | `pre_shell` | the shell guard: one process, its rules as functions (`docs/hooks.md`, Rules) |
+| `check-task-spec-owner.sh` | `pre_write` | the file guard: a `SPEC.md` written over another task's; without deny rules, Status moves; record deletes |
+| `mode-anchor.sh` | `prompt_submit` | the cached pipeline anchor line |
+| `memory-context.sh`, `agents-refresh.sh`, `spec-status-reconcile.sh` | `session_start` | memory context, the rendered files refreshed, the status policy and anchor |
+| `log-tool-use.sh` | `post_tool` | local telemetry |
+| `notify-idle.sh` | `idle` | the idle notification |
+| `memory-capture-prompt.sh`, `usage.sh` | `stop` | one memory review queued; a stop's raw token counts as `cursor_stop` on its task |
+| `record-pr.sh` | `post_shell` | `crew-task.py record-pr`: the PR a `gh pr create` printed, recorded on its task (`task_record_pr.py`) |
+| `capture-reply.sh` | `subagent_stop` | `crew-review-findings.py capture`: the reply its `crew-review-out:` marker and `.expect` nonce name (`review_capture.py`), a builder's report, the run's `agent_end` |
 
 One guard per event, one function per rule, so a false positive or a crash is confined to the rule
 that caused it. `lib/hook.sh` is sourced, never registered; it holds the command
@@ -725,7 +706,7 @@ normaliser every shell guard reads through and the off switches (`EL_CAPITAN_GUA
 turns the tree into the same segment records the awk fallback emits, so the guards never know which
 parser ran; awk reads the whole command when shfmt is absent or fails on any part of it, and when
 the command is over 16 KiB or nests deeply (shfmt's JSON grows with depth times size).
-`evals/tools/test_hook_cases.py` runs every case through both parsers (`PARSERS_DIFFER` in
+`evals/tools/test_harness_parity.py` runs every case through each adapter and both parsers (`PARSERS_DIFFER` in
 `hook_cases.py` lists the rows where awk is wrong), and CI installs the pinned shfmt with
 `scripts/install-bin.sh`. `lib/anchor.sh`
 holds the anchor line `spec-status-reconcile.sh` computes and `mode-anchor.sh` reprints.

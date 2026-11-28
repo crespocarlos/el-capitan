@@ -46,16 +46,12 @@ class Pull:
 
 
 def created_urls(payload: dict) -> list[str]:
-    """The distinct PR URLs the output of a `gh pr create` command holds, in order; [] for any other command."""
-    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
-    command = str(tool_input.get("command") or payload.get("command") or "")
-    if not PR_CREATE.search(command):
+    """The distinct PR URLs the output of a `gh pr create` command holds, in order; [] for any other command. The
+    payload is the hook's normalised event: the command in `input`, the output in `output`."""
+    fields = given if isinstance(given := payload.get("input"), dict) else {}
+    if not PR_CREATE.search(str(fields.get("command") or "")):
         return []
-    response = payload.get("tool_response")
-    if isinstance(response, dict):
-        text = f"{response.get('stdout') or ''}\n{response.get('stderr') or ''}"
-    else:
-        text = str(response or payload.get("output") or "")
+    text = str(payload.get("output") or "")
     return list(dict.fromkeys(match.group(0) for match in PR_URL.finditer(text)))
 
 

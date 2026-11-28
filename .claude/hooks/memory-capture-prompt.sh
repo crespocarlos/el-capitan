@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop hook: queue a memory-capture review for the turn that just ended; it drafts, never asks.
+# The `stop` rule: queue a memory-capture review for the turn that just ended; it drafts, never asks.
 #
 # The agent writes inbox drafts and asks nothing: the one approval question is the closing
 # confirmation of `crew open pr`, and a subagent's question would never reach a human anyway.
@@ -10,7 +10,6 @@
 set -euo pipefail
 HOOK_NAME=memory-capture-prompt
 . "$(dirname "$0")/lib/hook.sh"
-hook_stand_down memory-capture-prompt.sh
 hook_input
 INPUT="$HOOK_INPUT" python3 - <<'PY'
 import hashlib
@@ -19,8 +18,7 @@ import os
 from pathlib import Path
 
 event = json.loads(os.environ["INPUT"])
-session = str(event.get("session_id") or event.get("conversation_id") or "unknown")
-session_id = hashlib.sha256(session.encode()).hexdigest()[:24]
+session_id = hashlib.sha256(str(event.get("session") or "unknown").encode()).hexdigest()[:24]
 root = Path(os.environ.get("CREW_MEMORY_DIR", Path.home() / ".agent" / "memory"))
 events_path = root / ".sessions" / f"{session_id}.jsonl"
 guard_path = root / ".sessions" / f"{session_id}.memory-prompted"
@@ -28,7 +26,8 @@ queue_path = root / ".sessions" / "review-queue.jsonl"
 
 
 def finish(payload: dict) -> None:
-    print(json.dumps(payload))
+    if payload:
+        print(json.dumps(payload))
     raise SystemExit
 
 
@@ -65,5 +64,5 @@ message = (
       "the closing confirmation of `crew open pr` and the next session start show the drafts. If "
       "nothing qualifies, write nothing."
 )
-finish({"followup_message": message})
+finish({"followup": message})
 PY

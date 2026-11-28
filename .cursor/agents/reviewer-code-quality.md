@@ -1,6 +1,7 @@
 ---
 name: reviewer-code-quality
 description: "Systematic quality reviewer with structured checklist. Works on code diffs, plans, and proposals. Dispatched by crew-reviewer — do not invoke directly."
+access: readonly
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 10

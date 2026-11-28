@@ -5,14 +5,16 @@ The previous tree (`origin/main`, or `UPGRADE_FROM_REF`) is exported with `git a
 temporary directory (no worktree is registered, so the main checkout's `.git` is untouched) and
 installed into a fake HOME; then this tree's `install.sh` runs into the same HOME. Afterwards:
 
-- every `crew-*` command, `~/.agent/bin/...`, `~/.cursor/skills/...` and `~/.cursor/agents/...` path
-  named in a prompt (rules, agents, skills, `.claude/CLAUDE.md`) resolves under the fake HOME, and
-  every repo skill and agent file is installed;
+- every `crew-*` command, `~/.agent/bin/...`, `~/.cursor/skills/...`, `~/.cursor/agents/...` and `~/.claude/agents/...`
+  path named in a prompt (rules, agents, skills, `.claude/CLAUDE.md`) resolves under the fake HOME, and
+  every repo skill and agent file is installed for Claude Code and in the Cursor plugin;
+- no registration of the previous layout is left: no hook under ~/.claude/hooks in settings.json or ~/.cursor/hooks.json,
+  no link in ~/.cursor/rules;
 - every command in the fake `~/.claude/settings.json` allow-list exists (a `~/` path under the fake
   HOME, a bare program on PATH unless listed in `EXTERNAL`);
 - the generated `el-capitan:imports` block imports exactly the `.mdc` files `.claude/CLAUDE.md`
-  imports, none of `FORBIDDEN_IMPORTS`, the `Read <path> before ...` pointer line that replaces each
-  of those, and is printed so the report records it;
+  imports, each one resolving (the Phase 1 import check), none of `FORBIDDEN_IMPORTS`, the `Read <path> before ...`
+  pointer line that replaces each of those, and is printed so the report records it;
 - every command in `NEW_COMMANDS` is allow-listed and runs through its installed link.
 
 Every install runs with HOME set to the temporary directory; the real HOME's install surface is
@@ -20,6 +22,7 @@ fingerprinted before and after and must not change.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -36,10 +39,10 @@ PREVIOUS = os.environ.get("UPGRADE_FROM_REF", "origin/main")
 EXTERNAL = {"agent-builder": "a user tool the allow-list pre-approves; not shipped here",
             "uuidgen": "optional (absent on ubuntu-latest); crew-specwriter falls back to python3 uuid"}
 # Rules the always-on block must not charge every request for, each with the pointer that replaces it.
-FORBIDDEN_IMPORTS = {"typescript.mdc": "~/.cursor/rules/typescript.mdc",
+FORBIDDEN_IMPORTS = {"typescript.md": "~/.claude/el-capitan/typescript.md",
                      "prompt-engineering.mdc": "~/.cursor/skills/prompt-authoring/SKILL.md"}
 PROMPT_GLOBS = ("rules/*.mdc", ".cursor/agents/**/*.md", ".cursor/skills/**/*.md", ".claude/CLAUDE.md")
-HOME_PATH = re.compile(r"~/\.(?:agent/bin|cursor/skills|cursor/agents)/[A-Za-z0-9._/-]+")
+HOME_PATH = re.compile(r"~/\.(?:agent/bin|cursor/skills|cursor/agents|claude/agents)/[A-Za-z0-9._/-]+")
 BARE_COMMAND = re.compile(r"\bcrew-[a-z0-9-]+\.(?:py|sh)\b")
 GIT_ID = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
@@ -94,6 +97,8 @@ def reference_failures(home: Path) -> list[str]:
     text, failures = prompt_text(), []
     for ref in sorted(set(HOME_PATH.findall(text))):
         ref = ref.rstrip(".,/")
+        if ref.endswith("-"):  # a pattern such as `crew-<name>.md`, not a path
+            continue
         if not (home / ref[2:]).exists():
             failures.append(f"prompt names {ref}, which does not resolve after the upgrade")
     for name in sorted(set(BARE_COMMAND.findall(text))):
@@ -103,9 +108,40 @@ def reference_failures(home: Path) -> list[str]:
         if not (home / ".cursor" / "skills" / skill.parent.name / "SKILL.md").exists():
             failures.append(f"skill {skill.parent.name} is not installed")
     for agent in sorted((ROOT / ".cursor" / "agents").glob("*.md")):
-        if not (home / ".cursor" / "agents" / agent.name).exists():
-            failures.append(f"agent {agent.name} is not installed")
+        for place in (".claude/agents", ".cursor/plugins/local/el-capitan/agents"):
+            if not (home / place / agent.name).exists():
+                failures.append(f"agent {agent.name} is not installed in ~/{place}")
     return failures
+
+
+def commands(data: object) -> list[str]:
+    """Every `command` string in a hooks document, whatever its nesting."""
+    if isinstance(data, dict):
+        return [str(data.get("command"))] + [c for value in data.values() for c in commands(value)]
+    return [c for value in data for c in commands(value)] if isinstance(data, list) else []
+
+
+def test_every_registration_of_the_previous_release_is_retired() -> None:
+    """Each hook command the previous release's templates registered is one `hooks_retirement.retired` drops, so an
+    upgrade never keeps a registration whose script is gone."""
+    spec = importlib.util.spec_from_file_location("hooks_retirement", ROOT / ".claude" / "hooks_retirement.py")
+    assert spec is not None and spec.loader is not None
+    retirement = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(retirement)
+    found = []
+    for name in (".claude/settings.template.json", ".cursor/hooks.template.json"):
+        shown = subprocess.run(["git", "-C", str(ROOT), "show", f"{PREVIOUS}:{name}"], capture_output=True, text=True)
+        found += commands(json.loads(shown.stdout)) if shown.returncode == 0 else []
+    kept = [command for command in found if command != "None" and not retirement.retired(command)]
+    assert not kept, kept
+
+
+def legacy_failures(home: Path) -> list[str]:
+    """What the previous layout registered is gone: hooks run through crew-hook.py only, no rule links in ~/.cursor."""
+    failures = [f"{name} still registers a script under ~/.claude/hooks" for name in (".claude/settings.json", ".cursor/hooks.json")
+                if (home / name).is_file() and any("/.claude/hooks/" in c for c in commands(json.loads((home / name).read_text(encoding="utf-8"))))]
+    rules = home / ".cursor" / "rules"
+    return failures + [f"{link} is left from the previous layout" for link in (sorted(rules.iterdir()) if rules.is_dir() else []) if link.is_symlink()]
 
 
 def allow_list_failures(home: Path) -> list[str]:
@@ -156,8 +192,9 @@ def imports_failures(home: Path) -> list[str]:
         return ["the fake ~/.claude/CLAUDE.md has no el-capitan:imports block"]
     print("imports block:\n" + block.group(0))
     got = re.findall(r"^@(\S+)$", block.group(0), re.M)
-    wanted = list(dict.fromkeys(re.findall(r"@(\S+\.mdc)", (ROOT / ".claude" / "CLAUDE.md").read_text())))
+    wanted = list(dict.fromkeys(re.findall(r"^@(\S+\.mdc?)$", (ROOT / ".claude" / "CLAUDE.md").read_text(), re.M)))
     failures = [] if got == wanted else [f"imports block {got} differs from .claude/CLAUDE.md {wanted}"]
+    failures += [f"imports block names {item}, which does not resolve" for item in got if not (home / item[2:]).exists()]
     # A rule left out of the imports keeps a one-line pointer, so other repos still learn to read it.
     pointers = re.findall(r"^Read (\S+) before .+$", block.group(0), re.M)
     failures += [f"imports block has no pointer line for {name} ({pointer})"
@@ -177,7 +214,7 @@ def test_upgrade_from_the_previous_release(tmp: Path) -> None:
     install(previous, home, cwd)
     install(ROOT, home, cwd)
     (tmp / "tasks").mkdir()
-    failures = (reference_failures(home) + allow_list_failures(home) + imports_failures(home)
+    failures = (reference_failures(home) + legacy_failures(home) + allow_list_failures(home) + imports_failures(home)
                 + new_command_failures(home, tmp / "tasks"))
     if fingerprint(real_home) != before:
         failures.append(f"the real HOME's install surface changed under {real_home}")

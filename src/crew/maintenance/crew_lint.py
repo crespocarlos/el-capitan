@@ -38,6 +38,7 @@ from crew.maintenance.lint_references import lint_documents, lint_handoff, lint_
 from crew.maintenance.lint_style import lint_style
 from crew.maintenance.lint_writing import (
     lint_edit_discipline,
+    lint_harness_knowledge,
     lint_hook_registration,
     lint_local_state_tracked,
     lint_progress_transitions,
@@ -109,6 +110,7 @@ def lint(root: Path, budget: bool) -> list[Finding]:
     findings.extend(lint_documents(root, all_files, installed_names, rules, router_path(root)))
     findings.extend(lint_handoff(root, router_path(root)))
     findings.extend(lint_hook_registration(root))
+    findings.extend(lint_harness_knowledge(root))
     findings.extend(lint_local_state_tracked(root))
     findings.extend(lint_python(root))
     findings.extend(lint_removed_forms(root))

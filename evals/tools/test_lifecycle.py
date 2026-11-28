@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 from cli_runner import launcher
 from cli_runner import run as cli
+from harness_hook import run as hook
 from task_fixture import record_status
 
 from crew.review import review_workspace
@@ -888,7 +889,7 @@ def record_world(tmp: Path) -> tuple[Path, Path, dict]:
 
 def record_hook(tmp: Path, shape: str, command: str, output: str, branch: str, owner: str = "acme",
                 break_task: str = "", prepare: Callable[[Path], None] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess:
-    """Run record-pr.sh on one payload of the given harness shape, the PR's `gh pr view` answer being `branch` and `owner`;
+    """Run record-pr.sh through crew-hook.py on one payload of the given harness shape, the PR's `gh pr view` answer being `branch` and `owner`;
     `break_task` turns that task's PROGRESS.md into a directory, so writing the PR fails; `prepare(tasks)` runs before the
     hook; `cwd` is the payload's cwd (default the main checkout)."""
     home, repo, env = record_world(tmp)
@@ -903,8 +904,7 @@ def record_hook(tmp: Path, shape: str, command: str, output: str, branch: str, o
     payload = ({"hook_event_name": "PostToolUse", "tool_name": "Bash", "cwd": where, "tool_input": {"command": command},
                 "tool_response": {"stdout": output, "stderr": ""}} if shape == "claude"
                else {"hook_event_name": "afterShellExecution", "cwd": where, "command": command, "output": output})
-    hook = ROOT / ".claude" / "hooks" / "record-pr.sh"
-    return subprocess.run(["bash", str(hook)], input=json.dumps(payload), capture_output=True, text=True, env=env, cwd=repo)
+    return hook(Path(env["HOME"]), payload, env=env, cwd=repo)
 
 
 @pytest.mark.parametrize("label,shape,command,output,branch,owner,changed,words,asks", [
@@ -942,7 +942,8 @@ def test_record_pr_hook(tmp: Path, label: str, shape: str, command: str, output:
     check(f"{label}: no task created", {path.name for path in tasks.iterdir()} == set(RECORD_TASKS))
     calls = (tmp / "calls").read_text().splitlines() if (tmp / "calls").exists() else []
     check(f"{label}: exit 0, the outcome in the hook output, gh asked only about a created PR",
-          done.returncode == 0 and words.replace("{tasks}", str(tasks)) in done.stdout and (bool(words) or done.stdout == "")
+          done.returncode == 0
+          and (done.stdout == "{}\n" if shape == "cursor" else words.replace("{tasks}", str(tasks)) in done.stdout and (bool(words) or done.stdout == ""))
           and bool(calls) is asks, (done.stdout, done.stderr, calls))
     if shape == "claude" and words:
         check(f"{label}: Claude reads it as additional context", json.loads(done.stdout)["hookSpecificOutput"]["hookEventName"] == "PostToolUse")
@@ -966,7 +967,7 @@ def test_record_pr_with_no_task(tmp: Path, url: str, owner: str, created: bool) 
 
 def test_record_pr_reports_a_failure_in_one_line(tmp: Path) -> None:
     """A write that fails is one `record-pr: nothing recorded` line in the hook output, never a traceback; exit 0."""
-    done = record_hook(tmp, "cursor", "gh pr create --fill", PR_NEW, "feat/h", break_task="head")
+    done = record_hook(tmp, "claude", "gh pr create --fill", PR_NEW, "feat/h", break_task="head")
     check("one record-pr line names the failure", done.returncode == 0 and "record-pr: nothing recorded:" in done.stdout
           and "Traceback" not in done.stdout and status_of(tmp / "home" / ".agent" / "tasks" / "head") == "IMPLEMENTING", (done.stdout, done.stderr))
 
@@ -1004,7 +1005,7 @@ def extra_tasks(*rows: tuple[str, str, str, str, bool]) -> Callable[[Path], None
 def test_record_pr_without_a_branch_match(tmp: Path, label: str, rows: list, branch: str, after: dict, words: str, created: int) -> None:
     """A task holding the URL is the match; else the single IMPLEMENTING task whose SPEC.md `## Branch:` is the head branch,
     its `.task-id` branch updated; DRAFTING and APPROVED specs are never matched that way."""
-    done = record_hook(tmp, "cursor", "gh pr create --fill", PR_NEW, branch, prepare=extra_tasks(*rows))
+    done = record_hook(tmp, "claude", "gh pr create --fill", PR_NEW, branch, prepare=extra_tasks(*rows))
     tasks = tmp / "home" / ".agent" / "tasks"
     got = {name: (status_of(tasks / name), json.loads((tasks / name / ".task-id").read_text())["branch"]) for name in after}
     new = {path.name for path in tasks.iterdir()} - set(RECORD_TASKS) - set(after)
@@ -1037,7 +1038,7 @@ def test_record_pr_runs_the_gate_from_the_task_checkout(tmp: Path, label: str, r
             meta = json.loads((tasks / "wt" / ".task-id").read_text())
             (tasks / "wt" / ".task-id").write_text(json.dumps({**meta, "worktree": str(tmp / recorded)}), encoding="utf-8")
 
-    done = record_hook(tmp, "cursor", "gh pr create --fill", PR_NEW, "feat/wt", prepare=prepare, cwd=tmp / cwd)
+    done = record_hook(tmp, "claude", "gh pr create --fill", PR_NEW, "feat/wt", prepare=prepare, cwd=tmp / cwd)
     status = status_of(tmp / "home" / ".agent" / "tasks" / "wt")
     expected = ("DONE", "applied: wt -> DONE") if passes else ("IMPLEMENTING", "stays IMPLEMENTING; after fixing it run:")
     check(label, (status, expected[1] in done.stdout) == (expected[0], True), done.stdout)
@@ -1067,8 +1068,7 @@ def stop(tmp: Path, home: Path, prompt: str, calls: list, usage: bool = True) ->
     transcript.write_text("".join(json.dumps(turn) + "\n" for turn in turns), encoding="utf-8")
     payload = {"hook_event_name": "SubagentStop", "agent_id": "a1", "agent_type": "crew-builder", "agent_transcript_path": str(transcript),
                "last_assistant_message": "report: done"}
-    hook = ROOT / ".claude" / "hooks" / "capture-reply.sh"
-    return subprocess.run(["bash", str(hook)], input=json.dumps(payload), capture_output=True, text=True, env={**os.environ, "HOME": str(home)})
+    return hook(home, payload)
 
 
 @pytest.mark.parametrize("case", ["builder", "no marker", "no usage", "outside the tasks directory"])

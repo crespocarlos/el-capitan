@@ -18,38 +18,38 @@ export UV_OFFLINE=1
 mkdir "$scratch/bin" && printf '#!/bin/sh\nexit 0\n' > "$scratch/bin/gitleaks" && chmod +x "$scratch/bin/gitleaks"
 export PATH="$scratch/bin:$PATH"
 
-# Legacy layout: real ~/.claude/agents|skills directories holding a user file plus a stale
-# managed copy, and the older ~/.cursor/rules symlink form pointing at $root/rules.
+# Legacy layout: real ~/.claude/agents|skills directories holding the user's own agent and skill, and the older
+# ~/.cursor/rules symlink form pointing at $root/rules.
 mkdir -p "$home/.claude/agents" "$home/.claude/skills/my-skill" "$home/.cursor"
 printf -- '---\nname: my-custom-agent\n---\n' > "$home/.claude/agents/my-custom-agent.md"
-printf -- '---\nname: crew-builder\n---\nSTALE\n' > "$home/.claude/agents/crew-builder.md"
 printf -- '---\nname: my-skill\n---\n' > "$home/.claude/skills/my-skill/SKILL.md"
 ln -s "$root/rules" "$home/.cursor/rules"
 printf '# Mine\n\n@AGENTS.md\n' > "$home/.claude/CLAUDE.md"
 chmod 644 "$home/.claude/CLAUDE.md"
 
 HOME="$home" bash "$root/install.sh" >/dev/null
-test -f "$home/.cursor/agents/my-custom-agent.md"          # user agent stays loadable
-test -L "$home/.cursor/agents/crew-builder.md"             # stale managed copy replaced
-# Every reference an installed agent links, relative or under ~/.cursor/agents, exists once installed.
+test -f "$home/.claude/agents/my-custom-agent.md"          # user agent stays loadable
+test -L "$home/.claude/agents/crew-builder.md" && test -L "$home/.cursor/plugins/local/el-capitan/agents/crew-builder.md"
+# Every reference an installed agent links, relative or under ~/.cursor/agents, exists once installed, for
+# Claude Code and in the Cursor plugin.
 python3 - "$home" <<'PY'
 import re, sys
 from pathlib import Path
-agents = Path(sys.argv[1]) / ".cursor" / "agents"
-for agent in ("crew-pr-resolver.md", "crew-reviewer.md"):
-    text = (agents / agent).read_text(encoding="utf-8")
-    links = re.findall(r"\]\(((?:~/\.cursor/agents/)?crew-[\w-]+/references/[\w.-]+\.md)", text)
-    assert links, f"{agent} links no reference"
-    missing = [link for link in links if not (agents / link.replace("~/.cursor/agents/", "")).is_file()]
-    assert not missing, f"{agent}: installed references missing: {missing}"
+home = Path(sys.argv[1])
+for agents in (home / ".claude" / "agents", home / ".cursor" / "plugins" / "local" / "el-capitan" / "agents"):
+    for agent in ("crew-pr-resolver.md", "crew-reviewer.md"):
+        text = (agents / agent).read_text(encoding="utf-8")
+        links = re.findall(r"\]\(((?:~/\.cursor/agents/)?crew-[\w-]+/references/[\w.-]+\.md)", text)
+        assert links, f"{agent} links no reference"
+        missing = [link for link in links if not ((home / link[2:]) if link.startswith("~/") else agents / link).is_file()]
+        assert not missing, f"{agents / agent}: installed references missing: {missing}"
 PY
-test -f "$home/.cursor/skills/my-skill/SKILL.md"           # user skill stays loadable
-test -L "$home/.claude/agents"                             # managed dir is a symlink
+test -f "$home/.claude/skills/my-skill/SKILL.md"           # user skill stays loadable
+test ! -e "$home/.cursor/rules"                            # the old rules link is retired
 test -d "$root/rules" && test ! -L "$root/rules"           # repo not linked into itself
 # GNU first: GNU `stat -f` is a valid filesystem query that prints a block and exits 0, so the BSD
 # spelling cannot go first. BSD stat rejects `-c` and falls through to `-f '%OLp'`.
 test "$(stat -c '%a' "$home/.claude/CLAUDE.md" 2>/dev/null || stat -f '%OLp' "$home/.claude/CLAUDE.md")" = 644
-ls -d "$home"/.claude/agents.bak.* >/dev/null              # originals retained
 
 # A dangling symlink the installer did not create must survive: pruning is limited to links whose
 # target is inside this repo. A user's link into an unmounted volume looks exactly like a stale one.
@@ -65,7 +65,7 @@ before=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(json
 HOME="$home" bash "$root/install.sh" >/dev/null
 after=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(json.dumps({k:len(v) for k,v in sorted(d['hooks'].items())}))" "$home/.claude/settings.json")
 test "$before" = "$after"
-test -f "$home/.cursor/agents/my-custom-agent.md"
+test -f "$home/.claude/agents/my-custom-agent.md"
 
 # The narrowed allowlist with deny and ask rules for the demoted forms; the sandbox only with --sandbox; the Cursor
 # CLI's deny tokens added to its config when it has one.
@@ -97,10 +97,10 @@ grep -q 'my-own-stop-hook.sh' "$home/.claude/settings.json"
 
 # A retired hook in an event the template no longer has is dropped too, with the event left empty.
 python3 - "$home/.claude/settings.json" "$home/.cursor/hooks.json" <<'PY'
-import json, sys
+import json, os, sys
 for path, entry in zip(sys.argv[1:], ({"hooks": [{"type": "command", "command": "bash \"$HOME/.claude/hooks/session-event.sh\" end"}]},
                                       {"command": "bash \"$HOME/.claude/hooks/session-event.sh\" end"})):
-    data = json.load(open(path))
+    data = json.load(open(path)) if os.path.exists(path) else {"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}}
     data["hooks"]["SessionEnd" if "settings" in path else "sessionEnd"] = [entry]
     json.dump(data, open(path, "w"), indent=2)
 PY
@@ -133,10 +133,11 @@ data = json.load(open(sys.argv[1]))
 print(json.dumps({k: len(v) for k, v in sorted(data["hooks"].items())}))
 PY
 }
-cp "$root/.claude/settings.template.json" "$home/merge.json"
-python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/merge.json" >/dev/null
+"$home/.agent/venv/bin/python" -m crew.harness.harness_install show claude-code .claude/settings.json "$home" "$root" > "$home/fragment.json"
+cp "$home/fragment.json" "$home/merge.json"
+python3 "$root/.claude/merge_claude_settings.py" "$home/fragment.json" "$home/merge.json" >/dev/null
 first=$(counts "$home/merge.json")
-python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/merge.json" >/dev/null
+python3 "$root/.claude/merge_claude_settings.py" "$home/fragment.json" "$home/merge.json" >/dev/null
 test "$first" = "$(counts "$home/merge.json")"
 
 # A hook this repository retired must be removed from an existing install: the guard files fail
@@ -152,7 +153,7 @@ data["hooks"].setdefault("PreToolUse", []).append({"hooks": [
     {"type": "command", "command": "bash \"$HOME/.claude/hooks/my-own-hook.sh\""}]})
 json.dump(data, open(path, "w"), indent=2)
 PY
-python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/merge.json" >/dev/null
+python3 "$root/.claude/merge_claude_settings.py" "$home/fragment.json" "$home/merge.json" >/dev/null
 if grep -q 'block-destructive-git.sh' "$home/merge.json"; then exit 1; fi
 grep -q 'myhooks/session-start.sh' "$home/merge.json"
 grep -q 'my-own-hook.sh' "$home/merge.json"
@@ -160,28 +161,11 @@ python3 - "$home/merge.json" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1]))
 commands = [h["command"] for entries in data["hooks"].values() for e in entries for h in e.get("hooks", [])]
-assert any("guard/shell.sh" in c for c in commands), "guard/shell.sh is not registered"
-assert any("memory-context.sh" in c for c in commands), "memory-context.sh is not registered"
+assert any("crew-hook.py\" claude-code PreToolUse" in c for c in commands), "the PreToolUse entry point is not registered"
+assert any("crew-hook.py\" claude-code SessionStart" in c for c in commands), "the SessionStart entry point is not registered"
 PY
-
-# Same retirement rule for the Cursor template.
-cp "$root/.cursor/hooks.template.json" "$home/hooks.json"
-python3 - "$home/hooks.json" <<'PY'
-import json, sys
-path = sys.argv[1]
-data = json.load(open(path))
-data["hooks"]["beforeShellExecution"].append({"command": "bash \"$HOME/.claude/hooks/check-publish.sh\""})
-json.dump(data, open(path, "w"), indent=2)
-PY
-python3 "$root/.claude/merge_cursor_hooks.py" "$root/.cursor/hooks.template.json" "$home/hooks.json" >/dev/null
-if grep -q 'check-publish.sh' "$home/hooks.json"; then exit 1; fi
-python3 "$root/.claude/merge_cursor_hooks.py" "$root/.cursor/hooks.template.json" "$home/hooks.json" >/dev/null
-# Idempotent: a second merge leaves exactly the template's own entries, with no duplicate.
-count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['hooks']['beforeShellExecution']))" "$home/hooks.json")
-template_count=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['hooks']['beforeShellExecution']))" "$root/.cursor/hooks.template.json")
-test "$count" = "$template_count"
 printf '{bad' > "$home/broken.json"
-if python3 "$root/.claude/merge_claude_settings.py" "$root/.claude/settings.template.json" "$home/broken.json" >/dev/null 2>&1; then exit 1; fi
+if python3 "$root/.claude/merge_claude_settings.py" "$home/fragment.json" "$home/broken.json" >/dev/null 2>&1; then exit 1; fi
 test "$(cat "$home/broken.json")" = '{bad'
 
 # Dry-run must change nothing.
@@ -203,7 +187,7 @@ ln -s "$round/unmounted/hook.sh" "$round/.cursor/agents/dangling.md"
 python3 - "$round" <<'PY'
 import json, sys
 home = sys.argv[1]
-reconcile = {"type": "command", "command": "bash \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/spec-status-reconcile.sh\"; exit 0"}
+reconcile = {"type": "command", "command": "\"$HOME/.agent/bin/crew-hook.py\" claude-code SessionStart"}
 for path, data in ((f"{home}/.claude/settings.json", {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash mine.sh"}]}],
                                                                  "SessionStart": [{"hooks": [reconcile]}]},
                                                        "permissions": {"allow": ["Bash(my-own *)", "Bash(git *)", "Bash(ls:*)"]}}),
@@ -226,12 +210,13 @@ if grep -q '"Bash(ls \*)"' "$round/.claude/settings.json"; then exit 1; fi
 python3 - "$round" <<'PY'
 import json, sys
 home = sys.argv[1]
-claude, cursor = json.load(open(f"{home}/.claude/settings.json"))["hooks"], json.load(open(f"{home}/.cursor/hooks.json"))["hooks"]
-def has(entries, script, matcher=None):
-    return any(script in hook.get("command", "") and (matcher is None or entry.get("matcher") == matcher)
+plugin = f"{home}/.cursor/plugins/local/el-capitan/hooks/hooks.json"
+claude, cursor = json.load(open(f"{home}/.claude/settings.json"))["hooks"], json.load(open(plugin))["hooks"]
+def has(entries, command, matcher=None):
+    return any(command in hook.get("command", "") and (matcher is None or entry.get("matcher") == matcher)
                for entry in entries for hook in entry.get("hooks", [entry]))
-assert has(claude["PostToolUse"], "record-pr.sh", "Bash") and has(claude["SubagentStop"], "capture-reply.sh")
-assert has(cursor["afterShellExecution"], "record-pr.sh")
+assert has(claude["PostToolUse"], "crew-hook.py\" claude-code PostToolUse", "Bash|Write|Edit") and has(claude["SubagentStop"], "crew-hook.py\" claude-code SubagentStop")
+assert has(cursor["afterShellExecution"], "crew-hook.py\" cursor afterShellExecution")
 PY
 installed=$(tree_state "$round")
 HOME="$round" bash "$root/install.sh" --uninstall --dry-run >/dev/null
@@ -242,64 +227,25 @@ test "$settings_mode" = "$(mode "$round/.claude/settings.json")"   # the file ke
 test -d "$round/.agent/memory"                              # data stays
 
 # Uninstall unregisters before it deletes. An unreadable settings file stops it before any change; odd but
-# valid shapes are skipped with a warning, and no remaining registration runs a script that is gone.
+# valid shapes are skipped with a warning.
 odd=$(fresh_dir odd)
 HOME="$odd" bash "$root/install.sh" >/dev/null
 links=$(find "$odd" -type l | wc -l | tr -d ' ')
-cp "$odd/.cursor/hooks.json" "$odd/hooks.good" && cp "$odd/.claude/settings.json" "$odd/settings.good"
-printf '{bad' > "$odd/.cursor/hooks.json"
+cp "$odd/.claude/settings.json" "$odd/settings.good"
+printf '{bad' > "$odd/.claude/settings.json"
 if HOME="$odd" bash "$root/install.sh" --uninstall >/dev/null 2>&1; then exit 1; fi
 test "$links" = "$(find "$odd" -type l | wc -l | tr -d ' ')"
-cmp -s "$odd/settings.good" "$odd/.claude/settings.json"
 python3 - "$odd" <<'PY'
 import json, sys
 home = sys.argv[1]
-claude, cursor = json.load(open(f"{home}/settings.good")), json.load(open(f"{home}/hooks.good"))
+claude = json.load(open(f"{home}/settings.good"))
 claude["hooks"]["Stop"] = {"x": 1}
 claude["hooks"]["PreToolUse"].append("a string")
-cursor["hooks"]["stop"] = "x"
-cursor["hooks"]["beforeShellExecution"].append(7)
 json.dump(claude, open(f"{home}/.claude/settings.json", "w"))
-json.dump(cursor, open(f"{home}/.cursor/hooks.json", "w"))
 PY
 HOME="$odd" bash "$root/install.sh" --uninstall > "$odd/out"
 grep -q 'warning: ~/.claude/settings.json: hooks.Stop is not a list' "$odd/out"
-python3 - "$odd" <<'PY'
-import json, os, re, sys
-home = sys.argv[1]
-for path in (f"{home}/.claude/settings.json", f"{home}/.cursor/hooks.json"):
-    text = open(path).read()
-    for script in re.findall(r'\$HOME/(\.claude/hooks/[^"\s;]+)', text):
-        assert os.path.exists(os.path.join(home, script)), f"{path} registers {script}, which is gone"
-assert json.load(open(f"{home}/.claude/settings.json"))["hooks"]["Stop"] == {"x": 1}
-PY
-
-# A registration uninstall keeps keeps its script, whatever form names it: `~/` in settings.json, an
-# absolute path in a failClosed Cursor entry. The user's own registration of the shell guard stays as it was.
-kept=$(fresh_dir kept)
-mkdir -p "$kept/.claude"
-printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "bash \"$HOME/.claude/hooks/guard/shell.sh\""}]}]}}' > "$kept/.claude/settings.json"
-HOME="$kept" bash "$root/install.sh" >/dev/null
-python3 - "$kept" <<'PY'
-import json, sys
-home = sys.argv[1]
-claude, cursor = f"{home}/.claude/settings.json", f"{home}/.cursor/hooks.json"
-data = json.load(open(claude))
-data["hooks"]["PreToolUse"].append({"matcher": "Write", "hooks": [{"type": "command", "command": "bash ~/.claude/hooks/check-task-spec-owner.sh"}]})
-json.dump(data, open(claude, "w"))
-data = json.load(open(cursor))
-data["hooks"]["beforeShellExecution"].append({"command": f'bash "{home}/.claude/hooks/notify-idle.sh"', "failClosed": True})
-json.dump(data, open(cursor, "w"))
-PY
-if HOME="$kept" bash "$root/install.sh" --uninstall > "$kept/out" 2>&1; then exit 1; fi
-grep -q 'check-task-spec-owner.sh' "$kept/out" && grep -q 'notify-idle.sh' "$kept/out" && grep -q 'guard/shell.sh' "$kept/out"
-test -e "$kept/.claude/hooks/check-task-spec-owner.sh" && test -e "$kept/.claude/hooks/notify-idle.sh"
-test -e "$kept/.claude/hooks/guard/shell.sh" && test -e "$kept/.claude/hooks/lib/hook.sh"
-python3 - "$kept/.claude/settings.json" <<'PY'
-import json, sys
-hooks = [h for e in json.load(open(sys.argv[1]))["hooks"]["PreToolUse"] for h in e["hooks"]]
-assert [h for h in hooks if "guard/" in h["command"]] == [{"type": "command", "command": 'bash "$HOME/.claude/hooks/guard/shell.sh"'}], hooks
-PY
+python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["hooks"]["Stop"] == {"x": 1}' "$odd/.claude/settings.json"
 
 # A settings.json that is a link (dotfiles) keeps its link; a rule install added that the template has
 # since dropped is named when it goes.
@@ -346,42 +292,6 @@ PY
 HOME="$retire" bash "$root/install.sh" --uninstall >/dev/null
 python3 -c 'import json, sys; p = json.load(open(sys.argv[1]))["permissions"]; assert p == {"ask": ["Edit(~/my/**)"]}, p' "$retire/.claude/settings.json"
 
-# An install from before the manifest: the template entries it left are removed unless the oldest
-# backup already held them, so the user's `Bash(git *)` stays and every el-capitan entry goes.
-legacy=$(fresh_dir legacy)
-mkdir -p "$legacy/.claude" "$legacy/.cursor"
-printf '%s\n' '{"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"]}}' > "$legacy/.claude/settings.json"
-printf '%s\n' '{"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}}' > "$legacy/.cursor/hooks.json"
-HOME="$legacy" bash "$root/install.sh" >/dev/null
-rm "$legacy/.agent/install-manifest.json"
-HOME="$legacy" bash "$root/install.sh" >/dev/null
-grep -q '"legacy"' "$legacy/.agent/install-manifest.json"
-HOME="$legacy" bash "$root/install.sh" --uninstall >/dev/null
-python3 - "$legacy" <<'PY'
-import json, sys
-home = sys.argv[1]
-claude, cursor = json.load(open(f"{home}/.claude/settings.json")), json.load(open(f"{home}/.cursor/hooks.json"))
-assert claude == {"permissions": {"allow": ["Bash(git *)", "Bash(my-own *)"]}}, claude   # the user's order, too
-assert cursor == {"version": 1, "hooks": {"stop": [{"command": "bash mine.sh"}]}}, cursor
-PY
-# The same, when the first install created hooks.json, so its only backup is the one the upgrading
-# install wrote: that backup is no evidence, and a hook whose script is an install link is the install's.
-fresh=$(fresh_dir fresh)
-mkdir -p "$fresh/.claude"
-printf '%s\n' '{"permissions": {"allow": ["Bash(mine *)"]}}' > "$fresh/.claude/settings.json"
-HOME="$fresh" bash "$root/install.sh" >/dev/null
-rm "$fresh/.agent/install-manifest.json"
-HOME="$fresh" bash "$root/install.sh" >/dev/null
-HOME="$fresh" bash "$root/install.sh" --uninstall >/dev/null
-test -z "$(find "$fresh" -type l)"
-python3 - "$fresh" <<'PY'
-import json, os, sys
-home = sys.argv[1]
-assert json.load(open(f"{home}/.claude/settings.json")) == {"permissions": {"allow": ["Bash(mine *)"]}}
-cursor = f"{home}/.cursor/hooks.json"
-assert not os.path.exists(cursor) or ".claude/hooks/" not in open(cursor).read(), open(cursor).read()
-PY
-
 # Other Claude config dirs, from $CLAUDE_CONFIG_DIR and two --claude-config-dir: each gets the settings
 # merge and the crew agents and skills, never a CLAUDE.md block. What is the user's is kept and named: a real
 # `agents` dir with its own agent and a link under a crew agent's name, a `skills` link into dotfiles, a real
@@ -402,7 +312,7 @@ pristine_two=$(tree_state "$two")
 pristine_cfg=$(tree_state "$cfg")
 pristine_c2=$(tree_state "$c2")
 CLAUDE_CONFIG_DIR="$cfg" HOME="$two" bash "$root/install.sh" --claude-config-dir "$two/c1" --claude-config-dir "$c2" > "$two.out"
-for dir in "$two/.claude" "$cfg" "$two/c1" "$c2"; do grep -q 'guard/shell.sh' "$dir/settings.json"; done
+for dir in "$two/.claude" "$cfg" "$two/c1" "$c2"; do grep -q 'claude-code PreToolUse' "$dir/settings.json"; done
 grep -q 'Bash(mine \*)' "$cfg/settings.json"
 # The task directory is merged beside the user's own directory, as an absolute path under HOME, with its
 # Edit rule; the pristine check after uninstall below proves both come out again and the user's `~/mine` stays.
@@ -414,21 +324,21 @@ assert "Edit(~/.agent/tasks/**)" in permissions["allow"], permissions["allow"]
 PY
 # The blocks go into ~/.claude/CLAUDE.md only: Claude Code reads the user CLAUDE.md from there.
 grep -q 'el-capitan:imports' "$two/.claude/CLAUDE.md" && test ! -e "$cfg/CLAUDE.md" && test ! -e "$c2/CLAUDE.md"
-test "$(readlink "$two/c1/agents")" = "$two/.cursor/agents" && test "$(readlink "$two/c1/skills")" = "$two/.cursor/skills"
+test "$(readlink "$two/c1/agents")" = "$two/.claude/agents" && test "$(readlink "$two/c1/skills")" = "$two/.claude/skills"
 test -f "$cfg/agents/myagent.md" && test "$(readlink "$cfg/agents/crew-builder.md")" = "$cfg/dotfiles/my-builder.md"
-test "$(readlink "$cfg/agents/crew-specwriter.md")" = "$two/.cursor/agents/crew-specwriter.md"
+test "$(readlink "$cfg/agents/crew-specwriter.md")" = "$two/.claude/agents/crew-specwriter.md"
 test "$(readlink "$cfg/skills")" = "$cfg/dotfiles/skills" && test ! -e "$cfg/dotfiles/skills/crew-memory"
 test "$(readlink "$c2/skills/crew-memory")" = "$c2/mine" && test -f "$c2/skills/synced/SKILL.md"
-test "$(readlink "$c2/skills/crew-commit")" = "$two/.cursor/skills/crew-commit" && test "$(readlink "$c2/agents")" = "$two/.cursor/agents"
+test "$(readlink "$c2/skills/crew-commit")" = "$two/.claude/skills/crew-commit" && test "$(readlink "$c2/agents")" = "$two/.claude/agents"
 grep -q "kept $cfg/agents/crew-builder.md" "$two.out" && grep -q "kept $cfg/skills" "$two.out"
 grep -q "kept $c2/skills/crew-memory" "$two.out"
 rm -r "$two/c1"
 rm "$c2/settings.json"
 HOME="$two" bash "$root/install.sh" > "$two.out"
 grep -q "dropped $two/c1" "$two.out" && test ! -e "$two/c1"
-grep -q 'guard/shell.sh' "$c2/settings.json" && grep -q 'guard/shell.sh' "$cfg/settings.json"
+grep -q 'crew-hook.py' "$c2/settings.json" && grep -q 'crew-hook.py' "$cfg/settings.json"
 if HOME="$two" bash "$root/install.sh" --uninstall --claude-config-dir "$c2" >/dev/null 2>&1; then exit 1; fi
-rm "$two"/.claude/*.bak.* "$two"/.cursor/*.bak.*   # the second run's backups stay by design and keep the dirs
+rm -f "$two"/.claude/*.bak.*   # the second run's backups stay by design and keep the dirs
 HOME="$two" bash "$root/install.sh" --uninstall >/dev/null
 test "$pristine_two" = "$(tree_state "$two")"
 test "$pristine_cfg" = "$(tree_state "$cfg")"
@@ -438,8 +348,8 @@ test "$pristine_c2" = "$(tree_state "$c2")"
 # print both ways forward; with none left, `autoMemoryEnabled: false` is written. (Keeping a user's value and
 # removing the key on uninstall are the merger's: test_install_blocks.py `test_settings_merge`.)
 mem=$(fresh_dir mem)
-# Neither the template nor the checkout's project settings carries the key itself.
-if grep -q autoMemoryEnabled "$root/.claude/settings.template.json" "$root/.claude/settings.json"; then exit 1; fi
+# Neither the claude-code manifest nor the checkout's project settings carries the key itself.
+if grep -q autoMemoryEnabled "$root/src/crew/harness/claude-code.json" "$root/.claude/settings.json"; then exit 1; fi
 # The checkout's project settings register no hooks, so neither harness loads a second copy of them.
 python3 -c 'import json, sys; assert "hooks" not in json.load(open(sys.argv[1]))' "$root/.claude/settings.json"
 auto_memory() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("autoMemoryEnabled"))' "$1"; }
@@ -504,7 +414,7 @@ test -f "$bare/h6/el-capitan/install.sh"
 case "$(readlink "$bare/h6/.agent/bin/crew-mem.py")" in "$bare/h6/.agent/venv/bin/"*) ;; *) exit 1 ;; esac
 "$bare/h6/.agent/bin/crew-mem.py" --help >/dev/null
 "$bare/h6/.agent/venv/bin/python" -c 'import sys, crew; assert sys.version_info >= (3, 12) and "/h6/.agent/venv/" in crew.__file__'
-grep -q '^Done. Installed:' "$bare/out"
+grep -q '^Done. Installed' "$bare/out"
 test -z "$(ls -A "$bare/cwd")"
 # A second curl-mode run reuses the checkout instead of cloning over it, and says it was not updated.
 (cd "$bare/cwd" && HOME="$bare/h6" EL_CAPITAN_REPO_URL="file://$bare/missing" "$bash_bin" -c "$script" > "$bare/out")
@@ -532,7 +442,7 @@ HOME="$bare/h8" bash "$bare/b/install.sh" >/dev/null
 rm "$bare/h8/.agent/install-manifest.json"
 if HOME="$bare/h8" bash "$root/install.sh" --uninstall > "$bare/out" 2>&1; then exit 1; fi
 grep -qF "installed from $(cd "$bare/b" && pwd -P); run $(cd "$bare/b" && pwd -P)/install.sh --uninstall" "$bare/out"
-test -L "$bare/h8/.agent/bin/crew-ls.py" && grep -q 'guard/shell.sh' "$bare/h8/.cursor/hooks.json"
+test -L "$bare/h8/.agent/bin/crew-ls.py" && grep -q 'crew-hook.py' "$bare/h8/.cursor/plugins/local/el-capitan/hooks/hooks.json"
 
 # The summary prints only after every step: a failing step ends the run without it.
 if [ "$(id -u)" = 0 ]; then
@@ -541,6 +451,6 @@ else
   chmod 000 "$bare/h6/.claude"
   if (HOME="$bare/h6" bash "$root/install.sh" > "$bare/out" 2>&1); then chmod 755 "$bare/h6/.claude"; exit 1; fi
   chmod 755 "$bare/h6/.claude"
-  if grep -q '^Done. Installed:' "$bare/out"; then exit 1; fi
+  if grep -q '^Done. Installed' "$bare/out"; then exit 1; fi
   grep -q 'Install INCOMPLETE' "$bare/out"
 fi

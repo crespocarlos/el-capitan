@@ -22,7 +22,7 @@ CARRIERS = {
     **{name: (REFS + "explorer-protocol.md", f".cursor/agents/{name}.md", "references/explorer-protocol.md")
        for name in ("reviewer-explorer", "specwriter-explorer")},
     # Runs inline in the main session, which loads the router on every start.
-    "crew-reviewer": ("rules/crew-router.mdc", ".claude/CLAUDE.md", "rules/crew-router.mdc"),
+    "crew-reviewer": ("rules/crew-router.mdc", ".claude/CLAUDE.md", "el-capitan/crew-router.md"),
 }
 # Skills and rules that do work and carry the pointer themselves.
 OWN_POINTER = (".cursor/skills/spec-writing/SKILL.md", "rules/crew-router.mdc", "rules/crew-explorer-conventions.mdc")

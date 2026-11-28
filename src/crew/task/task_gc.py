@@ -38,7 +38,7 @@ RULES = {"ls": "all, here or an owner/name", "mcp": "a list of MCP server names 
 KEEP_SESSIONS = frozenset({"review-queue.jsonl"})  # the capture queue `crew-inbox.py` drains
 TELEMETRY_NOTICE = "legacy telemetry: it holds raw shell commands and nothing reads it"
 # Hook logs under ~/.agent/state, each line opening with its UTC stamp: pruned line by line after `sessions_days`.
-STATE_LOGS = ("capture-reply.log", "cursor-usage.log", "cursor-conversations.txt")
+STATE_LOGS = ("capture-reply.log", "usage.log", "cursor-conversations.txt")
 DAY = 86400
 
 

@@ -2,20 +2,15 @@
 """What install.sh writes outside the checkout: managed blocks, link destinations, and the install manifest.
 
 Usage: install_blocks.py upsert <home> <checkout> | prepare <home> <checkout> [config dir ...]
-       install_blocks.py render-agents|refresh-agents|templated-agents <home> <checkout>
        install_blocks.py config-dirs <home> [config dir ...]
-`render-agents` writes each agent whose frontmatter `tools:` line ends in `  # {{mcp_servers}}` into
-~/.cursor/agents as a regular file, the placeholder filled from `mcp` in ~/.agent/config.json, recorded as
-`rendered_agents` with the checkout as `rendered_from`; `refresh-agents` (the SessionStart hook) rewrites a
-recorded copy that has gone stale; `templated-agents` prints the names install renders instead of linking.
 `upsert` writes the memory block into ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md and the imports block,
 generated from the checkout's `.claude/CLAUDE.md`, into CLAUDE.md (never into another config
 dir's CLAUDE.md); `expected(checkout, home)` is what `crew-doctor.py` compares an install against.
-`prepare` creates the directories install links into and records the ones it created,
+`prepare` creates the top directories install writes into and records the ones it created,
 the checkout and the Claude config dirs (`config_dirs`) in `~/.agent/install-manifest.json`; the
-settings mergers add the entries they added there (`record`). `config-dirs` prints the config dirs,
-~/.claude first. `LINKS` is where install writes links, read by install (`prepare`), `uninstall.py` and
-`crew-doctor.py`.
+settings merger adds the entries it added there (`record`). `config-dirs` prints the config dirs,
+~/.claude first. `LINKS` is where install writes links (each adapter's render, and the layout before the
+adapters), read by `uninstall.py` and `crew-doctor.py`.
 """
 
 from __future__ import annotations
@@ -29,18 +24,24 @@ import tempfile
 import time
 from pathlib import Path
 
-# (directory under HOME, depth): where install.sh writes links. `.claude` holds the agents and skills
-# directory links into `.cursor`; the `.agent` directories are data and are never removed.
-LINKS = ((".agent", 1), (".agent/bin", 1), (".cursor/rules", 1), (".cursor/agents", 1), (".cursor/skills", 3), (".claude/hooks", 1), (".claude", 1))
+# (directory under HOME, depth): where install.sh writes links: the adapters' render (crew.harness), and the layout
+# before the adapters (`.cursor/rules`, `.cursor/agents`, `.claude/hooks`, `.claude`'s agents and skills links), which
+# install retires and uninstall still finds. The `.agent` directories are data and are never removed.
+LINKS = (
+    (".agent", 1),
+    (".agent/bin", 1),
+    (".cursor/rules", 1),
+    (".cursor/agents", 1),
+    (".cursor/skills", 3),
+    (".cursor/plugins/local/el-capitan", 2),
+    (".claude/hooks", 1),
+    (".claude", 1),
+    (".claude/agents", 1),
+    (".claude/skills", 1),
+    (".claude/el-capitan", 1),
+    (".agents/skills", 1),
+)
 MANIFEST = Path(".agent") / "install-manifest.json"
-# A read-only agent's frontmatter `tools:` line ends with this YAML comment, so the source line is a valid list
-# by itself; install replaces the comment with one `, mcp__<server>__*` per server in `mcp` of ~/.agent/config.json.
-PLACEHOLDER = "{{mcp_servers}}"
-PLACEHOLDER_COMMENT = re.compile(r"[ \t]+#[ \t]*\{\{mcp_servers\}\}[ \t]*$")
-TOOLS_LINE = re.compile(r"^tools:[ \t]*(.*)$", re.MULTILINE)  # the shape `lint_prompts.TOOLS_LINE` reads
-# A harness tool id keeps only these characters of a server name, so any other would render an id that matches
-# nothing; `task_gc.SERVER_NAME` is the same pattern.
-SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+")
 # A hook command's script under the managed hooks directory: `$HOME/`, `${HOME}/`, `~/` or an absolute
 # prefix (which `hook_scripts` keeps only when it is this HOME), as `hooks_retirement.MANAGED_PATH` reads it.
 HOOK_SCRIPT = re.compile(r"""(\$HOME|\$\{HOME\}|~|/[^\s"';]*)/(\.claude/hooks/\S+?\.sh)""")
@@ -61,18 +62,18 @@ def global_rule_imports(source: Path) -> str:
 
     `.claude/CLAUDE.md` is project-scoped, so in any other checkout Claude Code loads only
     `~/.claude/CLAUDE.md`; an always-on rule is invisible there unless the global file imports it. A
-    glob-scoped rule or an on-demand skill is not imported: its one-line `Read ~/.cursor/... before`
-    pointer is copied instead, so other repositories still learn when to read it.
+    glob-scoped rule or an on-demand skill is not imported: its one-line `Read ~/... before` pointer is
+    copied instead, so other repositories still learn when to read it.
     """
     project = source / ".claude" / "CLAUDE.md"
     if not project.is_file():
         return ""
     text = project.read_text(errors="replace")
     targets: list[str] = []
-    for target in re.findall(r"@(\S+\.mdc)", text):
+    for target in re.findall(r"^@(~/\S+\.mdc?)$", text, re.M):
         if target not in targets:
             targets.append(target)
-    pointers = re.findall(r"^Read ~/\.cursor/(?:rules/\S+\.mdc|skills/[\w-]+/SKILL\.md) before .+$", text, re.M)
+    pointers = re.findall(r"^Read ~/\.(?:claude/el-capitan/\S+\.md|cursor/skills/[\w-]+/SKILL\.md) before .+$", text, re.M)
     if not targets and not pointers:
         return ""
     lines = ["<!-- el-capitan:imports -->", "<!-- Generated by install.sh from .claude/CLAUDE.md; edits here are overwritten. -->"]
@@ -273,16 +274,9 @@ def union(old: object, new: object) -> object:
     return old
 
 
-def record(home: Path, section: str, added: dict, present: dict) -> None:
-    """Add what one install step added to the manifest; it stays the union of every install's additions.
-
-    `present` is the template's entries the file already held. On the first record after an install
-    from before the manifest (`legacy`), those may be that install's, so they are kept as `legacy`:
-    uninstall compares them with the oldest backup of the file.
-    """
+def record(home: Path, section: str, added: dict) -> None:
+    """Add what one install step added to the manifest; it stays the union of every install's additions."""
     manifest = load_manifest(home) or {"version": 1}
-    if section not in manifest and manifest.get("legacy"):
-        added = {**added, "legacy": present}
     manifest[section] = union(manifest.get(section), added)
     write_json(manifest, home / MANIFEST)
 
@@ -295,13 +289,6 @@ def backup(path: Path, text: str) -> Path:
     target = Path(f"{path}.bak.{stamp}")
     target.write_text(text, encoding="utf-8")
     return target
-
-
-def oldest_backup(path: Path, before: float | None = None) -> Path | None:
-    """The earliest `<path>.bak.<epoch>`, only among those written (mtime) before `before` when given, or None."""
-    found = [(int(p.name.rsplit(".", 1)[1]), p) for p in path.parent.glob(f"{path.name}.bak.*") if p.name.rsplit(".", 1)[1].isdigit()]
-    found = [(stamp, p) for stamp, p in found if before is None or p.stat().st_mtime < before]
-    return min(found)[1] if found else None
 
 
 def target_of(link: Path) -> str:
@@ -328,16 +315,9 @@ def layout_links(home: Path) -> list[Path]:
     return sorted({link for name, depth in LINKS for link in walk(home / name, depth)})
 
 
-def install_dirs(home: Path, source: Path) -> list[Path]:
-    """The directories install links into, parents first (the `.agent` data directories are not among them)."""
-    names = [".claude", ".codex", ".cursor", *(name for name, _ in LINKS if not name.startswith(".agent"))]
-    skills = source / ".cursor" / "skills"
-    for skill in sorted(skills.iterdir()) if skills.is_dir() else []:
-        if skill.is_dir():
-            names.append(f".cursor/skills/{skill.name}")
-            if (skill / "references").is_dir():
-                names.append(f".cursor/skills/{skill.name}/references")
-    return [home / name for name in dict.fromkeys(names)]
+def install_dirs(home: Path) -> list[Path]:
+    """The top directories install writes into; the adapters' writer creates and records the ones below them."""
+    return [home / name for name in (".claude", ".codex", ".cursor")]
 
 
 def prepare(home: Path, source: Path, extra: tuple[str, ...] | list[str] = ()) -> None:
@@ -345,17 +325,11 @@ def prepare(home: Path, source: Path, extra: tuple[str, ...] | list[str] = ()) -
 
     A config dir is created only when this run names it (`extra`), and recorded in `created_config_dirs` (absolute
     paths) so uninstall removes it once empty. A recorded dir that no longer exists is dropped, with a line.
-
-    No manifest while links into this checkout exist means an install from before the manifest: it is
-    marked `legacy` with the time it was found, so the settings mergers keep the template entries they find
-    for uninstall to judge, and only a backup older than that time counts as what the user had.
     """
     real = os.path.realpath(source)
-    manifest = load_manifest(home)
-    legacy = manifest is None and any(inside(target_of(link), {real, str(source)}) for link in layout_links(home))
-    manifest = manifest or {"version": 1, **({"legacy": time.time()} if legacy else {})}
+    manifest = load_manifest(home) or {"version": 1}
     created = []
-    for directory in install_dirs(home, source):
+    for directory in install_dirs(home):
         if not os.path.lexists(directory):
             directory.mkdir(parents=True)
             created.append(str(directory.relative_to(home)))
@@ -377,121 +351,6 @@ def prepare(home: Path, source: Path, extra: tuple[str, ...] | list[str] = ()) -
     manifest["config_dirs"] = [str(directory) for directory in dirs]
     (home / MANIFEST).parent.mkdir(parents=True, exist_ok=True)
     write_json(manifest, home / MANIFEST)
-
-
-def mcp_server_names(home: Path) -> tuple[list[str], str | None]:
-    """The servers `~/.agent/config.json` names in `mcp.docs`, then `mcp.code_search`, each once.
-
-    No file or no `mcp` section gives none; an unreadable or invalid one gives none and the reason.
-    """
-    path = home / ".agent" / "config.json"
-    if not path.exists():
-        return [], None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
-        return [], f"cannot read {path}: {error}"
-    section = data.get("mcp") if isinstance(data, dict) else None
-    if section is None:
-        return [], None
-    names: list[str] = []
-    for key in ("docs", "code_search"):
-        value = section.get(key, []) if isinstance(section, dict) else None
-        valid = isinstance(value, list) and all(isinstance(name, str) and SERVER_NAME.fullmatch(name) for name in value)
-        if not valid:
-            return [], f"{path}: mcp.{key} must be a list of MCP server names"
-        names += [name for name in value if name not in names]
-    return names, None
-
-
-def placeholder_line(text: str) -> re.Match | None:
-    """The frontmatter `tools:` line when it ends with the placeholder comment; the placeholder in prose is not one."""
-    if not text.startswith("---\n"):
-        return None
-    end = text.find("\n---\n", 4)
-    found = TOOLS_LINE.search(text, 4, end) if end > 0 else None
-    return found if found and PLACEHOLDER_COMMENT.search(found.group(0)) else None
-
-
-def render_agent(text: str, servers: list[str]) -> str:
-    """The agent with its `tools:` line's placeholder comment replaced by one `, mcp__<server>__*` per server,
-    or removed when there is none; any other text, the placeholder in prose included, is kept."""
-    found = placeholder_line(text)
-    if not found:
-        return text
-    line = PLACEHOLDER_COMMENT.sub("".join(f", mcp__{name}__*" for name in servers), found.group(0))
-    return text[: found.start()] + line + text[found.end() :]
-
-
-def templated_agents(source: Path) -> list[Path]:
-    """The checkout's agent files whose `tools:` line carries the placeholder: install renders them, not links."""
-    agents = source / ".cursor" / "agents"
-    return [path for path in sorted(agents.glob("*.md")) if placeholder_line(path.read_text(encoding="utf-8"))]
-
-
-def rendered_source(home: Path, fallback: Path) -> Path:
-    """The checkout the recorded copies were rendered from (`rendered_from`), or `fallback` when it is gone."""
-    try:
-        recorded = (load_manifest(home) or {}).get("rendered_from")
-    except ManifestError:
-        recorded = None
-    found = isinstance(recorded, str) and (Path(recorded) / ".cursor" / "agents").is_dir()
-    return Path(recorded) if found else fallback
-
-
-def refresh_agents(home: Path, fallback: Path) -> int:
-    """Rewrite each recorded copy that differs from its source rendered with the config now; how many changed.
-
-    The SessionStart hook runs it, so a `git pull`, a persona edit or a config change reaches the next session.
-    It renders from the checkout the copies came from (`rendered_from`) and creates no copy install did not record.
-    """
-    source = rendered_source(home, fallback)
-    servers, _ = mcp_server_names(home)
-    sources = {path.name: path for path in templated_agents(source)}
-    changed = 0
-    for copy in rendered_files(home, load_manifest(home)):
-        if copy.name in sources:
-            want = render_agent(sources[copy.name].read_text(encoding="utf-8"), servers)
-            if copy.read_text(encoding="utf-8") != want:
-                write_atomically(copy, want)
-                changed += 1
-    return changed
-
-
-def rendered_files(home: Path, manifest: dict | None) -> list[Path]:
-    """The rendered agent copies the manifest records that are still regular files (a link is not ours)."""
-    names = (manifest or {}).get("rendered_agents", [])
-    paths = [home / name for name in names if isinstance(name, str)] if isinstance(names, list) else []
-    return [path for path in paths if path.is_file() and not path.is_symlink()]
-
-
-def render_agents(home: Path, source: Path) -> None:
-    """Write each templated agent into ~/.cursor/agents as a regular file rendered from the `mcp` config.
-
-    A link install made there is replaced, never written through. The manifest's `rendered_agents` lists the
-    copies (relative to HOME); one recorded earlier whose source no longer carries the placeholder is removed.
-    """
-    servers, problem = mcp_server_names(home)
-    if problem:
-        print(f"  {problem}; read-only agents get no MCP server until it is fixed")
-    target_dir = home / ".cursor" / "agents"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    manifest = load_manifest(home) or {"version": 1}
-    written = []
-    for path in templated_agents(source):
-        target = target_dir / path.name
-        if target.is_symlink():
-            target.unlink()
-        write_atomically(target, render_agent(path.read_text(encoding="utf-8"), servers))
-        written.append(str(target.relative_to(home)))
-    for stale in rendered_files(home, manifest):
-        if str(stale.relative_to(home)) not in written:
-            stale.unlink()
-    manifest["rendered_agents"] = written
-    manifest["rendered_from"] = os.path.abspath(source)
-    (home / MANIFEST).parent.mkdir(parents=True, exist_ok=True)
-    write_json(manifest, home / MANIFEST)
-    print(f"  rendered {len(written)} agent(s) into ~/.cursor/agents with MCP servers: {', '.join(servers) or 'none'}")
 
 
 def hook_scripts(commands: list[str], home: Path) -> list[str]:
@@ -521,28 +380,13 @@ def main(argv: list[str]) -> int:
         if len(argv) >= 3 and argv[0] == "prepare":
             prepare(Path(argv[1]), Path(argv[2]), argv[3:])
             return 0
-        if len(argv) == 3 and argv[0] == "render-agents":
-            render_agents(Path(argv[1]), Path(argv[2]))
-            return 0
-        if len(argv) == 3 and argv[0] == "templated-agents":
-            print("\n".join(path.name for path in templated_agents(Path(argv[2]))))
-            return 0
-        if len(argv) == 3 and argv[0] == "refresh-agents":
-            changed = refresh_agents(Path(argv[1]), Path(argv[2]))
-            if changed:
-                print(f"agents: re-rendered {changed} stale read-only agent(s) in ~/.cursor/agents")
-            return 0
         if len(argv) >= 2 and argv[0] == "config-dirs":
             print("\n".join(str(directory) for directory in config_dirs(Path(argv[1]), argv[2:])))
             return 0
     except (OSError, ManifestError) as error:
         print(f"install_blocks: {error}", file=sys.stderr)
         return 2
-    print(
-        "usage: install_blocks.py upsert <home> <checkout> | prepare <home> <checkout> [config dir ...] | "
-        "render-agents|refresh-agents|templated-agents <home> <checkout> | config-dirs <home> [config dir ...]",
-        file=sys.stderr,
-    )
+    print("usage: install_blocks.py upsert|prepare <home> <checkout> [config dir ...] | config-dirs <home> [config dir ...]", file=sys.stderr)
     return 2
 
 

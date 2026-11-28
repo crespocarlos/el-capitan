@@ -2,11 +2,11 @@
 """What install.sh writes into the harness config, and `crew-doctor.py`'s check of it.
 
 The block helpers are `.claude/install_blocks.py`, the module install.sh runs, so a change that breaks
-idempotency, removal or user prose fails here first. The permission rules must not let an allow rule
-shadow an ask rule (the outcome would depend on evaluation order), gate commands must prompt, and the
-settings merge retires a rule an earlier install added and the template dropped while keeping the
-user's own. The doctor
-runs against a fake HOME installed by install.sh, with a fake `gh` first on PATH.
+idempotency, removal or user prose fails here first. The permission rules (the claude-code manifest's) must not let an
+allow rule shadow an ask rule (the outcome would depend on evaluation order), gate commands must prompt, and the
+settings merge of the claude-code adapter's fragment retires a rule an earlier install added and the fragment dropped
+while keeping the user's own. The doctor runs against a fake HOME installed by install.sh, with a fake `gh` first on
+PATH.
 """
 from __future__ import annotations
 
@@ -25,21 +25,29 @@ import pytest
 from cli_runner import load as cli_load
 from cli_runner import run as cli
 
+from crew.harness import adapters, claude_code
+
 # The fixture installs into a fake HOME: more than the suite's 60 s per test on a loaded runner.
 pytestmark = pytest.mark.timeout(300)
 PROJECT = Path(__file__).resolve().parents[2]
 INSTALL = PROJECT / "install.sh"
-SETTINGS = PROJECT / ".claude" / "settings.template.json"
-MERGE = SETTINGS.parent / "merge_claude_settings.py"
-BLOCKS = SETTINGS.parent / "install_blocks.py"
+MERGE = PROJECT / ".claude" / "merge_claude_settings.py"
+BLOCKS = PROJECT / ".claude" / "install_blocks.py"
 DOCTOR = PROJECT / "src" / "crew" / "maintenance" / "crew_doctor.py"
 MEMORY = "<!-- el-capitan:memory -->\nMEMORY\n<!-- /el-capitan:memory -->"
-IMPORTS = "<!-- el-capitan:imports -->\n@~/.cursor/rules/x.mdc\n<!-- /el-capitan:imports -->"
+IMPORTS = "<!-- el-capitan:imports -->\n@~/.claude/el-capitan/x.md\n<!-- /el-capitan:imports -->"
 SEEDED = "# a\n\n<!-- el-capitan:memory -->\nstale\n<!-- /el-capitan:memory -->\n\n# b\n"
 
 
 def check(name: str, condition: bool, detail: object = "") -> None:
     assert condition, f"{name}: {detail}"
+
+
+def fragment(tmp: Path) -> Path:
+    """The claude-code adapter's settings fragment, the source install merges, written to a file."""
+    path = tmp / "fragment.json"
+    path.write_text(claude_code.render(PROJECT, tmp)[".claude/settings.json"][1], encoding="utf-8")
+    return path
 
 
 def load_blocks() -> ModuleType:
@@ -63,13 +71,13 @@ def test_managed_blocks() -> None:
           and "# b" in first and not first.endswith("\n\n\n"), repr(first))
     both = upsert(upsert(SEEDED, "memory", MEMORY), "imports", IMPORTS)
     check("two blocks coexist and the two-block document is idempotent",
-          "<!-- el-capitan:memory -->" in both and "@~/.cursor/rules/x.mdc" in both
+          "<!-- el-capitan:memory -->" in both and "@~/.claude/el-capitan/x.md" in both
           and upsert(upsert(both, "memory", MEMORY), "imports", IMPORTS) == both)
     removed = remove(remove(both, "memory"), "imports")
     check("removing both blocks gives back the text around them", removed == "# a\n\n# b", repr(removed))
     generated = blocks.global_rule_imports(PROJECT)
     expected: list[str] = []
-    for target in re.findall(r"@(\S+\.mdc)", (PROJECT / ".claude/CLAUDE.md").read_text()):
+    for target in re.findall(r"^@(\S+\.mdc?)$", (PROJECT / ".claude/CLAUDE.md").read_text(), re.M):
         expected += [] if target in expected else [target]
     check("the generated imports block is fenced and imports exactly the project file's rules",
           re.findall(r"^@(\S+)$", generated, re.M) == expected and generated.startswith("<!-- el-capitan:imports -->")
@@ -92,7 +100,7 @@ def test_block_marker_in_prose(tmp: Path) -> None:
         (home / target).parent.mkdir(parents=True, exist_ok=True)
         (home / target).write_text("rule\n", encoding="utf-8")
     claude = home / ".claude/CLAUDE.md"
-    claude.parent.mkdir()
+    claude.parent.mkdir(exist_ok=True)
     claude.write_text(broken_claude_md(blocks), encoding="utf-8")
     blocks.install(home, PROJECT)
     repaired = claude.read_text(encoding="utf-8")
@@ -103,9 +111,9 @@ def test_block_marker_in_prose(tmp: Path) -> None:
     blocks.install(home, PROJECT)
     check("a second install changes nothing and writes no backup",
           claude.read_text() == repaired and len(list(claude.parent.glob("CLAUDE.md.bak.*"))) == 1)
-    (home / ".cursor/rules/personal.mdc").unlink()
+    (home / ".claude/el-capitan/personal.md").unlink()
     check("an import naming a missing file is reported",
-          blocks.import_problems(home, PROJECT) == ["@~/.cursor/rules/personal.mdc names a missing file"])
+          blocks.import_problems(home, PROJECT) == ["@~/.claude/el-capitan/personal.md names a missing file"])
 
 
 def command_of(rule: str) -> str | None:
@@ -117,7 +125,7 @@ def command_of(rule: str) -> str | None:
 
 
 def test_permission_rules() -> None:
-    permissions = json.loads(SETTINGS.read_text(encoding="utf-8"))["permissions"]
+    permissions = adapters.manifest("claude-code")["permissions"]
     allow_rules, ask_rules = permissions.get("allow", []), permissions.get("ask", [])
     allow = [c for c in map(command_of, allow_rules) if c]
     ask = [c for c in map(command_of, ask_rules) if c]
@@ -145,11 +153,11 @@ def test_permission_rules() -> None:
           not broad and not hidden, (broad, hidden))
 
 
-def test_project_settings_register_no_hooks() -> None:
+def test_project_settings_register_no_hooks(tmp: Path) -> None:
     """Claude Code and Cursor load the checkout's `.claude/settings.json` as project settings, and Cursor runs a hook
-    each file registers, so it holds no hooks; its other keys are the template's, which install merges."""
+    each file registers, so it holds no hooks; its other keys are the adapter's fragment's, which install merges."""
     project = json.loads((PROJECT / ".claude" / "settings.json").read_text(encoding="utf-8"))
-    template = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    template = json.loads(fragment(tmp).read_text(encoding="utf-8"))
     check("the project settings register no hooks", "hooks" not in project, sorted(project))
     check("the project settings keep the template's other keys",
           project == {key: value for key, value in template.items() if key != "hooks"}, sorted(project))
@@ -169,7 +177,7 @@ def test_settings_merge(tmp: Path) -> None:
     (home / ".agent").mkdir()
     manifest = {"version": 1, section: {"rules": {"ask": spec_rules}}}
     (home / ".agent/install-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    result = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest), "--manifest", str(home)],
+    result = subprocess.run([sys.executable, str(MERGE), str(fragment(tmp)), str(dest), "--manifest", str(home)],
                             capture_output=True, text=True)
     merged = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
     recorded = json.loads((home / ".agent/install-manifest.json").read_text(encoding="utf-8"))[section]
@@ -186,14 +194,14 @@ def test_settings_merge_task_directory(tmp: Path) -> None:
     dest.parent.mkdir(parents=True)
     before = {"permissions": {"allow": ["Bash(my-own *)"], "additionalDirectories": ["~/mine"]}}
     dest.write_text(json.dumps(before), encoding="utf-8")
-    merged = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest), "--manifest", str(home)],
+    merged = subprocess.run([sys.executable, str(MERGE), str(fragment(tmp)), str(dest), "--manifest", str(home)],
                             capture_output=True, text=True, env={**os.environ, "HOME": str(home)})
     permissions = json.loads(dest.read_text(encoding="utf-8"))["permissions"]
     unmerge = ("import json, sys, merge_claude_settings as m; d = json.load(open(sys.argv[1])); "
                "r = next(v for k, v in json.load(open(sys.argv[2])).items() if k.startswith('claude_settings')); "
                "print(json.dumps(m.unmerge(d, r, json.load(open(sys.argv[3])), print)['permissions']))")
     undone = subprocess.run([sys.executable, "-c", unmerge, str(dest), str(home / ".agent/install-manifest.json"),
-                             str(SETTINGS)], capture_output=True, text=True, cwd=MERGE.parent)
+                             str(fragment(tmp))], capture_output=True, text=True, cwd=MERGE.parent)
     check("both keys merged beside the user's directory, and uninstall leaves only the user's",
           merged.returncode == 0 and permissions["additionalDirectories"] == ["~/mine", f"{home}/.agent/tasks"]
           and "Edit(~/.agent/tasks/**)" in permissions["allow"] and undone.returncode == 0
@@ -214,14 +222,14 @@ def test_settings_merge_auto_memory(tmp: Path, case: str, before: dict, flag: bo
     dest.parent.mkdir(parents=True)
     dest.write_text(json.dumps(before), encoding="utf-8")
     flags = ["--auto-memory-off"] if flag else []
-    merged = subprocess.run([sys.executable, str(MERGE), str(SETTINGS), str(dest), "--manifest", str(home), *flags],
+    merged = subprocess.run([sys.executable, str(MERGE), str(fragment(tmp)), str(dest), "--manifest", str(home), *flags],
                             capture_output=True, text=True)
     value = json.loads(dest.read_text(encoding="utf-8")).get("autoMemoryEnabled")
     unmerge = ("import json, sys, merge_claude_settings as m; d = json.load(open(sys.argv[1])); "
                "r = next(v for k, v in json.load(open(sys.argv[2])).items() if k.startswith('claude_settings')); "
                "print(json.dumps(m.unmerge(d, r, json.load(open(sys.argv[3])), print).get('autoMemoryEnabled')))")
     undone = subprocess.run([sys.executable, "-c", unmerge, str(dest), str(home / ".agent/install-manifest.json"),
-                             str(SETTINGS)], capture_output=True, text=True, cwd=MERGE.parent)
+                             str(fragment(tmp))], capture_output=True, text=True, cwd=MERGE.parent)
     check(f"{case}: merged as expected, and uninstall leaves the user's value",
           (merged.returncode, value, undone.returncode) == (0, after, 0)
           and json.loads(undone.stdout.splitlines()[-1]) == before.get("autoMemoryEnabled"),
@@ -273,13 +281,12 @@ def unmatch(data: dict) -> None:
 
 
 def drop_guard(data: dict) -> None:
-    shell = data["hooks"]["beforeShellExecution"]
-    data["hooks"]["beforeShellExecution"] = [e for e in shell if "guard/shell.sh" not in e["command"]]
+    del data["hooks"]["beforeShellExecution"]
 
 
 def drop_claude_guard(data: dict) -> None:
     for entry in data["hooks"]["PreToolUse"]:
-        entry["hooks"] = [hook for hook in entry["hooks"] if "guard/shell.sh" not in hook["command"]]
+        entry["hooks"] = [hook for hook in entry["hooks"] if "PreToolUse" not in hook["command"]]
 
 
 def tilde_hook(home: Path) -> None:
@@ -287,16 +294,7 @@ def tilde_hook(home: Path) -> None:
         {"hooks": [{"type": "command", "command": "bash ~/.claude/hooks/tilde-gone.sh"}]}))
 
 
-def absolute_hook(home: Path) -> None:
-    edit_json(home / ".cursor/hooks.json", lambda data: data["hooks"]["beforeShellExecution"].append(
-        {"command": f'bash "{home}/.claude/hooks/absolute-gone.sh"', "failClosed": True}))
-
-
-def fail_open(data: dict) -> None:
-    """The installed Cursor shell guard loses `failClosed: true`, as an old install or a hand edit leaves it."""
-    for entry in data["hooks"]["beforeShellExecution"]:
-        if "guard/shell.sh" in entry["command"]:
-            entry.pop("failClosed")
+PLUGIN_HOOKS = ".cursor/plugins/local/el-capitan/hooks/hooks.json"
 
 
 def over_limit(home: Path) -> None:
@@ -316,36 +314,31 @@ BAD_CONFIG = '{"gc": {"artifact_days": 1}}'
 
 @pytest.mark.parametrize("case, damage, area, text", [
     ("fresh install", lambda home: None, None, None),
-    ("broken link", lambda home: (home / ".cursor/rules/gone.mdc").symlink_to(PROJECT / "rules/gone.mdc"),
-     "links", "gone.mdc"),
+    ("broken link", lambda home: (home / ".claude/el-capitan/gone.md").symlink_to(PROJECT / "rules/gone.mdc"),
+     "links", "gone.md"),
     ("edited block", lambda home: (home / ".claude/CLAUDE.md").write_text(STALE_BLOCK),
      "blocks", "CLAUDE.md memory block stale"),
     ("imports in a code span", lambda home: (home / ".claude/CLAUDE.md").write_text(broken_claude_md(load_blocks())),
      "imports", "inside a code span or fence"),
-    ("missing script", lambda home: (home / ".claude/hooks/guard").unlink(),
-     "hooks", "scripts are missing: ~/.claude/hooks/guard/"),
+    ("a hook rule edited after install", lambda home: (home / ".agent/hooks/guard/shell.sh").write_text("exit 0\n"),
+     "harness", "~/.agent/hooks/guard/shell.sh differs from its render"),
     ("missing script, ~/ form", tilde_hook,
      "hooks", "Claude Code (~/.claude): registered hook scripts are missing: ~/.claude/hooks/tilde-gone.sh"),
     ("missing hook in the second config dir",
      lambda home: edit_json(home / ".claude-work/settings.json", drop_claude_guard),
      "hooks", "Claude Code (~/.claude-work): "),
     ("second config dir without agents", lambda home: (home / ".claude-work/agents").unlink(),
-     "links", "~/.claude-work: not linked to ~/.cursor: agents"),
-    ("missing script, absolute form", absolute_hook,
-     "hooks", "Cursor: registered hook scripts are missing: ~/.claude/hooks/absolute-gone.sh"),
+     "links", "~/.claude-work: not linked to ~/.claude: agents"),
     ("wrong matcher", lambda home: edit_json(home / ".claude/settings.json", unmatch),
      "hooks", "missing or different PreToolUse Bash"),
-    ("missing registration", lambda home: edit_json(home / ".cursor/hooks.json", drop_guard),
-     "hooks", "guard/shell.sh"),
-    ("a Cursor security guard that fails open", lambda home: edit_json(home / ".cursor/hooks.json", fail_open),
-     "hooks", "Cursor: security guards without failClosed: true (a crash lets the action through): "
-              'beforeShellExecution: bash "$HOME/.claude/hooks/guard/shell.sh"'),
+    ("a Cursor plugin registration missing", lambda home: edit_json(home / PLUGIN_HOOKS, drop_guard),
+     "harness", "~/.cursor/plugins/local/el-capitan/hooks/hooks.json differs from its render"),
     ("over-limit state", over_limit, "state", "tasks 0.0 MB (limit 0 MB); crew gc"),
     ("telemetry", telemetry, "state", "crew-task.py gc --only telemetry --apply"),
     ("bad config", lambda home: (home / ".agent/config.json").write_text(BAD_CONFIG), "config", "artifact_days"),
     ("a rendered agent stale after a config change",
      lambda home: (home / ".agent/config.json").write_text(json.dumps({"mcp": {"docs": ["docs-a"]}})),
-     "agents", "reviewer-adversarial.md stale"),
+     "harness", "reviewer-adversarial.md differs from its render"),
 ])
 def test_doctor(installed: Path, tmp: Path, case: str, damage: Callable[[Path], object],
                 area: str | None, text: str | None) -> None:
@@ -532,12 +525,10 @@ def test_doctor_mcp(tmp: Path, case: str, files: dict[str, str], wanted: dict | 
           len(shown) == 1 if not wanted or not any(wanted.values()) else shown[-1] == UNCHECKED, shown)
 
 
-def tools_lines(home: Path) -> dict[str, str]:
-    """The `tools:` line of each regular (rendered) agent file in ~/.cursor/agents."""
-    agents = home / ".cursor" / "agents"
-    files = [path for path in sorted(agents.glob("*.md")) if path.is_file() and not path.is_symlink()]
-    return {path.name: next(line for line in path.read_text(encoding="utf-8").splitlines()
-                            if line.startswith("tools:")) for path in files}
+def tools_lines(home: Path, directory: str) -> dict[str, str]:
+    """The `tools:` line of each regular (rendered) agent file under `directory` of HOME."""
+    files = [path for path in sorted((home / directory).glob("*.md")) if path.is_file() and not path.is_symlink()]
+    return {path.name: next(line for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("tools:")) for path in files}
 
 
 def home_env(home: Path) -> dict[str, str]:
@@ -551,95 +542,64 @@ def install_with_config(home: Path, mcp: dict | None) -> None:
     (home / ".agent" / "config.json").write_text(json.dumps({"mcp": mcp} if mcp else {}), encoding="utf-8")
 
 
+AGENT_DIRS = (".claude/agents", ".cursor/plugins/local/el-capitan/agents")
+
+
 def test_rendered_agents(tmp: Path) -> None:
-    """Install renders each read-only agent's allowlist from the mcp config and records the copies; the session-start
-    hook re-renders a stale copy; a re-install whose render fails keeps the copies (never swaps one for a link) and
-    finishes; a re-install re-renders; uninstall removes them."""
+    """Install renders each read-only agent's allowlist from the mcp config, for Claude Code and in the Cursor plugin,
+    and records the files; the session-start refresh re-renders the stale ones; a re-install with no mcp section
+    renders the plain list; uninstall removes them."""
     home = tmp / "home"
     install_with_config(home, {"docs": ["docs-a", "docs-b"], "code_search": ["search-x"]})
     config, env = home / ".agent" / "config.json", home_env(home)
-    templated = sorted(path.name for path in (PROJECT / ".cursor" / "agents").glob("*.md")
-                       if "{{mcp_servers}}" in path.read_text())
+    templated = sorted(path.name for path in (PROJECT / ".cursor" / "agents").glob("*.md") if "{{mcp_servers}}" in path.read_text())
     servers_part = ", mcp__docs-a__*, mcp__docs-b__*, mcp__search-x__*"
     done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
-    lines = tools_lines(home)
-    check("every templated agent is a rendered copy whose line ends with the three servers, recorded in the manifest",
-          done.returncode == 0 and sorted(lines) == templated and len(templated) == 12
-          and lines["reviewer-adversarial.md"] == f"tools: Read, Grep, Glob{servers_part}"
-          and lines["reviewer-probe.md"] == f"tools: Read, Grep, Glob, Write, Bash{servers_part}"
-          and lines["crew-pr-resolver.md"] == f"tools: Read, Grep, Glob, Bash{servers_part}"
-          and (home / ".cursor/agents/crew-builder.md").is_symlink()
-          and json.loads((home / ".agent/install-manifest.json").read_text())["rendered_agents"]
-          == [f".cursor/agents/{name}" for name in templated], (done.stderr[-400:], lines))
+    recorded = json.loads((home / ".agent/install-manifest.json").read_text())["rendered"]
+    for directory in AGENT_DIRS:
+        lines = tools_lines(home, directory)
+        check(f"{directory}: every templated agent is a rendered file ending with the three servers, recorded",
+              done.returncode == 0 and sorted(lines) == templated and len(templated) == 12
+              and lines["reviewer-adversarial.md"] == f"tools: Read, Grep, Glob{servers_part}"
+              and lines["reviewer-probe.md"] == f"tools: Read, Grep, Glob, Write, Bash{servers_part}"
+              and lines["crew-pr-resolver.md"] == f"tools: Read, Grep, Glob, Bash{servers_part}"
+              and (home / directory / "crew-builder.md").is_symlink()
+              and all(f"{directory}/{name}" in recorded for name in templated), (done.stderr[-400:], lines))
     config.write_text(json.dumps({"mcp": {"docs": ["docs-a"]}}), encoding="utf-8")
-    hook = home / ".claude" / "hooks" / "agents-refresh.sh"
-    first, second = (subprocess.run(["bash", str(hook)], capture_output=True, text=True, env=env, timeout=30)
-                     for _ in range(2))
-    lines = tools_lines(home)
-    check("the session-start hook re-renders every stale copy once, in one line, and exits 0",
+    hook = PROJECT / ".claude" / "hooks" / "agents-refresh.sh"
+    first, second = (subprocess.run(["bash", str(hook)], capture_output=True, text=True, env=env, timeout=60) for _ in range(2))
+    check("the session-start refresh re-renders every stale file once, in one line, and exits 0",
           first.returncode == second.returncode == 0 and second.stdout == "" and first.stderr == ""
-          and first.stdout.strip() == "agents: re-rendered 12 stale read-only agent(s) in ~/.cursor/agents"
-          and lines["reviewer-adversarial.md"] == "tools: Read, Grep, Glob, mcp__docs-a__*", (first, second, lines))
+          and first.stdout.strip() == "agents: re-rendered 24 stale agent file(s)"
+          and tools_lines(home, AGENT_DIRS[1])["reviewer-adversarial.md"] == "tools: Read, Grep, Glob, mcp__docs-a__*", (first, second))
     config.write_text(json.dumps({"gc": {"artifacts_days": 7}}), encoding="utf-8")
-    (home / ".cursor/agents/reviewer-adversarial.md").unlink()
-    (home / ".cursor/agents/reviewer-adversarial.md").mkdir()  # makes the render fail on this agent
     done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
-    lines = tools_lines(home)
-    warned = [line for line in done.stdout.splitlines() if "render-agents failed" in line]
-    check("a re-install whose render fails says so in one line, finishes, and keeps the copies it did not reach",
-          done.returncode == 0 and len(warned) == 1 and "Done. Installed:" in done.stdout
-          and lines["reviewer-architecture.md"] == "tools: Read, Grep, Glob, mcp__docs-a__*",
-          (done.stdout[-800:], lines))
-    shutil.rmtree(home / ".cursor/agents/reviewer-adversarial.md")
-    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=env)
-    lines = tools_lines(home)
-    check("a re-install with no mcp section re-renders the plain list",
+    lines = tools_lines(home, AGENT_DIRS[0])
+    check("a re-install with no mcp section renders the plain list",
           done.returncode == 0 and lines["reviewer-adversarial.md"] == "tools: Read, Grep, Glob"
           and lines["crew-pr-resolver.md"] == "tools: Read, Grep, Glob, Bash" and sorted(lines) == templated, lines)
     done = subprocess.run(["bash", str(INSTALL), "--uninstall"], capture_output=True, text=True, env=env)
-    check("uninstall removes the rendered copies", done.returncode == 0 and tools_lines(home) == {}
-          and "12 rendered agent(s)" in done.stdout, (done.stdout[-600:], tools_lines(home)))
-
-
-def test_render_failure_falls_back_to_source_links(tmp: Path) -> None:
-    """A first install whose render fails still finishes; the agents it did not render are links to their source,
-    whose `tools:` line is valid YAML granting exactly the class's native tools."""
-    home = tmp / "home"
-    install_with_config(home, {"docs": ["docs-a"]})
-    (home / ".cursor/agents/reviewer-adversarial.md").mkdir(parents=True)
-    done = subprocess.run(["bash", str(INSTALL)], capture_output=True, text=True, env=home_env(home))
-    link = home / ".cursor/agents/reviewer-architecture.md"
-    line = next(row for row in link.read_text().splitlines() if row.startswith("tools:")) if link.exists() else ""
-    check("one warning, a finished install, and a source link whose list is the native tools before the comment",
-          done.returncode == 0 and done.stdout.count("render-agents failed") == 1 and link.is_symlink()
-          and line == "tools: Read, Grep, Glob  # {{mcp_servers}}"
-          and line.split("#")[0].strip() == "tools: Read, Grep, Glob",
-          (done.stdout[-600:], line))
+    check("uninstall removes the rendered files", done.returncode == 0 and not any((home / d).exists() for d in AGENT_DIRS),
+          done.stdout[-600:])
 
 
 def test_render_rules(tmp: Path) -> None:
     """Server names keep only the characters a tool id keeps, matched whole; only the frontmatter `tools:` line is
     templated, so the placeholder in prose is text."""
-    blocks = load_blocks()
     cli_load(DOCTOR)
     from crew.task.task_gc import ConfigError, load_config
     for bad in ("elastic.docs", "docs\n", "docs a"):
         install_with_config(tmp, {"docs": [bad]})
-        check(f"{bad!r} is rejected by install and by the config", blocks.mcp_server_names(tmp)[0] == []
-              and blocks.mcp_server_names(tmp)[1] is not None)
+        check(f"{bad!r} is rejected by install and by the config", adapters.mcp_server_names(tmp)[0] == []
+              and adapters.mcp_server_names(tmp)[1] is not None)
         with pytest.raises(ConfigError):
             load_config(tmp / ".agent")
     source = "---\nname: x\ntools: Read, Grep, Glob  # {{mcp_servers}}\n---\nWrite `{{mcp_servers}}` in prose.\n"
     prose = "---\nname: y\n---\nThe line ends in `  # {{mcp_servers}}`.\n"
-    agents = tmp / "checkout" / ".cursor" / "agents"
-    agents.mkdir(parents=True)
-    (agents / "x.md").write_text(source)
-    (agents / "y.md").write_text(prose)
     check("only the frontmatter line is rendered, and an agent with the placeholder only in prose is not templated",
-          blocks.render_agent(source, ["s"]) == source.replace("Glob  # {{mcp_servers}}", "Glob, mcp__s__*")
-          and blocks.render_agent(source, []) == source.replace("Glob  # {{mcp_servers}}", "Glob")
-          and blocks.render_agent(prose, ["s"]) == prose
-          and [path.name for path in blocks.templated_agents(tmp / "checkout")] == ["x.md"])
+          adapters.render_agent(source, ["s"]) == source.replace("Glob  # {{mcp_servers}}", "Glob, mcp__s__*")
+          and adapters.render_agent(source, []) == source.replace("Glob  # {{mcp_servers}}", "Glob")
+          and adapters.render_agent(prose, ["s"]) == prose and adapters.placeholder_line(prose) is None)
 
 
 def test_mcp_config_section(tmp: Path) -> None:
@@ -654,75 +614,6 @@ def test_mcp_config_section(tmp: Path) -> None:
         (tmp / "config.json").write_text(json.dumps({"mcp": bad}), encoding="utf-8")
         with pytest.raises(ConfigError):
             load_config(tmp)
-
-
-def test_cursor_guards_without_jq(installed: Path, tmp: Path) -> None:
-    """Without jq every guard fails before it can answer, so a fail-closed one would block every Cursor call: the merge
-    registers them `failClosed: false` with one warning line, and `crew doctor` fails an install still closed."""
-    empty = tmp / "no-jq-path"
-    empty.mkdir()
-    dest = tmp / "hooks.json"
-    merged = subprocess.run([sys.executable, str(SETTINGS.parent / "merge_cursor_hooks.py"),
-                             str(PROJECT / ".cursor" / "hooks.template.json"), str(dest)],
-                            capture_output=True, text=True, env={**os.environ, "PATH": str(empty)})
-    entries = [entry for group in json.loads(dest.read_text())["hooks"].values() for entry in group]
-    warned = merged.stdout.count("WARNING: jq is not on PATH") == 1
-    check("without jq the merge registers no guard fail-closed and says so once",
-          merged.returncode == 0 and not any(entry.get("failClosed") for entry in entries) and warned,
-          (merged, entries))
-    home = tmp / "home"
-    copy_install(installed, home)
-    cli_load(DOCTOR)
-    from crew.maintenance.doctor_checks import check_cursor_fail_closed
-    lines = [(line.level, line.text) for line in check_cursor_fail_closed(home, PROJECT, jq=None)]
-    check("crew doctor fails a fail-closed Cursor install on a machine without jq",
-          any(level == "FAIL" and "jq is not on PATH" in text for level, text in lines), lines)
-    found = [(line.level, line.text) for line in check_cursor_fail_closed(home, PROJECT, jq="/usr/bin/jq")]
-    check("with jq the same install is fine", [level for level, _ in found] == ["ok"], found)
-
-
-def test_doctor_cursor_duplicates(installed: Path, tmp: Path) -> None:
-    """A script in ~/.cursor/hooks.json and in a Claude-format file Cursor loads, however each spells its command, runs
-    twice there unless it stands down: an install's shared scripts are stood down; a duplicate with no stand-down
-    (two spellings of one script), a fail-closed guard whose Cursor entry lost `failClosed: true`, and a guard whose
-    Cursor entry only names it in a comment (so it keeps running) are each one WARN naming the script."""
-    home = tmp / "home"
-    copy_install(installed, home)
-    cli_load(DOCTOR)
-    from crew.maintenance.doctor_checks import check_cursor_duplicates
-
-    def found(cwd: Path) -> list[tuple[str, str]]:
-        return [(line.level, line.text) for line in check_cursor_duplicates(home, cwd)]
-
-    fresh = found(tmp)
-    check("an install's shared hooks stand down in the Claude-format copy",
-          [level for level, _ in fresh] == ["ok"] and "stand down" in fresh[0][1], fresh)
-    repo = tmp / "repo"
-    (repo / ".git").mkdir(parents=True)
-    (repo / ".claude").mkdir()
-    idle = 'bash "$HOME/.claude/hooks/notify-idle.sh"'
-    (repo / ".claude" / "settings.json").write_text(json.dumps(
-        {"hooks": {"Notification": [{"hooks": [{"type": "command", "command": idle + " 2>/dev/null; exit 0"}]}]}}),
-        encoding="utf-8")
-    edit_json(home / ".cursor/hooks.json", lambda data: data["hooks"].setdefault("stop", []).append({"command": idle}))
-    flagged = found(repo / "sub")
-    check("one script spelled two ways, in the repository's project settings and Cursor's, with no stand-down",
-          [level for level, _ in flagged] == ["WARN"] and "notify-idle.sh (" in flagged[0][1]
-          and idle + " | " + idle + " 2>/dev/null; exit 0" in flagged[0][1] and "run twice" in flagged[0][1], flagged)
-    edit_json(home / ".cursor/hooks.json", fail_open)
-    opened = found(tmp)
-    check("a fail-closed guard whose Cursor entry is fail-open keeps running, so it is flagged",
-          [level for level, _ in opened] == ["WARN"] and "guard/shell.sh (" in opened[0][1], opened)
-
-    def comment_only(data: dict) -> None:
-        for entry in data["hooks"]["beforeShellExecution"]:
-            if "guard/shell.sh" in entry["command"]:
-                entry["command"] = "true # $HOME/.claude/hooks/guard/shell.sh"
-
-    edit_json(home / ".cursor/hooks.json", comment_only)
-    spoofed = found(tmp)
-    check("a guard whose Cursor entry only names it in a comment keeps running, so it is flagged",
-          [level for level, _ in spoofed] == ["WARN"] and "guard/shell.sh (" in spoofed[0][1], spoofed)
 
 
 def claude_memory_entry(home: Path, folder: str) -> None:

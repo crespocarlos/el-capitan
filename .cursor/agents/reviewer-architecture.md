@@ -1,6 +1,7 @@
 ---
 name: reviewer-architecture
 description: "Principal-level architecture reviewer for system coherence and backward compatibility. Works on code diffs, plans, proposals, and session discussions. Dispatched by crew-reviewer — do not invoke directly."
+access: readonly
 tools: Read, Grep, Glob  # {{mcp_servers}}
 readonly: true
 maxTurns: 14

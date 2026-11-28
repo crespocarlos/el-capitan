@@ -1,0 +1,17 @@
+{
+  "conversation_id": "{session}",
+  "generation_id": "<string>",
+  "session_id": "<string>",
+  "model": "<string>",
+  "hook_event_name": "postToolUse",
+  "cursor_version": "<string>",
+  "workspace_roots": ["<string>"],
+  "user_email": "<string>",
+  "transcript_path": "<string>",
+  "tool_use_id": "<string>",
+  "tool_name": "Shell",
+  "tool_input": {"command": "{command}", "cwd": "{cwd}", "timeout": 0},
+  "tool_output": "{output}",
+  "cwd": "{cwd}",
+  "duration": 0
+}

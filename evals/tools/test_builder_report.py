@@ -9,18 +9,17 @@ saved, with one WARN line in PROGRESS.md. A reply without the heading, or anothe
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
 from cli_runner import launcher
 from cli_runner import run as cli
+from harness_hook import run as hook
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "src" / "crew"
 TASK = TOOLS / "task" / "crew_task.py"
-HOOK = ROOT / ".claude" / "hooks" / "capture-reply.sh"
 GATES = {"schema_version": 1, "gates": [{"name": "test", "exit": 0}]}
 REPORT = ("## Implementation Report\n\n**Tasks:** 1/1 passed\n**Harness:** claude-code\n\n### Quality gates\n"
           "test exit=0\n- `test` — pass\n\n### Unverified claims\nnone\n\n### Report data\n```json\n"
@@ -48,8 +47,7 @@ def stop(tmp: Path, home: Path, prompt: str, reply: str, agent: str) -> subproce
     transcript.write_text("".join(json.dumps(turn) + "\n" for turn in turns), encoding="utf-8")
     payload = {"hook_event_name": "SubagentStop", "agent_id": "a1", "agent_type": agent,
                "agent_transcript_path": str(transcript), "last_assistant_message": reply}
-    return subprocess.run(["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True,
-                          env={**os.environ, "HOME": str(home)})
+    return hook(home, payload)
 
 
 HEAD = "crew-task: {task}\n"

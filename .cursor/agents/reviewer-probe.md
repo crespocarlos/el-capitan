@@ -1,6 +1,7 @@
 ---
 name: reviewer-probe
 description: "Probe worker: runs the throwaway artifacts that settle a review's unsettled claims and returns the observed output. Dispatched only by an orchestrator — never by a persona, and never invoked directly."
+access: probe
 tools: Read, Grep, Glob, Write, Bash  # {{mcp_servers}}
 maxTurns: 24
 ---

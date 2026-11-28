@@ -18,8 +18,7 @@ PATTERNS = (
     "src/crew/*.md",
     ".claude/CLAUDE.md",
     ".claude/settings.json",
-    ".claude/settings.template.json",
-    ".cursor/hooks.template.json",
+    ".claude/hooks/contract.json",
     ".claude/hooks/*.sh",
     ".claude/hooks/guard/*.sh",
 )
@@ -64,6 +63,7 @@ RULES: dict[str, tuple[str, str]] = {
     "invalid-skill-frontmatter": ("prompts", "a skill's frontmatter parses with name and description"),
     "missing-disable-model-invocation": ("prompts", "a user-only skill disables model invocation"),
     "missing-readonly": ("prompts", "a read-only agent declares readonly: true"),
+    "agent-access": ("prompts", "an agent declares access: readonly, probe, worker or inline"),
     "unexpected-readonly": ("prompts", "a write-capable agent does not declare readonly"),
     "agents-inherit-tools": ("prompts", "an agent's tools: line is its class list plus the MCP placeholder, or absent"),
     "persona-turn-budget": ("prompts", "a persona declares tool_budget, states it once, and maxTurns >= budget + 2"),
@@ -90,8 +90,9 @@ RULES: dict[str, tuple[str, str]] = {
     # lint_writing: transitions, edits, hooks, local state
     "progress-not-a-transition": ("writing", "a PROGRESS write is a declared transition"),
     "shell-file-edit": ("writing", "prompts edit files with the edit tool, not shell"),
-    "unregistered-hook": ("writing", "every hook script is registered in both harnesses"),
-    "hook-timeout": ("writing", "every hook registration sets a timeout"),
+    "unregistered-hook": ("writing", "every hook script is a rule in .claude/hooks/contract.json"),
+    "hook-timeout": ("writing", "every contract rule sets a timeout"),
+    "harness-knowledge": ("writing", "harness payload and registration words only in src/crew/harness/"),
     "tracked-local-state": ("writing", "local state under .agent is not tracked"),
     # lint_prompts (--budget)
     "budget": ("prompts", "the always-on set fits its token ceiling and an agent or skill file its line cap"),

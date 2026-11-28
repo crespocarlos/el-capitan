@@ -1,6 +1,7 @@
 ---
 name: crew-pr-resolver
 description: "Read-only analysis of unresolved PR review comments; returns a plan of verdicts, edits and replies. Dispatched in the background by 'crew resolve PR <#X or URL>'."
+access: readonly
 tools: Read, Grep, Glob, Bash  # {{mcp_servers}}
 readonly: true
 ---
