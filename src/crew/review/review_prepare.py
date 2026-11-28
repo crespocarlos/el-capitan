@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from crew.lib.git import GitError, base_ref, fork_point, gh, merge_base, output, repo_slug, run_git, toplevel
+from crew.lib.runs import append_run
 from crew.review.assemble_inputs import DEFAULT_MODE
 from crew.review.review_head import MAX_FILE_BYTES, fetch_head, pr_head, summary
 from crew.review.review_hunks import check_diff, package_diff, write_hunks
@@ -283,6 +284,8 @@ def prepare(args: argparse.Namespace) -> int:
     except StepFailed as failure:
         print(f"prepare: {failure}", file=sys.stderr)
         return failure.code
+    target = f"{args.repo}#{args.pr}" if mode == "pr" else args.repo or Path.cwd().name
+    append_run(str(chosen.resolve()), "start", kind="review", mode=mode, target=target, task="" if mode == "pr" else args.task_dir or "")
     print(chosen)
     print(line)
     return 0

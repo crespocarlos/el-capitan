@@ -37,8 +37,8 @@ SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+")  # install_blocks.SERVER_NAME: the c
 RULES = {"ls": "all, here or an owner/name", "mcp": "a list of MCP server names (letters, digits, _ and -)"}
 KEEP_SESSIONS = frozenset({"review-queue.jsonl"})  # the capture queue `crew-inbox.py` drains
 TELEMETRY_NOTICE = "legacy telemetry: it holds raw shell commands and nothing reads it"
-# Hook logs under ~/.agent/state, each line opening with its UTC stamp: pruned line by line after `sessions_days`.
-STATE_LOGS = ("capture-reply.log", "cursor-usage.log", "cursor-conversations.txt")
+# Hook logs and the runs ledger under ~/.agent/state, each line opening with its UTC stamp: pruned line by line after `sessions_days`.
+STATE_LOGS = ("capture-reply.log", "cursor-usage.log", "cursor-conversations.txt", "runs.jsonl")
 DAY = 86400
 
 
@@ -176,9 +176,10 @@ def plan(places: Places, policy: dict, now: float | None = None, notes: list[str
 
 
 def stamp_of(line: str) -> float | None:
-    """The time of a line that opens with a `YYYY-MM-DDTHH:MM:SSZ` stamp, else None (such a line is kept)."""
+    """The time of a line that opens with a `YYYY-MM-DDTHH:MM:SSZ` stamp (in `runs.jsonl`, after `{"at":"`), else
+    None (such a line is kept)."""
     try:
-        return calendar.timegm(time.strptime(line[:20], "%Y-%m-%dT%H:%M:%SZ"))
+        return calendar.timegm(time.strptime(line.removeprefix('{"at":"')[:20], "%Y-%m-%dT%H:%M:%SZ"))
     except ValueError:
         return None
 

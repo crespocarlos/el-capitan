@@ -1,168 +1,64 @@
-"""The Textual front end over `tui_model`: one table per view, its rows keyed by task and updated in place.
-
-Keys: `t` `w` `p` views, `r` refresh, `g` GitHub `landed`, `a` DONE rows, `/` filter, `o` `O` the issue and PR,
-`s` a status move, `L` the command log, `q` quit. Reads (full every `interval`, LIVE every `LIVE_TICK`) and moves
-run in thread workers; a move runs `crew-task.py` only once its dialog confirms the command. The app never writes
-a file itself and never calls a model.
-"""
+"""The Textual front end over `tui_model`: three tabs over one table, rows keyed by task and updated in place. Keys:
+`1` `2` `3` tabs, `enter`/`→` expand (`←` folds), `PgUp`/`PgDn` scroll, `/` filter, `o` `O` `y` `Y` open and
+copy, `s` a status move, `p` detail, `c` cost, `L` log, `r` `R` refresh, `?` Textual's key panel; the footer shows the keys the
+selected row takes. Reads, the GitHub read and moves run in thread workers; a move runs only once its dialog confirms."""
 
 from __future__ import annotations
 
-import shlex
-import subprocess
 import threading
+import time
 import webbrowser
 from collections.abc import Callable
-from dataclasses import replace
 from pathlib import Path
 
 from rich.markup import escape
-from rich.text import Text
-from textual import events, work
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
-from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Header, Input, OptionList, Static
-from textual.widgets.option_list import Option
+from textual.containers import Horizontal
+from textual.css.query import NoMatches
+from textual.widgets import DataTable, Footer, Header, Input, Static, Tab, Tabs
 from textual.worker import get_current_worker
 
-from crew.tui.tui_model import LINKED, Caches, Filters, Move, View, Watch, collect, landed_for, live_tick, parse_filter
+from crew.tui.tui_github import REFRESH, Facts, Run, fetch, load_facts, run_gh, save_facts
+from crew.tui.tui_model import Caches, Filters, Watch, collect, freshness, live_tick, parse_filter
+from crew.tui.tui_views import TABS, View, expanded
+from crew.tui.tui_widgets import Lines, Runner, Status, cells, run_command, shown
 
-Runner = Callable[[list[str]], tuple[int, str, str]]
 LIVE_TICK = 1.5  # seconds between transcript reads for the LIVE cells
-PENDING = "⋯ "  # before the STATE of a task whose move is still running
-DIALOG = "align: center middle; #box { width: 90%; height: auto; max-height: 80%; border: round $accent; padding: 0 1; }"
-
-
-def run_command(argv: list[str]) -> tuple[int, str, str]:
-    """Run one `crew-task.py` call: its exit code, stdout and stderr."""
-    done = subprocess.run(argv, capture_output=True, text=True, timeout=300)
-    return done.returncode, done.stdout, done.stderr
-
-
-def shown(argv: list[str]) -> str:
-    """A command as the dialog and the log show it, the home directory as `~`."""
-    return shlex.join(argv).replace(str(Path.home()), "~")
-
-
-def cells(view: View, index: int, pending: bool = False) -> list[str]:
-    """One row as Textual markup: the linked cells as `[link=…]`, every cell's text escaped, `PENDING` before STATE.
-
-    The URLs come only from `GITHUB_PR_URL` and `ISSUE_URL`, whose owner/repo class holds no bracket,
-    so a URL cannot end the tag early.
-    """
-    links = view.links[index] if index < len(view.links) else {}
-    found = [f"[link={links[key]}]{escape(cell)}[/link]" if key in links else escape(cell) for key, cell in zip(view.header, view.rows[index])]
-    return [PENDING + found[0], *found[1:]] if pending else found
-
-
-class Status(ModalScreen):
-    """The selected task's moves, one per line (`DRAFTING → APPROVED [a] Approve`; an unavailable one says why). A
-    letter or the arrows pick one, its text is typed inline, the command it runs shows muted below with how to confirm;
-    `enter` returns `(title, argv)`, `esc` cancels."""
-
-    DEFAULT_CSS = f"Status {{ {DIALOG} }} #text {{ display: none; }} #text.open {{ display: block; }} #command {{ color: $text-muted; }}"
-    AUTO_FOCUS = "#moves"  # the app's own (`#table`) is not on this screen
-    BINDINGS = [Binding("escape", "dismiss", "Cancel")]
-
-    def __init__(self, slug: str, moves: list[Move]) -> None:
-        super().__init__()
-        self.slug, self.moves = slug, moves
-        self.move: Move | None = None
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="box") as box:
-            box.border_title = f"status move: {escape(self.slug)}"
-            yield OptionList(*(Option(Text(move.title()), disabled=bool(move.why)) for move in self.moves), id="moves")
-            yield Input(id="text")
-            yield Static(id="command")
-
-    def on_mount(self) -> None:
-        self.query_one(OptionList).highlighted = next((i for i, move in enumerate(self.moves) if not move.why), None)
-
-    def preview(self) -> None:
-        box = self.query_one(Input)
-        hint = "enter runs with this text · esc cancels" if self.focused is box else "enter runs this · esc cancels"
-        self.query_one("#command", Static).update(escape(f"{shown(self.move.argv(box.value.strip()))}\n{hint}") if self.move else "")
-
-    def on_descendant_focus(self) -> None:
-        self.preview()
-
-    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
-        self.move = self.moves[event.option_index]
-        box = self.query_one(Input)
-        box.set_class(bool(self.move.ask), "open")
-        box.placeholder, box.value = self.move.ask, self.move.default
-        self.preview()
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        move = self.moves[event.option_index]
-        if move.ask:
-            self.query_one(Input).focus()
-        else:
-            self.dismiss((move.title(), move.argv()))
-
-    def on_key(self, event: events.Key) -> None:
-        """While the list has focus, a move's letter picks it (one that takes text moves the focus to its box), and no
-        other printable key reaches the app behind the dialog."""
-        if not (event.is_printable and isinstance(self.focused, OptionList)):
-            return
-        event.stop()
-        index = next((i for i, move in enumerate(self.moves) if move.key == event.character and not move.why), None)
-        if index is None:
-            return
-        self.query_one(OptionList).highlighted = index
-        if self.moves[index].ask:
-            self.query_one(Input).focus()
-
-    def on_input_changed(self) -> None:
-        self.preview()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        event.stop()  # not the app's filter box
-        if self.move and event.value.strip():
-            self.dismiss((self.move.title(), self.move.argv(event.value.strip())))
-        elif self.move:
-            self.notify(f"a {self.move.ask} is needed; esc cancels", severity="warning")
-
-
-class Log(ModalScreen):
-    """Every command a move ran this session, with its output and exit code; `esc` or `L` closes it."""
-
-    DEFAULT_CSS = f"Log {{ {DIALOG} }}"
-    AUTO_FOCUS = "#box"
-    BINDINGS = [Binding("escape,L", "dismiss", "Close")]
-
-    def __init__(self, lines: list[str]) -> None:
-        super().__init__()
-        self.lines = lines
-
-    def compose(self) -> ComposeResult:
-        with VerticalScroll(id="box") as box:
-            box.border_title = "command log"
-            yield Static(escape("\n".join(self.lines)) or "no command has run yet")
+PANE_MIN = 100  # columns below which the detail pane stays hidden
 
 
 class CrewApp(App):
-    """Crew dashboard: reads task state; a confirmed `s` move runs `crew-task.py`."""
+    """Crew dashboard: reads task state and GitHub; a confirmed `s` move runs `crew-task.py`."""
 
     TITLE = "crew"
     AUTO_FOCUS = "#table"  # the hidden filter box would otherwise take the keys
-    CSS = "#filter { display: none; } #filter.open { display: block; } #notes { height: auto; padding: 0 1; }"
+    CSS = (
+        "#filter { display: none; } #filter.open { display: block; } #notes { height: auto; padding: 0 1; }"
+        " #body { height: 1fr; } #table { height: 1fr; }"
+        " #detail { display: none; width: 40%; padding: 0 1; border-left: solid $primary; } #detail.open { display: block; }"
+    )
     BINDINGS = [
-        Binding("t", "show('tasks')", "Tasks"),
-        Binding("w", "show('workers')", "Workers"),
-        Binding("p", "show('report')", "Report"),
-        Binding("r", "reload", "Refresh"),
-        Binding("g", "landed", "GitHub landed"),
-        Binding("a", "toggle_done", "DONE on/off"),
-        Binding("slash", "filter", "Filter"),
-        Binding("o", "open('ISSUE')", "Open issue"),
-        Binding("O", "open('PR')", "Open PR"),
+        Binding("1", "show('ongoing')", "Ongoing", show=False),
+        Binding("2", "show('summary')", "Summary", show=False),
+        Binding("3", "show('runs')", "Runs", show=False),
+        Binding("right", "fold(True)", "Expand", priority=True),
+        Binding("left", "fold(False)", "Fold", priority=True),
+        Binding("o", "open('PR')", "Open PR"),
+        Binding("O", "open('ISSUE')", "Open issue"),
+        Binding("y", "copy('PR')", "Copy PR"),
+        Binding("Y", "copy('path')", "Copy path"),
         Binding("s", "move", "Status move"),
-        Binding("L", "command_log", "Command log"),
-        Binding("q", "quit", "Quit"),
+        Binding("slash", "filter", "Filter"),
+        Binding("escape", "clear_filter", "Clear filter"),
+        Binding("p", "pane", "Detail"),
+        Binding("c", "cost", "Cost"),
+        Binding("L", "command_log", "Log", show=False),
+        Binding("r", "reload", "Refresh", show=False),
+        Binding("R", "github", "GitHub", show=False),
+        Binding("question_mark", "show_help_panel", "Keys"),
+        Binding("q", "quit", "Quit", show=False),
     ]
 
     def __init__(
@@ -170,22 +66,26 @@ class CrewApp(App):
         tasks_dir: Path,
         filters: Filters,
         interval: float = 12.0,
-        reader: Callable | None = None,
+        gh: Run = run_gh,
         opener: Callable[[str], object] = webbrowser.open,
         runner: Runner = run_command,
+        clock: Callable[[], float] = time.time,
     ) -> None:
-        """`reader` replaces the `gh` read behind `g`, `opener` the browser behind `o`/`O`, `runner` the
-        `crew-task.py` process behind `s` (tests pass stubs)."""
+        """`gh` replaces the `gh api graphql` call, `opener` the browser behind `o`/`O`, `runner` the `crew-task.py`
+        process behind `s`, `clock` the time the views are read at (tests pass stubs)."""
         super().__init__()
-        self.tasks_dir, self.filters, self.interval, self.reader = tasks_dir, filters, interval, reader
-        self.opener, self.runner = opener, runner
+        self.tasks_dir, self.filters, self.interval, self.gh = tasks_dir, filters, interval, gh
+        self.opener, self.runner, self.clock = opener, runner, clock
         self.command_log: list[str] = []  # every move's command, output and exit code (`L`)
         self.pending: set[str] = set()  # tasks marked `PENDING`: a move running, or the read after it not yet shown
         self.moving: set[str] = set()  # tasks whose move is still running
-        self.view_name = self.drawn = "tasks"
+        self.view_name = self.drawn = "ongoing"
         self.cursors: dict[str, str | None] = {}  # each view's selected key, kept across refreshes and view switches
-        self.landed: dict[str, str] | None = None
+        self.opened: set[str] = set()  # the expanded tasks
+        self.pane = True  # the detail pane, shown when the terminal is at least PANE_MIN wide
+        self.facts: Facts = load_facts()
         self.views: dict[str, View] = {}
+        self.shown_view: View | None = None  # the view as drawn: children in
         self.watched: Watch | None = None
         self.live_total = "-"
         self.caches = Caches()  # each transcript's offset and sums, kept between reads
@@ -193,9 +93,11 @@ class CrewApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        hint = "repo:OWNER/NAME status:STATE done   (Enter applies; repo and done stay unless set)"
-        yield Input(placeholder=hint, id="filter")
-        yield DataTable(id="table", zebra_stripes=True, cursor_type="row")
+        yield Tabs(*(Tab(label, id=name) for name, label in TABS.items()), id="tabs")
+        yield Input(placeholder="repo:OWNER/NAME status:STATE word   (Enter applies, esc clears)", id="filter")
+        with Horizontal(id="body"):
+            yield DataTable(id="table", zebra_stripes=True, cursor_type="row")
+            yield Static(id="detail")
         yield Static(id="notes")
         yield Footer()
 
@@ -203,20 +105,39 @@ class CrewApp(App):
         self.action_reload()
         self.set_interval(self.interval, self.action_reload)
         self.set_interval(LIVE_TICK, self.tick)
+        self.set_interval(REFRESH, self.action_github)
 
     @work(thread=True, exclusive=True, group="read")
     def action_reload(self) -> None:
         """The full read, off the UI thread; a newer read cancels an older one's result."""
         settled = self.pending - self.moving  # moves finished before this read began, so it shows their result
         with self.reading:
-            views, watch = collect(self.tasks_dir, self.filters, self.landed, caches=self.caches)
+            views, watch = collect(self.tasks_dir, self.filters, self.facts, now=self.clock(), caches=self.caches)
         if not get_current_worker().is_cancelled:
             self.call_from_thread(self.loaded, views, watch, settled)
 
     def loaded(self, views: dict[str, View], watch: Watch, settled: set[str] | None = None) -> None:
+        first = self.watched is None
         self.views, self.watched = views, watch
         self.pending -= settled or set()
+        for name, label in TABS.items():
+            self.query_one(f"#{name}", Tab).label = f"{label} ({views[name].count})"
         self.draw()
+        if first:
+            self.action_github()
+
+    @work(thread=True, exclusive=True, group="github")
+    def action_github(self) -> None:
+        """One `gh api graphql` read of every PR and issue, cached on disk; offline keeps the last good facts."""
+        if self.watched is None:
+            return
+        facts = fetch(self.watched.urls, self.facts, self.gh, clones=self.watched.clones)
+        save_facts(facts)
+        self.call_from_thread(self.github_read, facts)
+
+    def github_read(self, facts: Facts) -> None:
+        self.facts = facts
+        self.action_reload()
 
     @work(thread=True, exclusive=True, group="live")
     def tick(self) -> None:
@@ -230,28 +151,42 @@ class CrewApp(App):
         self.call_from_thread(self.show_live, found, total)
 
     def show_live(self, found: dict[str, str], total: str) -> None:
-        view = self.views.get("tasks")
+        view = self.views.get("ongoing")
         if view:
             at = view.header.index("LIVE")
-            view.rows = [(*row[:at], found.get(key, "-"), *row[at + 1 :]) for key, row in zip(view.keys, view.rows)]
+            view.rows = [(*row[:at], found.get(key, "-"), *row[at + 1 :]) for key, row in zip(view.keys, view.rows, strict=True)]
         self.live_total = total
         self.draw()
 
     def selected(self) -> tuple[View | None, int]:
-        """The view on show and the index of the selected row's key in it (-1 for none)."""
-        view, table = self.views.get(self.view_name), self.query_one("#table", DataTable)
+        """The view on show (as drawn) and the index of the selected row's key in it (-1 for none)."""
+        try:
+            table = self.query_one("#table", DataTable)
+        except NoMatches:  # before compose
+            return None, -1
+        view = self.shown_view
         if view is None or not table.row_count:
             return view, -1
         key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
         return view, view.keys.index(key) if key in view.keys else -1
 
+    def selected_key(self) -> str:
+        view, index = self.selected()
+        return view.keys[index] if view and index >= 0 else ""
+
+    def link(self, key: str) -> str:
+        """The selected row's `PR` or `ISSUE` URL, or ""."""
+        view, index = self.selected()
+        return view.links[index].get(key, "") if view and index >= 0 else ""
+
     def draw(self) -> None:
         """Update the table in place: changed cells, added and removed rows, then the new order; the cursor stays on
-        its key."""
-        view = self.views.get(self.view_name)
-        if view is None:
+        its key. Then the detail pane, the header and the footer's keys."""
+        if self.view_name not in self.views:
             return
+        view = expanded(self.views[self.view_name], self.opened)
         table = self.query_one("#table", DataTable)
+        self.shown_view = view
         if table.row_count:
             self.cursors[self.drawn] = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
         self.drawn = self.view_name
@@ -260,14 +195,15 @@ class CrewApp(App):
             table.clear(columns=True)
             for column in view.header:
                 table.add_column(column, key=column)
-        rows = {key: cells(view, i, key in self.pending) for i, key in enumerate(view.keys)}
+        palette = self.get_css_variables()
+        rows = {key: cells(view, i, key in self.pending, palette) for i, key in enumerate(view.keys)}
         for gone in [key for key in table.rows if key.value not in rows]:
             table.remove_row(gone)
         for key, values in rows.items():
             if key not in table.rows:
                 table.add_row(*values, key=key)
                 continue
-            for column, before, after in zip(view.header, table.get_row(key), values):
+            for column, before, after in zip(view.header, table.get_row(key), values, strict=True):
                 if before != after:
                     table.update_cell(key, column, after, update_width=True)
         if [row.key.value for row in table.ordered_rows] != view.keys:
@@ -275,36 +211,97 @@ class CrewApp(App):
             table.sort(key=lambda values: order.get(tuple(values), 0))
         if chosen in rows and table.get_row_index(chosen) != table.cursor_row:
             table.move_cursor(row=table.get_row_index(chosen))
-        self.sub_title = f"{view.title} | live {self.live_total} | filter: {self.describe()}"
+        self.sub_title = f"{freshness(self.facts, self.clock())} | live {self.live_total} | filter: {self.describe()}"
         self.query_one("#notes", Static).update(escape("\n".join(view.notes)))
+        self.show_detail()
+
+    def show_detail(self) -> None:
+        pane = self.query_one("#detail", Static)
+        lines = self.views[self.view_name].details.get(self.selected_key().split("::")[0], []) if self.view_name in self.views else []
+        pane.set_class(self.pane and bool(lines) and self.size.width >= PANE_MIN, "open")
+        pane.update(escape("\n".join(lines)))
+        self.refresh_bindings()
+
+    def on_data_table_row_highlighted(self) -> None:
+        self.show_detail()
+
+    def on_data_table_row_selected(self) -> None:
+        """`enter` expands the selected task, or folds it (from a child row too)."""
+        key = self.selected_key()
+        self.action_fold(key not in self.opened and "::" not in key)
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        if event.tab.id and event.tab.id != self.view_name:
+            self.action_show(event.tab.id)
+
+    def on_resize(self) -> None:
+        self.call_after_refresh(self.draw)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """The footer's context: each key shows only where the selected row or the tab takes it. The arrows are the
+        table's own anywhere else (the filter box, a dialog)."""
+        if action == "fold" and not isinstance(self.focused, DataTable):
+            return False
+        view, index = self.selected()
+        key = view.keys[index] if view and index >= 0 else ""
+        has_children = bool(self.views.get(self.view_name) and self.views[self.view_name].children.get(key))
+        if action == "fold":
+            return (has_children and key not in self.opened) if parameters[0] else (key in self.opened or "::" in key)
+        if action in ("open", "copy") and parameters[0] != "path":
+            return bool(self.link(str(parameters[0])))
+        if action == "copy":
+            return key.startswith("/")
+        if action == "move":
+            return self.view_name == "ongoing" and bool(view and index >= 0 and view.moves[index])
+        if action == "clear_filter":
+            return bool(self.filters.states or self.filters.text)
+        if action == "pane":
+            return self.size.width >= PANE_MIN and self.view_name != "runs"
+        return True
 
     def describe(self) -> str:
         words = [f"repo:{self.filters.repo}"] if self.filters.repo else []
         words += [f"status:{state.lower()}" for state in self.filters.states]
-        return " ".join(words + (["done"] if self.filters.done else [])) or "none"
+        return " ".join(words + list(self.filters.text)) or "none"
 
     def action_show(self, name: str) -> None:
         self.view_name = name
+        self.query_one(Tabs).active = name
+        self.draw()
+
+    def action_fold(self, opening: bool) -> None:
+        """Expand the selected task (`→`, `enter`), or fold it or its child's parent (`←`, `enter`)."""
+        key = self.selected_key().split("::")[0]
+        if opening and self.views[self.view_name].children.get(key):
+            self.opened.add(key)
+        elif not opening and key in self.opened:
+            table = self.query_one("#table", DataTable)
+            table.move_cursor(row=table.get_row_index(key))
+            self.opened.discard(key)
         self.draw()
 
     def action_open(self, key: str) -> None:
-        """Open the selected task's issue (`ISSUE`) or newest PR (`PR`) in the browser; a note when it has none."""
-        view, index = self.selected()
-        if key not in LINKED or view is None or not 0 <= index < len(view.links):
-            return
-        url = view.links[index].get(key)
-        if url:
+        """Open the selected row's PR (a child's own, else the task's newest) or the task's issue in the browser."""
+        if url := self.link(key):
             self.opener(url)
-        else:
-            self.notify(f"this task has no {key.lower()}")
+
+    def action_copy(self, key: str) -> None:
+        """Copy the selected row's PR URL (`y`) or the task's directory (`Y`)."""
+        if text := self.link(key) if key == "PR" else self.selected_key().split("::")[0]:
+            self.copy_to_clipboard(text)
+            self.notify(f"copied {text}")
+
+    def action_pane(self) -> None:
+        self.pane = not self.pane
+        self.show_detail()
+
+    def action_cost(self) -> None:
+        self.push_screen(Lines("cost", [row[0] for row in self.views["cost"].rows] if "cost" in self.views else [], "not read yet"))
 
     def action_move(self) -> None:
         """The status dialog for the selected task; the command it confirms runs in a worker, the row marked pending."""
         view, index = self.selected()
-        if view is None or not 0 <= index < len(view.moves):
-            return
-        if not view.moves[index]:
-            self.notify(f"crew-task.py offers no move from {view.rows[index][0]}")
+        if view is None or index < 0 or not view.moves[index]:
             return
         key = view.keys[index]
         if key in self.pending:
@@ -335,27 +332,20 @@ class CrewApp(App):
         self.action_reload()
 
     def action_command_log(self) -> None:
-        self.push_screen(Log(self.command_log))
-
-    @work(thread=True, exclusive=True, group="landed")
-    def action_landed(self) -> None:
-        """Read GitHub in a thread worker, so the app stays live; a second press replaces the first."""
-        self.call_from_thread(self.notify, "reading each DONE task's PR on GitHub")
-        found = landed_for(self.tasks_dir, self.filters, self.reader)
-        self.call_from_thread(self.landed_read, found)
-
-    def landed_read(self, found: dict[str, str]) -> None:
-        self.landed = found
-        self.action_reload()
-
-    def action_toggle_done(self) -> None:
-        self.filters = replace(self.filters, done=not self.filters.done)
-        self.action_reload()
+        self.push_screen(Lines("command log", self.command_log, "no command has run yet"))
 
     def action_filter(self) -> None:
         box = self.query_one("#filter", Input)
         box.add_class("open")
         box.focus()
+
+    def action_clear_filter(self) -> None:
+        self.filters = parse_filter("", self.filters)
+        box = self.query_one("#filter", Input)
+        box.value = ""
+        box.remove_class("open")
+        self.query_one("#table", DataTable).focus()
+        self.action_reload()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         try:
