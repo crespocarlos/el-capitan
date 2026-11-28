@@ -1,9 +1,9 @@
 """`crew-ls.py --report`: what happened over a window, over the rows `ls_data` loads and filters.
 
-Tasks opened (`created_at`, else the first PROGRESS entry) and closed (a `→ DONE` transition), verdicts
-of the tasks active in the window, findings by label with the fixed rate (`<task>/review/outcomes.jsonl`,
-the last record per fingerprint), the window's tokens over every task shown, DONE included (`task_usage_totals`), stage
-runs, tokens and durations, agent tokens, review run sizes, and tool failures from the memory `.sessions` telemetry.
+Tasks opened (`created_at`, else the first PROGRESS entry) and closed (a `→ DONE` transition), verdicts of the tasks
+active in the window, findings by label with the fixed rate (`<task>/review/outcomes.jsonl`, the last record per
+fingerprint), the window's tokens over every task shown, DONE included (`task_usage_totals`), stage runs, agents per
+kind and harness and Cursor sessions (`task_cost`), review run sizes, and tool failures (`.sessions` telemetry).
 """
 from __future__ import annotations
 
@@ -14,18 +14,9 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from task_cost import agent_kinds, cursor_session_usage, kind_text, session_text
 from task_gc import DEFAULTS, ConfigError, Places, load_config
-from task_progress import (
-    agent_ends,
-    count_text,
-    fields,
-    new_tokens,
-    number,
-    read_entries,
-    stage_usage,
-    sum_usage,
-    usage_text,
-)
+from task_progress import count_text, fields, read_entries, stage_usage, sum_usage, usage_text
 from task_state import TaskState, head
 
 from lib.clock import parse_stamp
@@ -97,15 +88,13 @@ def stage_runs(entries: list, start: datetime) -> list[dict]:
             if run["at"] >= start]
 
 
-def agent_runs(entries: list, start: datetime) -> list[dict]:
-    """One record per agent (`task_progress.agent_ends`: latest stop, its stage) whose `agent_end` is in the window,
-    with its new tokens and cache reads."""
-    runs = []
-    for entry, given in agent_ends(entries):
-        if in_window(entry.at, start):
-            runs.append({"stage": given["stage"], "agent": given.get("persona") or given.get("agent") or "?",
-                         "new": new_tokens(given), "cache_read": number(given.get("cache_read", 0))})
-    return runs
+def cursor_sessions(entries: dict, start: datetime | None) -> dict | None:
+    """The Cursor session usage (`task_cost.cursor_session_usage`) since `start` (None: all), summed over the
+    tasks' entries."""
+    found = [used for used in (cursor_session_usage(rows, start) for rows in entries.values()) if used]
+    if not found:
+        return None
+    return {key: sum(used[key] for used in found) for key in ("new", "cache_read", "stops", "conversations")}
 
 
 def stage_totals(tasks: list[tuple[list[dict], dict[str, dict]]]) -> dict:
@@ -130,15 +119,19 @@ def stage_totals(tasks: list[tuple[list[dict], dict[str, dict]]]) -> dict:
     return stages
 
 
-def agent_totals(agents: list[dict]) -> dict:
-    """`{agent: {runs, new, cache_read}}`, the costliest first."""
-    totals: dict[str, dict] = {}
-    for agent in agents:
-        mine = totals.setdefault(agent["agent"], {"runs": 0, "new": 0, "cache_read": 0})
-        mine["runs"] += 1
-        mine["new"] += agent["new"]
-        mine["cache_read"] += agent["cache_read"]
-    return dict(sorted(totals.items(), key=lambda item: (-item[1]["new"], item[0])))
+def agent_totals(kinds: list[dict]) -> dict:
+    """`{"<kind> (<harness>)": {kind, harness, runs, new (None: tokens unknown), cache_read, tool_calls, seconds}}` over
+    each task's `task_progress.agent_kinds`, the costliest first and the agents with unknown tokens last."""
+    totals: dict[tuple[str, str], dict] = {}
+    for found in kinds:
+        for key, data in found.items():
+            mine = totals.setdefault(key, {"runs": 0, "new": None, "cache_read": 0, "tool_calls": 0, "seconds": 0.0})
+            for field in ("runs", "cache_read", "tool_calls", "seconds"):
+                mine[field] += data[field]
+            if data["new"] is not None:
+                mine["new"] = (mine["new"] or 0) + data["new"]
+    ordered = sorted(totals.items(), key=lambda item: (item[1]["new"] is None, -(item[1]["new"] or 0), item[0]))
+    return {f"{kind} ({harness})": {"kind": kind, "harness": harness, **data} for (kind, harness), data in ordered}
 
 
 def review_runs(entries: list, start: datetime) -> list[dict]:
@@ -195,7 +188,7 @@ def gather(rows: list[TaskState], days: int, memory: Path | None = None, now: da
     memory = memory or places.memory
     entries = {r.task: read_entries(r.task) for r in rows}
     active = [r for r in rows if r.activity <= days]
-    agents = [agent for r in rows for agent in agent_runs(entries[r.task], start)]
+    kinds = [agent_kinds(entries[r.task], start) for r in rows]
     usages = {r.task: stage_usage(entries[r.task], start) for r in rows}
     stages = stage_totals([(stage_runs(entries[r.task], start), usages[r.task]) for r in rows])
     labels = findings(rows, start)
@@ -216,7 +209,8 @@ def gather(rows: list[TaskState], days: int, memory: Path | None = None, now: da
         "findings": {label: dict(counts) for label, counts in sorted(labels.items())},
         "tokens": sum_usage([used for usage in usages.values() for used in usage.values()]),  # = task_usage_totals
         "stages": stages,
-        "agents": agent_totals(agents),
+        "agents": agent_totals(kinds),
+        "cursor_sessions": cursor_sessions(entries, start),
         "reviews": {"runs": len(reviews), "in_bytes": sum(run.get("in_bytes", 0) for run in reviews),
                     "out_bytes": sum(run.get("out_bytes", 0) for run in reviews)},
         "tools": tool_failures(memory, start),
@@ -255,9 +249,10 @@ def render(report: dict, scope: str) -> list[str]:
         lines.append(f"stage {stage}: {runs}{tokens}, median {duration(data['median_seconds'])}")
     if not report["stages"]:
         lines.append("stages: no stage_end recorded in the window")
-    for name, data in report.get("agents", {}).items():
-        lines.append(f"  agent {name}: {data['runs']} run(s), new {count_text(data['new'])}, "
-                     f"cache reads {count_text(data['cache_read'])}")
+    for data in report.get("agents", {}).values():
+        lines.append("  agent " + kind_text((data["kind"], data["harness"]), data).replace(") ", "): ", 1))
+    if report.get("cursor_sessions"):
+        lines.append(f"  {session_text(report['cursor_sessions'])}")
     reviews = report["reviews"]
     sizes = f"{reviews['in_bytes'] / 1e6:.1f} MB in, {reviews['out_bytes'] / 1e6:.1f} MB out"
     lines.append(f"review runs: {reviews['runs']}, {sizes}")

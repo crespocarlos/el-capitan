@@ -1207,33 +1207,36 @@ def marker(review_dir: Path, persona: str) -> str:
 @pytest.mark.parametrize("persona,handback", [("adversarial", True), ("adversarial", False), ("probe", True)])
 def test_capture_hook_saves_the_reply_its_marker_names(tmp: Path, persona: str, handback: bool) -> None:
     """The handback message (else the last assistant message) is saved with the hook's harness, agent id and model;
-    the `.expect` file goes."""
+    the `.expect` file stays and the record keeps its nonce as consumed."""
     review_dir, _ = provenance_review(tmp, (persona,))
-    done = capture_hook(tmp, f"{marker(review_dir, persona)}\n\nReview this package.", "a1", RAW_REPLY, handback)
+    line = marker(review_dir, persona)
+    done = capture_hook(tmp, f"{line}\n\nReview this package.", "a1", RAW_REPLY, handback)
     assert done.returncode == 0 and "capture-reply: saved" in done.stdout, (done.stdout, done.stderr)
     assert (review_dir / f"{persona}.out.md").read_text() == RAW_REPLY
     record = json.loads((review_dir / f"{persona}.provenance.json").read_text())
     assert (record["harness"], record["agent_id"], record["model"], record["resumed"]) == ("claude-code", "a1", "m-1", False)
-    assert not (review_dir / f"{persona}.expect").exists()
+    assert record["nonce"] == line.split()[-1] and (review_dir / f"{persona}.expect").exists()
+    assert not (review_dir / f"{persona}.unanswered").exists()
 
 
 @pytest.mark.parametrize("case,says", [("quoted marker", "adversarial: no adversarial.expect for this marker; nothing saved"),
                                        ("wrong nonce", "the marker's nonce does not match adversarial.expect; nothing saved"),
-                                       ("another agent", "adversarial.out.md is another agent's reply; kept")])
+                                       ("a name collision", "answers another dispatch (a name collision); kept")])
 def test_capture_hook_saves_nothing_it_cannot_trust(tmp: Path, case: str, says: str) -> None:
-    """A marker with no `.expect`, a nonce that does not match, or a reply another agent saved: nothing is written,
-    each for its own stated reason."""
+    """A marker with no `.expect`, a nonce that does not match, or a second dispatch under a name whose `.out.md`
+    answers an earlier marker: nothing is written, each for its own stated reason."""
     review_dir, _ = provenance_review(tmp, ("adversarial",))
     line = f"crew-review-out: {review_dir} adversarial {'0' * 32}"
     if case != "quoted marker":
         real = marker(review_dir, "adversarial")
-        line = real if case == "another agent" else line
-    if case == "another agent":
-        assert save_out(review_dir, "adversarial", RAW_REPLY, "--agent-id", "a2").returncode == 0
+        line = real if case == "a name collision" else line
+    if case == "a name collision":
+        assert "saved" in capture_hook(tmp, marker(review_dir, "adversarial"), "a2", RAW_REPLY).stdout
+        (review_dir / "adversarial.expect").write_text(line.split()[-1] + "\n")
     done = capture_hook(tmp, f"Quoting a dispatch:\n{line}\n", "a1", RESUMED)
     assert done.returncode == 0 and says in done.stdout, done.stdout
     out = review_dir / "adversarial.out.md"
-    assert (out.read_text() == RAW_REPLY) if case == "another agent" else not out.exists()
+    assert (out.read_text() == RAW_REPLY) if case == "a name collision" else not out.exists()
     assert (review_dir / "adversarial.expect").exists() is (case != "quoted marker")
 
 
@@ -1254,12 +1257,16 @@ def test_capture_hook_records_usage_through_an_accepted_marker_only(tmp: Path, a
 
 
 def test_capture_hook_resumes_its_own_reply_and_persist_accepts_the_folder(tmp: Path) -> None:
-    """The same agent answering again is saved as a resume (its `.expect` already gone); persist verifies the folder."""
+    """A second reply to the same marker is the reply, the first kept as `.prev.md` and the pending mark cleared;
+    persist verifies the folder."""
     review_dir, report = provenance_review(tmp, ("adversarial", "code-quality"))
     first = marker(review_dir, "adversarial")
-    assert "saved" in capture_hook(tmp, first, "a1", "- see above\n").stdout
+    assert "unanswered" in capture_hook(tmp, first, "a1", "- see above\n").stdout
+    assert (review_dir / "adversarial.unanswered").exists()
     assert "resumed" in capture_hook(tmp, first, "a1", RESUMED).stdout
     assert (review_dir / "adversarial.out.md").read_text() == RESUMED
+    assert (review_dir / "adversarial.prev.md").read_text() == "- see above\n"
+    assert not (review_dir / "adversarial.unanswered").exists()
     assert json.loads((review_dir / "adversarial.provenance.json").read_text())["resumed"] is True
     assert "saved" in capture_hook(tmp, marker(review_dir, "code-quality"), "a2", RAW_REPLY).stdout
     done = persist_dir(review_dir, report, ("adversarial", "code-quality"))

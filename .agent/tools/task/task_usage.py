@@ -1,20 +1,32 @@
-"""Token usage of one subagent run, recorded on its task as an `agent_end` METRIC (the `SubagentStop` hook).
+"""A subagent run's `agent_end` METRIC on its task (the subagent-stop hook), and a Cursor `stop`'s raw `cursor_stop`.
 
-The task is the `crew-task: <TASK_DIR>` line of the dispatch prompt, else the task above a review directory whose
-marker `save_reply` accepted; either must be a directory under `~/.agent/tasks` holding `SPEC.md`. `tokens` is the last
-call's context (input + cache write + cache read + output); the four counts are summed over calls (each message id
-once). `agent_id` lets a resumed agent's later stop replace its earlier one. Anything else records nothing.
+The task is the prompt's `crew-task: <TASK_DIR>` line, else the task above an accepted review directory, under
+`~/.agent/tasks` with `SPEC.md`. Claude Code: `tokens` is the last call's context, the counts summed per message id.
+Cursor `subagentStop`: `tokens=unknown` with its counts. A `stop` keeps its raw counts and ids on the task its workspace
+resolves to offline (`task_cost.cursor_session_usage` reads them); with no task, nothing is recorded.
 """
 from __future__ import annotations
 
+import argparse
+import json
+import os
 import re
+import sys
 from pathlib import Path
 
-from task_progress import AGENT_END, append_metric
+from task_progress import AGENT_END, CURSOR_STOP, append_metric
+
+from lib.clock import utc_stamp
 
 TASK_LINE = re.compile(r"^crew-task: (\S.*?)[ \t]*$", re.M)
 USAGE = {"input": "input_tokens", "output": "output_tokens", "cache_read": "cache_read_input_tokens",
          "cache_write": "cache_creation_input_tokens"}
+# Cursor `subagentStop` counts, recorded as `<name>=<n>` on the `agent_end` line.
+CURSOR_STATS = {"duration_ms": "duration_ms", "tool_calls": "tool_call_count", "messages": "message_count"}
+# Cursor `stop` counts, recorded as `<name>=<n>` on the `cursor_stop` line.
+STOP_FIELDS = {"input": "input_tokens", "output": "output_tokens", "cache_read": "cache_read_tokens",
+               "cache_write": "cache_write_tokens"}
+NO_TASK = "no task for this workspace; nothing recorded"  # the common case: cursor-usage.sh does not log it
 
 
 def task_of(prompt: str, review_dir: Path | None) -> Path | None:
@@ -68,18 +80,108 @@ def word(value: str) -> str:
 
 
 def record_usage(prompt: str, found: list[dict], agent: str, persona: str, agent_id: str = "",
-                 review_dir: Path | None = None) -> str:
-    """Append the run's `agent_end` to its task; the one line saying what was recorded, or "" when no task is named."""
+                 review_dir: Path | None = None, harness: str = "claude-code", stats: dict | None = None) -> str:
+    """Append the run's `agent_end` to its task; the one line saying what was recorded, or "" when no task is named.
+    `stats` (Cursor's `subagentStop` payload) records its counts with `tokens=unknown` instead of the transcript's."""
     task = task_of(prompt, review_dir)
     if task is None:
         return ""
     if not is_task(task):
         return f"{task} is not a task directory under ~/.agent/tasks; usage not recorded"
-    counts = usage(found)
-    if counts is None:
+    head = [AGENT_END, f"agent={word(agent)}", f"persona={word(persona or agent)}",
+            *([f"agent_id={word(agent_id)}"] if agent_id else [])]
+    if stats is not None:
+        counts = {key: count(stats.get(field)) for key, field in CURSOR_STATS.items()}
+        append_metric(task, " ".join([*head, "tokens=unknown", *(f"{key}={value}" for key, value in counts.items()),
+                                      f"harness={word(harness)}"]))
+        return f"recorded {AGENT_END} tokens=unknown tool_calls={counts['tool_calls']} on {task}"
+    sums = usage(found)
+    if sums is None:
         return "no usage in the transcript; nothing recorded"
-    payload = " ".join([AGENT_END, f"agent={word(agent)}", f"persona={word(persona or agent)}",
-                        *([f"agent_id={word(agent_id)}"] if agent_id else []),
-                        *(f"{key}={value}" for key, value in counts.items())])
-    append_metric(task, payload)
-    return f"recorded {AGENT_END} tokens={counts['tokens']} output={counts['output']} on {task}"
+    counted = [f"{key}={value}" for key, value in sums.items()]
+    append_metric(task, " ".join([*head, *counted, f"harness={word(harness)}"]))
+    return f"recorded {AGENT_END} tokens={sums['tokens']} output={sums['output']} on {task}"
+
+
+def resolve_task(root: str) -> Path | None:
+    """The task for the checkout at `root` (git state only, no network, as `crew-task-context` resolves it), or None."""
+    from task_resolve import ResolverUnavailable, resolve_record
+
+    here = os.getcwd()
+    try:
+        os.chdir(root)
+        record = resolve_record()
+    except (OSError, ResolverUnavailable):
+        return None
+    finally:
+        os.chdir(here)
+    found = record.get("task_dir")
+    return Path(found) if found else None
+
+
+def conversations_file() -> Path:
+    """`<stamp> <conversation_id> <task dir>` lines: the task each Cursor conversation's stops are recorded on."""
+    return Path.home() / ".agent" / "state" / "cursor-conversations.txt"
+
+
+def bound_task(conversation: str) -> Path | None:
+    """The task the conversation's first recorded stop resolved to, or None."""
+    try:
+        lines = conversations_file().read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    found = [line.split(" ", 2) for line in lines]
+    return next((Path(parts[2]) for parts in found if len(parts) == 3 and parts[1] == conversation), None)
+
+
+def bind_task(conversation: str, task: Path) -> None:
+    path = conversations_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"{utc_stamp()} {conversation} {task}\n")
+
+
+def record_stop(payload: dict, resolve=resolve_task) -> str:
+    """Append one Cursor `stop` payload's raw counts to its conversation's task: the one the conversation's first
+    recorded stop resolved to (kept in `~/.agent/state`), so a branch switch never splits a conversation across
+    tasks; else the task its workspace resolves to now. The line saying what happened; nothing without both ids, a
+    workspace, the four counts, or a task."""
+    ids = {name: word(str(payload.get(name) or "")) for name in ("conversation_id", "generation_id")}
+    if not all(payload.get(name) for name in ids):
+        return "no conversation_id or generation_id in the payload; skipped"
+    roots = payload.get("workspace_roots")
+    first = roots[0] if isinstance(roots, list) and roots else None
+    root = first if isinstance(first, str) else str(payload.get("cwd") or "")
+    counts = {key: payload.get(field) for key, field in STOP_FIELDS.items()}
+    if not all(isinstance(value, int) and value >= 0 for value in counts.values()):
+        return "no token counts in the payload; nothing recorded"
+    task = bound_task(ids["conversation_id"])
+    if task is None:
+        if not root or not Path(root).is_dir():
+            return "no workspace in the payload; nothing recorded"
+        task = resolve(root)
+        if task is None or not is_task(task):
+            return NO_TASK
+        bind_task(ids["conversation_id"], task)
+    if not is_task(task):
+        return f"{task}, this conversation's task, is gone; nothing recorded"
+    model = word(str(payload.get("model_id") or payload.get("model") or ""))
+    fields = [*(f"{name}={value}" for name, value in ids.items()), f"model={model}",
+              f"loop_count={count(payload.get('loop_count'))}", *(f"{key}={value}" for key, value in counts.items())]
+    append_metric(task, " ".join([CURSOR_STOP, *fields, "harness=cursor"]))
+    return f"recorded {CURSOR_STOP} input={counts['input']} output={counts['output']} on {task}"
+
+
+def main(argv: list[str]) -> int:
+    """`crew-task.py usage stop`: one Cursor `stop` payload on stdin, recorded on its task. Always exit 0."""
+    parser = argparse.ArgumentParser(prog="crew-task.py usage", description="Record a Cursor session's token usage.")
+    commands = parser.add_subparsers(dest="action", required=True)
+    commands.add_parser("stop", help="the Cursor `stop` hook: the payload on stdin, raw counts on its task")
+    parser.parse_args(argv)
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+        line = record_stop(payload if isinstance(payload, dict) else {})
+    except (OSError, ValueError) as error:
+        line = f"nothing recorded: {error}"
+    print(f"usage: {line}")
+    return 0

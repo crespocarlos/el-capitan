@@ -32,6 +32,8 @@ OUTCOMES = {"fixed", "rejected", "deferred", "skipped"}
 PERSONAS = {"adversarial", "architecture", "code-quality", "product-flow", "prompt-quality", "explorer"}
 LEGACY_PERSONAS = {"fresh-eyes"}  # removed persona; kept so old review dirs still normalize
 PROBE = "probe"  # the reviewer-probe reply: saved with provenance like a persona's, never a lens
+# crew-specwriter's subagents: each reply saved as `<name>.out.md` in the spec run's directory, never a lens
+SPEC_AGENTS = {"specwriter-explorer", "specwriter-scope", "specwriter-adversarial"}
 CODE_MODES = {"self", "changes", "pr"}
 # The orchestrator's per-lens questions, written from the diff and the spec's risks: the assembler renders
 # them under this heading and records `QUESTIONS_STAMP` in manifest.json `personas`; `check-packages` refuses a

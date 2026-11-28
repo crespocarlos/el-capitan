@@ -17,7 +17,7 @@ Lookups: follow `~/.cursor/agents/references/lookups.md` before you search for c
 **Dispatch contract:** This orchestrator runs inline in the main session in both Claude Code and
 Cursor, never through Agent, Task, or Subagent, because it dispatches `specwriter-explorer`,
 `specwriter-scope`, and `specwriter-adversarial` one level deep with the main session's Task or
-Agent capability. Each dispatch prompt opens with `crew-task: <TASK_DIR>`.
+Agent capability.
 
 ## Execution model
 
@@ -47,8 +47,8 @@ has reproduction steps, a "bug" label, "fix" or "bug" in the title, or words lik
 ### Step 2: Explore the codebase
 
 Delegate exploration to the `specwriter-explorer` subagent to preserve context; do not read codebase
-files yourself, because the explorer returns a structured summary from its own context window. In
-Cursor, launch it with background execution and wait for its durable result before drafting.
+files yourself, because the explorer returns a structured summary from its own context window.
+Launch it in the background and wait for its saved reply before drafting.
 
 **Blind research:** do not pass the issue body or the proposed solution. Derive 3–6 research
 questions from the request (spec-writing Step 1) and pass only those, so the explorer describes the
@@ -59,6 +59,7 @@ Task/Agent tool call:
   subagent_type: specwriter-explorer
   run_in_background: true
   prompt: |
+    <the marker and crew-task lines: [spec replies](~/.cursor/agents/references/spec-replies.md), with SPEC_RUN made once>
     ## Research questions
     <3–6 questions about existing code: where X lives, how Y is done today, which tests cover Z>
 
@@ -78,7 +79,7 @@ Task/Agent tool call:
     Explore now. Follow the output format in your persona definition.
 ```
 
-Claude Code: the same prompt, through Agent by name.
+Claude Code: this prompt and Step 4's, through Agent by name.
 
 ### Using the summary
 
@@ -120,11 +121,9 @@ Given an issue, write `## Issue: https://github.com/<owner>/<repo>/issues/<n>` (
 
 ### Step 4: Self-critique
 
-Run two critic personas in parallel against the draft spec. This phase is invisible to the user —
-they see only the improved spec in the output.
+Run two critic personas in parallel against the draft spec.
 
-1. **Critic subagents** are registered at `.cursor/agents/specwriter-*.md` (auto-discovered by both
-   Cursor and Claude Code):
+1. **Critic subagents** are registered at `.cursor/agents/specwriter-*.md`:
    - `specwriter-scope` — PR boundaries, task granularity, split lines, builder compatibility, path
      clarity, verify lines, AC verifiability
    - `specwriter-adversarial` — whether the approach is correct, then the criteria
@@ -137,6 +136,7 @@ they see only the improved spec in the output.
      subagent_type: specwriter-scope | specwriter-adversarial
      run_in_background: true
      prompt: |
+       <the marker and crew-task lines: [spec replies](~/.cursor/agents/references/spec-replies.md), with SPEC_RUN made once>
        ## Critique context
 
        You are reviewing a draft SPEC.md before it is presented to the user.
@@ -155,9 +155,7 @@ they see only the improved spec in the output.
        Produce your critique now, in the shape the contract and your persona define.
    ```
 
-Claude Code: the same prompt, through Agent by name.
-
-3. **Collect findings** from both background critics. A critic that returns no reply follows
+3. **Collect findings** from both critics' saved replies. A critic with no reply follows
    [the no-reply rule](~/.cursor/agents/references/dispatch.md) (one `deliver now` resume); if it
    errors or still returns nothing, proceed anyway. **A reply without a `Verdict:` line is
    incomplete, not a clean pass:** resume it once for that line, then name the lens and what it could

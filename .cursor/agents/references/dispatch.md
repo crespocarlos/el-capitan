@@ -59,29 +59,31 @@ points backwards is the pointer case, so it gets a resume, not a relaunch.
 in an intermediate turn and end with a summary that says the list appeared earlier; the orchestrator
 receives only the final message, so that run looks empty while the work was done. Resume that persona
 once — a resume keeps the conversation, a relaunch does not — with one instruction: re-emit the
-complete list in this final message, in the finding shape, nothing else. Then save what it returns
-(`save-out --resume`, below); the resumed turn's list replaces the pointer in place, so the audit
-trail holds the findings rather than a reference to them. If the resume also points backwards, persist
+complete list in this final message, in the finding shape, nothing else. The resumed turn's list
+replaces the pointer (the hook below), so the audit trail holds the findings rather than a reference
+to them. If the resume also points backwards, persist
 the failure artifact and name the gap under `### Reviewers`.
 
 **A dispatch that ends with no reply is resumed once, never re-dispatched.** This holds for every
 persona and spec critic, from `crew-reviewer` and `crew-specwriter` alike. A persona stopped by its
 turn limit still holds what it read, and a relaunch starts cold and spends the budget again. Resume
 it once with `deliver now: write your findings (a critic: your critique) from what you have read,
-and name what you did not check`, and save that reply as a resume. If it again returns nothing,
+and name what you did not check`. If it again returns nothing,
 persist the failure artifact and name the gap (`crew-specwriter`: name the lens and what it could not
 check). Cursor's Task call resumes too (`resume`). Only a harness that cannot resume re-dispatches
 once, with that `deliver now` line before the same prompt, as its one retry.
 
-**Under Claude Code the hook saves the reply.** Each dispatch carries the marker line from
+**The hook saves the reply, in Claude Code and Cursor.** Each dispatch carries the marker line from
 `crew-review-findings.py expect` ([packaging](~/.cursor/agents/crew-reviewer/references/packaging.md),
-"The reply marker"), and the `SubagentStop` hook saves the reply with `--harness claude-code`, the
-agent id and the model, a resume included; there is no manual `save-out`. Check that
-`<persona>.out.md` exists and `<persona>.expect` is gone; a remaining `.expect` means the hook saved
-nothing, so save that reply by hand as below. `--degraded` stays a manual flag, and a manual
-`save-out` overwrites what the hook saved.
+"The reply marker"), and the subagent-stop hook saves the reply with its harness, agent id and
+model. The latest reply to a marker is the reply: a resume's becomes `<persona>.out.md`, the earlier
+one `<persona>.prev.md`. A dispatch is answered when `<persona>.out.md` exists and no
+`<persona>.unanswered` sits beside it; otherwise it is pending, so resume it (rule above), and save
+by hand only an `.out.md` still missing after the agent stops. The hook keeps an `.out.md` that
+answers another marker (it logs a name collision): re-dispatch under a free name or directory, never
+`save-out` over it. `--degraded` stays a manual flag.
 
-**Saving replies with `save-out`** (Cursor, Codex, the `claude -p` fallback, and the cases above).
+**Saving replies with `save-out`** (Codex, the `claude -p` fallback, and a missing `.out.md`).
 Personas never write their own artifacts, and the orchestrator
 does not re-type a reply into `<persona>.out.md` either: it pipes the reply to the tool, which stores
 the raw bytes and a provenance record beside them:
@@ -92,8 +94,8 @@ the raw bytes and a provenance record beside them:
 ```
 
 - The source is a file the harness already holds for the persona's final message when it has one
-  (a Task or background-agent output file), so the reply is not emitted a second time. With none
-  (Cursor Task), write the reply verbatim to a scratch file first, then `save-out … < <file>`. Never a digest or a hand-edited copy: `persist` refuses a condensed digest
+  (a Task or background-agent output file), so the reply is not emitted a second time. With none,
+  write the reply verbatim to a scratch file first. Never a digest or a hand-edited copy: `persist` refuses a condensed digest
   and a reply whose hash no longer matches its record.
 - Record the agent id and model the harness reports; leave a flag out when it reports nothing (stored
   as `null`, never guessed). `--resume` marks the one allowed re-emission of the same persona.

@@ -18,9 +18,10 @@ from typing import Callable
 import tui_bootstrap
 
 from ls_data import landed_rows, load_rows, repo_filter, select, stale
+from ls_report import cursor_sessions, stage_pairs
 from ls_report import gather as gather_report
 from ls_report import render as render_report
-from ls_report import stage_pairs
+from task_cost import session_text
 from task_gates import CLOSABLE
 from task_live import Live, Seen, ended_at, running_agents
 from task_lock import LOCK_STALE_SECONDS, Lock, read_locks, worktree_paths
@@ -184,6 +185,9 @@ def tasks_view(rows: list[TaskState], show_done: bool, landed: dict[str, str], s
     open_count = sum(1 for r in rows if head(r) != "DONE")
     view.notes.append(f"{len(rows)} tasks: {open_count} open, {len(rows) - open_count} done; scope: {scope}")
     view.notes.append(f"tokens: {usage_text(sum_usage(totals))} across {len(shown)} tasks shown")
+    sessions = cursor_sessions({r.task: seen.entries.get(r.task, []) for r in shown}, None)
+    if sessions:
+        view.notes.append(f"{session_text(sessions)} across the tasks shown, apart from TOKENS")
     if show_done and any(head(r) == "DONE" and str(r.task) not in landed for r in rows):
         view.notes.append(f"LANDED {NOT_READ}: not read yet; the GitHub key reads each DONE task's PR")
     if unstarted:

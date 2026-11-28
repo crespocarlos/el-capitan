@@ -3,10 +3,11 @@
 `~/.agent/config.json` holds `gc`, `doctor`, `ls` (`ls.repo`: the scope of `crew ls` without `--repo`) and `mcp`
 (server names doctor looks for, empty by default); an unset key takes its default. The policy: a DONE task's
 `artifacts/` after `artifacts_days`, the DONE task archived after `archive_days`, memory `.sessions` files after
-`sessions_days` (never the review queue), and the legacy `~/.agent/telemetry` (raw shell commands; nothing reads it).
+`sessions_days` (never the review queue) and the hook logs' lines (`STATE_LOGS`), and the legacy `~/.agent/telemetry`.
 """
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import re
@@ -22,7 +23,7 @@ from task_state import last_activity
 from task_status import head, read_status
 
 from lib.clock import utc_stamp
-from lib.files import read_json_object
+from lib.files import atomic_write, read_json_object
 
 DEFAULTS = {"gc": {"artifacts_days": 14, "archive_days": 90, "sessions_days": 30},
             "doctor": {"tasks_mb": 500, "sessions_mb": 100},
@@ -34,6 +35,8 @@ SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+")  # install_blocks.SERVER_NAME: the c
 RULES = {"ls": "all, here or an owner/name", "mcp": "a list of MCP server names (letters, digits, _ and -)"}
 KEEP_SESSIONS = frozenset({"review-queue.jsonl"})  # the capture queue `crew-inbox.py` drains
 TELEMETRY_NOTICE = "legacy telemetry: it holds raw shell commands and nothing reads it"
+# Hook logs under ~/.agent/state, each line opening with its UTC stamp: pruned line by line after `sessions_days`.
+STATE_LOGS = ("capture-reply.log", "cursor-usage.log", "cursor-conversations.txt")
 DAY = 86400
 
 
@@ -57,10 +60,11 @@ class Places:
 
 @dataclass(frozen=True)
 class Action:
-    verb: str  # "remove" or "archive"
+    verb: str  # "remove", "archive" or "prune" (a log's lines stamped before `before`)
     path: Path
     reason: str
     size: int
+    before: float = 0.0
 
 
 def valid(section: str, value: object) -> bool:
@@ -163,7 +167,35 @@ def plan(places: Places, policy: dict, now: float | None = None, notes: list[str
     telemetry = places.agent / "telemetry"
     if telemetry.exists() or telemetry.is_symlink():
         actions.append(Action("remove", telemetry, TELEMETRY_NOTICE, size_of(telemetry)))
+    for path in (places.agent / "state" / name for name in STATE_LOGS):
+        old = old_bytes(path, cutoff)
+        if old:
+            reason = f"log lines older than {policy['sessions_days']} days"
+            actions.append(Action("prune", path, reason, old, cutoff))
     return actions
+
+
+def stamp_of(line: str) -> float | None:
+    """The time of a line that opens with a `YYYY-MM-DDTHH:MM:SSZ` stamp, else None (such a line is kept)."""
+    try:
+        return calendar.timegm(time.strptime(line[:20], "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return None
+
+
+def old_lines(path: Path, cutoff: float) -> tuple[list[str], list[str]]:
+    """The log's lines `(kept, dropped)`: dropped are those stamped before `cutoff`; none for a missing file or link."""
+    if not path.is_file() or path.is_symlink():
+        return [], []
+    kept, dropped = [], []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True):
+        stamp = stamp_of(line)
+        (dropped if stamp is not None and stamp < cutoff else kept).append(line)
+    return kept, dropped
+
+
+def old_bytes(path: Path, cutoff: float) -> int:
+    return sum(len(line.encode()) for line in old_lines(path, cutoff)[1])
 
 
 def delete(path: Path) -> None:
@@ -191,6 +223,11 @@ def apply(actions: list[Action], places: Places) -> Path | None:
             if action.verb == "remove" and (action.path.exists() or action.path.is_symlink()):
                 delete(action.path)
                 done.append(shown(action.path))
+            if action.verb == "prune":
+                kept, dropped = old_lines(action.path, action.before)
+                if dropped:
+                    atomic_write(action.path, "".join(kept))
+                    done.append(f"{shown(action.path)} ({len(dropped)} lines)")
         archived = [action.path for action in actions if action.verb == "archive"]
         if not archived:
             return None
@@ -247,7 +284,7 @@ def main(args) -> int:
     notes: list[str] = []
     actions = plan(places, policy, notes=notes)
     if getattr(args, "only", None) == "telemetry":
-        actions, notes = [a for a in actions if a.path == places.agent / "telemetry"], []
+        actions, notes = [a for a in actions if a.path == places.agent / "telemetry" or a.verb == "prune"], []
     tarball = None
     if args.apply:
         try:

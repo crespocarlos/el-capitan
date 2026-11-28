@@ -138,8 +138,8 @@ Lock, blocked line, cost line and message routing: [worker dispatch](references/
 Read the worker's report first: the file is the contract and everything below is read from it. The
 worker's final reply is the report itself, from `## Implementation Report` on; a worker cannot write
 the file, so the reply is saved as `REPORT.md` (a batch: `REPORT.part-<first>-<last>.md`; the final
-batch: both). Under Claude Code the `SubagentStop` hook saves it. Cursor's `subagentStop` carries
-no reply, so there the save is yours: pipe the reply, unchanged, into
+batch: both). The subagent-stop hook saves it, in Claude Code and Cursor. Only when that file is
+missing after the worker stops is the save yours: pipe the reply, unchanged, into
 `~/.agent/bin/crew-task.py report save "$TASK_DIR"` (a batch adds `--range <first>-<last>`, the
 final batch also `--final`). A report that fails `report-check` is still saved, with a WARN line
 in PROGRESS.md: read it before trusting the gate results. If neither the file nor a reply with that
